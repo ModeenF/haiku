@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 #
 # Copyright 2009, Alexandre Deckner, alex@zappotek.com
 # Distributed under the terms of the MIT License.
@@ -37,7 +38,7 @@ def run(fileSet, rules, outputFileName):
 
 def visit(result, dir, names):
     extensions = [".cpp", ".h"]
-    names.remove(".svn")
+    names.remove(".git")
     for name in names:
         path = os.path.join(dir, name)
         if os.path.isfile(path) and os.path.splitext(name)[1] in extensions:

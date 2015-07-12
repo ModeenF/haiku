@@ -447,6 +447,9 @@ rule ArchitectureSetupWarnings architecture
 		case m68k :
 			return ;
 				# we use #warning as placeholders for things to write...
+		case ppc :
+			return ;
+				# we use #warning as placeholders for things to write...
 	}
 
 	# enable -Werror for certain parts of the source tree
@@ -736,9 +739,12 @@ rule MultiArchSubDirSetup architectures
 			$(var) on $(architectureObject) = $($(var)) ;
 		}
 
-		# adjust SOURCE_GRIST
+		# adjust SOURCE_GRIST and HDRGRIST
 		SOURCE_GRIST on $(architectureObject)
 			= $(SOURCE_GRIST:E=)!$(architecture) ;
+
+		HDRGRIST on $(architectureObject)
+			= $(HDRGRIST:E=)!$(architecture) ;
 
 		# Adjust the subdir's object dirs that are architecture dependent. To
 		# avoid duplicating the code from SetupObjectsDir, we call it. Since it

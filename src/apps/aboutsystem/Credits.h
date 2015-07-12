@@ -313,11 +313,10 @@ static const Translation kTranslations[] = {
 
 #define kCurrentMaintainers \
 	"Ithamar R. Adema\n" \
-	"Bruno G. Albuquerque\n" \
 	"Stephan Aßmus\n" \
+	"Dario Casalinuovo\n" \
 	"Augustin Cavalier\n" \
 	"Stefano Ceccherini\n" \
-	"Alexandre Deckner\n" \
 	"Adrien Destugues\n" \
 	"Axel Dörfler\n" \
 	"Jérôme Duval\n" \
@@ -331,12 +330,10 @@ static const Translation kTranslations[] = {
 	"Ryan Leavengood\n" \
 	"Andrew Lindesay\n" \
 	"Michael Lotz\n" \
-	"Matt Madia\n" \
 	"Scott McCreary\n" \
 	"Puck Meerburg\n" \
 	"Fredrik Modéen\n" \
 	"Hamish Morrison\n" \
-	"Marcus Overhagen\n" \
 	"Joseph R. Prostko\n" \
 	"François Revol\n" \
 	"Philippe Saint-Pierre\n" \
@@ -347,16 +344,16 @@ static const Translation kTranslations[] = {
 	"Gerasim Troeglazov\n" \
 	"Alexander von Gluck IV\n" \
 	"Ingo Weinhold\n" \
-	"Alex Wilson\n" \
 	"Clemens Zeidler\n" \
-	"Siarzhuk Zharski\n" \
 	"\n"
 
 #define kPastMaintainers \
+	"Bruno G. Albuquerque\n" \
 	"Andrew Bachmann\n" \
 	"Salvatore Benedetto\n" \
 	"Rudolf Cornelissen\n" \
 	"Tyler Dauwalder\n" \
+	"Alexandre Deckner\n" \
 	"Oliver Ruiz Dorantes\n" \
 	"Daniel Furrer\n" \
 	"Andre Alves Garzia\n" \
@@ -369,11 +366,13 @@ static const Translation kTranslations[] = {
 	"Waldemar Kornewald\n" \
 	"Thomas Kurschel\n" \
 	"Brecht Machiels\n" \
+	"Matt Madia\n" \
 	"David McPaul\n" \
 	"Wim van der Meer\n" \
 	"Michael Pfeiffer\n" \
 	"Frans Van Nispen\n" \
 	"Adi Oanca\n" \
+	"Marcus Overhagen\n" \
 	"Michael Phipps\n" \
 	"Niels Sascha Reedijk\n" \
 	"David Reid\n" \
@@ -384,8 +383,10 @@ static const Translation kTranslations[] = {
 	"Bryan Varner\n" \
 	"Nathan Whitehorn\n" \
 	"Michael Wilber\n" \
+	"Alex Wilson\n" \
 	"Artur Wyszyński\n" \
 	"Jonathan Yoder\n" \
+	"Siarzhuk Zharski\n" \
 	"\n"
 
 #define kContributors \

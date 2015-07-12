@@ -1333,8 +1333,14 @@ BContainerWindow::ResizeToFit()
 	BRect screenFrame(screen.Frame());
 
 	screenFrame.InsetBy(5, 5);
-	screenFrame.top += 15;
-		// keeps title bar of window visible
+	BMessage decoratorSettings;
+	GetDecoratorSettings(&decoratorSettings);
+
+	float tabHeight = 15;
+	BRect tabRect;
+	if (decoratorSettings.FindRect("tab frame", &tabRect) == B_OK)
+		tabHeight = tabRect.Height();
+	screenFrame.top += tabHeight;
 
 	BRect frame(Frame());
 
@@ -3045,11 +3051,14 @@ BContainerWindow::BuildAddOnMenu(BMenu* menu)
 	if (item == NULL)
 		return;
 
+	BFont font;
+	menu->GetFont(&font);
+
 	menu = item->Submenu();
 	if (menu == NULL)
 		return;
 
-	menu->SetFont(be_plain_font);
+	menu->SetFont(&font);
 
 	// found the addons menu, empty it first
 	for (;;) {
@@ -3223,13 +3232,8 @@ BContainerWindow::LoadAddOn(BMessage* message)
 
 	refs->AddMessenger("TrackerViewToken", BMessenger(PoseView()));
 
-	const entry_ref* modelRef = TargetModel()->IsContainer()
-			&& selectionList->ItemAt(0) != NULL
-		? selectionList->ItemAt(0)->TargetModel()->EntryRef()
-		: TargetModel()->EntryRef();
-
 	LaunchInNewThread("Add-on", B_NORMAL_PRIORITY, &AddOnThread, refs,
-		addonRef, *modelRef);
+		addonRef, *TargetModel()->EntryRef());
 }
 
 

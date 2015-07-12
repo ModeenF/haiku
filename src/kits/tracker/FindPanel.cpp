@@ -1783,6 +1783,16 @@ FindPanel::SetCurrentMimeType(const char* label)
 }
 
 
+static
+void AddSubtype(BString& text, const BMimeType& type)
+{
+	text.Append(" (");
+	text.Append(strchr(type.Type(), '/') + 1);
+		// omit the slash
+	text.Append(")");
+}
+
+
 bool
 FindPanel::AddOneMimeTypeToMenu(const ShortMimeInfo* info, void* castToMenu)
 {
@@ -1799,8 +1809,24 @@ FindPanel::AddOneMimeTypeToMenu(const ShortMimeInfo* info, void* castToMenu)
 		BMessage* msg = new BMessage(kMIMETypeItem);
 		msg->AddString("mimetype", info->InternalName());
 
-		superItem->Submenu()->AddItem(new IconMenuItem(
-			info->ShortDescription(), msg, info->InternalName(),
+		// check to ensure previous item's name differs
+		BMenu* menu = superItem->Submenu();
+		BMenuItem* previous = menu->ItemAt(menu->CountItems() - 1);
+		BString text = info->ShortDescription();
+		if (previous != NULL && strcasecmp(previous->Label(),
+				info->ShortDescription()) == 0) {
+			AddSubtype(text, type);
+
+			// update the previous item as well
+			BMimeType type(previous->Message()->GetString("mimetype",
+				NULL));
+			BString label = ShortMimeInfo(type).ShortDescription();
+			AddSubtype(label, type);
+			previous->SetLabel(label);
+		}
+
+		menu->AddItem(new IconMenuItem(
+			text, msg, info->InternalName(),
 			B_MINI_ICON));
 	}
 
@@ -3151,20 +3177,20 @@ private:
 void
 DeleteTransientQueriesTask::StartUpTransientQueryCleaner()
 {
+	TTracker* tracker = dynamic_cast<TTracker*>(be_app);
+	ASSERT(tracker != NULL);
+
+	if (tracker == NULL)
+		return;
 	// set up a task that wakes up when the machine is idle and starts
 	// killing off old transient queries
 	DeleteTransientQueriesFunctor* worker
 		= new DeleteTransientQueriesFunctor(new DeleteTransientQueriesTask());
 
-	TTracker* tracker = dynamic_cast<TTracker*>(be_app);
-	ASSERT(tracker != NULL);
-
-	if (tracker != NULL) {
-		tracker->MainTaskLoop()->RunWhenIdle(worker,
-			30 * 60 * 1000000,	// half an hour initial delay
-			5 * 60 * 1000000,	// idle for five minutes
-			10 * 1000000);
-	}
+	tracker->MainTaskLoop()->RunWhenIdle(worker,
+		30 * 60 * 1000000,	// half an hour initial delay
+		5 * 60 * 1000000,	// idle for five minutes
+		10 * 1000000);
 }
 
 

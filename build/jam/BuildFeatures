@@ -448,6 +448,23 @@ if [ IsPackageAvailable zlib_devel ] {
 }
 
 
+# libedit
+if [ IsPackageAvailable libedit_devel ] {
+	ExtractBuildFeatureArchives libedit :
+		file: base libedit
+			runtime: lib
+		file: devel libedit_devel
+			depends: base
+			library: $(developLibDir)/libedit.so
+			headers: $(developHeadersDir)
+		;
+
+	EnableBuildFeatures libedit ;
+} else {
+	Echo "libedit support not available on $(TARGET_PACKAGING_ARCH)" ;
+}
+
+
 # libsolv
 if [ IsPackageAvailable libsolv_devel ] {
 	ExtractBuildFeatureArchives libsolv :
@@ -534,6 +551,23 @@ if [ IsPackageAvailable ncurses_devel ] {
 	EnableBuildFeatures ncurses ;
 } else {
 	Echo "ncurses support not available on $(TARGET_PACKAGING_ARCH)" ;
+}
+
+
+# expat
+if [ IsPackageAvailable expat_devel ] {
+	ExtractBuildFeatureArchives expat :
+		file: base expat
+			runtime: lib
+		file: devel expat_devel
+			depends: base
+			library: $(developLibDir)/libexpat.so.1
+			headers: $(developHeadersDir)
+		;
+
+	EnableBuildFeatures expat ;
+} else {
+	Echo "expat support not available on $(TARGET_PACKAGING_ARCH)" ;
 }
 
 

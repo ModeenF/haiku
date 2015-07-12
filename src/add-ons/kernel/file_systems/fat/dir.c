@@ -49,6 +49,7 @@ struct _dirent_info_ {
 	uint32 cluster;
 	uint32 size;
 	uint32 time;
+	uint32 creation_time;
 };
 
 
@@ -181,8 +182,8 @@ _next_dirent_(struct diri *iter, struct _dirent_info_ *oinfo, char *filename,
 
 	// process short name
 	if (start_index == 0xffff) {
-        start_index = iter->current_index;
-        // korli : seen on FreeBSD /src/sys/fs/msdosfs/direntry.h
+		start_index = iter->current_index;
+		// korli : seen on FreeBSD /src/sys/fs/msdosfs/direntry.h
 		msdos_to_utf8(buffer, (uchar *)filename, len, buffer[0xc] & 0x18);
 	}
 
@@ -190,11 +191,12 @@ _next_dirent_(struct diri *iter, struct _dirent_info_ *oinfo, char *filename,
 		oinfo->sindex = start_index;
 		oinfo->eindex = iter->current_index;
 		oinfo->mode = buffer[0xb];
-		oinfo->cluster = read16(buffer,0x1a);
+		oinfo->cluster = read16(buffer, 0x1a);
 		if (iter->csi.vol->fat_bits == 32)
-			oinfo->cluster += 0x10000*read16(buffer,0x14);
-		oinfo->size = read32(buffer,0x1c);
-		oinfo->time = read32(buffer,0x16);
+			oinfo->cluster += 0x10000 * read16(buffer, 0x14);
+		oinfo->size = read32(buffer, 0x1c);
+		oinfo->time = read32(buffer, 0x16);
+		oinfo->creation_time = read32(buffer, 0x0e);
 	}
 
 	diri_next_entry(iter);
@@ -530,7 +532,7 @@ compact_directory(nspace *vol, vnode *dir)
 					< dir->st_size) {
 				DPRINTF(0, ("shrinking directory to %" B_PRIu32 " clusters\n",
 					clusters));
-				error = set_fat_chain_length(vol, dir, clusters);
+				error = set_fat_chain_length(vol, dir, clusters, true);
 				dir->st_size = clusters * vol->bytes_per_sector
 					* vol->sectors_per_cluster;
 				dir->iteration++;
@@ -582,6 +584,7 @@ struct _entry_info_ {
 	uint32 cluster;
 	uint32 size;
 	time_t time;
+	time_t creation_time;
 };
 
 
@@ -695,8 +698,11 @@ _create_dir_entry_(nspace *vol, vnode *dir, struct _entry_info_ *info,
 		DPRINTF(0, ("expanding directory from %" B_PRIdOFF " to %" B_PRIu32
 			" clusters\n", dir->st_size / vol->bytes_per_sector
 				/ vol->sectors_per_cluster, clusters_needed));
-		if ((error = set_fat_chain_length(vol, dir, clusters_needed)) < 0)
+		if ((error = set_fat_chain_length(vol, dir, clusters_needed, false))
+				< 0) {
 			return error;
+		}
+
 		dir->st_size = vol->bytes_per_sector*vol->sectors_per_cluster*clusters_needed;
 		dir->iteration++;
 	}
@@ -737,6 +743,11 @@ _create_dir_entry_(nspace *vol, vnode *dir, struct _entry_info_ *info,
 	memcpy(buffer, nshort, 11);
 	buffer[0x0b] = info->mode;
 	memset(buffer+0xc, 0, 0x16-0xc);
+	i = time_t2dos(info->creation_time);
+	buffer[0x0e] = i & 0xff;
+	buffer[0x0f] = (i >> 8) & 0xff;
+	buffer[0x10] = (i >> 16) & 0xff;
+	buffer[0x11] = (i >> 24) & 0xff;
 	i = time_t2dos(info->time);
 	buffer[0x16] = i & 0xff;
 	buffer[0x17] = (i >> 8) & 0xff;
@@ -915,6 +926,7 @@ create_dir_entry(nspace *vol, vnode *dir, vnode *node, const char *name,
 	info.cluster = node->cluster;
 	info.size = node->st_size;
 	info.time = node->st_time;
+	info.creation_time = node->st_crtim;
 
 	return _create_dir_entry_(vol, dir, &info, (char *)nshort,
 		(char *)nlong, len, ns, ne);
@@ -1031,6 +1043,7 @@ dosfs_read_vnode(fs_volume *_vol, ino_t vnid, fs_vnode *_node, int *_type,
 	} else
 		entry->end_cluster = 0;
 	entry->st_time = dos2time_t(info.time);
+	entry->st_crtim = dos2time_t(info.creation_time);
 #if TRACK_FILENAME
 	entry->filename = malloc(sizeof(filename) + 1);
 	if (entry->filename) strcpy(entry->filename, filename);

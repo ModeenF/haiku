@@ -64,8 +64,6 @@ static rgb_color sLightShadowColor;
 static rgb_color sShadowColor;
 static rgb_color sDarkShadowColor;
 
-const rgb_color kHighlightColor = {100, 100, 210, 255};
-
 
 static void
 _DrawLine(BPoseView* view, BPoint from, BPoint to)
@@ -90,7 +88,7 @@ _DrawOutline(BView* view, BRect where)
 	where.right++;
 	where.bottom--;
 	rgb_color highColor = view->HighColor();
-	view->SetHighColor(kHighlightColor);
+	view->SetHighColor(ui_color(B_CONTROL_HIGHLIGHT_COLOR));
 	view->StrokeRect(where);
 	view->SetHighColor(highColor);
 }
@@ -106,6 +104,7 @@ BTitleView::BTitleView(BPoseView* view)
 	fTitleList(10, true),
 	fHorizontalResizeCursor(B_CURSOR_ID_RESIZE_EAST_WEST),
 	fPreviouslyClickedColumnTitle(0),
+	fPreviousLeftClickTime(0),
 	fTrackingState(NULL)
 {
 	sTitleBackground = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), 0.88f);

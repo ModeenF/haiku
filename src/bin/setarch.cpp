@@ -109,7 +109,7 @@ compute_new_paths(const char* architecture, BStringList& _paths)
 			int32 index = primaryBinDirectories.IndexOf(path);
 			if (index >= 0) {
 				if (insertionIndex < 0)
-					insertionIndex = i;
+					insertionIndex = _paths.CountStrings();
 			} else if (!is_primary_architecture(
 					guess_architecture_for_path(path))) {
 				// a non-primary architecture path -- skip
@@ -237,13 +237,14 @@ main(int argc, const char* const* argv)
 	}
 
 	// if no command is given, get the user's shell
-	const char* shellCommand[2];
+	const char* shellCommand[3];
 	if (commandArgs == NULL) {
 		struct passwd* pwd = getpwuid(geteuid());
 		shellCommand[0] = pwd != NULL ? pwd->pw_shell : "/bin/sh";
-		shellCommand[1] = NULL;
+		shellCommand[1] = "-l";
+		shellCommand[2] = NULL;
 		commandArgs = shellCommand;
-		commandArgCount = 1;
+		commandArgCount = 2;
 	}
 
 	// exec the command

@@ -79,6 +79,7 @@ enum {
 	SERVER_REGISTER_DORMANT_NODE,
 	SERVER_GET_DORMANT_NODES,
 	SERVER_GET_DORMANT_FLAVOR_INFO,
+	SERVER_SET_NODE_TIMESOURCE,
 	SERVER_MESSAGE_END,
 
 	NODE_MESSAGE_START = 0x200,
@@ -89,6 +90,7 @@ enum {
 	NODE_TIME_WARP,
 	NODE_PREROLL,
 	NODE_ROLL,
+	NODE_SYNC_TO,
 	NODE_SET_TIMESOURCE,
 	NODE_GET_TIMESOURCE,
 	NODE_REQUEST_COMPLETED,
@@ -133,6 +135,7 @@ enum {
 	FILEINTERFACE_SET_REF,
 	FILEINTERFACE_GET_REF,
 	FILEINTERFACE_SNIFF_REF,
+	FILEINTERFACE_GET_FORMATS,
 	FILEINTERFACE_MESSAGE_END,
 
 	CONTROLLABLE_MESSAGE_START = 0x600,
@@ -390,6 +393,7 @@ struct server_change_flavor_instances_count_reply : reply_data {
 struct server_register_node_request : request_data {
 	media_addon_id			add_on_id;
 	int32					flavor_id;
+	media_node_id			timesource_id;
 	char					name[B_MEDIA_NAME_LENGTH];
 	uint64					kinds;
 	port_id					port;
@@ -632,6 +636,14 @@ struct server_register_dormant_node_command : command_data {
 	size_t 			flattened_size;
 	char 			flattened_data[1];
 		// a flattened dormant_flavor_info, flattened_size large
+};
+
+struct server_set_node_timesource_request : request_data {
+	media_node_id			node_id;
+	media_node_id			timesource_id;
+};
+
+struct server_set_node_timesource_reply : reply_data {
 };
 
 
@@ -906,6 +918,14 @@ struct node_roll_command : command_data {
 	bigtime_t				seek_media_time;
 };
 
+struct node_sync_to_request : request_data {
+	bigtime_t				performance_time;
+	port_id					port;
+};
+
+struct node_sync_to_reply : reply_data {
+};
+
 struct node_set_run_mode_command : command_data {
 	BMediaNode::run_mode	mode;
 };
@@ -985,6 +1005,14 @@ struct fileinterface_sniff_ref_reply : reply_data {
 	float					capability;
 };
 
+struct fileinterface_get_formats_request : request_data {
+	int32					num_formats;
+	area_id					data_area;
+};
+
+struct fileinterface_get_formats_reply : reply_data {
+	int32					filled_slots;
+};
 
 // #pragma mark - controllable commands
 

@@ -21,6 +21,7 @@
 #include "FunctionInstance.h"
 #include "Image.h"
 #include "RangeList.h"
+#include "SignalDispositionTypes.h"
 #include "StackFrame.h"
 #include "Team.h"
 #include "TeamMemoryBlock.h"
@@ -558,4 +559,77 @@ UiUtils::FormatSIMDValue(const BVariant& value, uint32 bitSize,
 	_output += "}";
 
 	return _output;
+}
+
+
+const char*
+UiUtils::SignalNameToString(int32 signal, BString& _output)
+{
+	#undef DEFINE_SIGNAL_STRING
+	#define DEFINE_SIGNAL_STRING(x)										\
+		case x:															\
+			_output = #x;												\
+			return _output.String();
+
+	switch (signal) {
+		DEFINE_SIGNAL_STRING(SIGHUP)
+		DEFINE_SIGNAL_STRING(SIGINT)
+		DEFINE_SIGNAL_STRING(SIGQUIT)
+		DEFINE_SIGNAL_STRING(SIGILL)
+		DEFINE_SIGNAL_STRING(SIGCHLD)
+		DEFINE_SIGNAL_STRING(SIGABRT)
+		DEFINE_SIGNAL_STRING(SIGPIPE)
+		DEFINE_SIGNAL_STRING(SIGFPE)
+		DEFINE_SIGNAL_STRING(SIGKILL)
+		DEFINE_SIGNAL_STRING(SIGSTOP)
+		DEFINE_SIGNAL_STRING(SIGSEGV)
+		DEFINE_SIGNAL_STRING(SIGCONT)
+		DEFINE_SIGNAL_STRING(SIGTSTP)
+		DEFINE_SIGNAL_STRING(SIGALRM)
+		DEFINE_SIGNAL_STRING(SIGTERM)
+		DEFINE_SIGNAL_STRING(SIGTTIN)
+		DEFINE_SIGNAL_STRING(SIGTTOU)
+		DEFINE_SIGNAL_STRING(SIGUSR1)
+		DEFINE_SIGNAL_STRING(SIGUSR2)
+		DEFINE_SIGNAL_STRING(SIGWINCH)
+		DEFINE_SIGNAL_STRING(SIGKILLTHR)
+		DEFINE_SIGNAL_STRING(SIGTRAP)
+		DEFINE_SIGNAL_STRING(SIGPOLL)
+		DEFINE_SIGNAL_STRING(SIGPROF)
+		DEFINE_SIGNAL_STRING(SIGSYS)
+		DEFINE_SIGNAL_STRING(SIGURG)
+		DEFINE_SIGNAL_STRING(SIGVTALRM)
+		DEFINE_SIGNAL_STRING(SIGXCPU)
+		DEFINE_SIGNAL_STRING(SIGXFSZ)
+		DEFINE_SIGNAL_STRING(SIGBUS)
+		default:
+			break;
+	}
+
+	if (signal == SIGRTMIN)
+		_output = "SIGRTMIN";
+	else if (signal == SIGRTMAX)
+		_output = "SIGRTMAX";
+	else
+		_output.SetToFormat("SIGRTMIN+%" B_PRId32, signal - SIGRTMIN);
+
+	return _output.String();
+}
+
+
+const char*
+UiUtils::SignalDispositionToString(int disposition)
+{
+	switch (disposition) {
+		case SIGNAL_DISPOSITION_IGNORE:
+			return "Ignore";
+		case SIGNAL_DISPOSITION_STOP_AT_RECEIPT:
+			return "Stop at receipt";
+		case SIGNAL_DISPOSITION_STOP_AT_SIGNAL_HANDLER:
+			return "Stop at signal handler";
+		default:
+			break;
+	}
+
+	return "Unknown";
 }

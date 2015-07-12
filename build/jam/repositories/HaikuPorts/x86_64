@@ -23,22 +23,50 @@ RemotePackageRepository HaikuPorts
 	apr_util_devel-1.5.4-1
 	autoconf-2.69-6
 	automake-1.13.1-4
-	bash-4.3.33-1
+	bash-4.3.39-1
 #	bepdf-1.1.1~beta5_2013_04_28-1
 	binutils-2.25_2014_12_27-1
 	bison-2.6.5-1
+	boost-1.55.0-6
+	boost_atomic-1.55.0-6
+	boost_chrono-1.55.0-6
+	boost_context-1.55.0-6
+	boost_coroutine-1.55.0-6
+	boost_date_time-1.55.0-6
+	boost_devel-1.55.0-6
+	boost_filesystem-1.55.0-6
+	boost_graph-1.55.0-6
+	boost_iostreams-1.55.0-6
+	boost_locale-1.55.0-6
+	boost_log-1.55.0-6
+	boost_math-1.55.0-6
+	boost_program_options-1.55.0-6
+	boost_random-1.55.0-6
+	boost_regex-1.55.0-6
+	boost_serialization-1.55.0-6
+	boost_signals-1.55.0-6
+	boost_system-1.55.0-6
+	boost_test-1.55.0-6
+	boost_thread-1.55.0-6
+	boost_timer-1.55.0-6
+	boost_unit_test_framework-1.55.0-6
+	boost_wave-1.55.0-6
 	buildbot_slave-0.8.8-2
 	bzip2-1.0.6-5
 	bzip2_devel-1.0.6-5
-	cdrtools-3.01~a07-3
+	cdrtools-3.01~a29-1
+	cdrtools_devel-3.01~a29-1
 	clang-3.5.1-1
 	clang_analysis-3.5.1-1
-	cmake-3.0.0_rc6-1
+	cmake-3.2.3-1
 	coreutils-8.23-1
+	cppunit-1.12.1-2
+	cppunit_devel-1.12.1-2
 	ctags-5.8-3
 	curl-7.42.1-1
 	curl_devel-7.42.1-1
 	cvs-1.12.13.1-6
+	dos2unix-7.2.2-1
 	doxygen-1.6.3-4
 	dtc-1.4.1-1
 	enca-1.15-1
@@ -58,8 +86,8 @@ RemotePackageRepository HaikuPorts
 	fontconfig-2.11.1-3
 	fontconfig_devel-2.11.1-3
 	fossil-1.33-1
-	freetype-2.5.5-1
-	freetype_devel-2.5.5-1
+	freetype-2.6-1
+	freetype_devel-2.6-1
 	fribidi-0.19.6-2
 	fribidi_devel-0.19.6-2
 	gawk-4.1.0-2
@@ -97,11 +125,12 @@ RemotePackageRepository HaikuPorts
 	groff-1.20.1-3
 	gutenprint-5.2.10-1
 	gutenprint_devel-5.2.10-1
+	gzip-1.6-2
 	haikuwebkit-1.4.10-1
 	haikuwebkit_devel-1.4.10-1
 	handbrake-0.10.1-1
-	harfbuzz-0.9.39-1
-	harfbuzz_devel-0.9.39-1
+	harfbuzz-0.9.40-1
+	harfbuzz_devel-0.9.40-1
 	help2man-1.44.1-1
 	htmldoc-1.8.27-3
 	icu-55.1-3
@@ -132,8 +161,8 @@ RemotePackageRepository HaikuPorts
 	libdvdread_devel-5.0.3-2
 	libdvdnav-5.0.3-3
 	libdvdnav_devel-5.0.3-3
-	libedit-2012_06_01_3.0-1
-	libedit_devel-2012_06_01_3.0-1
+	libedit-2015_03_21_3.1-1
+	libedit_devel-2015_03_21_3.1-1
 	libevent-2.0.21-7
 	libevent_devel-2.0.21-7
 	libexecinfo-1.1-2
@@ -162,6 +191,8 @@ RemotePackageRepository HaikuPorts
 	libpng_devel-1.5.22-1
 	libpng16-1.6.17-1
 	libpng16_devel-1.6.17-1
+	librevenge-0.0.1-1
+	librevenge_devel-0.0.1-1
 	libsamplerate-0.1.8-2
 	libsamplerate_devel-0.1.8-2
 	libsndfile-1.0.25-3
@@ -198,8 +229,8 @@ RemotePackageRepository HaikuPorts
 	llvm-3.5.2-1
 	lua-5.2.3-2
 	lua_devel-5.2.3-2
-	lz4-r117-1
-	lz4_devel-r117-1
+	lz4-r130-1
+	lz4_devel-r130-1
 	lzo-2.09-1
 	lzo_devel-2.09-1
 	m4-1.4.16-5
@@ -221,9 +252,11 @@ RemotePackageRepository HaikuPorts
 	neon_devel-0.29.6-7
 	netcat-1.10-1
 	ninja-1.5.1-2
+	nspr-4.10.8-1
+	nspr_devel-4.10.8-1
 	openssh-6.6p1-1
-	openssl-1.0.0r-1
-	openssl_devel-1.0.0r-1
+	openssl-1.0.0s-1
+	openssl_devel-1.0.0s-1
 	p7zip-9.20.1-5
 	patch-2.7.5-1
 	pe-2.4.5-1
@@ -249,7 +282,7 @@ RemotePackageRepository HaikuPorts
 	sed-4.2.1-6
 	serf-1.3.7-1
 	serf_devel-1.3.7-1
-	sharutils-4.14-1
+	sharutils-4.15.2-1
 	smpeg-0.4.5-4
 	smpeg_devel-0.4.5-4
 	speex-1.2~rc1-2
@@ -300,9 +333,11 @@ RemotePackageRepository HaikuPorts
 	clang
 	cmake
 	coreutils
+	cppunit
 	ctags
 	curl
 	cvs
+	dos2unix
 	doxygen
 	dtc
 	enca
@@ -333,6 +368,7 @@ RemotePackageRepository HaikuPorts
 	grep
 	groff
 	gutenprint
+	gzip
 	haikuwebkit
 	handbrake
 	harfbuzz
@@ -367,6 +403,7 @@ RemotePackageRepository HaikuPorts
 	libpcre
 	libpng
 	libpng16
+	librevenge
 	libsamplerate
 	libsdl
 	libsdl2
@@ -400,6 +437,7 @@ RemotePackageRepository HaikuPorts
 	neon
 	netcat
 	ninja
+	nspr
 	openssh
 	openssl
 	p7zip

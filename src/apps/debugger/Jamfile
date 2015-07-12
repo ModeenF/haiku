@@ -9,6 +9,8 @@ UseHeaders [ FDirName $(TARGET_COMMON_DEBUG_OBJECT_DIR_$(TARGET_PACKAGING_ARCH))
 UsePrivateHeaders app debug interface kernel package shared libroot ;
 UsePrivateSystemHeaders ;
 
+UseBuildFeatureHeaders libedit ;
+
 LINKFLAGS += -Wl,--exclude-libs,ALL ;
 
 SubDirC++Flags [ FDefines _BSD_SOURCE=1 ] ;
@@ -39,6 +41,7 @@ SEARCH_SOURCE += [ FDirName $(SUBDIR) user_interface gui ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) user_interface gui inspector_window ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) user_interface gui model ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) user_interface gui team_window ] ;
+SEARCH_SOURCE += [ FDirName $(SUBDIR) user_interface gui team_settings_window ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) user_interface gui teams_window ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) user_interface gui utility_windows ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) user_interface gui util ] ;
@@ -47,6 +50,7 @@ SEARCH_SOURCE += [ FDirName $(SUBDIR) user_interface util ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) util ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) value ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) value type_handlers ] ;
+SEARCH_SOURCE += [ FDirName $(SUBDIR) value value_formatters ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) value value_handlers ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) value value_nodes ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) value values ] ;
@@ -69,12 +73,7 @@ SourceHdrs
 	: [ FDirName $(SUBDIR) dwarf ]
 ;
 
-# since syscall_numbers.h is generated on the fly, we need to explicitly
-# let Jam know about the dependency.
-Includes [ FGristFiles TeamDebugger.cpp ]
-	: <syscalls!$(TARGET_PACKAGING_ARCH)>syscall_numbers.h ;
-
-Application Debugger :
+local sources =
 	Debugger.cpp
 
 	# arch
@@ -176,6 +175,7 @@ Application Debugger :
 	LineDataSource.cpp
 	ReturnValueInfo.cpp
 	SemaphoreInfo.cpp
+	SignalInfo.cpp
 	SourceCode.cpp
 	StackFrame.cpp
 	StackFrameValues.cpp
@@ -206,6 +206,7 @@ Application Debugger :
 	SettingsManager.cpp
 	TeamFileManagerSettings.cpp
 	TeamSettings.cpp
+	TeamSignalSettings.cpp
 	TeamUiSettings.cpp
 	TeamUiSettingsFactory.cpp
 
@@ -285,25 +286,35 @@ Application Debugger :
 	ThreadListView.cpp
 	VariablesView.cpp
 
+	# user_interface/gui/team_settings_window
+	ExceptionStopConfigView.cpp
+	ImageStopConfigView.cpp
+	SignalsConfigView.cpp
+	TeamSettingsWindow.cpp
+
 	# user_interface/gui/util
 	ActionMenuItem.cpp
 	GuiSettingsUtils.cpp
 	SettingsMenu.cpp
+	SignalDispositionMenu.cpp
 	TargetAddressTableColumn.cpp
 
 	# user_interface/gui/utility_windows
-	BreakConditionConfigWindow.cpp
 	BreakpointEditWindow.cpp
 	ExpressionPromptWindow.cpp
+	SignalDispositionEditWindow.cpp
 	StartTeamWindow.cpp
 	WatchPromptWindow.cpp
 
 	# user_interface/gui/value
-	TableCellBoolRenderer.cpp
-	TableCellEnumerationRenderer.cpp
-	TableCellFloatRenderer.cpp
-	TableCellIntegerRenderer.cpp
-	TableCellStringRenderer.cpp
+	TableCellBoolEditor.cpp
+	TableCellEnumerationEditor.cpp
+	TableCellFormattedValueEditor.cpp
+	TableCellFormattedValueRenderer.cpp
+	TableCellIntegerEditor.cpp
+	TableCellOptionPopUpEditor.cpp
+	TableCellTextControlEditor.cpp
+	TableCellValueEditor.cpp
 	TableCellValueRenderer.cpp
 	TableCellValueRendererUtils.cpp
 
@@ -322,6 +333,7 @@ Application Debugger :
 	TypeHandler.cpp
 	TypeHandlerRoster.cpp
 	Value.cpp
+	ValueFormatter.cpp
 	ValueHandler.cpp
 	ValueHandlerRoster.cpp
 	ValueLoader.cpp
@@ -333,6 +345,13 @@ Application Debugger :
 	BListTypeHandler.cpp
 	BMessageTypeHandler.cpp
 	CStringTypeHandler.cpp
+
+	# value/value_formatters
+	BoolValueFormatter.cpp
+	EnumerationValueFormatter.cpp
+	IntegerValueFormatter.cpp
+	FloatValueFormatter.cpp
+	StringValueFormatter.cpp
 
 	# value/value_handlers
 	AddressValueHandler.cpp
@@ -362,7 +381,18 @@ Application Debugger :
 	FloatValue.cpp
 	IntegerValue.cpp
 	StringValue.cpp
+;
 
+# since syscall_numbers.h is generated on the fly, we need to explicitly
+# let Jam know about the dependency.
+Includes [ FGristFiles $(sources) ] :
+	<syscalls!$(TARGET_PACKAGING_ARCH)>syscall_numbers.h
+	[ BuildFeatureAttribute ncurses : headers ]
+	[ BuildFeatureAttribute libedit : headers ]
+;
+
+Application Debugger :
+	$(sources)
 	:
 	<nogrist>Debugger_demangler.o
 	<nogrist>Debugger_disasm_x86.o
@@ -370,16 +400,16 @@ Application Debugger :
 	<nogrist>Debugger_dwarf.o
 	<nogrist>DebugAnalyzer_gui_table.o
 
-	[ BuildFeatureAttribute ncurses : library ]
-
 	libudis86.a
 	<bin>debug_utils.a
 	libcolumnlistview.a
 	libshared.a
-	libedit.a
 
 	[ TargetLibstdc++ ]
 	be package tracker libbsd.so libdebug.so
+
+	[ BuildFeatureAttribute ncurses : library ]
+	[ BuildFeatureAttribute libedit : library ]
 
 	: Debugger.rdef
 ;

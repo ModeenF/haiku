@@ -74,6 +74,10 @@ public:
 	static	const BString&		FormatSIMDValue(const BVariant& value,
 									uint32 bitSize, uint32 format,
 									BString& _output);
+
+	static	const char*			SignalNameToString(int32 signal,
+									BString& _output);
+	static	const char*			SignalDispositionToString(int disposition);
 };
 
 

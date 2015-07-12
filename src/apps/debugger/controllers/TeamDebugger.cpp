@@ -53,6 +53,7 @@
 #include "TeamMemoryBlock.h"
 #include "TeamMemoryBlockManager.h"
 #include "TeamSettings.h"
+#include "TeamSignalSettings.h"
 #include "TeamUiSettings.h"
 #include "Tracing.h"
 #include "ValueNode.h"
@@ -453,7 +454,7 @@ TeamDebugger::Init(team_id teamID, thread_id threadID, int argc,
 	// set team debugging flags
 	fDebuggerInterface->SetTeamDebuggingFlags(
 		B_TEAM_DEBUG_THREADS | B_TEAM_DEBUG_IMAGES
-			| B_TEAM_DEBUG_POST_SYSCALL);
+			| B_TEAM_DEBUG_POST_SYSCALL | B_TEAM_DEBUG_SIGNALS);
 
 	// get the initial state of the team
 	AutoLocker< ::Team> teamLocker(fTeam);
@@ -685,6 +686,43 @@ TeamDebugger::MessageReceived(BMessage* message)
 
 			AutoLocker< ::Team> teamLocker(fTeam);
 			fTeam->RemoveStopImageName(imageName);
+			break;
+		}
+
+		case MSG_SET_DEFAULT_SIGNAL_DISPOSITION:
+		{
+			int32 disposition;
+			if (message->FindInt32("disposition", &disposition) != B_OK)
+				break;
+
+			AutoLocker< ::Team> teamLocker(fTeam);
+			fTeam->SetDefaultSignalDisposition(disposition);
+			break;
+		}
+
+		case MSG_SET_CUSTOM_SIGNAL_DISPOSITION:
+		{
+			int32 signal;
+			int32 disposition;
+			if (message->FindInt32("signal", &signal) != B_OK
+				|| message->FindInt32("disposition", &disposition) != B_OK) {
+				break;
+			}
+
+			AutoLocker< ::Team> teamLocker(fTeam);
+			fTeam->SetCustomSignalDisposition(signal, disposition);
+			break;
+		}
+
+		case MSG_REMOVE_CUSTOM_SIGNAL_DISPOSITION:
+		{
+			int32 signal;
+			if (message->FindInt32("signal", &signal) != B_OK)
+				break;
+
+			AutoLocker< ::Team> teamLocker(fTeam);
+			fTeam->RemoveCustomSignalDisposition(signal);
+			break;
 		}
 
 		case MSG_SET_WATCHPOINT:
@@ -1101,6 +1139,35 @@ TeamDebugger::RemoveStopImageNameRequested(const char* name)
 {
 	BMessage message(MSG_REMOVE_STOP_IMAGE_NAME);
 	message.AddString("name", name);
+	PostMessage(&message);
+}
+
+
+void
+TeamDebugger::SetDefaultSignalDispositionRequested(int32 disposition)
+{
+	BMessage message(MSG_SET_DEFAULT_SIGNAL_DISPOSITION);
+	message.AddInt32("disposition", disposition);
+	PostMessage(&message);
+}
+
+
+void
+TeamDebugger::SetCustomSignalDispositionRequested(int32 signal,
+	int32 disposition)
+{
+	BMessage message(MSG_SET_CUSTOM_SIGNAL_DISPOSITION);
+	message.AddInt32("signal", signal);
+	message.AddInt32("disposition", disposition);
+	PostMessage(&message);
+}
+
+
+void
+TeamDebugger::RemoveCustomSignalDispositionRequested(int32 signal)
+{
+	BMessage message(MSG_REMOVE_CUSTOM_SIGNAL_DISPOSITION);
+	message.AddInt32("signal", signal);
 	PostMessage(&message);
 }
 
@@ -1550,8 +1617,18 @@ TeamDebugger::_HandleDebuggerMessage(DebugEvent* event)
 			}
 			break;
 		}
-		case B_DEBUGGER_MESSAGE_PRE_SYSCALL:
 		case B_DEBUGGER_MESSAGE_SIGNAL_RECEIVED:
+		{
+			TRACE_EVENTS("B_DEBUGGER_MESSAGE_SIGNAL_RECEIVED: thread: %"
+				B_PRId32 "\n", event->Thread());
+
+			if (handler != NULL) {
+				handled = handler->HandleSignalReceived(
+					dynamic_cast<SignalReceivedEvent*>(event));
+			}
+			break;
+		}
+		case B_DEBUGGER_MESSAGE_PRE_SYSCALL:
 		case B_DEBUGGER_MESSAGE_PROFILER_UPDATE:
 		case B_DEBUGGER_MESSAGE_HANDED_OVER:
 			// not interested
@@ -2249,6 +2326,22 @@ TeamDebugger::_LoadSettings()
 		fUserInterface->ID());
 	if (uiSettings != NULL)
 			fUserInterface->LoadSettings(uiSettings);
+
+	const TeamSignalSettings* signalSettings = fTeamSettings.SignalSettings();
+	if (signalSettings != NULL) {
+		fTeam->SetDefaultSignalDisposition(
+			signalSettings->DefaultSignalDisposition());
+
+		int32 signal;
+		int32 disposition;
+		for (int32 i = 0; i < signalSettings->CountCustomSignalDispositions();
+			i++) {
+			if (signalSettings->GetCustomSignalDispositionAt(i, signal,
+				disposition) == B_OK) {
+				fTeam->SetCustomSignalDisposition(signal, disposition);
+			}
+		}
+	}
 }
 
 
