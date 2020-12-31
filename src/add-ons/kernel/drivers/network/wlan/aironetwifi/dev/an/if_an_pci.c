@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (c) 1997, 1998, 1999
  *	Bill Paul <wpaul@ctr.columbia.edu>.  All rights reserved.
  *
@@ -31,7 +33,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
+__FBSDID("$FreeBSD: releng/12.0/sys/dev/an/if_an_pci.c 338948 2018-09-26 17:12:14Z imp $");
 
 /*
  * This is a PCI shim for the Aironet PC4500/4800 wireless network
@@ -119,16 +121,16 @@ static int
 an_probe_pci(device_t dev)
 {
 	struct an_type		*t;
-	struct an_softc *sc = device_get_softc(dev);
+	uint16_t vid, did;
 
-	bzero(sc, sizeof(struct an_softc));
 	t = an_devs;
+	vid = pci_get_vendor(dev);
+	did = pci_get_device(dev);
 
 	while (t->an_name != NULL) {
-		if (pci_get_vendor(dev) == t->an_vid &&
-		    pci_get_device(dev) == t->an_did) {
+		if (vid == t->an_vid &&
+		    did == t->an_did) {
 			device_set_desc(dev, t->an_name);
-			an_pci_probe(dev);
 			return(BUS_PROBE_DEFAULT);
 		}
 		t++;
@@ -145,7 +147,15 @@ an_attach_pci(dev)
 	int 			flags, error = 0;
 
 	sc = device_get_softc(dev);
+	bzero(sc, sizeof(struct an_softc));
 	flags = device_get_flags(dev);
+
+	/*
+	 * Setup the lock in PCI attachment since it skips the an_probe
+	 * function.
+	 */
+	mtx_init(&sc->an_mtx, device_get_nameunit(dev), MTX_NETWORK_LOCK,
+	    MTX_DEF);
 
 	if (pci_get_vendor(dev) == AIRONET_VENDORID &&
 	    pci_get_device(dev) == AIRONET_DEVICEID_MPI350) {
@@ -263,5 +273,7 @@ static driver_t an_pci_driver = {
 static devclass_t an_devclass;
 
 DRIVER_MODULE(an, pci, an_pci_driver, an_devclass, 0, 0);
+MODULE_PNP_INFO("U16:vendor;U16:device;D:#", pci, an,
+    an_devs, nitems(an_devs) - 1);
 MODULE_DEPEND(an, pci, 1, 1, 1);
 MODULE_DEPEND(an, wlan, 1, 1, 1);

@@ -1,10 +1,25 @@
-1	french	x-vnd.Haiku-Mandelbrot	3766380907
-File	Mandelbrot		Fichier
-Palette 3	Mandelbrot		Palette 3
-Quit	Mandelbrot		Quitter
-Palette 2	Mandelbrot		Palette 2
-Palette 4	Mandelbrot		Palette 4
-Palette	Mandelbrot		Palette
+1	french	x-vnd.Haiku-Mandelbrot	3875916167
+Burning Ship	MandelbrotWindow		Bateau Enflammé
+Grassland	MandelbrotWindow		Prairie
+Lightning	MandelbrotWindow		Éclairs
+About	MandelbrotWindow		À propos
+Palette	MandelbrotWindow		Palette
+Set	MandelbrotWindow		Ensemble
+Tricorn	MandelbrotWindow		Tricorne
+Royal	MandelbrotWindow		Royal
+Orbit Trap	MandelbrotWindow		Piège Orbital
+Deepfrost	MandelbrotWindow		Gel
+Subsampling	MandelbrotWindow		Sous-échantillonnage
+1 (none)	MandelbrotWindow		1 (aucun)
+Quit	MandelbrotWindow		Quitter
+File	MandelbrotWindow		Fichier
+Julia	MandelbrotWindow		Julia
+Frost	MandelbrotWindow		Givre
+Fire	MandelbrotWindow		Feu
 Mandelbrot	System name		Mandelbrot
-Palette 1	Mandelbrot		Palette 1
-Iterations	Mandelbrot		Itérations
+Iterations	MandelbrotWindow		Itérations
+High contrast	MandelbrotWindow		Contraste élevé
+Multibrot	MandelbrotWindow		Multibrot
+Spring	MandelbrotWindow		Printemps
+Midnight	MandelbrotWindow		Minuit
+Mandelbrot	MandelbrotWindow		Mandelbrot

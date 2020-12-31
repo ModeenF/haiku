@@ -5,12 +5,6 @@
 #include <KernelExport.h>
 
 
-#if 1
-#	define INFO(x...) dprintf(x)
-#else
-#	define INFO(x...)
-#endif
-
 //#define TRACE_MOVEMENT_MAKER
 #ifdef TRACE_MOVEMENT_MAKER
 #	define TRACE(x...) dprintf(x)
@@ -175,13 +169,13 @@ sqrtf(float x)
 }
 
 
-int32
+static int32
 make_small(float value)
 {
 	if (value > 0)
-		return floorf(value);
+		return (int32)floorf(value);
 	else
-		return ceilf(value);
+		return (int32)ceilf(value);
 }
 
 
@@ -225,13 +219,6 @@ void
 MovementMaker::GetMovement(uint32 posX, uint32 posY)
 {
 	_GetRawMovement(posX, posY);
-
-//	INFO("SYN: pos: %lu x %lu, delta: %ld x %ld, sums: %ld x %ld\n",
-//		posX, posY, xDelta, yDelta,
-//		fDeltaSumX, fDeltaSumY);
-
-	xDelta = xDelta;
-	yDelta = yDelta;
 }
 
 
@@ -272,8 +259,8 @@ void
 MovementMaker::_GetRawMovement(uint32 posX, uint32 posY)
 {
 	// calibrated on the synaptics touchpad
-	posX = posX * float(SYN_WIDTH) / fAreaWidth;
-	posY = posY * float(SYN_HEIGHT) / fAreaHeight;
+	posX = posX * SYN_WIDTH / fAreaWidth;
+	posY = posY * SYN_HEIGHT / fAreaHeight;
 
 	const float acceleration = 0.8;
 	const float translation = 12.0;
@@ -296,7 +283,7 @@ MovementMaker::_GetRawMovement(uint32 posX, uint32 posY)
 		diff /= 2;
 	}
 	if (diff == 0)
-		fDeltaSumX = 0.0;
+		fDeltaSumX = 0;
 	else
 		fDeltaSumX += diff;
 
@@ -307,7 +294,7 @@ MovementMaker::_GetRawMovement(uint32 posX, uint32 posY)
 		diff /= 2;
 	}
 	if (diff == 0)
-		fDeltaSumY = 0.0;
+		fDeltaSumY = 0;
 	else
 		fDeltaSumY += diff;
 
@@ -442,7 +429,7 @@ TouchpadMovement::_EdgeMotion(mouse_movement *movement, touch_event *event,
 	bool inXEdge = false;
 	bool inYEdge = false;
 
-	if (event->xPosition < fSpecs->areaStartX + fSpecs->edgeMotionWidth) {
+	if (int32(event->xPosition) < fSpecs->areaStartX + fSpecs->edgeMotionWidth) {
 		inXEdge = true;
 		xdelta *= -1;
 	} else if (event->xPosition > uint16(
@@ -450,7 +437,7 @@ TouchpadMovement::_EdgeMotion(mouse_movement *movement, touch_event *event,
 		inXEdge = true;
 	}
 
-	if (event->yPosition < fSpecs->areaStartY + fSpecs->edgeMotionWidth) {
+	if (int32(event->yPosition) < fSpecs->areaStartY + fSpecs->edgeMotionWidth) {
 		inYEdge = true;
 		ydelta *= -1;
 	} else if (event->yPosition > uint16(
@@ -461,9 +448,9 @@ TouchpadMovement::_EdgeMotion(mouse_movement *movement, touch_event *event,
 	// for a edge motion the drag has to be started in the middle of the pad
 	// TODO: this is difficult to understand simplify the code
 	if (inXEdge && validStart)
-		movement->xdelta = xdelta;
+		movement->xdelta = make_small(xdelta);
 	if (inYEdge && validStart)
-		movement->ydelta = ydelta;
+		movement->ydelta = make_small(ydelta);
 
 	if (!inXEdge && !inYEdge)
 		fLastEdgeMotion = 0;
@@ -568,12 +555,12 @@ TouchpadMovement::_MoveToMovement(touch_event *event, mouse_movement *movement)
 
 	GetMovement(event->xPosition, event->yPosition);
 
-	movement->xdelta = xDelta;
-	movement->ydelta = yDelta;
+	movement->xdelta = make_small(xDelta);
+	movement->ydelta = make_small(yDelta);
 
 	// tap gesture
-	fTapDeltaX += xDelta;
-	fTapDeltaY += yDelta;
+	fTapDeltaX += make_small(xDelta);
+	fTapDeltaY += make_small(yDelta);
 
 	if (fTapdragStarted) {
 		movement->buttons = kLeftButton;
@@ -657,8 +644,8 @@ TouchpadMovement::_CheckScrollingToMovement(touch_event *event,
 		StartNewMovment();
 	}
 	GetScrolling(event->xPosition, event->yPosition);
-	movement->wheel_ydelta = yDelta;
-	movement->wheel_xdelta = xDelta;
+	movement->wheel_ydelta = make_small(yDelta);
+	movement->wheel_xdelta = make_small(xDelta);
 
 	if (isSideScrollingV && !isSideScrollingH)
 		movement->wheel_xdelta = 0;

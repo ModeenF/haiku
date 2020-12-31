@@ -40,7 +40,8 @@ public:
 
 private:
 			void			_NewScreenshot(bool silent = false,
-								bool clipboard = false);
+								bool clipboard = false,
+								bool ignoreDelay = false);
 			void			_UpdatePreviewPanel();
 			void			_DisallowChar(BTextView* textView);
 			void			_SetupOutputPathMenu(const BMessage& settings);
@@ -49,6 +50,7 @@ private:
 								uint32 shortcutKey = 0);
 			void			_UpdateFilenameSelection();
 			void			_SetupTranslatorMenu();
+			void			_DisplaySaveError(BString _message);
 			status_t		_SaveScreenshot();
 			void			_ShowSettings(bool activate);
 			BString			_FindValidFileName(const char* name);

@@ -28,7 +28,7 @@
 #		ifndef HAIKU_HOST_PLATFORM_DARWIN
 #			include <sys/disklabel.h>
 #		endif
-#	elif defined(HAIKU_HOST_PLATFORM_CYGWIN)
+#	elif defined(HAIKU_HOST_PLATFORM_MSYS)
 #		include <sys/ioctl.h>
 #		include <sys/stat.h>
 #	elif defined(HAIKU_HOST_PLATFORM_LINUX)
@@ -44,6 +44,8 @@
 
 #if (!defined(__BEOS__) && !defined(__HAIKU__))
 	// Defined in libroot_build.so.
+#	define _kern_dup	_kernbuild_dup
+#	define _kern_close	_kernbuild_close
 	extern "C" int _kern_dup(int fd);
 	extern "C" status_t _kern_close(int fd);
 #endif

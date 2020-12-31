@@ -1,6 +1,6 @@
 /*
 ** Copyright 2003, Axel Dörfler, axeld@pinc-software.de. All rights reserved.
-** Distributed under the terms of the OpenBeOS License.
+** Distributed under the terms of the MIT License.
 */
 #ifndef KERNEL_BOOT_PLATFORM_OPENFIRMWARE_KERNEL_ARGS_H
 #define KERNEL_BOOT_PLATFORM_OPENFIRMWARE_KERNEL_ARGS_H
@@ -13,8 +13,8 @@
 #define SMP_MAX_CPUS 1
 	// TODO: Until inline kernel atomic code for ppc is fixed
 
-#define MAX_PHYSICAL_MEMORY_RANGE 4
-#define MAX_PHYSICAL_ALLOCATED_RANGE 8
+#define MAX_PHYSICAL_MEMORY_RANGE 32
+#define MAX_PHYSICAL_ALLOCATED_RANGE 32
 #define MAX_VIRTUAL_ALLOCATED_RANGE 32
 
 

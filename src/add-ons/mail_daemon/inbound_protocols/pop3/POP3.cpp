@@ -22,11 +22,7 @@
 
 #include <arpa/inet.h>
 
-#if USE_SSL
-#include <openssl/md5.h>
-#else
 #include "md5.h"
-#endif
 
 #include <Alert.h>
 #include <Catalog.h>
@@ -232,8 +228,8 @@ POP3Protocol::SyncMessages()
 		}
 		ReportProgress(1, 0);
 
-		if (file.WriteAttr("MAIL:unique_id", B_STRING_TYPE, 0, uid,
-				strlen(uid)) < 0)
+		const BString uidStr(uid);
+		if (file.WriteAttrString("MAIL:unique_id", &uidStr) < 0)
 			error = B_ERROR;
 
 		file.WriteAttr("MAIL:size", B_INT32_TYPE, 0, &size, sizeof(int32));
@@ -310,37 +306,6 @@ POP3Protocol::HandleFetchBody(const entry_ref& ref, const BMessenger& replyTo)
 
 	ReportProgress(1, 0);
 	ResetProgress();
-
-	Disconnect();
-	return B_OK;
-}
-
-
-status_t
-POP3Protocol::HandleDeleteMessage(const entry_ref& ref)
-{
-	status_t error = Connect();
-	if (error < B_OK)
-		return error;
-
-	error = _RetrieveUniqueIDs();
-	if (error < B_OK) {
-		Disconnect();
-		return error;
-	}
-
-	char uidString[256];
-	BNode node(&ref);
-	if (node.ReadAttr("MAIL:unique_id", B_STRING_TYPE, 0, uidString, 256) < 0) {
-		Disconnect();
-		return B_ERROR;
-	}
-
-	#if DEBUG
-	printf("DeleteMessage: ID is %d\n", (int)fUniqueIDs.IndexOf(uidString));
-		// What should we use for int32 instead of %d?
-	#endif
-	Delete(fUniqueIDs.IndexOf(uidString));
 
 	Disconnect();
 	return B_OK;
@@ -638,7 +603,7 @@ POP3Protocol::RetrieveInternal(const char* command, int32 message,
 		if (result == B_TIMED_OUT) {
 			// No data available, even after waiting a minute.
 			fLog = "POP3 timeout - no data received after a long wait.";
-			return B_ERROR;
+			return B_TIMED_OUT;
 		}
 		if (amountToReceive > bufSize - 1 - amountInBuffer)
 			amountToReceive = bufSize - 1 - amountInBuffer;
@@ -845,15 +810,11 @@ POP3Protocol::MD5Digest(unsigned char* in, char* asciiDigest)
 {
 	unsigned char digest[16];
 
-#ifdef USE_SSL
-	MD5(in, ::strlen((char*)in), digest);
-#else
 	MD5_CTX context;
 
 	MD5Init(&context);
 	MD5Update(&context, in, ::strlen((char*)in));
 	MD5Final(digest, &context);
-#endif
 
 	for (int i = 0;  i < 16;  i++) {
 		sprintf(asciiDigest + 2 * i, "%02x", digest[i]);

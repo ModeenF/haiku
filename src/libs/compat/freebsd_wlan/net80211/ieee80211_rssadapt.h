@@ -1,6 +1,8 @@
-/*	$FreeBSD$	*/
+/*	$FreeBSD: releng/12.0/sys/net80211/ieee80211_rssadapt.h 326272 2017-11-27 15:23:17Z pfg $	*/
 /* $NetBSD: ieee80211_rssadapt.h,v 1.4 2005/02/26 22:45:09 perry Exp $ */
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2003, 2004 David Young.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or
@@ -29,8 +31,8 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
  * OF SUCH DAMAGE.
  */
-#ifndef _FBSD_COMPAT_NET80211_IEEE80211_RSSADAPT_H_
-#define _FBSD_COMPAT_NET80211_IEEE80211_RSSADAPT_H_
+#ifndef _NET80211_IEEE80211_RSSADAPT_H_
+#define _NET80211_IEEE80211_RSSADAPT_H_
 
 /* Data-rate adaptation loosely based on "Link Adaptation Strategy
  * for IEEE 802.11 WLAN via Received Signal Strength Measurement"
@@ -68,4 +70,4 @@ struct ieee80211_rssadapt_node {
 
 #define	IEEE80211_RSSADAPT_SUCCESS	1
 #define	IEEE80211_RSSADAPT_FAILURE	0
-#endif /* _FBSD_COMPAT_NET80211_IEEE80211_RSSADAPT_H_ */
+#endif /* _NET80211_IEEE80211_RSSADAPT_H_ */

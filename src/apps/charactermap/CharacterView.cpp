@@ -27,7 +27,8 @@ static const uint32 kMsgCopyAsEscapedString = 'cesc';
 
 
 CharacterView::CharacterView(const char* name)
-	: BView(name, B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE | B_FRAME_EVENTS),
+	: BView(name, B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE | B_FRAME_EVENTS
+		| B_SCROLL_VIEW_AWARE),
 	fTargetCommand(0),
 	fClickPoint(-1, 0),
 	fHasCharacter(false),
@@ -60,7 +61,7 @@ void
 CharacterView::SetCharacterFont(const BFont& font)
 {
 	fCharacterFont = font;
-
+	fUnicodeBlocks = fCharacterFont.Blocks();
 	InvalidateLayout();
 }
 
@@ -96,10 +97,22 @@ CharacterView::IsShowingBlock(int32 blockIndex) const
 	if (!fShowPrivateBlocks && kUnicodeBlocks[blockIndex].private_block)
 		return false;
 
-	if (fShowContainedBlocksOnly
-		&& !fCharacterFont.Blocks().Includes(
-				kUnicodeBlocks[blockIndex].block)) {
-		return false;
+	// the reason for two checks is BeOS compatibility.
+	// The Includes method checks for unicode blocks as
+	// defined by Be, but there are only 71 such blocks.
+	// The rest of the blocks (denoted by kNoBlock) need to
+	// be queried by searching for the start and end codepoints
+	// via the IncludesBlock method.
+	if (fShowContainedBlocksOnly) {
+		if (kUnicodeBlocks[blockIndex].block != kNoBlock
+			&& !fUnicodeBlocks.Includes(
+				kUnicodeBlocks[blockIndex].block))
+			return false;
+
+		if (!fCharacterFont.IncludesBlock(
+				kUnicodeBlocks[blockIndex].start,
+				kUnicodeBlocks[blockIndex].end))
+			return false;
 	}
 
 	return true;
@@ -110,11 +123,11 @@ void
 CharacterView::ScrollToBlock(int32 blockIndex)
 {
 	// don't scroll if the selected block is already in view.
-	// this prevents distracting jumps when crossing a block 
+	// this prevents distracting jumps when crossing a block
 	// boundary in the character view.
-	if (IsBlockVisible(blockIndex))   
+	if (IsBlockVisible(blockIndex))
 		return;
-		
+
 	if (blockIndex < 0)
 		blockIndex = 0;
 	else if (blockIndex >= (int32)kNumUnicodeBlocks)
@@ -146,11 +159,11 @@ bool
 CharacterView::IsBlockVisible(int32 block) const
 {
 	int32 topBlock = _BlockAt(BPoint(Bounds().left, Bounds().top));
-	int32 bottomBlock = _BlockAt(BPoint(Bounds().right, Bounds().bottom)); 
+	int32 bottomBlock = _BlockAt(BPoint(Bounds().right, Bounds().bottom));
 
-	if (block >= topBlock && block <= bottomBlock) 
+	if (block >= topBlock && block <= bottomBlock)
 		return true;
-		
+
 	return false;
 }
 
@@ -439,6 +452,7 @@ CharacterView::Draw(BRect updateRect)
 						y + fCharacterHeight - fGap));
 
 					SetHighColor(color);
+					SetLowColor(highlight);
 				}
 
 				// Draw character
@@ -477,14 +491,25 @@ CharacterView::DoLayout()
 int32
 CharacterView::_BlockAt(BPoint point) const
 {
-	// TODO: use binary search
-	for (uint32 i = 0; i < kNumUnicodeBlocks; i++) {
-		if (!IsShowingBlock(i))
-			continue;
+	uint32 min = 0;
+	uint32 max = kNumUnicodeBlocks;
+	uint32 guess = (max + min) / 2;
 
-		if (fTitleTops[i] <= point.y
-			&& (i == kNumUnicodeBlocks - 1 || fTitleTops[i + 1] > point.y))
-			return i;
+	while ((max >= min) && (guess < kNumUnicodeBlocks - 1 )) {
+		if (fTitleTops[guess] <= point.y && fTitleTops[guess + 1] >= point.y) {
+			if (!IsShowingBlock(guess))
+				return -1;
+			else
+				return guess;
+		}
+
+		if (fTitleTops[guess + 1] < point.y) {
+			min = guess + 1;
+		} else {
+			max = guess - 1;
+		}
+
+		guess = (max + min) / 2;
 	}
 
 	return -1;
@@ -649,19 +674,11 @@ BRect
 CharacterView::_FrameFor(uint32 character) const
 {
 	// find block containing the character
+	int32 blockNumber = BlockForCharacter(character);
 
-	// TODO: could use binary search here
-
-	for (uint32 i = 0; i < kNumUnicodeBlocks; i++) {
-		if (kUnicodeBlocks[i].end < character)
-			continue;
-		if (kUnicodeBlocks[i].start > character) {
-			// Character is not mapped
-			return BRect();
-		}
-
-		int32 diff = character - kUnicodeBlocks[i].start;
-		int32 y = fTitleTops[i] + fTitleHeight
+	if (blockNumber > 0) {
+		int32 diff = character - kUnicodeBlocks[blockNumber].start;
+		int32 y = fTitleTops[blockNumber] + fTitleHeight
 			+ (diff / fCharactersPerLine) * fCharacterHeight;
 		int32 x = fGap / 2 + diff % fCharactersPerLine;
 

@@ -1,6 +1,5 @@
 SubDir HAIKU_TOP src tests kits interface ;
 
-SetSubDirSupportedPlatformsBeOSCompatible ;
 AddSubDirSupportedPlatforms libbe_test ;
 
 UsePrivateHeaders interface shared ;
@@ -9,6 +8,7 @@ UsePrivateHeaders interface shared ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) balert ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) bbitmap ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) bdeskbar ] ;
+SEARCH_SOURCE += [ FDirName $(SUBDIR) bmenu ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) bpolygon ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) bregion ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) btextcontrol ] ;
@@ -42,6 +42,9 @@ UnitTestLib libinterfacetest.so
 		CreatePolygonTest.cpp
 		MapPolygonTest.cpp
 
+		# BMenu
+		MenuTest.cpp
+
 		# BRegion
 		RegionTest.cpp
 		RegionTestcase.cpp
@@ -51,6 +54,7 @@ UnitTestLib libinterfacetest.so
 		RegionIntersect.cpp
 		RegionOffsetBy.cpp
 
+		OutlineListViewTest.cpp
 		TextControlTest.cpp
 		TextViewTest.cpp
 
@@ -60,17 +64,6 @@ UnitTestLib libinterfacetest.so
 ObjectDefines
 	CheckBox.cpp
 	: BCheckBox=HCheckBox
-	;
-
-SimpleTest ScrollViewTest_r5 :
-	ScrollViewTest.cpp
-	: be [ TargetLibsupc++ ]
-	;
-
-SimpleTest ScrollViewTest :
-	ScrollViewTest.cpp
-	ScrollView.cpp
-	: be [ TargetLibsupc++ ]
 	;
 
 SimpleTest AlertTest :
@@ -91,6 +84,15 @@ SimpleTest CheckBoxTest :
 	: be [ TargetLibsupc++ ]
 	;
 
+SimpleTest ControlLookTest :
+	ControlLookTest.cpp
+	: be [ TargetLibsupc++ ]
+	;
+
+SimpleTest DrawBitmapTest :
+	DrawBitmapTest.cpp
+	: be ;
+
 SimpleTest ListViewTest :
 	ListViewTest.cpp
 	: be [ TargetLibsupc++ ]
@@ -99,6 +101,17 @@ SimpleTest ListViewTest :
 SimpleTest ScreenTest :
 	ScreenTest.cpp
 	: be
+	;
+
+SimpleTest ScrollViewTest_r5 :
+	ScrollViewTest.cpp
+	: be [ TargetLibsupc++ ]
+	;
+
+SimpleTest ScrollViewTest :
+	ScrollViewTest.cpp
+	ScrollView.cpp
+	: be [ TargetLibsupc++ ]
 	;
 
 SimpleTest StatusBarTest :

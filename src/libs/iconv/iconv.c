@@ -160,10 +160,14 @@ static const struct alias sysdep_aliases[] = {
 #include "aliases2.h"
 #undef S
 };
-#ifdef __GNUC__
+#if defined(__GNUC__) && !defined(DEBUG)
 __inline
+#else
+#ifdef __cplusplus
+inline
 #endif
-const struct alias *
+#endif
+static const struct alias *
 aliases2_lookup (register const char *str)
 {
   const struct alias * ptr;

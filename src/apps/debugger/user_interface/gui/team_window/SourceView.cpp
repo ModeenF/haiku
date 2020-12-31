@@ -1,6 +1,6 @@
 /*
  * Copyright 2009-2012, Ingo Weinhold, ingo_weinhold@gmx.de.
- * Copyright 2009-2014, Rene Gollent, rene@gollent.com.
+ * Copyright 2009-2016, Rene Gollent, rene@gollent.com.
  * Distributed under the terms of the MIT License.
  */
 
@@ -31,6 +31,7 @@
 #include <AutoLocker.h>
 #include <ObjectList.h>
 
+#include "AppMessageCodes.h"
 #include "AutoDeleter.h"
 #include "Breakpoint.h"
 #include "DisassembledCode.h"
@@ -2033,6 +2034,7 @@ SourceView::SourceView(Team* team, Listener* listener)
 	fStackTrace(NULL),
 	fStackFrame(NULL),
 	fSourceCode(NULL),
+	fMarkerManager(NULL),
 	fMarkerView(NULL),
 	fTextView(NULL),
 	fListener(listener),
@@ -2051,6 +2053,8 @@ SourceView::~SourceView()
 	SetStackFrame(NULL);
 	SetStackTrace(NULL, NULL);
 	SetSourceCode(NULL);
+
+	delete fMarkerManager;
 }
 
 
@@ -2140,8 +2144,9 @@ SourceView::MessageReceived(BMessage* message)
 				code = instance->GetSourceCode();
 			} else {
 				Function* function = instance->GetFunction();
-				if (function->SourceCodeState()
-					== FUNCTION_SOURCE_NOT_LOADED) {
+				if (function->SourceCodeState() == FUNCTION_SOURCE_NOT_LOADED
+					|| function->SourceCodeState()
+						== FUNCTION_SOURCE_SUPPRESSED) {
 					fListener->FunctionSourceCodeRequested(instance, false);
 					break;
 				}
@@ -2173,7 +2178,7 @@ SourceView::SetStackTrace(StackTrace* stackTrace, Thread* activeThread)
 {
 	TRACE_GUI("SourceView::SetStackTrace(%p)\n", stackTrace);
 
-	if (stackTrace == fStackTrace)
+	if (stackTrace == fStackTrace && activeThread == fActiveThread)
 		return;
 
 	if (fActiveThread != NULL)

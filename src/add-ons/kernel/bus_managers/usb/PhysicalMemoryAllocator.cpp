@@ -10,8 +10,9 @@
 #include <string.h>
 #include <KernelExport.h>
 #include <SupportDefs.h>
+#include <util/AutoLock.h>
 #include <util/kernel_cpp.h>
-#include "BeOSCompatibility.h"
+
 #include "PhysicalMemoryAllocator.h"
 
 
@@ -68,16 +69,15 @@ PhysicalMemoryAllocator::PhysicalMemoryAllocator(const char *name,
 	fManagedMemory = fBlockSize[0] * fArrayLength[0];
 
 	size_t roundedSize = biggestSize * minCountPerBlock;
-#ifdef HAIKU_TARGET_PLATFORM_HAIKU
 	fDebugBase = roundedSize;
 	fDebugChunkSize = 128;
 	fDebugUseMap = 0;
 	roundedSize += sizeof(fDebugUseMap) * 8 * fDebugChunkSize;
-#endif
 	roundedSize = (roundedSize + B_PAGE_SIZE - 1) & ~(B_PAGE_SIZE - 1);
 
 	fArea = create_area(fName, &fLogicalBase, B_ANY_KERNEL_ADDRESS,
-		roundedSize, B_32_BIT_CONTIGUOUS, B_READ_AREA | B_WRITE_AREA);
+		roundedSize, B_32_BIT_CONTIGUOUS,
+		B_KERNEL_READ_AREA | B_KERNEL_WRITE_AREA);
 	if (fArea < B_OK) {
 		TRACE_ERROR(("PMA: failed to create memory area\n"));
 		return;
@@ -98,7 +98,7 @@ PhysicalMemoryAllocator::PhysicalMemoryAllocator(const char *name,
 
 PhysicalMemoryAllocator::~PhysicalMemoryAllocator()
 {
-	_Lock();
+	mutex_lock(&fLock);
 
 	for (int32 i = 0; i < fArrayCount; i++)
 		free(fArray[i]);
@@ -114,25 +114,10 @@ PhysicalMemoryAllocator::~PhysicalMemoryAllocator()
 }
 
 
-bool
-PhysicalMemoryAllocator::_Lock()
-{
-	return (mutex_lock(&fLock) == B_OK);
-}
-
-
-void
-PhysicalMemoryAllocator::_Unlock()
-{
-	mutex_unlock(&fLock);
-}
-
-
 status_t
 PhysicalMemoryAllocator::Allocate(size_t size, void **logicalAddress,
 	phys_addr_t *physicalAddress)
 {
-#ifdef HAIKU_TARGET_PLATFORM_HAIKU
 	if (debug_debugger_running()) {
 		if (size > fDebugChunkSize) {
 			kprintf("usb allocation of %" B_PRIuSIZE
@@ -155,7 +140,6 @@ PhysicalMemoryAllocator::Allocate(size_t size, void **logicalAddress,
 
 		return B_NO_MEMORY;
 	}
-#endif
 
 	if (size == 0 || size > fBlockSize[fArrayCount - 1]) {
 		TRACE_ERROR(("PMA: bad value for allocate (%ld bytes)\n", size));
@@ -172,10 +156,12 @@ PhysicalMemoryAllocator::Allocate(size_t size, void **logicalAddress,
 		}
 	}
 
-	if (!_Lock())
+	MutexLocker locker(&fLock);
+	if (!locker.IsLocked())
 		return B_ERROR;
 
-	while (true) {
+	const bigtime_t limit = system_time() + 2 * 1000 * 1000;
+	do {
 		TRACE(("PMA: will use array %ld (blocksize: %ld) to allocate %ld bytes\n", arrayToUse, fBlockSize[arrayToUse], size));
 		uint8 *targetArray = fArray[arrayToUse];
 		uint32 arrayOffset = fArrayOffset[arrayToUse] % arrayLength;
@@ -206,7 +192,6 @@ PhysicalMemoryAllocator::Allocate(size_t size, void **logicalAddress,
 					arrayIndex >>= 1;
 				}
 
-				_Unlock();
 				size_t offset = fBlockSize[arrayToUse] * i;
 				*logicalAddress = (void *)((uint8 *)fLogicalBase + offset);
 				*physicalAddress = (phys_addr_t)(fPhysicalBase + offset);
@@ -220,19 +205,21 @@ PhysicalMemoryAllocator::Allocate(size_t size, void **logicalAddress,
 		fNoMemoryCondition.Add(&entry);
 		fMemoryWaitersCount++;
 
-		_Unlock();
+		locker.Unlock();
 
 		TRACE_ERROR(("PMA: found no free slot to store %ld bytes, waiting\n",
 			size));
 
-		entry.Wait();
+		if (entry.Wait(B_RELATIVE_TIMEOUT, 1 * 1000 * 1000) == B_TIMED_OUT)
+			break;
 
-		if (!_Lock())
+		if (!locker.Lock())
 			return B_ERROR;
 
 		fMemoryWaitersCount--;
-	}
+	} while (system_time() < limit);
 
+	TRACE_ERROR(("PMA: timed out waiting for a free slot, giving up\n"));
 	return B_NO_MEMORY;
 }
 
@@ -241,14 +228,12 @@ status_t
 PhysicalMemoryAllocator::Deallocate(size_t size, void *logicalAddress,
 	phys_addr_t physicalAddress)
 {
-#ifdef HAIKU_TARGET_PLATFORM_HAIKU
 	if (debug_debugger_running()) {
 		uint32 index = ((uint8 *)logicalAddress - (uint8 *)fLogicalBase
 			- fDebugBase) / fDebugChunkSize;
 		fDebugUseMap &= ~(1LL << index);
 		return B_OK;
 	}
-#endif
 
 	if (size == 0 || size > fBlockSize[fArrayCount - 1]) {
 		TRACE_ERROR(("PMA: bad value for deallocate (%ld bytes)\n", size));
@@ -285,7 +270,8 @@ PhysicalMemoryAllocator::Deallocate(size_t size, void *logicalAddress,
 		return B_BAD_VALUE;
 	}
 
-	if (!_Lock())
+	MutexLocker _(&fLock);
+	if (!_.IsLocked())
 		return B_ERROR;
 
 	// clear upwards to the smallest block
@@ -310,7 +296,6 @@ PhysicalMemoryAllocator::Deallocate(size_t size, void *logicalAddress,
 	if (fMemoryWaitersCount > 0)
 		fNoMemoryCondition.NotifyAll();
 
-	_Unlock();
 	return B_OK;
 }
 

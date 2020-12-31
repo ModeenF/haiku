@@ -431,7 +431,6 @@ OpenWithContainerWindow::InitLayout()
 	fRootLayout->SetInsets(B_USE_ITEM_INSETS);
 	fPoseContainer->GridLayout()->SetInsets(0);
 	fVScrollBarContainer->GroupLayout()->SetInsets(-1, 0, 0, 0);
-	fCountContainer->GroupLayout()->SetInsets(0);
 
 	fRootLayout->AddView(fButtonContainer);
 	fButtonContainer->GroupLayout()->AddItem(BSpaceLayoutItem::CreateGlue());
@@ -636,7 +635,7 @@ AddOneRefSignatures(const entry_ref* ref, void* castToIterator)
 	mimeType = model.MimeType();
 	mimeType.ToLower();
 
-	if (mimeType.Length() && !mimeType.ICompare(B_FILE_MIMETYPE) == 0)
+	if (mimeType.Length() && mimeType.ICompare(B_FILE_MIMETYPE) != 0)
 		queryIterator->NonGenericFileFound();
 
 	// get supporting apps for type
@@ -806,7 +805,7 @@ OpenWithPoseView::SetUpDefaultColumnsIfNeeded()
 	if (fColumnList->CountItems() != 0)
 		return;
 
-	BColumn* nameColumn = new BColumn(B_TRANSLATE("Name"), kColumnStart, 125,
+	BColumn* nameColumn = new BColumn(B_TRANSLATE("Name"), StartOffset(), 125,
 		B_ALIGN_LEFT, kAttrStatName, B_STRING_TYPE, true, true);
 	fColumnList->AddItem(nameColumn);
 	BColumn* relationColumn = new BColumn(B_TRANSLATE("Relation"), 180, 100,
@@ -1159,6 +1158,7 @@ OpenWithMenu::DoneBuildingItemList()
 	// add apps as menu items
 	BFont font;
 	GetFont(&font);
+	float scaling = font.Size() / 12.0f;
 
 	int32 lastRelation = -1;
 	for (int32 index = 0; index < count ; index++) {
@@ -1188,7 +1188,8 @@ OpenWithMenu::DoneBuildingItemList()
 				continue;
 			}
 			result = path.Path();
-			font.TruncateString(&result, B_TRUNCATE_MIDDLE, kMaxMenuWidth);
+			font.TruncateString(&result, B_TRUNCATE_MIDDLE,
+				kMaxMenuWidth * scaling);
 		}
 #if DEBUG
 		BString relationDescription;

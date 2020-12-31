@@ -248,6 +248,16 @@ is_address_range_covered(addr_range* ranges, uint32 numRanges, uint64 base,
 }
 
 
+extern "C" uint64
+total_address_ranges_size(addr_range* ranges, uint32 numRanges)
+{
+	uint64 total = 0;
+	for (uint32 i = 0; i < numRanges; i++)
+		total += ranges[i].size;
+	return total;
+}
+
+
 void
 sort_address_ranges(addr_range* ranges, uint32 numRanges)
 {
@@ -278,6 +288,23 @@ insert_physical_memory_range(uint64 start, uint64 size)
 	return insert_address_range(gKernelArgs.physical_memory_range,
 		&gKernelArgs.num_physical_memory_ranges, MAX_PHYSICAL_MEMORY_RANGE,
 		start, size);
+}
+
+
+status_t
+remove_physical_memory_range(uint64 start, uint64 size)
+{
+	return remove_address_range(gKernelArgs.physical_memory_range,
+		&gKernelArgs.num_physical_memory_ranges, MAX_PHYSICAL_MEMORY_RANGE,
+		start, size);
+}
+
+
+uint64
+total_physical_memory()
+{
+	return total_address_ranges_size(gKernelArgs.physical_memory_range,
+		gKernelArgs.num_physical_memory_ranges);
 }
 
 
@@ -370,7 +397,13 @@ kernel_args_malloc(size_t size)
 			return NULL;
 		}
 
+#ifdef _BOOT_PLATFORM_EFI
+		addr_t translated_block;
+		platform_bootloader_address_to_kernel_address(block, &translated_block);
+		if (add_kernel_args_range((void *)translated_block, size) != B_OK)
+#else
 		if (add_kernel_args_range(block, size) != B_OK)
+#endif
 			panic("kernel_args max range too low!\n");
 		return block;
 	}
@@ -385,7 +418,13 @@ kernel_args_malloc(size_t size)
 	sFirstFree = (void*)((addr_t)block + size);
 	sLast = block;
 	sFree = kChunkSize - size;
+#ifdef _BOOT_PLATFORM_EFI
+	addr_t translated_block;
+	platform_bootloader_address_to_kernel_address(block, &translated_block);
+	if (add_kernel_args_range((void *)translated_block, kChunkSize) != B_OK)
+#else
 	if (add_kernel_args_range(block, kChunkSize) != B_OK)
+#endif
 		panic("kernel_args max range too low!\n");
 
 	return block;

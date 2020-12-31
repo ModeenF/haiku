@@ -43,16 +43,6 @@ MethodReplicant::MethodReplicant(const char* signature)
 		kRemoteColorSpace);
 	fSegments->SetBits(kRemoteBits, kRemoteWidth * kRemoteHeight, 0,
 		kRemoteColorSpace);
-	// Background Color
-
-	// add dragger
-	BRect rect(Bounds());
-	rect.left = rect.right - 7.0;
-	rect.top = rect.bottom - 7.0;
-	BDragger* dragger = new BDragger(rect, this,
-		B_FOLLOW_RIGHT | B_FOLLOW_BOTTOM);
-	dragger->SetViewColor(B_TRANSPARENT_32_BIT);
-	AddChild(dragger);
 
 	ASSERT(signature != NULL);
 	fSignature = strdup(signature);
@@ -198,7 +188,7 @@ MethodReplicant::MouseDown(BPoint point)
 
 	if (dynamic_cast<MethodMenuItem*>(item) != NULL) {
 		BMessage msg(IS_SET_METHOD);
-		msg.AddPointer("cookie", ((MethodMenuItem*)item)->Cookie());
+		msg.AddInt32("cookie", ((MethodMenuItem*)item)->Cookie());
 		BMessenger messenger(fSignature);
 		messenger.SendMessage(&msg);
 	}
@@ -216,15 +206,15 @@ void
 MethodReplicant::UpdateMethod(BMessage* message)
 {
 	CALLED();
-	void* cookie;
-	if (message->FindPointer("cookie", &cookie) != B_OK) {
+	int32 cookie;
+	if (message->FindInt32("cookie", &cookie) != B_OK) {
 		fprintf(stderr, "can't find cookie in message\n");
 		return;
 	}
 
 	MethodMenuItem* item = FindItemByCookie(cookie);
 	if (item == NULL) {
-		fprintf(stderr, "can't find item with cookie %p\n", cookie);
+		fprintf(stderr, "can't find item with cookie %" B_PRIx32 "\n", cookie);
 		return;
 	}
 	item->SetMarked(true);
@@ -239,8 +229,8 @@ void
 MethodReplicant::UpdateMethodIcon(BMessage* message)
 {
 	CALLED();
-	void* cookie;
-	if (message->FindPointer("cookie", &cookie) != B_OK) {
+	int32 cookie;
+	if (message->FindInt32("cookie", &cookie) != B_OK) {
 		fprintf(stderr, "can't find cookie in message\n");
 		return;
 	}
@@ -255,7 +245,7 @@ MethodReplicant::UpdateMethodIcon(BMessage* message)
 
 	MethodMenuItem* item = FindItemByCookie(cookie);
 	if (item == NULL) {
-		fprintf(stderr, "can't find item with cookie %p\n", cookie);
+		fprintf(stderr, "can't find item with cookie %" B_PRIx32 "\n", cookie);
 		return;
 	}
 
@@ -267,8 +257,8 @@ void
 MethodReplicant::UpdateMethodMenu(BMessage* message)
 {
 	CALLED();
-	void* cookie;
-	if (message->FindPointer("cookie", &cookie) != B_OK) {
+	int32 cookie;
+	if (message->FindInt32("cookie", &cookie) != B_OK) {
 		fprintf(stderr, "can't find cookie in message\n");
 		return;
 	}
@@ -294,7 +284,7 @@ MethodReplicant::UpdateMethodMenu(BMessage* message)
 
 	MethodMenuItem* item = FindItemByCookie(cookie);
 	if (item == NULL) {
-		fprintf(stderr, "can't find item with cookie %p\n", cookie);
+		fprintf(stderr, "can't find item with cookie %" B_PRIx32 "\n", cookie);
 		return;
 	}
 	int32 index = fMenu.IndexOf(item);
@@ -317,8 +307,8 @@ void
 MethodReplicant::UpdateMethodName(BMessage* message)
 {
 	CALLED();
-	void* cookie;
-	if (message->FindPointer("cookie", &cookie) != B_OK) {
+	int32 cookie;
+	if (message->FindInt32("cookie", &cookie) != B_OK) {
 		fprintf(stderr, "can't find cookie in message\n");
 		return;
 	}
@@ -331,7 +321,7 @@ MethodReplicant::UpdateMethodName(BMessage* message)
 
 	MethodMenuItem* item = FindItemByCookie(cookie);
 	if (item == NULL) {
-		fprintf(stderr, "can't find item with cookie %p\n", cookie);
+		fprintf(stderr, "can't find item with cookie %" B_PRIx32 "\n", cookie);
 		return;
 	}
 
@@ -340,11 +330,11 @@ MethodReplicant::UpdateMethodName(BMessage* message)
 
 
 MethodMenuItem*
-MethodReplicant::FindItemByCookie(void* cookie)
+MethodReplicant::FindItemByCookie(int32 cookie)
 {
 	for (int32 i = 0; i < fMenu.CountItems(); i++) {
 		MethodMenuItem* item = (MethodMenuItem*)fMenu.ItemAt(i);
-		PRINT(("cookie : %p\n", item->Cookie()));
+		PRINT(("cookie : 0x%" B_PRIx32 "\n", item->Cookie()));
 		if (item->Cookie() == cookie)
 			return item;
 	}
@@ -357,8 +347,8 @@ void
 MethodReplicant::AddMethod(BMessage* message)
 {
 	CALLED();
-	void* cookie;
-	if (message->FindPointer("cookie", &cookie) != B_OK) {
+	int32 cookie;
+	if (message->FindInt32("cookie", &cookie) != B_OK) {
 		fprintf(stderr, "can't find cookie in message\n");
 		return;
 	}
@@ -377,13 +367,35 @@ MethodReplicant::AddMethod(BMessage* message)
 		return;
 	}
 
-	MethodMenuItem* item = FindItemByCookie(cookie);
-	if (item != NULL) {
-		fprintf(stderr, "item with cookie %p already exists\n", cookie);
+	BMessage menuMsg;
+	if (message->FindMessage("menu", &menuMsg) != B_OK) {
+		fprintf(stderr, "can't find menu in message\n");
+		return;
+	}
+	PRINT_OBJECT(menuMsg);
+
+	BMessenger messenger;
+	if (message->FindMessenger("target", &messenger) != B_OK) {
+		fprintf(stderr, "can't find target in message\n");
 		return;
 	}
 
-	item = new MethodMenuItem(cookie, name, icon);
+	BMenu* menu = static_cast<BMenu*>(BMenu::Instantiate(&menuMsg));
+	if (menu == NULL) {
+		PRINT(("can't instantiate menu\n"));
+	} else
+		menu->SetTargetForItems(messenger);
+
+	MethodMenuItem* item = FindItemByCookie(cookie);
+	if (item != NULL) {
+		fprintf(stderr, "item with cookie %" B_PRIx32 " already exists\n", cookie);
+		return;
+	}
+
+	if (menu != NULL) {
+		item = new MethodMenuItem(cookie, name, icon, menu, messenger);
+	} else
+		item = new MethodMenuItem(cookie, name, icon);
 	fMenu.AddItem(item);
 	item->SetTarget(this);
 
@@ -396,15 +408,15 @@ void
 MethodReplicant::RemoveMethod(BMessage* message)
 {
 	CALLED();
-	void* cookie;
-	if (message->FindPointer("cookie", &cookie) != B_OK) {
+	int32 cookie;
+	if (message->FindInt32("cookie", &cookie) != B_OK) {
 		fprintf(stderr, "can't find cookie in message\n");
 		return;
 	}
 
 	MethodMenuItem* item = FindItemByCookie(cookie);
 	if (item == NULL) {
-		fprintf(stderr, "can't find item with cookie %p\n", cookie);
+		fprintf(stderr, "can't find item with cookie %" B_PRIx32 "\n", cookie);
 		return;
 	}
 	fMenu.RemoveItem(item);

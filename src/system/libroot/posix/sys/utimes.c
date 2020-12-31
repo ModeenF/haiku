@@ -17,7 +17,11 @@
 
 
 int
-utimes(const char* path, const struct timeval times[2])
+_utimes(const char* path, const struct timeval times[2], bool traverseLink);
+
+
+int
+_utimes(const char* path, const struct timeval times[2], bool traverseLink)
 {
 	struct stat stat;
 	status_t status;
@@ -34,10 +38,18 @@ utimes(const char* path, const struct timeval times[2])
 		stat.st_atim.tv_nsec = stat.st_mtim.tv_nsec = (now % 1000000) * 1000;
 	}
 
-	status = _kern_write_stat(-1, path, true, &stat, sizeof(struct stat),
-		B_STAT_MODIFICATION_TIME | B_STAT_ACCESS_TIME);
+	// traverseLeafLink == true
+	status = _kern_write_stat(-1, path, traverseLink, &stat,
+		sizeof(struct stat), B_STAT_MODIFICATION_TIME | B_STAT_ACCESS_TIME);
 
 	RETURN_AND_SET_ERRNO(status);
+}
+
+
+int
+utimes(const char* path, const struct timeval times[2])
+{
+	return _utimes(path, times, true);
 }
 
 

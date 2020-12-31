@@ -16,6 +16,7 @@
 #include <Path.h>
 #include <Roster.h>
 #include <String.h>
+#include <Window.h>
 
 #include <TypeConstants.h>
 #include <syslog.h>
@@ -28,7 +29,7 @@
 #include "BluetoothServer.h"
 #include "DeskbarReplicant.h"
 #include "LocalDeviceImpl.h"
-#include "Output.h"
+#include "Debug.h"
 
 
 status_t
@@ -36,7 +37,7 @@ DispatchEvent(struct hci_event_header* header, int32 code, size_t size)
 {
 	// we only handle events
 	if (GET_PORTCODE_TYPE(code)!= BT_EVENT) {
-		Output::Instance()->Post("Wrong type frame code", BLACKBOARD_KIT);
+		TRACE_BT("BluetoothServer: Wrong type frame code\n");
 		return B_OK;
 	}
 
@@ -45,7 +46,7 @@ DispatchEvent(struct hci_event_header* header, int32 code, size_t size)
 		LocateLocalDeviceImpl(GET_PORTCODE_HID(code));
 
 	if (lDeviceImplementation == NULL) {
-		Output::Instance()->Post("LocalDevice could not be fetched", BLACKBOARD_KIT);
+		TRACE_BT("BluetoothServer: LocalDevice could not be fetched\n");
 		return B_OK;
 	}
 
@@ -56,18 +57,11 @@ DispatchEvent(struct hci_event_header* header, int32 code, size_t size)
 
 
 BluetoothServer::BluetoothServer()
-	: BApplication(BLUETOOTH_SIGNATURE)
-	, fSDPThreadID(-1)
-	, fIsShuttingDown(false)
+	:
+	BApplication(BLUETOOTH_SIGNATURE),
+	fSDPThreadID(-1),
+	fIsShuttingDown(false)
 {
-	Output::Instance()->Run();
-	Output::Instance()->SetTitle("Bluetooth message gathering");
-
-	Output::Instance()->AddTab("General", BLACKBOARD_GENERAL);
-	Output::Instance()->AddTab("Device Manager", BLACKBOARD_DEVICEMANAGER);
-	Output::Instance()->AddTab("Kit", BLACKBOARD_KIT);
-	Output::Instance()->AddTab("SDP", BLACKBOARD_SDP);
-
 	fDeviceManager = new DeviceManager();
 	fLocalDevicesList.MakeEmpty();
 
@@ -80,7 +74,7 @@ bool BluetoothServer::QuitRequested(void)
 {
 	LocalDeviceImpl* lDeviceImpl = NULL;
 	while ((lDeviceImpl = (LocalDeviceImpl*)
-		fLocalDevicesList.RemoveItem((int32)0)) != NULL)
+		fLocalDevicesList.RemoveItemAt(0)) != NULL)
 		delete lDeviceImpl;
 
 	_RemoveDeskbarIcon();
@@ -90,14 +84,11 @@ bool BluetoothServer::QuitRequested(void)
 
 	status_t threadReturnStatus;
 	wait_for_thread(fSDPThreadID, &threadReturnStatus);
-	printf("SDP server thread exited with: %s\n", strerror(threadReturnStatus));
-
-	// Finish quitting
-	Output::Instance()->Lock();
-	Output::Instance()->Quit();
+	TRACE_BT("BluetoothServer server thread exited with: %s\n",
+		strerror(threadReturnStatus));
 
 	delete fEventListener2;
-	printf("Shutting down bluetooth_server.\n");
+	TRACE_BT("Shutting down bluetooth_server.\n");
 
 	return BApplication::QuitRequested();
 }
@@ -109,25 +100,20 @@ void BluetoothServer::ArgvReceived(int32 argc, char **argv)
 		if (strcmp(argv[1], "--finish") == 0)
 			PostMessage(B_QUIT_REQUESTED);
 	}
-
 }
 
 
 void BluetoothServer::ReadyToRun(void)
 {
-	ShowWindow(Output::Instance());
-
 	fDeviceManager->StartMonitoringDevice("bluetooth/h2");
 	fDeviceManager->StartMonitoringDevice("bluetooth/h3");
 	fDeviceManager->StartMonitoringDevice("bluetooth/h4");
 	fDeviceManager->StartMonitoringDevice("bluetooth/h5");
 
 	if (fEventListener2->Launch() != B_OK)
-		Output::Instance()->Post("Bluetooth event listener failed\n",
-			BLACKBOARD_GENERAL);
+		TRACE_BT("General: Bluetooth event listener failed\n");
 	else
-		Output::Instance()->Post("Bluetooth event listener Ready\n",
-			BLACKBOARD_GENERAL);
+		TRACE_BT("General: Bluetooth event listener Ready\n");
 
 	_InstallDeskbarIcon();
 
@@ -138,8 +124,7 @@ void BluetoothServer::ReadyToRun(void)
 #define _USE_FAKE_SDP_SERVER
 #ifdef _USE_FAKE_SDP_SERVER
 	if (fSDPThreadID <= 0 || resume_thread(fSDPThreadID) != B_OK) {
-		Output::Instance()->Postf(BLACKBOARD_SDP,
-			"Failed launching the SDP server thread: %x\n", fSDPThreadID);
+		TRACE_BT("BluetoothServer: Failed launching the SDP server thread\n");
 	}
 #endif
 }
@@ -161,11 +146,9 @@ void BluetoothServer::MessageReceived(BMessage* message)
 		case BT_MSG_ADD_DEVICE:
 		{
 			BString str;
-
 			message->FindString("name", &str);
 
-			Output::Instance()->Postf(BLACKBOARD_GENERAL,
-				"Requested LocalDevice %s\n", str.String());
+			TRACE_BT("BluetoothServer: Requested LocalDevice %s\n", str.String());
 
 			BPath path(str.String());
 
@@ -175,15 +158,10 @@ void BluetoothServer::MessageReceived(BMessage* message)
 			if (lDeviceImpl->GetID() >= 0) {
 				fLocalDevicesList.AddItem(lDeviceImpl);
 
-				Output::Instance()->AddTab("Local Device",
-					BLACKBOARD_LD(lDeviceImpl->GetID()));
-				Output::Instance()->Postf(BLACKBOARD_LD(lDeviceImpl->GetID()),
-					"LocalDevice %s id=%x added\n", str.String(),
+				TRACE_BT("LocalDevice %s id=%" B_PRId32 " added\n", str.String(),
 					lDeviceImpl->GetID());
-
 			} else {
-				Output::Instance()->Post("Adding LocalDevice hci id invalid\n",
-					BLACKBOARD_GENERAL);
+				TRACE_BT("BluetoothServer: Adding LocalDevice hci id invalid\n");
 			}
 
 			status = B_WOULD_BLOCK;
@@ -231,10 +209,6 @@ void BluetoothServer::MessageReceived(BMessage* message)
 			}
 			return;
 		}
-
-		case BT_MSG_SERVER_SHOW_CONSOLE:
-			ShowWindow(Output::Instance());
-			break;
 
 		default:
 			BApplication::MessageReceived(message);
@@ -300,7 +274,7 @@ BluetoothServer::LocateLocalDeviceImpl(hci_id hid)
 status_t
 BluetoothServer::HandleLocalDevicesCount(BMessage* message, BMessage* reply)
 {
-	Output::Instance()->Post("Count Requested\n", BLACKBOARD_KIT);
+	TRACE_BT("BluetoothServer: count requested\n");
 
 	return reply->AddInt32("count", fLocalDevicesList.CountItems());
 }
@@ -316,16 +290,14 @@ BluetoothServer::HandleAcquireLocalDevice(BMessage* message, BMessage* reply)
 	static int32 lastIndex = 0;
 
 	if (message->FindInt32("hci_id", &hid) == B_OK)	{
-		Output::Instance()->Post("GetLocalDevice requested with id\n",
-			BLACKBOARD_KIT);
+		TRACE_BT("BluetoothServer: GetLocalDevice requested with id\n");
 		lDeviceImpl = LocateDelegateFromMessage(message);
 
 	} else if (message->FindData("bdaddr", B_ANY_TYPE,
 		(const void**)&bdaddr, &size) == B_OK) {
 
 		// Try to find out when the user specified the address
-		Output::Instance()->Post("GetLocalDevice requested with bdaddr\n",
-			BLACKBOARD_KIT);
+		TRACE_BT("BluetoothServer: GetLocalDevice requested with bdaddr\n");
 		for (lastIndex = 0; lastIndex < fLocalDevicesList.CountItems();
 			lastIndex ++) {
 			// TODO: Only possible if the property is available
@@ -339,16 +311,15 @@ BluetoothServer::HandleAcquireLocalDevice(BMessage* message, BMessage* reply)
 
 	} else {
 		// Careless, any device not performing operations will be fine
-		Output::Instance()->Post("GetLocalDevice plain request\n", BLACKBOARD_KIT);
+		TRACE_BT("BluetoothServer: GetLocalDevice plain request\n");
 		// from last assigned till end
 		for (int index = lastIndex + 1;
 			index < fLocalDevicesList.CountItems();	index++) {
 			lDeviceImpl= fLocalDevicesList.ItemAt(index);
-			printf("Requesting local device %" B_PRId32 "\n",
-				lDeviceImpl->GetID());
 			if (lDeviceImpl != NULL && lDeviceImpl->Available()) {
-				Output::Instance()->Postf(BLACKBOARD_KIT,
-					"Device available: %lx\n", lDeviceImpl->GetID());
+				printf("Requested local device %" B_PRId32 "\n",
+					lDeviceImpl->GetID());
+				TRACE_BT("BluetoothServer: Device available: %" B_PRId32 "\n", lDeviceImpl->GetID());
 				lastIndex = index;
 				break;
 			}
@@ -358,11 +329,10 @@ BluetoothServer::HandleAcquireLocalDevice(BMessage* message, BMessage* reply)
 		if (lDeviceImpl == NULL) {
 			for (int index = 0; index <= lastIndex ; index ++) {
 				lDeviceImpl = fLocalDevicesList.ItemAt(index);
-				printf("Requesting local device %" B_PRId32 "\n",
-					lDeviceImpl->GetID());
 				if (lDeviceImpl != NULL && lDeviceImpl->Available()) {
-					Output::Instance()->Postf(BLACKBOARD_KIT,
-						"Device available: %lx\n", lDeviceImpl->GetID());
+					printf("Requested local device %" B_PRId32 "\n",
+						lDeviceImpl->GetID());
+					TRACE_BT("BluetoothServer: Device available: %" B_PRId32 "\n", lDeviceImpl->GetID());
 					lastIndex = index;
 					break;
 				}
@@ -376,7 +346,7 @@ BluetoothServer::HandleAcquireLocalDevice(BMessage* message, BMessage* reply)
 		hid = lDeviceImpl->GetID();
 		lDeviceImpl->Acquire();
 
-		Output::Instance()->Postf(BLACKBOARD_KIT, "Device acquired %lx\n", hid);
+		TRACE_BT("BluetoothServer: Device acquired %" B_PRId32 "\n", hid);
 		return reply->AddInt32("hci_id", hid);
 	}
 
@@ -432,8 +402,7 @@ BluetoothServer::HandleGetProperty(BMessage* message, BMessage* reply)
 	// Find out if there is a property being requested,
 	if (message->FindString("property", &propertyRequested) == B_OK) {
 
-		Output::Instance()->Postf(BLACKBOARD_LD(lDeviceImpl->GetID()),
-			"Searching %s property...\n", propertyRequested);
+		TRACE_BT("BluetoothServer: Searching %s property...\n", propertyRequested);
 
 		// Check if the property has been already retrieved
 		if (lDeviceImpl->IsPropertyAvailable(propertyRequested)) {
@@ -472,8 +441,7 @@ BluetoothServer::HandleGetProperty(BMessage* message, BMessage* reply)
 
 
 			} else {
-				Output::Instance()->Postf(BLACKBOARD_LD(lDeviceImpl->GetID()),
-					"Property %s could not be satisfied\n", propertyRequested);
+				TRACE_BT("BluetoothServer: Property %s could not be satisfied\n", propertyRequested);
 			}
 		}
 	}
@@ -498,13 +466,12 @@ BluetoothServer::SDPServerThread(void* data)
 	status_t status;
 	char buffer[512] = "";
 
-	Output::Instance()->Postf(BLACKBOARD_SDP, "SDP server thread up...\n");
+	TRACE_BT("SDP: SDP server thread up...\n");
 
 	socketServer = socket(PF_BLUETOOTH, SOCK_STREAM, BLUETOOTH_PROTO_L2CAP);
 
 	if (socketServer < 0) {
-		Output::Instance()->Post("Could not create server socket ...\n",
-			BLACKBOARD_SDP);
+		TRACE_BT("SDP: Could not create server socket ...\n");
 		return B_ERROR;
 	}
 
@@ -519,8 +486,7 @@ BluetoothServer::SDPServerThread(void* data)
 		sizeof(struct sockaddr_l2cap));
 
 	if (status < 0) {
-		Output::Instance()->Postf(BLACKBOARD_SDP,
-			"Could not bind server socket %d ...\n", status);
+		TRACE_BT("SDP: Could not bind server socket (%s)...\n", strerror(status));
 		return status;
 	}
 
@@ -531,42 +497,36 @@ BluetoothServer::SDPServerThread(void* data)
 	status = listen(socketServer, 10);
 
 	if (status != B_OK) {
-		Output::Instance()->Postf(BLACKBOARD_SDP,
-			"Could not listen server socket %d ...\n", status);
+		TRACE_BT("SDP: Could not listen server socket (%s)...\n", strerror(status));
 		return status;
 	}
 
 	while (!server->fIsShuttingDown) {
 
-		Output::Instance()->Postf(BLACKBOARD_SDP,
-			"Waiting connection for socket %d ...\n", socketServer);
+		TRACE_BT("SDP: Waiting connection for socket (%s)...\n", strerror(status));
 
 		uint len = sizeof(struct sockaddr_l2cap);
 		client = accept(socketServer, (struct sockaddr*)&loc_addr, &len);
 
-		Output::Instance()->Postf(BLACKBOARD_SDP,
-			"Incomming connection... %ld\n", client);
+		TRACE_BT("SDP: Incomming connection... %d\n", client);
 
 		ssize_t receivedSize;
 
 		do {
 			receivedSize = recv(client, buffer, 29 , 0);
 			if (receivedSize < 0)
-				Output::Instance()->Post("Error reading client socket\n",
-					BLACKBOARD_SDP);
+				TRACE_BT("SDP: Error reading client socket\n");
 			else {
-				Output::Instance()->Postf(BLACKBOARD_SDP,
-					"Received from SDP client: %ld:\n", receivedSize);
+				TRACE_BT("SDP: Received from SDP client: %ld:\n", receivedSize);
 				for (int i = 0; i < receivedSize ; i++)
-					Output::Instance()->Postf(BLACKBOARD_SDP, "%x:", buffer[i]);
+					TRACE_BT("SDP: %x:", buffer[i]);
 
-				Output::Instance()->Post("\n", BLACKBOARD_SDP);
+				TRACE_BT("\n");
 			}
 		} while (receivedSize >= 0);
 
 		snooze(5000000);
-		Output::Instance()->Post("\nWaiting for next connection...\n",
-			BLACKBOARD_SDP);
+		TRACE_BT("SDP: Waiting for next connection...\n");
 	}
 
 	// Close the socket
@@ -601,9 +561,8 @@ BluetoothServer::_InstallDeskbarIcon()
 	}
 
 	status_t res = deskbar.AddItem(&appInfo.ref);
-	if (res != B_OK) {
-		printf("Failed adding deskbar icon: %" B_PRId32 "\n", res);
-	}
+	if (res != B_OK)
+		TRACE_BT("Failed adding deskbar icon: %" B_PRId32 "\n", res);
 }
 
 
@@ -612,9 +571,8 @@ BluetoothServer::_RemoveDeskbarIcon()
 {
 	BDeskbar deskbar;
 	status_t res = deskbar.RemoveItem(kDeskbarItemName);
-	if (res != B_OK) {
-		printf("Failed removing Deskbar icon: %" B_PRId32 ": \n", res);
-	}
+	if (res != B_OK)
+		TRACE_BT("Failed removing Deskbar icon: %" B_PRId32 ": \n", res);
 }
 
 
@@ -625,8 +583,6 @@ BluetoothServer::_RemoveDeskbarIcon()
 int
 main(int /*argc*/, char** /*argv*/)
 {
-	setbuf(stdout, NULL);
-
 	BluetoothServer* bluetoothServer = new BluetoothServer;
 
 	bluetoothServer->Run();

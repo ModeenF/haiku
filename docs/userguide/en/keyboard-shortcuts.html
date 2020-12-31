@@ -4,7 +4,7 @@
 <head>
 <!-- 
  *
- * Copyright 2008-2014, Haiku. All rights reserved.
+ * Copyright 2008-2019, Haiku. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -15,6 +15,7 @@
 	<meta http-equiv="Content-Style-Type" content="text/css" />
 	<meta name="robots" content="all" />
 	<title>Shortcuts and key combinations</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<link rel="stylesheet" type="text/css" href="../Haiku-doc.css" />
 </head>
 <body>
@@ -26,23 +27,27 @@
 <div class="nav">
 <div class="inner">
 <ul class="lang-menu">
-<li class="now"><img src="../images/flags/gb.png" alt="" /> English</li>
-<li><a href="../fr/keyboard-shortcuts.html"><img src="../images/flags/fr.png" alt="" />Français</a></li>
-<li><a href="../de/keyboard-shortcuts.html"><img src="../images/flags/de.png" alt="" />Deutsch</a></li>
-<li><a href="../it/keyboard-shortcuts.html"><img src="../images/flags/it.png" alt="" />Italiano</a></li>
-<li><a href="../ru/keyboard-shortcuts.html"><img src="../images/flags/ru.png" alt="" />Русский</a></li>
-<li><a href="../es/keyboard-shortcuts.html"><img src="../images/flags/es.png" alt="" />Español</a></li>
-<li><a href="../sv_SE/keyboard-shortcuts.html"><img src="../images/flags/sv_SE.png" alt="" />Svenska</a></li>
-<li><a href="../jp/keyboard-shortcuts.html"><img src="../images/flags/jp.png" alt="" />日本語</a></li>
-<li><a href="../uk/keyboard-shortcuts.html"><img src="../images/flags/uk.png" alt="" />Українська</a></li>
-<li><a href="../zh_CN/keyboard-shortcuts.html"><img src="../images/flags/zh_CN.png" alt="" /> 中文 ［中文］</a></li>
-<li><a href="../pt_PT/keyboard-shortcuts.html"><img src="../images/flags/pt_PT.png" alt="" />Português</a></li>
-<li><a href="../fi/keyboard-shortcuts.html"><img src="../images/flags/fi.png" alt="" />Suomi</a></li>
-<li><a href="../sk/keyboard-shortcuts.html"><img src="../images/flags/sk.png" alt="" />Slovenčina</a></li>
-<li><a href="../hu/keyboard-shortcuts.html"><img src="../images/flags/hu.png" alt="" />Magyar</a></li>
-<li><a href="../pt_BR/keyboard-shortcuts.html"><img src="../images/flags/pt_BR.png" alt="" />Português (Brazil)</a></li>
-<li><a href="../ca/keyboard-shortcuts.html"><img src="../images/flags/ca.png" alt="" />Català</a></li>
-<li><a href="../pl/keyboard-shortcuts.html"><img src="../images/flags/pl.png" alt="" />Polski</a></li>
+<li class="now">English&nbsp;<span class="dropdown-caret">&#9660;</span></li>
+<li><a href="../id/keyboard-shortcuts.html">Bahasa Indonesia</a></li>
+<li><a href="../ca/keyboard-shortcuts.html">Català</a></li>
+<li><a href="../de/keyboard-shortcuts.html">Deutsch</a></li>
+<li><a href="../es/keyboard-shortcuts.html">Español</a></li>
+<li><a href="../fr/keyboard-shortcuts.html">Français</a></li>
+<li><a href="../fur/keyboard-shortcuts.html">Furlan</a></li>
+<li><a href="../it/keyboard-shortcuts.html">Italiano</a></li>
+<li><a href="../hu/keyboard-shortcuts.html">Magyar</a></li>
+<li><a href="../pl/keyboard-shortcuts.html">Polski</a></li>
+<li><a href="../pt_PT/keyboard-shortcuts.html">Português</a></li>
+<li><a href="../pt_BR/keyboard-shortcuts.html">Português (Brazil)</a></li>
+<li><a href="../ro/keyboard-shortcuts.html">Română</a></li>
+<li><a href="../sk/keyboard-shortcuts.html">Slovenčina</a></li>
+<li><a href="../fi/keyboard-shortcuts.html">Suomi</a></li>
+<li><a href="../sv_SE/keyboard-shortcuts.html">Svenska</a></li>
+<li><a href="../tr/keyboard-shortcuts.html">Türkçe</a></li>
+<li><a href="../zh_CN/keyboard-shortcuts.html"> 中文 ［中文］</a></li>
+<li><a href="../ru/keyboard-shortcuts.html">Русский</a></li>
+<li><a href="../uk/keyboard-shortcuts.html">Українська</a></li>
+<li><a href="../jp/keyboard-shortcuts.html">日本語</a></li>
 </ul>
 <span>
  «  <a href="tracker-add-ons.html">Tracker Add-Ons</a> 
@@ -100,6 +105,8 @@
 <p>Whenever you edit text – be it when renaming a file in Tracker, editing a file in StyledEdit, or chatting in Vision – there are some universal shortcuts:</p>
 <table summary="shortcuts" border="0" cellspacing="0" cellpadding="4">
 <tr><td class="onelinetop"><span class="key">ALT</span> <span class="key">←</span> / <span class="key">→</span> or<br /><span class="key">OPT</span> <span class="key">←</span> / <span class="key">→</span></td><td style="width:15px;"></td><td>Jump word-wise through the text. (Note: It may be useful to get used to using the <span class="key">OPT</span> combination. Then you're all set if some app already uses the <span class="key">ALT</span> combination for another command.)</td></tr>
+<tr><td class="onelinetop"><span class="key">ALT</span> <span class="key">BACKSPACE</span> or<br /><span class="key">OPT</span> <span class="key"> BACKSPACE</span></td><td style="width:15px;"></td><td>Word-wise removing the text to the left of the cursor.</td></tr>
+<tr><td class="onelinetop"><span class="key">ALT</span> <span class="key">DEL</span> or<br /><span class="key">OPT</span> <span class="key"> DEL </span></td><td style="width:15px;"></td><td>Word-wise removing the text to the right of the cursor.</td></tr>
 <tr><td><span class="key">HOME</span></td><td></td><td>Jumps to the beginning of the line.</td></tr>
 <tr><td><span class="key">END</span></td><td></td><td>Jumps to the end of the line.</td></tr>
 <tr><td><span class="key">ALT</span> <span class="key">HOME</span></td><td></td><td>Jumps to the beginning of the document.</td></tr>
@@ -138,7 +145,7 @@
 <tr><td><span class="key">TAB</span></td><td></td><td>Tab-completion. After entering a few letters, press <span class="key">TAB</span> once to auto-complete a filename or path. If there is more than one match, it stops where the name starts to differ and you have to provide some more letters to further distinguish them. You can also press <span class="key">TAB</span> twice to have all matches listed.</td></tr>
 <tr><td><span class="key">↑</span> / <span class="key">↓</span></td><td></td><td>Moves up or down in a history of all previously entered commands.</td></tr>
 <tr><td><span class="key">CTRL</span> <span class="key">R</span></td><td></td><td>Bash history. All the commands you enter
-are stored in the file <span class="path">~/.bash_history</span>. Press <span class="key">CTRL</span> <span class="key">R</span> and start to enter a command and you'll be provided with the first match from the bash history. Keep pressing <span class="key">CTRL</span> <span class="key">R</span> until you find the right command line and press <span class="key">ENTER</span> to execute it.</td></tr>
+are stored in the file <span class="path">~/config/settings/bash_history</span>. Press <span class="key">CTRL</span> <span class="key">R</span> and start to enter a command and you'll be provided with the first match from the bash history. Keep pressing <span class="key">CTRL</span> <span class="key">R</span> until you find the right command line and press <span class="key">ENTER</span> to execute it.</td></tr>
 <tr><td><span class="key">CTRL</span> <span class="key">C</span></td><td></td><td>Stops the currently running command.</td></tr>
 <tr><td><span class="key">CTRL</span> <span class="key">D</span></td><td></td><td>Closes the current Terminal session.</td></tr>
 </table>

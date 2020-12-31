@@ -1,5 +1,6 @@
 /*
  * Copyright 2005-2009, Axel Dörfler, axeld@pinc-software.de.
+ * Copyright 2016, Jessica Hamilton, jessica.l.hamilton@gmail.com.
  * Distributed under the terms of the MIT License.
  */
 
@@ -10,6 +11,7 @@
 #include <PCI.h>
 #include <frame_buffer_console.h>
 #include <boot_item.h>
+#include <vesa_info.h>
 
 #include <stdlib.h>
 #include <stdio.h>

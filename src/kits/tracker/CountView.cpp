@@ -41,7 +41,7 @@ All rights reserved.
 #include <Catalog.h>
 #include <ControlLook.h>
 #include <Locale.h>
-#include <MessageFormat.h>
+#include <StringFormat.h>
 
 #include "AutoLock.h"
 #include "Bitmaps.h"
@@ -56,6 +56,7 @@ All rights reserved.
 
 
 const bigtime_t kBarberPoleDelay = 500000;
+static const float kMinFontSize = 8.0f;
 
 
 //	#pragma mark - BCountView
@@ -204,7 +205,7 @@ BCountView::Draw(BRect updateRect)
 
 	SetLowColor(color);
 	be_control_look->DrawBorder(this, bounds, updateRect,
-		ui_color(B_NAVIGATION_BASE_COLOR), B_PLAIN_BORDER, 0,
+		color, B_PLAIN_BORDER, 0,
 		BControlLook::B_BOTTOM_BORDER | BControlLook::B_LEFT_BORDER);
 	be_control_look->DrawMenuBarBackground(this, bounds, updateRect, color);
 
@@ -217,7 +218,7 @@ BCountView::Draw(BRect updateRect)
 		if (fLastCount == 0)
 			itemString << B_TRANSLATE("no items");
 		else {
-			static BMessageFormat format(B_TRANSLATE_COMMENT(
+			static BStringFormat format(B_TRANSLATE_COMMENT(
 				"{0, plural, one{# item} other{# items}}",
 				"Number of selected items: \"1 item\" or \"2 items\""));
 			format.Format(itemString, fLastCount);
@@ -243,7 +244,6 @@ BCountView::Draw(BRect updateRect)
 
 	rgb_color light = tint_color(ViewColor(), B_LIGHTEN_MAX_TINT);
 	rgb_color shadow = tint_color(ViewColor(), B_DARKEN_2_TINT);
-	rgb_color lightShadow = tint_color(ViewColor(), B_DARKEN_1_TINT);
 
 	BeginLineArray(fShowingBarberPole && !fStartSpinningAfter ? 9 : 5);
 
@@ -314,7 +314,8 @@ void
 BCountView::AttachedToWindow()
 {
 	SetFont(be_plain_font);
-	SetFontSize(9);
+	SetFontSize(std::max(kMinFontSize,
+		floorf(be_plain_font->Size() * 0.75f)));
 
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	SetLowUIColor(ViewUIColor());

@@ -3,7 +3,7 @@
 //	Copyright (c) 2003, OpenBeOS
 //
 //  This software is part of the OpenBeOS distribution and is covered
-//  by the OpenBeOS license.
+//  by the MIT License.
 //
 //
 //  File:        MediaListItem.cpp
@@ -98,8 +98,9 @@ struct MediaListItem::Renderer {
 
 		iconFrame = MediaIcons::IconRectAt(iconFrame.RightTop() + BPoint(1, 0));
 
-		if (fDoubleInsets && fPrimaryIcon) {
-			onto->DrawBitmap(fPrimaryIcon, iconFrame);
+		if (fDoubleInsets) {
+			if (fPrimaryIcon != NULL)
+				onto->DrawBitmap(fPrimaryIcon, iconFrame);
 			point.x = iconFrame.right + 1;
 		}
 

@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2002, Thomas Kurschel
- * Copyright 2004-2011 Haiku, Inc. All rights reserved.
+ * Copyright 2004-2016 Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -179,12 +179,16 @@ const struct supported_device {
 	{0x675f, 4, 0, RADEON_REDWOOD, CHIP_STD, "Radeon HD 5570"},
 	{0x68b9, 4, 0, RADEON_REDWOOD, CHIP_STD, "Radeon HD 5600"},
 	{0x68c1, 4, 0, RADEON_REDWOOD, CHIP_STD, "Radeon HD 5650"},
+	{0x68c8, 4, 0, RADEON_REDWOOD, CHIP_STD, "FirePro V4800"},
 	{0x68d8, 4, 0, RADEON_REDWOOD, CHIP_STD, "Radeon HD 5670"},
 	//  Juniper
 	{0x68be, 4, 0, RADEON_JUNIPER, CHIP_STD, "Radeon HD 5700"},
 	{0x68b8, 4, 0, RADEON_JUNIPER, CHIP_STD, "Radeon HD 5770"},
 	//  Juniper LE / XT (67X0 is rebranded 57X0 + tweaks)
+#if 0
+	// Not working: #8154
 	{0x68bf, 4, 0, RADEON_JUNIPER, CHIP_STD, "Radeon HD 6750"},
+#endif
 	{0x68ba, 4, 0, RADEON_JUNIPER, CHIP_STD, "Radeon HD 6770"},
 	//  Cypress
 	{0x689e, 4, 0, RADEON_CYPRESS, CHIP_STD, "Radeon HD 5800"},
@@ -201,11 +205,15 @@ const struct supported_device {
 	{0x9802, 4, 1, RADEON_PALM, CHIP_APU, "Radeon HD 6310"},
 	{0x9803, 4, 1, RADEON_PALM, CHIP_APU, "Radeon HD 6310"},
 	{0x9806, 4, 1, RADEON_PALM, CHIP_APU, "Radeon HD 6320"},
+	{0x9808, 4, 1, RADEON_PALM, CHIP_APU, "Radeon HD 7340"},
 	//  Sumo (no VGA / LVDS!, only DP)
 	{0x9640, 4, 1, RADEON_SUMO, CHIP_APU, "Radeon HD 6550D"},
 	{0x9641, 4, 1, RADEON_SUMO, CHIP_APU, "Radeon HD Sumo"},
+#if 0
+	// Not working: #10335, #12026
 	{0x9647, 4, 1, RADEON_SUMO, CHIP_APU, "Radeon HD 6520G"},
 	{0x9648, 4, 1, RADEON_SUMO, CHIP_APU, "Radeon HD 6480G"},
+#endif
 	{0x964a, 4, 1, RADEON_SUMO, CHIP_APU, "Radeon HD 6530D"},
 	{0x964e, 4, 1, RADEON_SUMO, CHIP_APU, "Radeon HD Sumo"},
 	{0x964f, 4, 1, RADEON_SUMO, CHIP_APU, "Radeon HD Sumo"},
@@ -219,7 +227,10 @@ const struct supported_device {
 	// Codename: Nothern Islands
 	// Process: 40 nm
 	//  Caicos
+#if 0
+	// Not working: #12313
 	{0x6760, 5, 0, RADEON_CAICOS, CHIP_MOBILE, "Radeon HD 6470"},
+#endif
 	{0x6761, 5, 0, RADEON_CAICOS, CHIP_MOBILE, "Radeon HD 6430"},
 	{0x6762, 5, 0, RADEON_CAICOS, CHIP_STD, "Radeon HD Caicos"},
 	{0x6763, 5, 0, RADEON_CAICOS, CHIP_DISCREET, "Radeon HD E6460"},
@@ -242,27 +253,34 @@ const struct supported_device {
 	{0x6743, 5, 0, RADEON_TURKS, CHIP_DISCREET, "Radeon HD E6760"},
 	{0x6744, 5, 0, RADEON_TURKS, CHIP_MOBILE, "Radeon HD Turks"},
 	{0x6745, 5, 0, RADEON_TURKS, CHIP_MOBILE, "Radeon HD Turks"},
-	{0x6746, 5, 0, RADEON_TURKS, CHIP_STD, "Radeon HD Turks"},
-	{0x6747, 5, 0, RADEON_TURKS, CHIP_STD, "Radeon HD Turks"},
-	{0x6748, 5, 0, RADEON_TURKS, CHIP_STD, "Radeon HD Turks"},
-	{0x6749, 5, 0, RADEON_TURKS, CHIP_STD, "FirePro v4900"},
+	{0x6746, 5, 0, RADEON_TURKS, CHIP_STD, "FirePro V???? (turks)"},
+	{0x6747, 5, 0, RADEON_TURKS, CHIP_STD, "FirePro V???? (turks)"},
+	{0x6748, 5, 0, RADEON_TURKS, CHIP_STD, "FirePro V???? (turks)"},
+	{0x6749, 5, 0, RADEON_TURKS, CHIP_STD, "FirePro V4900"},
 	{0x6750, 5, 0, RADEON_TURKS, CHIP_STD, "Radeon HD 6500"},
 	{0x6758, 5, 0, RADEON_TURKS, CHIP_STD, "Radeon HD 6670"},
 	{0x6759, 5, 0, RADEON_TURKS, CHIP_STD, "Radeon HD 6570/7570"},
+	{0x675d, 5, 0, RADEON_TURKS, CHIP_STD, "Radeon HD 7570"},
 	{0x6850, 6, 0, RADEON_TURKS, CHIP_MOBILE, "Radeon HD 7570"},
+#if 0
+	// Not working: #12026
 	{0x6840, 6, 0, RADEON_TURKS, CHIP_MOBILE, "Radeon HD 7670"},
+#endif
 	//  Barts
 	{0x673e, 5, 0, RADEON_BARTS, CHIP_STD, "Radeon HD 6790"},
+#if 0
+	// Not working: #8765
 	{0x6739, 5, 0, RADEON_BARTS, CHIP_STD, "Radeon HD 6850"},
+#endif
 	{0x6738, 5, 0, RADEON_BARTS, CHIP_STD, "Radeon HD 6870"},
 	//  Cayman
 	{0x6700, 5, 0, RADEON_CAYMAN, CHIP_STD, "Radeon HD Cayman"},
 	{0x6701, 5, 0, RADEON_CAYMAN, CHIP_STD, "Radeon HD Cayman"},
 	{0x6702, 5, 0, RADEON_CAYMAN, CHIP_STD, "Radeon HD Cayman"},
 	{0x6703, 5, 0, RADEON_CAYMAN, CHIP_STD, "Radeon HD Cayman"},
-	{0x6704, 5, 0, RADEON_CAYMAN, CHIP_STD, "FirePro v????"},
+	{0x6704, 5, 0, RADEON_CAYMAN, CHIP_STD, "FirePro V7900"},
 	{0x6705, 5, 0, RADEON_CAYMAN, CHIP_STD, "Radeon HD Cayman"},
-	{0x6706, 5, 0, RADEON_CAYMAN, CHIP_STD, "FirePro v????"},
+	{0x6706, 5, 0, RADEON_CAYMAN, CHIP_STD, "FirePro V???? (cayman)"},
 	{0x6707, 5, 0, RADEON_CAYMAN, CHIP_STD, "Radeon HD Cayman"},
 	{0x6708, 5, 0, RADEON_CAYMAN, CHIP_STD, "Radeon HD Cayman"},
 	{0x6709, 5, 0, RADEON_CAYMAN, CHIP_STD, "Radeon HD Cayman"},
@@ -289,11 +307,12 @@ const struct supported_device {
 	{0x6829, 6, 0, RADEON_CAPEVERDE, CHIP_STD, "Radeon HD Verde"},
 	{0x682a, 6, 0, RADEON_CAPEVERDE, CHIP_STD, "Radeon HD Verde"},
 	{0x682b, 6, 0, RADEON_CAPEVERDE, CHIP_STD, "Radeon HD Verde"},
+	{0x682c, 6, 0, RADEON_CAPEVERDE, CHIP_STD, "FirePro W4100"},
 	{0x682d, 6, 0, RADEON_CAPEVERDE, CHIP_STD, "Radeon HD Verde"},
 	{0x682f, 6, 0, RADEON_CAPEVERDE, CHIP_STD, "Radeon HD Verde"},
 	{0x6830, 6, 0, RADEON_CAPEVERDE, CHIP_STD, "Radeon HD Verde"},
 	{0x6831, 6, 0, RADEON_CAPEVERDE, CHIP_STD, "Radeon HD Verde"},
-	{0x6835, 6, 0, RADEON_CAPEVERDE, CHIP_STD, "Radeon HD Verde"},
+	{0x6835, 6, 0, RADEON_CAPEVERDE, CHIP_STD, "Radeon R7 Series"},
 	{0x6837, 6, 0, RADEON_CAPEVERDE, CHIP_STD, "Radeon HD Verde"},
 	{0x6838, 6, 0, RADEON_CAPEVERDE, CHIP_STD, "Radeon HD Verde"},
 	{0x6839, 6, 0, RADEON_CAPEVERDE, CHIP_STD, "Radeon HD Verde"},
@@ -355,31 +374,41 @@ const struct supported_device {
 	{0x9995, 6, 1, RADEON_ARUBA, CHIP_APU, "Radeon HD 8450"},
 	{0x9996, 6, 1, RADEON_ARUBA, CHIP_APU, "Radeon HD 8470"},
 	{0x9997, 6, 1, RADEON_ARUBA, CHIP_APU, "Radeon HD 8350"},
+#if 0
+	// Known not to work: reported by ttcoder & Dane
 	{0x9998, 6, 1, RADEON_ARUBA, CHIP_APU, "Radeon HD 8730"},
+#endif
 	{0x999a, 6, 1, RADEON_ARUBA, CHIP_APU, "Radeon HD 8410"},
 	{0x999b, 6, 1, RADEON_ARUBA, CHIP_APU, "Radeon HD 8310"},
 	{0x999c, 6, 1, RADEON_ARUBA, CHIP_APU, "Radeon HD 8650"},
 	{0x999d, 6, 1, RADEON_ARUBA, CHIP_APU, "Radeon HD 8550"},
+#if 0
+	// Not working: #12026
 	{0x99a0, 6, 1, RADEON_ARUBA, CHIP_APU, "Radeon HD 7520"},
+#endif
 	{0x99a2, 6, 1, RADEON_ARUBA, CHIP_APU, "Radeon HD 7420"},
 	{0x99a4, 6, 1, RADEON_ARUBA, CHIP_APU, "Radeon HD 7400"},
 	//  Oland   DCE 6,4
 	{0x990c, 6, 4, RADEON_OLAND, CHIP_STD, "Radeon HD 8670"},
 	{0x990e, 6, 4, RADEON_OLAND, CHIP_STD, "Radeon HD 8570"},
-	{0x6600, 6, 4, RADEON_OLAND, CHIP_STD, "Radeon HD Oland"},
-	{0x6601, 6, 4, RADEON_OLAND, CHIP_STD, "Radeon HD Oland"},
-	{0x6602, 6, 4, RADEON_OLAND, CHIP_STD, "Radeon HD Oland"},
-	{0x6603, 6, 4, RADEON_OLAND, CHIP_STD, "Radeon HD Oland"},
-	{0x6606, 6, 4, RADEON_OLAND, CHIP_STD, "Radeon HD Oland"},
-	{0x6607, 6, 4, RADEON_OLAND, CHIP_STD, "Radeon HD Oland"},
-	{0x6610, 6, 4, RADEON_OLAND, CHIP_STD, "Radeon HD R7 250"},
-	{0x6611, 6, 4, RADEON_OLAND, CHIP_STD, "Radeon HD Oland"},
-	{0x6613, 6, 4, RADEON_OLAND, CHIP_STD, "Radeon HD R7 240"},
-	{0x6620, 6, 4, RADEON_OLAND, CHIP_STD, "Radeon HD R7 240"},
+	{0x6600, 6, 4, RADEON_OLAND, CHIP_MOBILE, "Radeon HD 8750M"},
+	{0x6601, 6, 4, RADEON_OLAND, CHIP_MOBILE, "Radeon HD 8730M"},
+	{0x6602, 6, 4, RADEON_OLAND, CHIP_MOBILE, "Radeon HD Oland"},
+	{0x6603, 6, 4, RADEON_OLAND, CHIP_MOBILE, "Radeon HD Oland"},
+	{0x6604, 6, 4, RADEON_OLAND, CHIP_MOBILE, "Radeon R7 M270"},
+	{0x6605, 6, 4, RADEON_OLAND, CHIP_MOBILE, "Radeon R7 M260"},
+	{0x6606, 6, 4, RADEON_OLAND, CHIP_MOBILE, "Radeon HD 8790"},
+	{0x6607, 6, 4, RADEON_OLAND, CHIP_MOBILE, "Radeon HD 8350"},
+	{0x6608, 6, 4, RADEON_OLAND, CHIP_STD, "FirePro W2100"},
+	{0x6610, 6, 4, RADEON_OLAND, CHIP_STD, "Radeon R7 250"},
+	{0x6611, 6, 4, RADEON_OLAND, CHIP_STD, "Radeon R7 200"},
+	{0x6613, 6, 4, RADEON_OLAND, CHIP_STD, "Radeon R7 240"},
+	{0x6620, 6, 4, RADEON_OLAND, CHIP_STD, "Radeon R7 240"},
 	{0x6621, 6, 4, RADEON_OLAND, CHIP_STD, "Radeon HD Oland"},
 	{0x6623, 6, 4, RADEON_OLAND, CHIP_STD, "Radeon HD Oland"},
 	{0x6631, 6, 4, RADEON_OLAND, CHIP_STD, "Radeon HD Oland"},
 	//  Hainan  NODCE. No display hardware, OpenCL 3D engine.
+	//{0x6670, 0, 0, RADEON_HAINAN, CHIP_COM, "Radeon HD Hainan compute"},
 
 	// Introduced: Late 2013
 	// Codename: Sea Islands
@@ -390,39 +419,43 @@ const struct supported_device {
 	{0x1306, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
 	{0x1307, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
 	{0x1308, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
-	{0x1309, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
-	{0x130a, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
-	{0x130b, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
-	{0x130c, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
-	{0x130d, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
-	{0x130e, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
-	{0x130f, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
+	{0x1309, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon R7 Series"},
+	{0x130a, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon R6 Series"},
+	{0x130b, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon R4 Series"},
+	{0x130c, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon R7 Series"},
+	{0x130d, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon R6 Series"},
+	{0x130e, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon R5 Series"},
+	{0x130f, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon R7 Series"},
 	{0x1310, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
 	{0x1311, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
 	{0x1312, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
-	{0x1313, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
+	{0x1313, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon R7 Series"},
 	{0x1314, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
-	{0x1315, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
-	{0x1316, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
+	{0x1315, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon R5 Series"},
+	{0x1316, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon R5 Series"},
 	{0x1317, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
-	{0x131b, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
-	{0x131c, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
-	{0x131d, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon HD Kaveri"},
+	{0x1318, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon R5 Series"},
+	{0x131b, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon R5 Series"},
+	{0x131c, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon R7 Series"},
+	{0x131d, 8, 1, RADEON_KAVERI, CHIP_STD, "Radeon R6 Series"},
 	//  Bonaire DCE 8.2
-	{0x6640, 8, 2, RADEON_BONAIRE, CHIP_MOBILE, "Radeon HD Bonaire"},
-	{0x6641, 8, 2, RADEON_BONAIRE, CHIP_MOBILE, "Radeon HD Bonaire"},
-	{0x6646, 8, 2, RADEON_BONAIRE, CHIP_MOBILE, "Radeon HD Bonaire"},
-	{0x6647, 8, 2, RADEON_BONAIRE, CHIP_MOBILE, "Radeon HD Bonaire"},
-	{0x6649, 8, 2, RADEON_BONAIRE, CHIP_STD, "Radeon HD Bonaire"},
-	{0x6650, 8, 2, RADEON_BONAIRE, CHIP_STD, "Radeon HD Bonaire"}, 
-	{0x6651, 8, 2, RADEON_BONAIRE, CHIP_STD, "Radeon HD Bonaire"}, 
-	{0x6658, 8, 2, RADEON_BONAIRE, CHIP_STD, "Radeon HD Bonaire"}, 
+	{0x6640, 8, 2, RADEON_BONAIRE, CHIP_MOBILE, "Radeon R9 380"},
+	{0x6641, 8, 2, RADEON_BONAIRE, CHIP_MOBILE, "Radeon HD 8930M"},
+	{0x6646, 8, 2, RADEON_BONAIRE, CHIP_MOBILE, "Radeon R9 380"},
+	{0x6647, 8, 2, RADEON_BONAIRE, CHIP_MOBILE, "Radeon R9 380"},
+	{0x6649, 8, 2, RADEON_BONAIRE, CHIP_STD, "FirePro W5100"},
+	{0x6650, 8, 2, RADEON_BONAIRE, CHIP_STD, "Radeon HD Bonaire"},
+	{0x6651, 8, 2, RADEON_BONAIRE, CHIP_STD, "Radeon HD Bonaire"},
+	{0x6658, 8, 2, RADEON_BONAIRE, CHIP_STD, "Radeon R7 200"},
 	{0x665c, 8, 2, RADEON_BONAIRE, CHIP_STD, "Radeon HD 7790"},
-	{0x665d, 8, 2, RADEON_BONAIRE, CHIP_STD, "Radeon HD Bonaire"},
-	{0x665f, 8, 2, RADEON_BONAIRE, CHIP_STD, "Radeon HD Bonaire"},
+	{0x665d, 8, 2, RADEON_BONAIRE, CHIP_STD, "Radeon R7 200"},
+	{0x665f, 8, 2, RADEON_BONAIRE, CHIP_STD, "Radeon R7 300"},
 	//  Kabini DCE 8.3
+#if 0
+	// Not working: #10939
 	{0x9830, 8, 3, RADEON_KABINI, CHIP_STD, "Radeon HD 8400"},
 	{0x9831, 8, 3, RADEON_KABINI, CHIP_STD, "Radeon HD 8400"},
+#endif
 	{0x9832, 8, 3, RADEON_KABINI, CHIP_STD, "Radeon HD 8330"},
 	{0x9833, 8, 3, RADEON_KABINI, CHIP_STD, "Radeon HD 8330"},
 	{0x9834, 8, 3, RADEON_KABINI, CHIP_STD, "Radeon HD 8210"},
@@ -455,18 +488,20 @@ const struct supported_device {
 	{0x985e, 8, 3, RADEON_MULLINS, CHIP_STD, "Radeon HD Mullins"},
 	{0x985f, 8, 3, RADEON_MULLINS, CHIP_STD, "Radeon HD Mullins"},
 	//  Hawaii DCE 8.5
-	{0x67a0, 8, 5, RADEON_HAWAII, CHIP_STD, "Radeon HD Hawaii"},
-	{0x67a1, 8, 5, RADEON_HAWAII, CHIP_STD, "Radeon HD Hawaii"},
+	{0x67a0, 8, 5, RADEON_HAWAII, CHIP_STD, "Radeon FirePro W9100"},
+	{0x67a1, 8, 5, RADEON_HAWAII, CHIP_STD, "Radeon FirePro W8100"},
 	{0x67a2, 8, 5, RADEON_HAWAII, CHIP_STD, "Radeon HD Hawaii"},
 	{0x67a8, 8, 5, RADEON_HAWAII, CHIP_STD, "Radeon HD Hawaii"},
 	{0x67a9, 8, 5, RADEON_HAWAII, CHIP_STD, "Radeon HD Hawaii"},
 	{0x67aa, 8, 5, RADEON_HAWAII, CHIP_STD, "Radeon HD Hawaii"},
-	{0x67b0, 8, 5, RADEON_HAWAII, CHIP_STD, "Radeon HD Hawaii"},
-	{0x67b1, 8, 5, RADEON_HAWAII, CHIP_STD, "Radeon HD Hawaii"},
+	{0x67b0, 8, 5, RADEON_HAWAII, CHIP_STD, "Radeon R9 290X/390X"},
+	{0x67b1, 8, 5, RADEON_HAWAII, CHIP_STD, "Radeon R9 290/390"},
 	{0x67b8, 8, 5, RADEON_HAWAII, CHIP_STD, "Radeon HD Hawaii"},
-	{0x67b9, 8, 5, RADEON_HAWAII, CHIP_STD, "Radeon HD Hawaii"},
+	{0x67b9, 8, 5, RADEON_HAWAII, CHIP_STD, "Radeon R9 295X2"},
 	{0x67ba, 8, 5, RADEON_HAWAII, CHIP_STD, "Radeon HD Hawaii"},
 	{0x67be, 8, 5, RADEON_HAWAII, CHIP_STD, "Radeon HD Hawaii"},
+
+	// WARN: DCE versions below here get sketchy
 
 	// Introduced: 2014
 	// Codename: Volcanic Islands
@@ -478,21 +513,102 @@ const struct supported_device {
 	//{0x6903, 99, 0, RADEON_TOPAZ, CHIP_STD, "Radeon HD Topaz"},
 	//{0x6907, 99, 0, RADEON_TOPAZ, CHIP_STD, "Radeon HD Topaz"},
 	// Tonga DCE 10.0
-	{0x6920, 10, 0, RADEON_TONGA, CHIP_STD, "Radeon HD Tonga"},
-	{0x6921, 10, 0, RADEON_TONGA, CHIP_STD, "Radeon HD Tonga"},
+	{0x6920, 10, 0, RADEON_TONGA, CHIP_STD, "Radeon R9 M395/M395X"},
+	{0x6921, 10, 0, RADEON_TONGA, CHIP_STD, "Radeon R9 M295/M390X"},
 	{0x6928, 10, 0, RADEON_TONGA, CHIP_STD, "Radeon HD Tonga"},
-	{0x6929, 10, 0, RADEON_TONGA, CHIP_STD, "Radeon HD Tonga"},
-	{0x692b, 10, 0, RADEON_TONGA, CHIP_STD, "Radeon HD Tonga"},
-	{0x692f, 10, 0, RADEON_TONGA, CHIP_STD, "Radeon HD Tonga"},
-	{0x6930, 10, 0, RADEON_TONGA, CHIP_STD, "Radeon HD Tonga"},
-	{0x6938, 10, 0, RADEON_TONGA, CHIP_STD, "Radeon HD Tonga"},
-	{0x6939, 10, 0, RADEON_TONGA, CHIP_STD, "Radeon HD Tonga"},
+	{0x6929, 10, 0, RADEON_TONGA, CHIP_STD, "Radeon FirePro S7150"},
+	{0x692b, 10, 0, RADEON_TONGA, CHIP_STD, "Radeon FirePro W7100"},
+	{0x692f, 10, 0, RADEON_TONGA, CHIP_STD, "Radeon FirePro S7150V"},
+	{0x6930, 10, 0, RADEON_TONGA, CHIP_STD, "Radeon HD 6930"},
+	{0x6938, 10, 0, RADEON_TONGA, CHIP_STD, "Radeon R9 380X/M295X"},
+	{0x6939, 10, 0, RADEON_TONGA, CHIP_STD, "Radeon R9 285/380"},
+	// Fiji DCE 10.1?
+	{0x7300, 10, 1, RADEON_FIJI, CHIP_STD, "Radeon R9 Fury"},
+	{0x730f, 10, 1, RADEON_FIJI, CHIP_STD, "Radeon HD Fiji"},
 	// Carrizo DCE 11.0
 	{0x9870, 11, 0, RADEON_CARRIZO, CHIP_APU, "Radeon HD Carrizo"},
 	{0x9874, 11, 0, RADEON_CARRIZO, CHIP_APU, "Radeon HD Carrizo"},
 	{0x9875, 11, 0, RADEON_CARRIZO, CHIP_APU, "Radeon HD Carrizo"},
 	{0x9876, 11, 0, RADEON_CARRIZO, CHIP_APU, "Radeon HD Carrizo"},
-	{0x9877, 11, 0, RADEON_CARRIZO, CHIP_APU, "Radeon HD Carrizo"}
+	{0x9877, 11, 0, RADEON_CARRIZO, CHIP_APU, "Radeon HD Carrizo"},
+	// Stoney Ridge 11.1?
+	{0x98e4, 11, 1, RADEON_STONEY, CHIP_APU, "Radeon HD Stoney Ridge"},
+
+	// Introduced: 2016
+	// Codename: Artic Islands / Polaris
+	// Process: 14 nm
+	// Polaris 11
+	{0x67e0, 12, 1, RADEON_POLARIS11, CHIP_STD, "Radeon Pro WX 4170"},
+	{0x67e3, 12, 1, RADEON_POLARIS11, CHIP_STD, "Radeon Pro WX 4100"},
+	{0x67e8, 12, 1, RADEON_POLARIS11, CHIP_STD, "Radeon Pro WX 4130"},
+	{0x67eb, 12, 1, RADEON_POLARIS11, CHIP_STD, "Radeon Pro V5300X"},
+	{0x67ef, 12, 1, RADEON_POLARIS11, CHIP_STD, "Radeon RX 460"},
+	{0x67ff, 12, 1, RADEON_POLARIS11, CHIP_STD, "Radeon RX 560"},
+	{0x67e1, 12, 1, RADEON_POLARIS11, CHIP_STD, "Radeon Polaris 11"},
+	{0x67e7, 12, 1, RADEON_POLARIS11, CHIP_STD, "Radeon Polaris 11"},
+	{0x67e9, 12, 1, RADEON_POLARIS11, CHIP_STD, "Radeon Polaris 11"},
+	// Polaris 10
+	{0x67c0, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Pro WX 7100 Mobile"},
+	{0x67c1, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Polaris 10"},
+	{0x67c2, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Pro V7300X"},
+	{0x67c4, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Pro WX 7100"},
+	{0x67c7, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Pro WX 5100"},
+	{0x67c8, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Polaris 10"},
+	{0x67c9, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Polaris 10"},
+	{0x67ca, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Polaris 10"},
+	{0x67cc, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Polaris 10"},
+	{0x67cf, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Polaris 10"},
+	{0x67d0, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Pro V7300X"},
+	{0x67df, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon RX 470/480"},
+	// Polaris 12
+	{0x6980, 12, 2, RADEON_POLARIS12, CHIP_STD, "Radeon Polaris 12"},
+	{0x6981, 12, 2, RADEON_POLARIS12, CHIP_STD, "Radeon Pro WX 3200"},
+	{0x6985, 12, 2, RADEON_POLARIS12, CHIP_STD, "Radeon Pro WX 3100"},
+	{0x6986, 12, 2, RADEON_POLARIS12, CHIP_STD, "Radeon Polaris 12"},
+	{0x6987, 12, 2, RADEON_POLARIS12, CHIP_STD, "Radeon 540X/550X/RX 640"},
+	{0x6995, 12, 2, RADEON_POLARIS12, CHIP_STD, "Radeon Pro WX 2100"},
+	{0x6997, 12, 2, RADEON_POLARIS12, CHIP_STD, "Radeon Polaris 12"},
+	{0x699f, 12, 2, RADEON_POLARIS12, CHIP_STD, "Radeon 540/540X/RX 540X"},
+
+	// Introduced: 2017
+	// Codename: Vega
+	// Process: 14nm
+	{0x694c, 13, 0, RADEON_VEGAM, CHIP_MOBILE, "Radeon RX Vega M GH"},
+	{0x694e, 13, 0, RADEON_VEGAM, CHIP_MOBILE, "Radeon RX Vega M GL"},
+	{0x694f, 13, 0, RADEON_VEGAM, CHIP_MOBILE, "Radeon Pro WX Vega M GL"},
+	// Vega 10
+	{0x6860, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Instinct MI25"},
+	{0x6861, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Pro WX 9100"},
+	{0x6862, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Pro SSG"},
+	{0x6863, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega Frontier"},
+	{0x6864, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Pro V340"},
+	{0x6867, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Pro Vega 56"},
+	{0x6868, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Pro WX 8100/8200"},
+	{0x6869, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 10"},
+	{0x686a, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 10"},
+	{0x686b, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 10"},
+	{0x686c, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Instinct MI25 MxGPU"},
+	{0x686d, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 10"},
+	{0x686e, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 10"},
+	{0x686f, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 10"},
+	{0x687f, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 56/64"},
+	// Vega 12
+	{0x69a0, 13, 0, RADEON_VEGA12, CHIP_STD, "Radeon Vega 12"},
+	{0x69a1, 13, 0, RADEON_VEGA12, CHIP_STD, "Radeon Vega 12"},
+	{0x69a2, 13, 0, RADEON_VEGA12, CHIP_STD, "Radeon Vega 12"},
+	{0x69a3, 13, 0, RADEON_VEGA12, CHIP_STD, "Radeon Vega 12"},
+	{0x69af, 13, 0, RADEON_VEGA12, CHIP_STD, "Radeon Pro Vega 12"},
+	// Vega 20
+	{0x66a0, 13, 2, RADEON_VEGA20, CHIP_STD, "Radeon Vega 20"},
+	{0x66a1, 13, 2, RADEON_VEGA20, CHIP_STD, "Radeon Vega 20"},
+	{0x66a2, 13, 2, RADEON_VEGA20, CHIP_STD, "Radeon Vega 20"},
+	{0x66a3, 13, 2, RADEON_VEGA20, CHIP_STD, "Radeon Vega 20"},
+	{0x66a4, 13, 2, RADEON_VEGA20, CHIP_STD, "Radeon Vega 20"},
+	{0x66a7, 13, 2, RADEON_VEGA20, CHIP_STD, "Radeon Pro Vega 20"},
+	{0x66af, 13, 2, RADEON_VEGA20, CHIP_STD, "Radeon Pro Vega 20"},
+	// Raven (APU)
+	{0x15dd, 13, 0, RADEON_RAVEN, CHIP_APU, "Radeon Vega Raven"},
+	{0x15d8, 13, 0, RADEON_RAVEN, CHIP_APU, "Radeon Vega Raven"},
 };
 
 
@@ -623,7 +739,7 @@ init_driver(void)
 		gDeviceInfo[found]->dceMinor = kSupportedDevices[type].dceMinor;
 		gDeviceInfo[found]->chipsetFlags = kSupportedDevices[type].chipsetFlags;
 
-		ERROR("%s: GPU(%ld) %s, revision = 0x%x\n", __func__, found,
+		ERROR("%s: GPU(%" B_PRId32 ") %s, revision = 0x%x\n", __func__, found,
 			kSupportedDevices[type].deviceName, info->revision);
 
 		found++;

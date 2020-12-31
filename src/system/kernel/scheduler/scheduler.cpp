@@ -184,8 +184,8 @@ scheduler_set_thread_priority(Thread *thread, int32 priority)
 	thread->priority = priority;
 	threadData->CancelPenalty();
 
-	if (priority == thread->priority)
-		return thread->priority;
+	if (priority == oldPriority)
+		return oldPriority;
 
 	if (thread->state != B_THREAD_READY) {
 		if (thread->state == B_THREAD_RUNNING) {
@@ -654,12 +654,7 @@ init()
 
 	// disable parts of the scheduler logic that are not needed
 	gSingleCore = coreCount == 1;
-	gTrackCPULoad = increase_cpu_performance(0) == B_OK;
-	gTrackCoreLoad = !gSingleCore || gTrackCPULoad;
-	dprintf("scheduler switches: single core: %s, cpu load tracking: %s,"
-		" core load tracking: %s\n", gSingleCore ? "true" : "false",
-		gTrackCPULoad ? "true" : "false",
-		gTrackCoreLoad ? "true" : "false");
+	scheduler_update_policy();
 
 	gCoreCount = coreCount;
 	gPackageCount = packageCount;
@@ -737,6 +732,18 @@ void
 scheduler_enable_scheduling()
 {
 	sSchedulerEnabled = true;
+}
+
+
+void
+scheduler_update_policy()
+{
+	gTrackCPULoad = increase_cpu_performance(0) == B_OK;
+	gTrackCoreLoad = !gSingleCore || gTrackCPULoad;
+	dprintf("scheduler switches: single core: %s, cpu load tracking: %s,"
+		" core load tracking: %s\n", gSingleCore ? "true" : "false",
+		gTrackCPULoad ? "true" : "false",
+		gTrackCoreLoad ? "true" : "false");
 }
 
 

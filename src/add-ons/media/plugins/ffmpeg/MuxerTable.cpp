@@ -38,6 +38,19 @@ const media_file_format gMuxerTable[] = {
 	},
 	{
 		media_file_format::B_READABLE
+			| media_file_format::B_KNOWS_RAW_AUDIO,
+		{ 0 },
+		B_AIFF_FORMAT_FAMILY,
+		100,
+		{ 0 },
+		"audio/x-aiff",
+		"Audio IFF",
+		"aiff",
+		"aiff",
+		{ 0 }
+	},
+	{
+		media_file_format::B_READABLE
 			| media_file_format::B_KNOWS_RAW_VIDEO
 			| media_file_format::B_KNOWS_RAW_AUDIO
 			| media_file_format::B_KNOWS_ENCODED_VIDEO
@@ -414,6 +427,48 @@ const media_file_format gMuxerTable[] = {
 		"Protracker MOD",
 		"mod",
 		"mod",
+		{ 0 }
+	},
+	{
+		media_file_format::B_READABLE
+			| media_file_format::B_KNOWS_RAW_AUDIO
+			| media_file_format::B_KNOWS_ENCODED_AUDIO,
+		{ 0 },
+		B_MISC_FORMAT_FAMILY,
+		100,
+		{ 0 },
+		"audio/x-mptm",
+		"OpenMPT Module",
+		"mptm",
+		"mptm",
+		{ 0 }
+	},
+	{
+		media_file_format::B_READABLE
+			| media_file_format::B_KNOWS_RAW_AUDIO
+			| media_file_format::B_KNOWS_ENCODED_AUDIO,
+		{ 0 },
+		B_MISC_FORMAT_FAMILY,
+		100,
+		{ 0 },
+		"audio/x-mo3",
+		"Compressed Tracker audio",
+		"mo3",
+		"mo3",
+		{ 0 }
+	},
+	{
+		media_file_format::B_READABLE
+			| media_file_format::B_KNOWS_RAW_AUDIO
+			| media_file_format::B_KNOWS_ENCODED_AUDIO,
+		{ 0 },
+		B_MISC_FORMAT_FAMILY,
+		100,
+		{ 0 },
+		"audio/x-med",
+		"Amiga MED/OctaMED Tracker Module",
+		"med",
+		"med",
 		{ 0 }
 	},
 };

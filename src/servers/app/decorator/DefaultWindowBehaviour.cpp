@@ -232,7 +232,7 @@ struct DefaultWindowBehaviour::DragState : MouseTrackingState {
 
 	virtual void MouseMovedAction(BPoint& delta, bigtime_t now)
 	{
-		if (!(fWindow->Flags() & B_NOT_MOVABLE)) {
+		if ((fWindow->Flags() & B_NOT_MOVABLE) == 0) {
 			BPoint oldLeftTop = fWindow->Frame().LeftTop();
 
 			fBehavior.AlterDeltaForSnap(fWindow, delta, now);
@@ -259,10 +259,10 @@ struct DefaultWindowBehaviour::ResizeState : MouseTrackingState {
 
 	virtual void MouseMovedAction(BPoint& delta, bigtime_t now)
 	{
-		if (!(fWindow->Flags() & B_NOT_RESIZABLE)) {
-			if (fWindow->Flags() & B_NOT_V_RESIZABLE)
+		if ((fWindow->Flags() & B_NOT_RESIZABLE) == 0) {
+			if ((fWindow->Flags() & B_NOT_V_RESIZABLE) != 0)
 				delta.y = 0;
-			if (fWindow->Flags() & B_NOT_H_RESIZABLE)
+			if ((fWindow->Flags() & B_NOT_H_RESIZABLE) != 0)
 				delta.x = 0;
 
 			BPoint oldRightBottom = fWindow->Frame().RightBottom();
@@ -328,15 +328,17 @@ struct DefaultWindowBehaviour::SlideTabState : MouseTrackingState {
 			return;
 
 		if (movingTab->tabOffset > location) {
-			if (location >
-				neighbourTab->tabOffset + neighbourTab->tabRect.Width() / 2)
+			if (location > neighbourTab->tabOffset
+					+ neighbourTab->tabRect.Width() / 2) {
 				return;
+			}
 		} else {
-			if (location + movingTab->tabRect.Width() <
-				neighbourTab->tabOffset + neighbourTab->tabRect.Width() / 2)
+			if (location + movingTab->tabRect.Width() < neighbourTab->tabOffset
+					+ neighbourTab->tabRect.Width() / 2) {
 				return;
+			}
 		}
-		
+
 		fWindow->MoveToStackPosition(neighbourIndex, isShifting);
 	}
 };
@@ -602,8 +604,8 @@ struct DefaultWindowBehaviour::ManageWindowState : State {
 
 	virtual bool MouseDown(BMessage* message, BPoint where, bool& _unhandled)
 	{
-		// We're only interested, if the secondary mouse button was pressed.
-		// Othewise let the our caller handle the event.
+		// We're only interested if the secondary mouse button was pressed,
+		// otherwise let the caller handle the event.
 		int32 buttons = message->FindInt32("buttons");
 		if ((buttons & B_SECONDARY_MOUSE_BUTTON) == 0) {
 			_unhandled = true;
@@ -683,7 +685,6 @@ DefaultWindowBehaviour::DefaultWindowBehaviour(Window* window)
 	:
 	fWindow(window),
 	fDesktop(window->Desktop()),
-	fState(NULL),
 	fLastModifiers(0)
 {
 }
@@ -691,7 +692,6 @@ DefaultWindowBehaviour::DefaultWindowBehaviour(Window* window)
 
 DefaultWindowBehaviour::~DefaultWindowBehaviour()
 {
-	delete fState;
 }
 
 
@@ -702,8 +702,29 @@ DefaultWindowBehaviour::MouseDown(BMessage* message, BPoint where,
 	fLastModifiers = message->FindInt32("modifiers");
 	int32 buttons = message->FindInt32("buttons");
 
+	int32 numButtons;
+	if (get_mouse_type(&numButtons) == B_OK) {
+		switch (numButtons) {
+			case 1:
+				// 1 button mouse
+				if ((fLastModifiers & B_CONTROL_KEY) != 0) {
+					// emulate right click by holding control
+					buttons = B_SECONDARY_MOUSE_BUTTON;
+					message->ReplaceInt32("buttons", buttons);
+				}
+				break;
+
+			case 2:
+				// TODO: 2 button mouse, pressing both buttons simultaneously
+				// emulates middle click
+
+			default:
+				break;
+		}
+	}
+
 	// if a state is active, let it do the job
-	if (fState != NULL) {
+	if (fState.Get() != NULL) {
 		bool unhandled = false;
 		bool result = fState->MouseDown(message, where, unhandled);
 		if (!unhandled)
@@ -896,7 +917,7 @@ DefaultWindowBehaviour::MouseDown(BMessage* message, BPoint where,
 void
 DefaultWindowBehaviour::MouseUp(BMessage* message, BPoint where)
 {
-	if (fState != NULL)
+	if (fState.Get() != NULL)
 		fState->MouseUp(message, where);
 }
 
@@ -904,7 +925,7 @@ DefaultWindowBehaviour::MouseUp(BMessage* message, BPoint where)
 void
 DefaultWindowBehaviour::MouseMoved(BMessage* message, BPoint where, bool isFake)
 {
-	if (fState != NULL) {
+	if (fState.Get() != NULL) {
 		fState->MouseMoved(message, where, isFake);
 	} else {
 		// If the window modifiers are hold, enter the window management state.
@@ -915,7 +936,7 @@ DefaultWindowBehaviour::MouseMoved(BMessage* message, BPoint where, bool isFake)
 	// change focus in FFM mode
 	DesktopSettings desktopSettings(fDesktop);
 	if (desktopSettings.FocusFollowsMouse()
-		&& !fWindow->IsFocus() && !(fWindow->Flags() & B_AVOID_FOCUS)) {
+		&& !fWindow->IsFocus() && (fWindow->Flags() & B_AVOID_FOCUS) == 0) {
 		// If the mouse move is a fake one, we set the focus to NULL, which
 		// will cause the window that had focus last to retrieve it again - this
 		// makes FFM much nicer to use with the keyboard.
@@ -931,7 +952,7 @@ DefaultWindowBehaviour::ModifiersChanged(int32 modifiers)
 	int32 buttons;
 	fDesktop->GetLastMouseState(&where, &buttons);
 
-	if (fState != NULL) {
+	if (fState.Get() != NULL) {
 		fState->ModifiersChanged(where, modifiers);
 	} else {
 		// If the window modifiers are hold, enter the window management state.
@@ -1143,21 +1164,19 @@ void
 DefaultWindowBehaviour::_NextState(State* state)
 {
 	// exit the old state
-	if (fState != NULL)
+	if (fState.Get() != NULL)
 		fState->ExitState(state);
 
 	// set and enter the new state
-	State* oldState = fState;
-	fState = state;
+	ObjectDeleter<State> oldState(fState.Detach());
+	fState.SetTo(state);
 
-	if (fState != NULL) {
-		fState->EnterState(oldState);
+	if (fState.Get() != NULL) {
+		fState->EnterState(oldState.Get());
 		fDesktop->SetMouseEventWindow(fWindow);
-	} else if (oldState != NULL) {
+	} else if (oldState.Get() != NULL) {
 		// no state anymore -- reset the mouse event window, if it's still us
 		if (fDesktop->MouseEventWindow() == fWindow)
 			fDesktop->SetMouseEventWindow(NULL);
 	}
-
-	delete oldState;
 }

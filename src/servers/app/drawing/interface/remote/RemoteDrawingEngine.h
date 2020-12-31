@@ -13,6 +13,8 @@
 #include "RemoteHWInterface.h"
 #include "ServerFont.h"
 
+#include <AutoDeleter.h>
+
 class BPoint;
 class BRect;
 class BRegion;
@@ -55,6 +57,8 @@ public:
 									alpha_function alphaFunc);
 	virtual	void				SetFont(const ServerFont& font);
 	virtual	void				SetFont(const DrawState* state);
+	virtual	void				SetTransform(const BAffineTransform& transform,
+									int32 xOffset, int32 yOffset);
 
 	// drawing functions
 	virtual	void				InvertRect(BRect rect);
@@ -112,7 +116,7 @@ public:
 									const BPoint& viewToScreenOffset,
 									float viewScale);
 	virtual	void				FillShape(const BRect& bounds,
-							 		int32 opCount, const uint32* opList,
+									int32 opCount, const uint32* opList,
 									int32 pointCount, const BPoint* pointList,
 									const BGradient& gradient,
 									const BPoint& viewToScreenOffset,
@@ -136,7 +140,7 @@ public:
 	virtual	BPoint				DrawString(const char* string, int32 length,
 									const BPoint& point,
 									escapement_delta* delta = NULL);
-virtual	BPoint					DrawString(const char* string, int32 length,
+	virtual	BPoint				DrawString(const char* string, int32 length,
 									const BPoint* offsets);
 
 	virtual	float				StringWidth(const char* string, int32 length,
@@ -154,14 +158,14 @@ private:
 									RemoteMessage& message);
 
 			BRect				_BuildBounds(BPoint* points, int32 pointCount);
-		status_t				_ExtractBitmapRegions(ServerBitmap& bitmap,
+			status_t			_ExtractBitmapRegions(ServerBitmap& bitmap,
 									uint32 options, const BRect& bitmapRect,
 									const BRect& viewRect, double xScale,
 									double yScale, BRegion& region,
 									UtilityBitmap**& bitmaps);
 
 			RemoteHWInterface*	fHWInterface;
-			uint32				fToken;
+			int32				fToken;
 
 			DrawState			fState;
 			BRegion				fClippingRegion;
@@ -173,7 +177,8 @@ private:
 			float				fStringWidthResult;
 			BBitmap*			fReadBitmapResult;
 
-		BitmapDrawingEngine*	fBitmapDrawingEngine;
+			ObjectDeleter<BitmapDrawingEngine>
+								fBitmapDrawingEngine;
 };
 
 #endif // REMOTE_DRAWING_ENGINE_H

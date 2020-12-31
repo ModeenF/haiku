@@ -583,17 +583,35 @@ smp_add_safemode_menus(Menu *menu)
 		cpuid_info info;
 		if (get_current_cpuid(&info, 1, 0) == B_OK
 				&& (info.regs.ecx & IA32_FEATURE_EXT_X2APIC) != 0) {
-#if 0
 			menu->AddItem(item = new(nothrow) MenuItem("Disable X2APIC"));
 			item->SetType(MENU_ITEM_MARKABLE);
 			item->SetData(B_SAFEMODE_DISABLE_X2APIC);
 			item->SetHelpText("Disables using X2APIC.");
-#else
-			menu->AddItem(item = new(nothrow) MenuItem("Enable X2APIC"));
-			item->SetType(MENU_ITEM_MARKABLE);
-			item->SetData(B_SAFEMODE_ENABLE_X2APIC);
-			item->SetHelpText("Enables using X2APIC.");
-#endif
+		}
+
+		get_current_cpuid(&info, 0, 0);
+		uint32 maxBasicLeaf = info.eax_0.max_eax;
+		if (maxBasicLeaf >= 7) {
+			if (get_current_cpuid(&info, 7, 0) == B_OK
+					&& (info.regs.ebx & (IA32_FEATURE_SMEP
+						| IA32_FEATURE_SMAP)) != 0) {
+				menu->AddItem(item = new(nothrow) MenuItem(
+					"Disable SMEP and SMAP"));
+				item->SetType(MENU_ITEM_MARKABLE);
+				item->SetData(B_SAFEMODE_DISABLE_SMEP_SMAP);
+				item->SetHelpText("Disables using SMEP and SMAP.");
+			}
+
+			if (get_current_cpuid(&info, 7, 0) == B_OK
+					&& (info.regs.ecx & IA32_FEATURE_LA57) != 0) {
+				menu->AddItem(item = new(nothrow) MenuItem(
+					"Ignore memory beyond 256 TiB"));
+				item->SetType(MENU_ITEM_MARKABLE);
+				item->SetData(B_SAFEMODE_256_TB_MEMORY_LIMIT);
+				item->SetHelpText("Ignores all memory beyond the 256 TiB "
+					"address limit, overriding the setting in the kernel "
+					"settings file.");
+			}
 		}
 	}
 

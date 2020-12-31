@@ -14,6 +14,10 @@
 #define BT_DEBUG_THIS_MODULE
 #include <btDebug.h>
 
+
+int32 api_version = B_CUR_DRIVER_API_VERSION;
+
+
 DoublyLinkedList<HciConnection> sConnectionList;
 net_buffer_module_info* gBufferModule = NULL;
 
@@ -43,44 +47,47 @@ DumpHciConnections(int argc, char** argv)
 
 	while (iterator.HasNext()) {
 		conn = iterator.Next();
-		kprintf("LocalDevice=%lx Destination=%s handle=%#x type=%d"
-			"outqueue=%ld expected=%ld\n", conn->Hid,
-			bdaddrUtils::ToString(conn->destination), conn->handle,	conn->type,
-			conn->OutGoingFrames.Count() , conn->ExpectedResponses.Count());
+		/*
+		kprintf("LocalDevice=0x%" B_PRIx32 " Destination=%s handle=%#x type=%d"
+			"outqueue=%" B_PRId32 " expected=%" B_PRId32 "\n", conn->Hid,
+			bdaddrUtils::ToString(conn->destination).String(), conn->handle,
+			conn->type, conn->OutGoingFrames.Count(),
+			conn->ExpectedResponses.Count());
+		*/
 
-			// each channel
-			kprintf("\tChannels\n");
-			DoublyLinkedList<L2capChannel>::Iterator channelIterator
-				= conn->ChannelList.GetIterator();
+		// each channel
+		kprintf("\tChannels\n");
+		DoublyLinkedList<L2capChannel>::Iterator channelIterator
+			= conn->ChannelList.GetIterator();
 
-			while (channelIterator.HasNext()) {
-				chan = channelIterator.Next();
-				kprintf("\t\tscid=%x dcid=%x state=%x cfg=%x\n", chan->scid,
-					chan->dcid, chan->state, chan->cfgState);
-			}
+		while (channelIterator.HasNext()) {
+			chan = channelIterator.Next();
+			kprintf("\t\tscid=%x dcid=%x state=%x cfg=%x\n", chan->scid,
+				chan->dcid, chan->state, chan->cfgState);
+		}
 
-			// Each outgoing
-			kprintf("\n\tOutGoingFrames\n");
-			DoublyLinkedList<L2capFrame>::Iterator frameIterator
-				= conn->OutGoingFrames.GetIterator();
-			while (frameIterator.HasNext()) {
-				frame = frameIterator.Next();
-				kprintf("\t\tscid=%x code=%x ident=%x type=%x, buffer=%p\n",
-					frame->channel->scid, frame->code, frame->ident,
-					frame->type, frame->buffer);
-			}
+		// Each outgoing
+		kprintf("\n\tOutGoingFrames\n");
+		DoublyLinkedList<L2capFrame>::Iterator frameIterator
+			= conn->OutGoingFrames.GetIterator();
+		while (frameIterator.HasNext()) {
+			frame = frameIterator.Next();
+			kprintf("\t\tscid=%x code=%x ident=%x type=%x, buffer=%p\n",
+				frame->channel->scid, frame->code, frame->ident,
+				frame->type, frame->buffer);
+		}
 
-			// Each expected
-			kprintf("\n\tExpectedFrames\n");
-			DoublyLinkedList<L2capFrame>::Iterator frameExpectedIterator
-				= conn->ExpectedResponses.GetIterator();
+		// Each expected
+		kprintf("\n\tExpectedFrames\n");
+		DoublyLinkedList<L2capFrame>::Iterator frameExpectedIterator
+			= conn->ExpectedResponses.GetIterator();
 
-			while (frameExpectedIterator.HasNext()) {
-				frame = frameExpectedIterator.Next();
-				kprintf("\t\tscid=%x code=%x ident=%x type=%x, buffer=%p\n",
-					frame->channel->scid, frame->code, frame->ident,
-					frame->type, frame->buffer);
-			}
+		while (frameExpectedIterator.HasNext()) {
+			frame = frameExpectedIterator.Next();
+			kprintf("\t\tscid=%x code=%x ident=%x type=%x, buffer=%p\n",
+				frame->channel->scid, frame->code, frame->ident,
+				frame->type, frame->buffer);
+		}
 	}
 
 	return 0;
@@ -107,7 +114,8 @@ PostEvent(bluetooth_device* ndev, void* event, size_t size)
 			if (conn == NULL)
 				panic("no mem for conn desc");
 			conn->ndevice = ndev;
-			debugf("Registered connection handle=%#x\n",data->handle);
+			TRACE("%s: Registered connection handle=%#x\n", __func__,
+				data->handle);
 			break;
 		}
 
@@ -119,7 +127,8 @@ PostEvent(bluetooth_device* ndev, void* event, size_t size)
 				(outgoingEvent + 1);
 
 			RemoveConnection(data->handle, ndev->index);
-			debugf("unRegistered connection handle=%#x\n",data->handle);
+			TRACE("%s: unRegistered connection handle=%#x\n", __func__,
+				data->handle);
 			break;
 		}
 
@@ -133,10 +142,10 @@ PostEvent(bluetooth_device* ndev, void* event, size_t size)
 			event, size, B_TIMEOUT, 1 * 1000 * 1000);
 
 		if (err != B_OK)
-			debugf("Error posting userland %s\n", strerror(err));
+			ERROR("%s: Error posting userland %s\n", __func__, strerror(err));
 
 	} else {
-		flowf("ERROR:bluetooth_server not found for posting\n");
+		ERROR("%s: bluetooth_server not found for posting!\n", __func__);
 		err = B_NAME_NOT_FOUND;
 	}
 

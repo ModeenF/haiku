@@ -23,6 +23,9 @@ static bool
 analyze_object_gcc_version(int fd, image_t* image, elf_ehdr& eheader,
 	int32 sheaderSize, char* buffer, size_t bufferSize)
 {
+	if (sheaderSize <= 0)
+		return false;
+
 	if (sheaderSize > (int)bufferSize) {
 		FATAL("%s: Cannot handle section headers bigger than %lu bytes\n",
 			image->path, bufferSize);
@@ -87,7 +90,7 @@ analyze_object_gcc_version(int fd, image_t* image, elf_ehdr& eheader,
 	}
 
 	// the common prefix of the strings in the .comment section
-	static const char* kGCCVersionPrefix = "GCC: (GNU) ";
+	static const char* kGCCVersionPrefix = "GCC: (";
 	size_t gccVersionPrefixLen = strlen(kGCCVersionPrefix);
 
 	size_t index = 0;
@@ -116,13 +119,24 @@ analyze_object_gcc_version(int fd, image_t* image, elf_ehdr& eheader,
 		// GCC: (GNU) 2.9-beos-991026
 		// GCC: (GNU) 2.95.3-haiku-080322
 		// GCC: (GNU) 4.1.2
+		// GCC: (2016_02_29) 5.3.0
+		// GCC: (2018_05_01) 7.3.0
+		// GCC: (GNU) 7.3.0
+
+		// FIXME this does not handle binaries generated with clang or other
+		// compilers.
 
 		// skip the common prefix
 		if (strncmp(stringStart, kGCCVersionPrefix, gccVersionPrefixLen) != 0)
 			continue;
 
+		// Skip the build identifier, the closing parenthesis, and the space
+		// that follows it.
+		// Hopefully no one is going to include nested parentheses in the
+		// version string, so we can save the need for a smarter parser.
+		char* gccVersion = strchr(stringStart + gccVersionPrefixLen, ')') + 2;
+
 		// the rest is the GCC version
-		char* gccVersion = stringStart + gccVersionPrefixLen;
 		char* gccPlatform = strchr(gccVersion, '-');
 		char* patchLevel = NULL;
 		if (gccPlatform != NULL) {
@@ -157,7 +171,7 @@ analyze_object_gcc_version(int fd, image_t* image, elf_ehdr& eheader,
 		// well as cases where e.g. in a gcc 2 program a single C file has
 		// been compiled with gcc 4.
 		if (gccMajor == 0 || gccMajor > version[0]
-		 	|| (gccMajor == version[0]
+			|| (gccMajor == version[0]
 				&& (gccMiddle < version[1]
 					|| (gccMiddle == version[1] && gccMinor < version[2])))) {
 			gccMajor = version[0];
@@ -181,8 +195,15 @@ analyze_object_gcc_version(int fd, image_t* image, elf_ehdr& eheader,
 			image->abi = B_HAIKU_ABI_GCC_2_HAIKU;
 		else
 			image->abi = B_HAIKU_ABI_GCC_2_BEOS;
-	} else
+	} else {
+		if (gccMajor >= 5) {
+			// The ABI changes in libstdc++ 5+ are optional, and currently we
+			// are using it in backwards compatible mode. So, it is still
+			// generating ABI version 4.
+			gccMajor = 4;
+		}
 		image->abi = gccMajor << 16;
+	}
 
 	return true;
 }
@@ -195,10 +216,9 @@ analyze_image_haiku_version_and_abi(int fd, image_t* image, elf_ehdr& eheader,
 	// Haiku API version
 	elf_sym* symbol = find_symbol(image,
 		SymbolLookupInfo(B_SHARED_OBJECT_HAIKU_VERSION_VARIABLE_NAME,
-			B_SYMBOL_TYPE_DATA));
+			B_SYMBOL_TYPE_DATA, true));
 	if (symbol != NULL && symbol->st_shndx != SHN_UNDEF
 		&& symbol->st_value > 0
-		&& symbol->Type() == STT_OBJECT
 		&& symbol->st_size >= sizeof(uint32)) {
 		image->api_version
 			= *(uint32*)(symbol->st_value + image->regions[0].delta);

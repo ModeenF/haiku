@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -111,6 +111,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #include "acpi.h"
@@ -191,8 +227,8 @@ AcpiExResolveToValue (
     if (ACPI_GET_DESCRIPTOR_TYPE (*StackPtr) == ACPI_DESC_TYPE_NAMED)
     {
         Status = AcpiExResolveNodeToValue (
-                        ACPI_CAST_INDIRECT_PTR (ACPI_NAMESPACE_NODE, StackPtr),
-                        WalkState);
+            ACPI_CAST_INDIRECT_PTR (ACPI_NAMESPACE_NODE, StackPtr),
+            WalkState);
         if (ACPI_FAILURE (Status))
         {
             return_ACPI_STATUS (Status);
@@ -251,7 +287,7 @@ AcpiExResolveObjectToValue (
              * Note: this increments the local's object reference count
              */
             Status = AcpiDsMethodDataGetValue (RefType,
-                            StackDesc->Reference.Value, WalkState, &ObjDesc);
+                StackDesc->Reference.Value, WalkState, &ObjDesc);
             if (ACPI_FAILURE (Status))
             {
                 return_ACPI_STATUS (Status);
@@ -282,7 +318,7 @@ AcpiExResolveObjectToValue (
                 /* If method call or CopyObject - do not dereference */
 
                 if ((WalkState->Opcode == AML_INT_METHODCALL_OP) ||
-                    (WalkState->Opcode == AML_COPY_OP))
+                    (WalkState->Opcode == AML_COPY_OBJECT_OP))
                 {
                     break;
                 }
@@ -297,7 +333,6 @@ AcpiExResolveObjectToValue (
                      * (i.e., dereference the package index)
                      * Delete the ref object, increment the returned object
                      */
-                    AcpiUtRemoveReference (StackDesc);
                     AcpiUtAddReference (ObjDesc);
                     *StackPtr = ObjDesc;
                 }
@@ -308,7 +343,8 @@ AcpiExResolveObjectToValue (
                      * the package, can't dereference it
                      */
                     ACPI_ERROR ((AE_INFO,
-                        "Attempt to dereference an Index to NULL package element Idx=%p",
+                        "Attempt to dereference an Index to "
+                        "NULL package element Idx=%p",
                         StackDesc));
                     Status = AE_AML_UNINITIALIZED_ELEMENT;
                 }
@@ -359,7 +395,8 @@ AcpiExResolveObjectToValue (
         default:
 
             ACPI_ERROR ((AE_INFO,
-                "Unknown Reference type 0x%X in %p", RefType, StackDesc));
+                "Unknown Reference type 0x%X in %p",
+                RefType, StackDesc));
             Status = AE_AML_INTERNAL;
             break;
         }
@@ -380,7 +417,8 @@ AcpiExResolveObjectToValue (
     case ACPI_TYPE_LOCAL_BANK_FIELD:
     case ACPI_TYPE_LOCAL_INDEX_FIELD:
 
-        ACPI_DEBUG_PRINT ((ACPI_DB_EXEC, "FieldRead SourceDesc=%p Type=%X\n",
+        ACPI_DEBUG_PRINT ((ACPI_DB_EXEC,
+            "FieldRead SourceDesc=%p Type=%X\n",
             StackDesc, StackDesc->Common.Type));
 
         Status = AcpiExReadDataFromField (WalkState, StackDesc, &ObjDesc);
@@ -451,15 +489,30 @@ AcpiExResolveMultiple (
         if (Type == ACPI_TYPE_LOCAL_ALIAS)
         {
             Type = ((ACPI_NAMESPACE_NODE *) ObjDesc)->Type;
-            ObjDesc = AcpiNsGetAttachedObject ((ACPI_NAMESPACE_NODE *) ObjDesc);
+            ObjDesc = AcpiNsGetAttachedObject (
+                (ACPI_NAMESPACE_NODE *) ObjDesc);
         }
 
-        if (!ObjDesc)
+        switch (Type)
         {
-            ACPI_ERROR ((AE_INFO,
-                "[%4.4s] Node is unresolved or uninitialized",
-                AcpiUtGetNodeName (Node)));
-            return_ACPI_STATUS (AE_AML_UNINITIALIZED_NODE);
+        case ACPI_TYPE_DEVICE:
+        case ACPI_TYPE_THERMAL:
+
+            /* These types have no attached subobject */
+            break;
+
+        default:
+
+            /* All other types require a subobject */
+
+            if (!ObjDesc)
+            {
+                ACPI_ERROR ((AE_INFO,
+                    "[%4.4s] Node is unresolved or uninitialized",
+                    AcpiUtGetNodeName (Node)));
+                return_ACPI_STATUS (AE_AML_UNINITIALIZED_NODE);
+            }
+            break;
         }
         break;
 
@@ -565,7 +618,7 @@ AcpiExResolveMultiple (
             if (ReturnDesc)
             {
                 Status = AcpiDsMethodDataGetValue (ObjDesc->Reference.Class,
-                            ObjDesc->Reference.Value, WalkState, &ObjDesc);
+                    ObjDesc->Reference.Value, WalkState, &ObjDesc);
                 if (ACPI_FAILURE (Status))
                 {
                     return_ACPI_STATUS (Status);
@@ -575,7 +628,7 @@ AcpiExResolveMultiple (
             else
             {
                 Status = AcpiDsMethodDataGetNode (ObjDesc->Reference.Class,
-                            ObjDesc->Reference.Value, WalkState, &Node);
+                    ObjDesc->Reference.Value, WalkState, &Node);
                 if (ACPI_FAILURE (Status))
                 {
                     return_ACPI_STATUS (Status);
@@ -600,7 +653,8 @@ AcpiExResolveMultiple (
         default:
 
             ACPI_ERROR ((AE_INFO,
-                "Unknown Reference Class 0x%2.2X", ObjDesc->Reference.Class));
+                "Unknown Reference Class 0x%2.2X",
+                ObjDesc->Reference.Class));
             return_ACPI_STATUS (AE_AML_INTERNAL);
         }
     }

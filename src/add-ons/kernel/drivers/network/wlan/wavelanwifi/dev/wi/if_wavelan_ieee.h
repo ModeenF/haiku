@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (c) 1997, 1998, 1999
  *	Bill Paul <wpaul@ctr.columbia.edu>.  All rights reserved.
  *
@@ -29,7 +31,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/dev/wi/if_wavelan_ieee.h 325966 2017-11-18 14:26:50Z pfg $
  */
 
 #ifndef _IF_WAVELAN_IEEE_H
@@ -431,7 +433,7 @@ struct wi_apinfo {
  */
 
 /*
- * standard hermes recieve frame used by wavelan/prism2 cards
+ * standard hermes receive frame used by wavelan/prism2 cards
  */
 struct wi_rx_frame {
 	/*

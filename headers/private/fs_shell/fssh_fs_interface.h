@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2008, Haiku Inc. All Rights Reserved.
+ * Copyright 2004-2016, Haiku Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  */
 #ifndef _FSSH_FS_INTERFACE_H
@@ -360,6 +360,10 @@ extern fssh_status_t fssh_unremove_vnode(fssh_fs_volume *volume,
 				fssh_vnode_id vnodeID);
 extern fssh_status_t fssh_get_vnode_removed(fssh_fs_volume *volume,
 				fssh_vnode_id vnodeID, bool* removed);
+extern fssh_status_t fssh_mark_vnode_busy(fssh_fs_volume* volume,
+				fssh_vnode_id vnodeID, bool busy);
+extern fssh_status_t fssh_change_vnode_id(fssh_fs_volume* volume,
+				fssh_vnode_id vnodeID, fssh_vnode_id newID);
 extern fssh_fs_volume* fssh_volume_for_vnode(fssh_fs_vnode *vnode);
 extern fssh_status_t fssh_check_access_permissions(int accessMode,
 				fssh_mode_t mode, fssh_gid_t nodeGroupID,
@@ -395,9 +399,10 @@ extern fssh_status_t fssh_notify_entry_moved(fssh_mount_id device,
 				fssh_vnode_id toDirectory, const char *toName,
 				fssh_vnode_id node);
 extern fssh_status_t fssh_notify_stat_changed(fssh_mount_id device,
-				fssh_vnode_id node, uint32_t statFields);
+				fssh_vnode_id dir, fssh_vnode_id node, uint32_t statFields);
 extern fssh_status_t fssh_notify_attribute_changed(fssh_mount_id device,
-				fssh_vnode_id node, const char *attribute, int32_t cause);
+				fssh_vnode_id dir, fssh_vnode_id node, const char *attribute,
+				int32_t cause);
 
 extern fssh_status_t fssh_notify_query_entry_created(fssh_port_id port,
 				int32_t token, fssh_mount_id device,

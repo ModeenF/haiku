@@ -4,24 +4,13 @@
  * Copyright (C) 2006 Marcus Overhagen <marcus@overhagen.de>
  * Copyright (C) 2007-2008 Stephan Aßmus <superstippi@gmx.de> (MIT Ok)
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- *
+ * Released under the terms of the MIT license.
  */
 #ifndef __CONTROLLER_H
 #define __CONTROLLER_H
 
 
+#include <Alert.h>
 #include <Entry.h>
 #include <MediaDefs.h>
 #include <MediaFormats.h>
@@ -115,6 +104,8 @@ public:
 
 			bigtime_t			TimeDuration();
 			bigtime_t			TimePosition();
+			status_t			SaveState(bool reset = false);
+			void				RestoreState();
 
 	virtual	void				SetVolume(float factor);
 			float				Volume();
@@ -197,7 +188,6 @@ private:
 			bool				fMuted;
 
 			PlaylistItemRef		fItem;
-			TrackSupplier*		fTrackSupplier;
 
 			ProxyVideoSupplier*	fVideoSupplier;
 			ProxyAudioSupplier*	fAudioSupplier;
@@ -224,6 +214,7 @@ private:
 			bool				fLoopMovies;
 			bool				fLoopSounds;
 			uint32				fBackgroundMovieVolumeMode;
+			uint32				fResume;
 
 			BList				fListeners;
 };

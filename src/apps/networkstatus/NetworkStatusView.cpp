@@ -64,7 +64,7 @@ static const char *kStatusDescriptions[] = {
 	B_TRANSLATE("Ready")
 };
 
-extern "C" _EXPORT BView *instantiate_deskbar_item(void);
+extern "C" _EXPORT BView *instantiate_deskbar_item(float maxWidth, float maxHeight);
 
 
 const uint32 kMsgShowConfiguration = 'shcf';
@@ -94,7 +94,7 @@ signal_strength_compare(const wireless_network &a,
 NetworkStatusView::NetworkStatusView(BRect frame, int32 resizingMode,
 		bool inDeskbar)
 	: BView(frame, kDeskbarItemName, resizingMode,
-		B_WILL_DRAW | B_FRAME_EVENTS),
+		B_WILL_DRAW | B_TRANSPARENT_BACKGROUND | B_FRAME_EVENTS),
 	fInDeskbar(inDeskbar)
 {
 	_Init();
@@ -232,18 +232,8 @@ void
 NetworkStatusView::AttachedToWindow()
 {
 	BView::AttachedToWindow();
-	if (Parent() != NULL) {
-		if ((Parent()->Flags() & B_DRAW_ON_CHILDREN) != 0)
-			SetViewColor(B_TRANSPARENT_COLOR);
-		else
-			AdoptParentColors();
-	} else
-		SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 
-	if (ViewUIColor() != B_NO_COLOR)
-		SetLowUIColor(ViewUIColor());
-	else
-		SetLowColor(ViewColor());
+	SetViewColor(B_TRANSPARENT_COLOR);
 
 	start_watching_network(
 		B_WATCH_NETWORK_INTERFACE_CHANGES | B_WATCH_NETWORK_LINK_CHANGES, this);
@@ -309,6 +299,7 @@ NetworkStatusView::MessageReceived(BMessage* message)
 
 		default:
 			BView::MessageReceived(message);
+			break;
 	}
 }
 
@@ -498,16 +489,17 @@ NetworkStatusView::_DetermineInterfaceStatus(
 	const BNetworkInterface& interface)
 {
 	uint32 flags = interface.Flags();
-	int32 status = kStatusNoLink;
 
-	// TODO: no kStatusLinkNoConfig yet
+	if ((flags & IFF_LINK) == 0)
+		return kStatusNoLink;
+	if ((flags & (IFF_UP | IFF_LINK | IFF_CONFIGURING)) == IFF_LINK)
+		return kStatusLinkNoConfig;
+	if ((flags & IFF_CONFIGURING) == IFF_CONFIGURING)
+		return kStatusConnecting;
+	if ((flags & (IFF_UP | IFF_LINK)) == (IFF_UP | IFF_LINK))
+		return kStatusReady;
 
-	if (flags & IFF_CONFIGURING)
-		status = kStatusConnecting;
-	else if ((flags & (IFF_UP | IFF_LINK)) == (IFF_UP | IFF_LINK))
-		status = kStatusReady;
-
-	return status;
+	return kStatusUnknown;
 }
 
 
@@ -573,9 +565,8 @@ NetworkStatusView::_OpenNetworksPreferences()
 
 
 extern "C" _EXPORT BView *
-instantiate_deskbar_item(void)
+instantiate_deskbar_item(float maxWidth, float maxHeight)
 {
-	return new NetworkStatusView(BRect(0, 0, 15, 15),
+	return new NetworkStatusView(BRect(0, 0, maxHeight - 1, maxHeight - 1),
 		B_FOLLOW_LEFT | B_FOLLOW_TOP, true);
 }
-

@@ -25,7 +25,7 @@ using std::nothrow;
 
 
 ImportPLItemsCommand::ImportPLItemsCommand(Playlist* playlist,
-		 const BMessage* refsMessage, int32 toIndex)
+		const BMessage* refsMessage, int32 toIndex, bool sortItems)
 	:
 	PLItemsCommand(),
 	fPlaylist(playlist),
@@ -45,7 +45,7 @@ ImportPLItemsCommand::ImportPLItemsCommand(Playlist* playlist,
 		return;
 
 	Playlist temp;
-	temp.AppendRefs(refsMessage);
+	temp.AppendItems(refsMessage, APPEND_INDEX_REPLACE_PLAYLIST, sortItems);
 
 	fNewCount = temp.CountItems();
 	if (fNewCount <= 0)
@@ -59,8 +59,7 @@ ImportPLItemsCommand::ImportPLItemsCommand(Playlist* playlist,
 	// init new entries
 	int32 added = 0;
 	for (int32 i = 0; i < fNewCount; i++) {
-		FilePlaylistItem* fileItem = dynamic_cast<FilePlaylistItem*>(temp.ItemAtFast(i));
-		if (fileItem && !Playlist::ExtraMediaExists(playlist, fileItem->Ref())) {
+		if (!Playlist::ExtraMediaExists(playlist, temp.ItemAtFast(i))) {
 			fNewItems[added] = temp.ItemAtFast(i)->Clone();
 			if (fNewItems[added] == NULL) {
 				// indicate bad object init

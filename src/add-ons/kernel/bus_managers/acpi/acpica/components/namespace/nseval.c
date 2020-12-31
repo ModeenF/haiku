@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -111,6 +111,42 @@
  * United States government or any agency thereof requires an export license,
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
+ *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
  *
  *****************************************************************************/
 
@@ -217,11 +253,17 @@ AcpiNsEvaluate (
 
     /* Get the full pathname to the object, for use in warning messages */
 
-    Info->FullPathname = AcpiNsGetExternalPathname (Info->Node);
+    Info->FullPathname = AcpiNsGetNormalizedPathname (Info->Node, TRUE);
     if (!Info->FullPathname)
     {
         return_ACPI_STATUS (AE_NO_MEMORY);
     }
+
+    /* Optional object evaluation log */
+
+    ACPI_DEBUG_PRINT_RAW ((ACPI_DB_EVALUATION,
+        "%-26s:  %s (%s)\n", "   Enter evaluation",
+        &Info->FullPathname[1], AcpiUtGetTypeName (Info->Node->Type)));
 
     /* Count the number of arguments being passed in */
 
@@ -272,6 +314,7 @@ AcpiNsEvaluate (
      */
     switch (AcpiNsGetType (Info->Node))
     {
+    case ACPI_TYPE_ANY:
     case ACPI_TYPE_DEVICE:
     case ACPI_TYPE_EVENT:
     case ACPI_TYPE_MUTEX:
@@ -279,13 +322,13 @@ AcpiNsEvaluate (
     case ACPI_TYPE_THERMAL:
     case ACPI_TYPE_LOCAL_SCOPE:
         /*
-         * 1) Disallow evaluation of certain object types. For these,
-         *    object evaluation is undefined and not supported.
+         * 1) Disallow evaluation of these object types. For these,
+         *    object evaluation is undefined.
          */
         ACPI_ERROR ((AE_INFO,
-            "%s: Evaluation of object type [%s] is not supported",
-            Info->FullPathname,
-            AcpiUtGetTypeName (Info->Node->Type)));
+            "%s: This object type [%s] "
+            "never contains data and cannot be evaluated",
+            Info->FullPathname, AcpiUtGetTypeName (Info->Node->Type)));
 
         Status = AE_TYPE;
         goto Cleanup;
@@ -392,12 +435,28 @@ AcpiNsEvaluate (
 
         Status = AE_OK;
     }
+    else if (ACPI_FAILURE(Status))
+    {
+        /* If ReturnObject exists, delete it */
+
+        if (Info->ReturnObject)
+        {
+            AcpiUtRemoveReference (Info->ReturnObject);
+            Info->ReturnObject = NULL;
+        }
+    }
 
     ACPI_DEBUG_PRINT ((ACPI_DB_NAMES,
         "*** Completed evaluation of object %s ***\n",
         Info->RelativePathname));
 
 Cleanup:
+    /* Optional object evaluation log */
+
+    ACPI_DEBUG_PRINT_RAW ((ACPI_DB_EVALUATION,
+        "%-26s:  %s\n", "   Exit evaluation",
+        &Info->FullPathname[1]));
+
     /*
      * Namespace was unlocked by the handling AcpiNs* function, so we
      * just free the pathname and return
@@ -420,6 +479,17 @@ Cleanup:
  * DESCRIPTION: Execute all elements of the global module-level code list.
  *              Each element is executed as a single control method.
  *
+ * NOTE: With this option enabled, each block of detected executable AML
+ * code that is outside of any control method is wrapped with a temporary
+ * control method object and placed on a global list. The methods on this
+ * list are executed below.
+ *
+ * This function executes the module-level code for all tables only after
+ * all of the tables have been loaded. It is a legacy option and is
+ * not compatible with other ACPI implementations. See AcpiNsLoadTable.
+ *
+ * This function will be removed when the legacy option is removed.
+ *
  ******************************************************************************/
 
 void
@@ -440,6 +510,9 @@ AcpiNsExecModuleCodeList (
     Next = AcpiGbl_ModuleCodeList;
     if (!Next)
     {
+        ACPI_DEBUG_PRINT ((ACPI_DB_INIT_NAMES,
+            "Legacy MLC block list is empty\n"));
+
         return_VOID;
     }
 
@@ -469,7 +542,7 @@ AcpiNsExecModuleCodeList (
         AcpiUtRemoveReference (Prev);
     }
 
-    ACPI_INFO ((AE_INFO,
+    ACPI_INFO ((
         "Executed %u blocks of module-level executable AML code",
         MethodCount));
 
@@ -513,8 +586,8 @@ AcpiNsExecModuleCode (
      * Get the parent node. We cheat by using the NextObject field
      * of the method object descriptor.
      */
-    ParentNode = ACPI_CAST_PTR (ACPI_NAMESPACE_NODE,
-                    MethodObj->Method.NextObject);
+    ParentNode = ACPI_CAST_PTR (
+        ACPI_NAMESPACE_NODE, MethodObj->Method.NextObject);
     Type = AcpiNsGetType (ParentNode);
 
     /*
@@ -540,9 +613,9 @@ AcpiNsExecModuleCode (
     Info->PrefixNode = ParentNode;
 
     /*
-     * Get the currently attached parent object. Add a reference, because the
-     * ref count will be decreased when the method object is installed to
-     * the parent node.
+     * Get the currently attached parent object. Add a reference,
+     * because the ref count will be decreased when the method object
+     * is installed to the parent node.
      */
     ParentObj = AcpiNsGetAttachedObject (ParentNode);
     if (ParentObj)
@@ -552,8 +625,7 @@ AcpiNsExecModuleCode (
 
     /* Install the method (module-level code) in the parent node */
 
-    Status = AcpiNsAttachObject (ParentNode, MethodObj,
-                ACPI_TYPE_METHOD);
+    Status = AcpiNsAttachObject (ParentNode, MethodObj, ACPI_TYPE_METHOD);
     if (ACPI_FAILURE (Status))
     {
         goto Exit;

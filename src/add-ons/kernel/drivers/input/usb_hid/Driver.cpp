@@ -35,6 +35,26 @@ static mutex sDriverLock;
 static usb_support_descriptor *sSupportDescriptors;
 
 
+usb_support_descriptor gBlackListedDevices[] = {
+	{
+		// temperature sensor which declares itself as a usb hid device
+		0, 0, 0, 0x0c45, 0x7401
+	},
+	{
+		// Silicon Labs EC3 JTAG/C2 probe, declares itself as usb hid
+		0, 0, 0, 0x10c4, 0x8044
+	},
+	{
+		// wacom devices are handled by the dedicated wacom driver
+		0, 0, 0, USB_VENDOR_WACOM, 0
+	}
+
+};
+
+int32 gBlackListedDeviceCount
+	= sizeof(gBlackListedDevices) / sizeof(gBlackListedDevices[0]);
+
+
 // #pragma mark - notify hooks
 
 
@@ -48,9 +68,17 @@ usb_hid_device_added(usb_device device, void **cookie)
 	TRACE("vendor id: 0x%04x; product id: 0x%04x\n",
 		deviceDescriptor->vendor_id, deviceDescriptor->product_id);
 
-	// wacom devices are handled by the dedicated wacom driver
-	if (deviceDescriptor->vendor_id == USB_VENDOR_WACOM)
+	for (int32 i = 0; i < gBlackListedDeviceCount; i++) {
+		usb_support_descriptor &entry = gBlackListedDevices[i];
+		if ((entry.vendor != 0
+				&& deviceDescriptor->vendor_id != entry.vendor)
+			|| (entry.product != 0
+				&& deviceDescriptor->product_id != entry.product)) {
+			continue;
+		}
+
 		return B_ERROR;
+	}
 
 	const usb_configuration_info *config
 		= gUSBModule->get_nth_configuration(device, USB_DEFAULT_CONFIGURATION);
@@ -200,7 +228,7 @@ usb_hid_device_removed(void *cookie)
 static status_t
 usb_hid_open(const char *name, uint32 flags, void **_cookie)
 {
-	TRACE("open(%s, %lu, %p)\n", name, flags, _cookie);
+	TRACE("open(%s, %" B_PRIu32 ", %p)\n", name, flags, _cookie);
 
 	device_cookie *cookie = new(std::nothrow) device_cookie();
 	if (cookie == NULL)
@@ -234,8 +262,8 @@ usb_hid_read(void *_cookie, off_t position, void *buffer, size_t *numBytes)
 {
 	device_cookie *cookie = (device_cookie *)_cookie;
 
-	TRACE("read(%p, %llu, %p, %p (%lu)\n", cookie, position, buffer, numBytes,
-		numBytes != NULL ? *numBytes : 0);
+	TRACE("read(%p, %" B_PRIu64 ", %p, %p (%lu)\n", cookie, position, buffer,
+		numBytes, numBytes != NULL ? *numBytes : 0);
 	return cookie->handler->Read(&cookie->cookie, position, buffer, numBytes);
 }
 
@@ -246,7 +274,7 @@ usb_hid_write(void *_cookie, off_t position, const void *buffer,
 {
 	device_cookie *cookie = (device_cookie *)_cookie;
 
-	TRACE("write(%p, %llu, %p, %p (%lu)\n", cookie, position, buffer, numBytes,
+	TRACE("write(%p, %" B_PRIu64 ", %p, %p (%lu)\n", cookie, position, buffer, numBytes,
 		numBytes != NULL ? *numBytes : 0);
 	return cookie->handler->Write(&cookie->cookie, position, buffer, numBytes);
 }
@@ -257,7 +285,8 @@ usb_hid_control(void *_cookie, uint32 op, void *buffer, size_t length)
 {
 	device_cookie *cookie = (device_cookie *)_cookie;
 
-	TRACE("control(%p, %lu, %p, %lu)\n", cookie, op, buffer, length);
+	TRACE("control(%p, %" B_PRIu32 ", %p, %" B_PRIuSIZE ")\n", cookie, op,
+		buffer, length);
 	return cookie->handler->Control(&cookie->cookie, op, buffer, length);
 }
 

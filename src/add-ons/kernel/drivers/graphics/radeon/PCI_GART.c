@@ -51,13 +51,8 @@ createGARTBuffer(GART_info *gart, size_t size)
 	gart->buffer.area = create_area("Radeon PCI GART buffer",
 		&gart->buffer.ptr, B_ANY_KERNEL_ADDRESS,
 		size, B_FULL_LOCK,
-#ifdef HAIKU_TARGET_PLATFORM_HAIKU
 		// TODO: really user read/write?
-		B_READ_AREA | B_WRITE_AREA | B_USER_CLONEABLE_AREA
-#else
-		0
-#endif
-		);
+		B_READ_AREA | B_WRITE_AREA | B_CLONEABLE_AREA);
 	if (gart->buffer.area < 0) {
 		SHOW_ERROR(1, "cannot create PCI GART buffer (%s)",
 			strerror(gart->buffer.area));
@@ -89,7 +84,7 @@ static status_t createGARTBuffer( GART_info *gart, size_t size )
 	// question: is this necessary for a PCI GART because of bus snooping?
 	gart->buffer.unaligned_area = create_area( "Radeon PCI GART buffer",
 		&unaligned_addr, B_ANY_KERNEL_ADDRESS,
-		2 * size, B_CONTIGUOUS/*B_FULL_LOCK*/, B_READ_AREA | B_WRITE_AREA | B_USER_CLONEABLE_AREA );
+		2 * size, B_CONTIGUOUS/*B_FULL_LOCK*/, B_READ_AREA | B_WRITE_AREA | B_CLONEABLE_AREA );
 		// TODO: Physical aligning can be done without waste using the
 		// private create_area_etc().
 	if (gart->buffer.unaligned_area < 0) {
@@ -155,13 +150,8 @@ static status_t initGATT( GART_info *gart )
 		B_32_BIT_CONTIGUOUS,
 			// TODO: Physical address is cast to 32 bit below! Use B_CONTIGUOUS,
 			// when that is (/can be) fixed!
-#ifdef HAIKU_TARGET_PLATFORM_HAIKU
 		// TODO: really user read/write?
-		B_READ_AREA | B_WRITE_AREA | B_USER_CLONEABLE_AREA
-#else
-		0
-#endif
-		);
+		B_READ_AREA | B_WRITE_AREA | B_CLONEABLE_AREA);
 
 	if (gart->GATT.area < 0) {
 		SHOW_ERROR(1, "cannot create GATT table (%s)",
@@ -190,7 +180,7 @@ static status_t initGATT( GART_info *gart )
 		map_area_size, B_FULL_LOCK, B_READ_AREA | B_WRITE_AREA);
 		// TODO: We actually have a working malloc() in the kernel. Why create
 		// an area?
-	dprintf("pci_gart_map_area: %ld\n", map_area);
+	dprintf("pci_gart_map_area: %" B_PRId32 "\n", map_area);
 
 	get_memory_map( gart->buffer.ptr, gart->buffer.size, map, map_count );
 
@@ -234,7 +224,7 @@ static status_t initGATT( GART_info *gart )
 	// back to real live - some chipsets have write buffers that
 	// proove all previous assumptions wrong
 	// (don't know whether this really helps though)
-	#if defined(__INTEL__)
+	#if defined(__i386__)
 	asm volatile ( "wbinvd" ::: "memory" );
 	#elif defined(__POWERPC__)
 	// TODO : icbi on PowerPC to flush instruction cache?

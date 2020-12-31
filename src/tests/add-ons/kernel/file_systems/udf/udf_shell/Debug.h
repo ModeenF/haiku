@@ -1,10 +1,11 @@
 #ifndef DEBUG_H
 #define DEBUG_H
+#error 8
 /* Debug - debug stuff
 **
 ** Initial version by Axel Dörfler, axeld@pinc-software.de
 ** UDF version by Tyler Dauwalder, tyler@dauwalder.net
-** This file may be used under the terms of the OpenBeOS License.
+** This file may be used under the terms of the MIT License.
 */
 
 #ifdef DEBUG

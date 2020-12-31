@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2015 Haiku, Inc. All rights reserved.
+ * Copyright 2011-2015, 2019 Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -7,8 +7,8 @@
  *		Joseph Groover, looncraz@looncraz.net
  *
  * Corresponds to:
- *		headers/os/interface/View.h	 hrev497**
- *		src/kits/interface/View.cpp	 hrev497**
+ *		headers/os/interface/View.h	 hrev52835
+ *		src/kits/interface/View.cpp	 hrev53446
  */
 
 
@@ -29,6 +29,11 @@
 	\var B_PRIMARY_MOUSE_BUTTON
 	\brief Primary mouse button mask parameter.
 
+	The primary mouse button should be used for main operations (selecting,
+	dragging, or opening objects).
+
+	This maps to B_MOUSE_BUTTON(1).
+
 	\since BeOS R3
 */
 
@@ -36,6 +41,11 @@
 /*!
 	\var B_SECONDARY_MOUSE_BUTTON
 	\brief Secondary mouse button mask parameter.
+
+	The secondary button should be used for additional operations on the
+	pointed objects, such as popup menus.
+
+	This maps to B_MOUSE_BUTTON(2).
 
 	\since BeOS R3
 */
@@ -45,7 +55,24 @@
 	\var B_TERTIARY_MOUSE_BUTTON
 	\brief Tertiary mouse button mask parameter.
 
+	The tertiary button should be used for clipboard paste.
+
+	This maps to B_MOUSE_BUTTON(3).
+
 	\since BeOS R3
+*/
+
+
+/*!
+	\var B_MOUSE_BUTTON(n)
+	\brief Compute mouse button mask for button n
+
+	Buttons are numbered from 1 to 32.
+
+	Some mice may not have more than 2 buttons, so the extra buttons should
+	only be used as shortcuts for actions that can be done in alternative ways.
+
+	\since Haiku R1
 */
 
 
@@ -266,7 +293,7 @@
 
 /*!
 	\var B_WILL_DRAW
-	\brief Indicates that the view will do it's own drawing.
+	\brief Indicates that the view will do its own drawing.
 
 	\since BeOS R3
 */
@@ -308,13 +335,17 @@
 	\var B_SUBPIXEL_PRECISE
 	\brief The view draws with sub-pixel precision.
 
-	\since Haiku R1
+	If this flag is not specified, drawing coordinates will be rounded
+	to the nearest integer.
+
+	\since BeOS R5
 */
 
 
 /*!
 	\var B_DRAW_ON_CHILDREN
-	\brief Indicates that the view responds to the DrawAfterChildren() hook method.
+	\brief Indicates that the view responds to the DrawAfterChildren() hook
+		method.
 
 	\since BeOS R5
 */
@@ -322,16 +353,17 @@
 
 /*!
 	\var B_INPUT_METHOD_AWARE
-	\brief Allows the view to use input method add-ons to gain access to the
-	       input methods needed for Japanese and other languages.
+	\brief Indicates the view understands input method add-ons, as used
+		for complex text input in CJK and other languages.
 
-	\since Haiku R1
+	\since BeOS R5
 */
 
 
 /*!
-	\var _B_RESERVED7_
-	\brief Reserved for future use.
+	\var B_SCROLL_VIEW_AWARE
+	\brief Indicates the view will properly manage scrollbars that
+		have been targeted to it, i.e. update their ranges and proportions.
 
 	\since Haiku R1
 */
@@ -548,7 +580,7 @@
 
 	To create a subclass of BView you generally override one or more of BView's
 	hook methods to respond to user events such as MouseDown() or FrameMoved().
-	By default a BView does nothing in it's hook methods unless otherwise stated,
+	By default a BView does nothing in its hook methods unless otherwise stated,
 	it's up to you to define what happens. To override the look of a BView you
 	should override the Draw() or DrawAfterChildren() methods. See the section on
 	Hook Methods below for more details.
@@ -589,9 +621,9 @@ if (Window()->LockLooper()) {
 	focus view. The color can be queried using the keyboard_navigation_color()
 	function in InterfaceDefs.h
 
-	Each view has it's own coordinate system with the origin point (0.0, 0.0)
+	Each view has its own coordinate system with the origin point (0.0, 0.0)
 	located at the top left corner. You can convert a BPoint or BRect to or from
-	the view's coordinate system to the coordinate system of it's parent, or
+	the view's coordinate system to the coordinate system of its parent, or
 	of the screen's coordinate system. See the section on Coordinate Conversion
 	Methods for more details.
 
@@ -639,7 +671,7 @@ SetViewColor(Parent()->ViewColor());
 	\param name The name of the view, can be \c NULL.
 	\param flags The view flags, a mask of one or more of the following:
 	       - \c B_FULL_UPDATE_ON_RESIZE Redraw the entire view on resize.
-	       - \c B_WILL_DRAW Indicates that the view will do it's own drawing.
+	       - \c B_WILL_DRAW Indicates that the view will do its own drawing.
 	       - \c B_PULSE_NEEDED The view accepts Pulse() messages.
 	       - \c B_NAVIGABLE_JUMP Default for keyboard navigation.
 	       - \c B_FRAME_EVENTS Responds to move and resize events.
@@ -704,7 +736,7 @@ SetViewColor(Parent()->ViewColor());
 	            \c B_FOLLOW_LEFT_RIGHT | \c B_FOLLOW_TOP_BOTTOM.
 	\param flags The view flags, a mask of one or more of the following:
 	       - \c B_FULL_UPDATE_ON_RESIZE Redraw the entire view on resize.
-	       - \c B_WILL_DRAW Indicates that the view will do it's own drawing.
+	       - \c B_WILL_DRAW Indicates that the view will do its own drawing.
 	       - \c B_PULSE_NEEDED The view accepts Pulse() messages.
 	       - \c B_NAVIGABLE_JUMP Default for keyboard navigation.
 	       - \c B_FRAME_EVENTS Responds to move and resize events.
@@ -904,6 +936,15 @@ SetViewColor(Parent()->ViewColor());
 	\param numBytes The number of bytes in \a bytes.
 
 	\since BeOS R3
+*/
+
+
+/*!
+	\fn virtual void BView::LayoutChanged()
+	\brief Hook function that is called when the layout if this view, or one of
+		its children, has changed.
+
+	\since Haiku R1
 */
 
 
@@ -1231,9 +1272,6 @@ SetViewColor(Parent()->ViewColor());
 */
 
 
-//! @}
-
-
 /*!
 	\fn uint32 BView::Flags() const
 	\brief Return the view flags set in the constructor or by SetFlags().
@@ -1313,8 +1351,8 @@ SetViewColor(Parent()->ViewColor());
 	\brief Returns whether or not the view is hidden from the perspective of
 	       \a lookingFrom.
 
-	A view is considered hidden if it, any of it's parent views, or the window
-	it is attached to has had the Hide() method called on it. This method
+	A view is considered hidden if it, any of its parent views, or the window
+	it's attached to has had the Hide() method called on it. This method
 	allows you to determine the hidden status of a view from a different point
 	on the view hierarchy.
 
@@ -1656,7 +1694,18 @@ SetViewColor(Parent()->ViewColor());
 
 
 /*!
-	\fn void BView::ScrollTo(BPoint where)
+	\fn void BView::ScrollTo(float x, float y)
+	\brief Scroll the view to the point specified by coordinates.
+
+	\param x The x-coordinate to scroll the view to.
+	\param y The y-coordinate to scroll the view to.
+
+	\since BeOS R3
+*/
+
+
+/*!
+	\fn virtual void BView::ScrollTo(BPoint where)
 	\brief Scroll the view to the point specified by \a where.
 
 	\param where The location to scroll the view to.
@@ -1833,6 +1882,70 @@ SetViewColor(Parent()->ViewColor());
 
 
 /*!
+	\fn void BView::SetTransform(BAffineTransform transform)
+	\brief Sets a BAffineTransform to transform the coordinate system
+
+	\sa See Transform() to get the current transformations, and TranslateBy(),
+		ScaleBy() and RotateBy() for additional transformation options.
+
+	\since Haiku R1
+*/
+
+
+/*!
+	\fn BAffineTransform BView::Transform() const
+	\brief Returns the current BAffineTransform that is applied to the
+		coordinate system
+
+	\sa SetTransform()
+
+	\since Haiku R1
+*/
+
+
+/*!
+	\fn void BView::TranslateBy(double x, double y)
+	\brief Translate the current view by coordinates.
+
+	The translation of \a x and \a y are applied to the current transformation,
+	not instead of, so it is an additive action.
+
+	\sa See Transform() to get the current transformations, SetTransform(),
+	ScaleBy() and RotateBy() for additional transformation options.
+
+	\since Haiku R1
+*/
+
+
+/*!
+	\fn void BView::ScaleBy(double x, double y)
+	\brief Scale the current view by factors \a x and \a y.
+
+	The scaling with factors \a x and \a y are applied to the current
+	transformation, not instead of, so it is an additive action.
+
+	\sa See Transform() to get the current transformations, SetTransform(),
+	TranslateBy() and RotateBy() for additional transformation options.
+
+	\since Haiku R1
+*/
+
+
+/*!
+	\fn void BView::RotateBy(double angleRadians)
+	\brief Rotate the current view by \a angleRadians.
+
+	The rotation is applied to the current transformation, not instead of, so
+	it is an additive action.
+
+	\sa See Transform() to get the current transformations, SetTransform(),
+	ScaleBy() and TranslateBy() for additional transformation options.
+
+	\since Haiku R1
+*/
+
+
+/*!
 	\fn void BView::SetScale(float scale) const
 	\brief Sets the scale of the coordinate system the view uses for drawing.
 
@@ -1936,6 +2049,38 @@ SetViewColor(Parent()->ViewColor());
 
 
 /*!
+	\fn void BView::SetFillRule(int32 rule)
+	\brief Sets the fill rule for the view.
+
+	A fill rule is a rule that describes an algorithm that is used to find out
+	what the inside of a shape is. The concept comes from the SVG format.
+
+	See <a href="https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/fill-rule">
+	the Mozilla documentation on the fill property of SVG</a> for more
+	information.
+
+	\param rule There are two algorithms: the \c B_NONZERO and the
+		\c B_EVEN_ODD algorithm.
+
+	\since Haiku R1
+*/
+
+
+/*!
+	\fn int32 BView::FillRule() const
+	\brief Return the current fill mode.
+
+	See BView::SetFillRule() for more information.
+
+	\returns Returns \c 0 if no fill rule is applied, \c B_EVEN_ODD when the
+		even-odd algorithm is applied, and \c B_NONZERO if the nonzero
+		algorithm is applied.
+
+	\since Haiku R1
+*/
+
+
+/*!
 	\fn void BView::SetDrawingMode(drawing_mode mode)
 	\brief Sets the drawing mode of the view.
 
@@ -1979,9 +2124,11 @@ SetViewColor(Parent()->ViewColor());
 	\param alphaFunc Set to one of the following:
 	- \c B_ALPHA_OVERLAY Used for drawing a image with transparency over an opaque
 	     background.
-	- \c B_ALPHA_COMPOSITE Used to composite two or more transparent images
+	- \c B_ALPHA_COMPOSITE_* Used to composite two or more transparent images
 	     together offscreen to produce a new image drawn using
-		 \c B_ALPHA_OVERLAY mode.
+	     \c B_ALPHA_OVERLAY mode.
+	\note Modes other than \c B_ALPHA_OVERLAY and \c B_ALPHA_COMPOSITE work
+	      only with \c B_PIXEL_ALPHA.
 
 	\since BeOS R5
 */
@@ -2483,6 +2630,54 @@ SetViewColor(Parent()->ViewColor());
 
 
 /*!
+	\fn void BView::ClipToRect(BRect rect)
+	\brief Intersects the current clipping region of the view with the pixels
+	       of \a rect.
+
+	\param rect The BRect that describes the rectangle to intersect with.
+
+	\since Haiku R1
+*/
+
+
+/*!
+	\fn void BView::ClipToInverseRect(BRect rect)
+	\brief Intersects the current clipping region of the view with the pixels
+	       outside of \a rect.
+
+	\param rect The BRect that describes the rectangle to intersect with.
+
+	\see ClipToRect()
+
+	\since Haiku R1
+*/
+
+
+/*!
+	\fn void BView::ClipToShape(BShape* shape)
+	\brief Intersects the current clipping region of the view with the pixels
+	       of \a shape.
+
+	\param shape The BShape that describes the area to intersect with.
+
+	\since Haiku R1
+*/
+
+
+/*!
+	\fn void BView::ClipToInverseShape(BShape* shape)
+	\brief Intersects the current clipping region of the view with the pixels
+	       outside of \a shape.
+
+	\param shape The BShape that describes the area to intersect with.
+
+	\see ClipToShape()
+
+	\since Haiku R1
+*/
+
+
+/*!
 	\fn void BView::GetClippingRegion(BRegion* region) const
 	\brief Fill out \a region with the view's clipping region.
 
@@ -2537,8 +2732,13 @@ SetViewColor(Parent()->ViewColor());
 	otherwise stated. Notes on specific methods are provided below:
 
 	DrawBitmap()
+	DrawTiledBitmap()
 
-	If the the image is bigger than the destination rectangle, it is scaled to fit.
+	DrawBitmap() scales the image to fit if the image has different size than
+	the destination rectangle.
+
+	DrawTiledBitmap() fills the destination rectangle with copies of the source
+	image, without changing its size.
 
 	The asynchronous versions pass the image to Application Server and return
 	immediately.
@@ -2564,9 +2764,9 @@ SetViewColor(Parent()->ViewColor());
 	DrawString()
 
 	The \a string is drawn in the view's current font and is modified by
-	the other parameters of the font such as it's direction (left-to-right or
+	the other parameters of the font such as its direction (left-to-right or
 	right-to-left), rotation, spacing, shear, etc. The \a string is always drawn
-	left to right even if it's text direction is set to right-to-left mode.
+	left to right even if its text direction is set to right-to-left mode.
 
 	Drawing a string is fastest in \c B_OP_COPY mode and anti-aliasing can
 	produce undesirable effects when a string is draw in other modes, especially
@@ -2583,13 +2783,14 @@ SetViewColor(Parent()->ViewColor());
 	\fn void BView::DrawBitmapAsync(const BBitmap* bitmap, BRect bitmapRect,
 		BRect viewRect, uint32 options)
 	\brief Draws \a bitmap on the view within \a viewRect asynchronously.
+		   \a bitmap portion is scaled to fit \a viewRect.
 
 	\param bitmap The bitmap to draw onto the view.
 	\param bitmapRect The portion of the bitmap to draw in the bitmap's
 	       coordinate system.
 	\param viewRect The area in the view's coordinate system to draw the
 	       bitmap in.
-	\param options ??
+	\param options combination of \a bitmap_drawing_options flags
 
 	\since Haiku R1
 */
@@ -2599,6 +2800,7 @@ SetViewColor(Parent()->ViewColor());
 	\fn void BView::DrawBitmapAsync(const BBitmap* bitmap, BRect bitmapRect,
 		BRect viewRect)
 	\brief Draws \a bitmap on the view within \a viewRect asynchronously.
+		   \a bitmap portion is scaled to fit \a viewRect.
 
 	\param bitmap The bitmap to draw onto the view.
 	\param bitmapRect The portion of the bitmap to draw in the bitmap's
@@ -2613,6 +2815,7 @@ SetViewColor(Parent()->ViewColor());
 /*!
 	\fn void BView::DrawBitmapAsync(const BBitmap* bitmap, BRect viewRect)
 	\brief Draws \a bitmap on the view within \a viewRect asynchronously.
+		   \a bitmap is scaled to fit \a viewRect.
 
 	\param bitmap The bitmap to draw onto the view.
 	\param viewRect The area in the view's coordinate system to draw the
@@ -2646,7 +2849,8 @@ SetViewColor(Parent()->ViewColor());
 /*!
 	\fn void BView::DrawBitmap(const BBitmap* bitmap, BRect bitmapRect,
 		BRect viewRect, uint32 options)
-	\brief brief Draws \a bitmap on the view within \a viewRect.
+	\brief Draws \a bitmap on the view within \a viewRect. \a bitmap portion
+		   is scaled to fit \a viewRect.
 
 	\param bitmap The bitmap to draw onto the view.
 	\param bitmapRect The portion of the bitmap to draw in the bitmap's
@@ -2662,7 +2866,8 @@ SetViewColor(Parent()->ViewColor());
 /*!
 	\fn void BView::DrawBitmap(const BBitmap* bitmap, BRect bitmapRect,
 		BRect viewRect)
-	\brief Draws \a bitmap on the view within \a viewRect.
+	\brief Draws \a bitmap on the view within \a viewRect. \a bitmap portion
+		   is scaled to fit \a viewRect.
 
 	\param bitmap The bitmap to draw onto the view.
 	\param bitmapRect The portion of the bitmap to draw in the bitmap's
@@ -2676,7 +2881,8 @@ SetViewColor(Parent()->ViewColor());
 
 /*!
 	\fn void BView::DrawBitmap(const BBitmap* bitmap, BRect viewRect)
-	\brief Draws \a bitmap on the view within \a viewRect.
+	\brief Draws \a bitmap on the view within \a viewRect. \a bitmap is scaled
+		   to fit \a viewRect.
 
 	\param bitmap The bitmap to draw onto the view.
 	\param viewRect The area in the view's coordinate system to draw the
@@ -2704,6 +2910,37 @@ SetViewColor(Parent()->ViewColor());
 	\param bitmap The bitmap to draw onto the view.
 
 	\since BeOS R3
+*/
+
+
+/*!
+	\fn void BView::DrawTiledBitmapAsync(const BBitmap* bitmap, BRect viewRect,
+		BPoint phase = B_ORIGIN)
+	\brief Draws \a bitmap on the view within \a viewRect asynchronously.
+		   If \a bitmap is smaller, it is cloned to fill remaining space
+		   in \a viewRect.
+
+	\param bitmap The bitmap to draw onto the view.
+	\param viewRect The area in the view's coordinate system to draw the
+	       bitmap in.
+	\param phase Source bitmap offset used as starting point for drawing.
+
+	\since Haiku R1
+*/
+
+
+/*!
+	\fn void BView::DrawTiledBitmap(const BBitmap* bitmap, BRect viewRect,
+		BPoint phase = B_ORIGIN)
+	\brief Draws \a bitmap on the view within \a viewRect. If \a bitmap is
+		   smaller, it is cloned to fill remaining space in \a viewRect.
+
+	\param bitmap The bitmap to draw onto the view.
+	\param viewRect The area in the view's coordinate system to draw the
+	       bitmap in.
+	\param phase Source bitmap offset used as starting point for drawing.
+
+	\since Haiku R1
 */
 
 
@@ -3542,11 +3779,11 @@ SetViewColor(Parent()->ViewColor());
 
 /*!
 	\fn void BView::AddLine(BPoint start, BPoint end, rgb_color color);
-	\brief Add a line to the line array from point \a pt0 to point \a pt1.
+	\brief Add a line to the line array drawn from \a start to \a end.
 
 	\param start The \a start point of the line.
 	\param end The \a end point of the line.
-	\param color The line \a color.
+	\param color The \a color to draw the line.
 
 	\since BeOS R3
 */
@@ -3580,7 +3817,7 @@ SetViewColor(Parent()->ViewColor());
 	The view doesn't display anything to the screen while it's recording to \a
 	picture. Use the DrawPicture() method to render the \a picture.
 
-	Only drawing instructions performed directly on the view, not it's child views
+	Only drawing instructions performed directly on the view, not its child views
 	are send to the BPicture object and BPicture captures only primitive graphics
 	operations. The view must be attached to a window for the drawing instruction
 	to be recorded. Drawing instructions are recorded even if the view is hidden or
@@ -3806,6 +4043,43 @@ SetViewColor(Parent()->ViewColor());
 	       picture.
 
 	\since BeOS R5
+*/
+
+
+/*!
+	\fn void BView::BeginLayer(uint8 opacity)
+	\brief Begins a drawing layer.
+
+	This feature of BView allows you to create a separate layer, draw on it,
+	and blend it in with the rest of the view with a given \a opacity.
+	Internally, the method creates a new drawing buffer, that you can draw on
+	using the methods of BView. After finishing your layer, you call EndLayer()
+	to apply the \a opacity to the layer, and blend it in with the existing
+	drawing.
+
+	You can nest layers, meaning you can call this method while drawing a
+	layer, to create a sublayer. The layers are mixed and blended in order.
+
+	This work was done to support drawing for WebKit.
+
+	\sa EndLayer()
+
+	\since Haiku R1
+*/
+
+
+/*!
+	\fn void BView::EndLayer()
+	\brief Finish a layer and blend it in with the view.
+
+	This is the counterpart to BeginLayer(). You can nest multiple layer. If
+	this method is called and the current layer is nested in another layer, the
+	current layer is applied to the layer above. If this is the only layer, it
+	will directly blend in to the main view.
+
+	\sa BeginLayer()
+
+	\since Haiku R`
 */
 
 
@@ -4106,6 +4380,9 @@ SetViewColor(Parent()->ViewColor());
 	\fn status_t BView::Perform(perform_code code, void* _data)
 	\brief Perform some action. (Internal Method)
 
+	This method is available to allow classes to be extended while maintaining
+	binary compatibility.
+
 	The following perform codes are recognized:
 		- \c PERFORM_CODE_MIN_SIZE:
 		- \c PERFORM_CODE_MAX_SIZE:
@@ -4182,6 +4459,16 @@ SetViewColor(Parent()->ViewColor());
 
 
 /*!
+	\fn virtual BAlignment BView::LayoutAlignment()
+	\brief Return the current BAlignemnt of the view.
+
+	\remark This is only meaningful if the view is part of a BLayout.
+
+	\since Haiku R1
+*/
+
+
+/*!
 	\fn void BView::SetExplicitMinSize(BSize size)
 	\brief Set this view's min size, to be used by MinSize().
 
@@ -4218,12 +4505,105 @@ SetViewColor(Parent()->ViewColor());
 
 
 /*!
+	\fn void BView::SetExplicitSize(BSize size)
+	\brief Set this view's size.
+
+	\remark This is only meaningful if the view is part of a BLayout.
+
+	This is a convenience function that calls both SetExplicitMinSize()
+	and SetExplicitMaxSize() with the \a size parameter.
+
+	\since Haiku R1
+*/
+
+
+/*!
 	\fn void BView::SetExplicitAlignment(BAlignment alignment)
 	\brief Set this view's alignment, to be used by Alignment().
 
 	\remark This is only meaningful if the view is part of a BLayout.
 
 	\sa BAbstractLayout::SetExplicitAlignment()
+
+	\since Haiku R1
+*/
+
+
+/*!
+	\fn BSize BView::ExplicitMinSize() const
+	\brief Returns the explicit minimum size.
+
+	\remark This is only meaningful if the view is part of a BLayout.
+
+	This returns the value that was set by SetExplicitMinSize().
+
+	\since Haiku R1
+*/
+
+
+/*!
+	\fn BSize BView::ExplicitMaxSize() const
+	\brief Returns the explicit maximum size.
+
+	\remark This is only meaningful if the view is part of a BLayout.
+
+	This returns the value that was set by SetExplicitMaxSize().
+
+	\since Haiku R1
+*/
+
+
+/*!
+	\fn BSize BView::ExplicitPreferredSize() const
+	\brief Returns the explicit preferred size.
+
+	\remark This is only meaningful if the view is part of a BLayout.
+
+	This returns the value that was set by SetExplicitPreferredSize().
+
+	\since Haiku R1
+*/
+
+
+/*!
+	\fn BSize BView::ExplicitAlignment() const
+	\brief Returns the explicit alignment size.
+
+	\remark This is only meaningful if the view is part of a BLayout.
+
+	This returns the value that was set by SetExplicitAlignment().
+
+	\since Haiku R1
+*/
+
+
+/*!
+	\fn bool BView::HasHeightForWidth()
+	\brief Returns whether the layout of the view can calculate a height for a
+		given width.
+
+	\remark This is only meaningful if the view is part of a BLayout.
+
+	Use GetHeightForWidth() to actually get the preferred size.
+
+	\returns \c true if the height values can be calculated, \c false if they
+		cannot.
+
+	\since Haiku R1
+*/
+
+
+/*!
+	\fn virtual void BView::GetHeightForWidth(float width, float* min,
+		float* max, float* preferred)
+	\brief Returns the min, max and preferred height for a given width.
+
+	\remark This is only meaningful if the view is part of a BLayout.
+
+	\param[in] width The width you want the height to be calculated for.
+	\param[out] min The minimum height that the layout will request.
+	\param[out] max The maximum height that the layout will request.
+	\param[out] preferred The preferred height for this \a width.
 
 	\since Haiku R1
 */
@@ -4301,7 +4681,7 @@ SetViewColor(Parent()->ViewColor());
 
 	\remark This is only meaningful if the view is part of a BLayout.
 
-	\brief Returns \c true if the layout is valid, \c false otherwise.
+	\returns Returns \c true if the layout is valid, \c false otherwise.
 
 	\since Haiku R1
 */
@@ -4319,6 +4699,16 @@ SetViewColor(Parent()->ViewColor());
 	obsolete without the layout noticing.
 
 	This is only meaningful if the view is part of a BLayout.
+
+	\since Haiku R1
+*/
+
+
+/*!
+	\fn BLayoutContext* BView::LayoutContext() const
+	\brief Returns the BLayoutContext for this View.
+
+	\remark This is only meaningful if the view is part of a BLayout.
 
 	\since Haiku R1
 */

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2007-2009 Sam Leffler, Errno Consulting
  * Copyright (c) 2007-2009 Marvell Semiconductor, Inc.
  * All rights reserved.
@@ -30,7 +32,7 @@
 
 #include <sys/cdefs.h>
 #ifdef __FreeBSD__
-__FBSDID("$FreeBSD$");
+__FBSDID("$FreeBSD: releng/12.0/sys/dev/mwl/if_mwl_pci.c 326255 2017-11-27 14:52:40Z pfg $");
 #endif
 
 /*
@@ -42,6 +44,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
+#include <sys/malloc.h>
+#include <sys/mbuf.h>
 #include <sys/mutex.h>
 #include <sys/errno.h>
 
@@ -52,9 +56,11 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/socket.h>
  
+#include <net/ethernet.h>
 #include <net/if.h>
 #include <net/if_media.h>
 #include <net/if_arp.h>
+#include <net/route.h>
 
 #include <net80211/ieee80211_var.h>
 
@@ -175,9 +181,9 @@ mwl_pci_attach(device_t dev)
 			       BUS_SPACE_MAXADDR_32BIT,	/* lowaddr */
 			       BUS_SPACE_MAXADDR,	/* highaddr */
 			       NULL, NULL,		/* filter, filterarg */
-			       BUS_SPACE_MAXADDR,	/* maxsize */
+			       BUS_SPACE_MAXSIZE,	/* maxsize */
 			       MWL_TXDESC,		/* nsegments */
-			       BUS_SPACE_MAXADDR,	/* maxsegsize */
+			       BUS_SPACE_MAXSIZE,	/* maxsegsize */
 			       0,			/* flags */
 			       NULL,			/* lockfunc */
 			       NULL,			/* lockarg */

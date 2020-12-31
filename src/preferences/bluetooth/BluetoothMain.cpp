@@ -8,6 +8,7 @@
 #include <Catalog.h>
 #include <MessageRunner.h>
 #include <Roster.h>
+#include <private/interface/AboutWindow.h>
 
 #include "BluetoothMain.h"
 #include "BluetoothWindow.h"
@@ -17,8 +18,9 @@
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "main"
 
-BluetoothApplication::BluetoothApplication(void)
- :	BApplication(BLUETOOTH_APP_SIGNATURE)
+BluetoothApplication::BluetoothApplication()
+	:
+	BApplication(BLUETOOTH_APP_SIGNATURE)
 {
 }
 
@@ -27,20 +29,16 @@ void
 BluetoothApplication::ReadyToRun()
 {
 	if (!be_roster->IsRunning(BLUETOOTH_SIGNATURE)) {
-		BAlert* alert = new BAlert("bluetooth_server not running",
-			B_TRANSLATE("bluetooth_server has not been found running on the "
-			"system. Should be started, or stay offline"),
-			B_TRANSLATE("Work offline"), B_TRANSLATE("Quit"),
-			B_TRANSLATE("Start please"), B_WIDTH_AS_USUAL,
-			B_WARNING_ALERT);
-		alert->SetShortcut(2, B_ESCAPE);
+		BAlert* alert = new BAlert("Services not running",
+			B_TRANSLATE("The Bluetooth services are not currently running "
+				"on this system."),
+			B_TRANSLATE("Launch now"), B_TRANSLATE("Quit"), "",
+			B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+		alert->SetShortcut(1, B_ESCAPE);
 		int32 choice = alert->Go();
 
-
 		switch (choice) {
-			case 1:
-				PostMessage(B_QUIT_REQUESTED);
-			case 2:
+			case 0:
 			{
 				status_t error;
 				error = be_roster->Launch(BLUETOOTH_SIGNATURE);
@@ -53,7 +51,11 @@ BluetoothApplication::ReadyToRun()
 				// when it's ready and you could just create window
 				BMessageRunner::StartSending(be_app_messenger,
 					new BMessage('Xtmp'), 2 * 1000000, 1);
+				break;
 			}
+			case 1:
+				PostMessage(B_QUIT_REQUESTED);
+				break;
 		}
 
 		return;
@@ -84,6 +86,7 @@ BluetoothApplication::MessageReceived(BMessage* message)
 
 		default:
 			BApplication::MessageReceived(message);
+			break;
 	}
 }
 
@@ -91,48 +94,46 @@ BluetoothApplication::MessageReceived(BMessage* message)
 void
 BluetoothApplication::AboutRequested()
 {
-	BAlert* alert = new BAlert("about", B_TRANSLATE(
-							"Haiku Bluetooth system, (ARCE)\n\n"
-							"Created by Oliver Ruiz Dorantes\n\n"
-							"With support of:\n"
-							"	- Mika Lindqvist\n"
-							"	- Adrien Destugues\n"
-							"	- Maksym Yevmenkin\n\n"
-							"Thanks to the individuals who helped...\n\n"
-							"Shipping/donating hardware:\n"
-							"	- Henry Jair Abril Florez (el Colombian)\n"
-							"		& Stefanie Bartolich\n"
-							"	- Edwin Erik Amsler\n"
-							"	- Dennis d'Entremont\n"
-							"	- Luroh\n"
-							"	- Pieter Panman\n\n"
-							"Economically:\n"
-							"	- Karl vom Dorff, Andrea Bernardi (OSDrawer),\n"
-							"	- Matt M, Doug F, Hubert H,\n"
-							"	- Sebastian B, Andrew M, Jared E,\n"
-							"	- Frederik H, Tom S, Ferry B,\n"
-							"	- Greg G, David F, Richard S, Martin W:\n\n"
-							"With patches:\n"
-							"	- Michael Weirauch\n"
-							"	- Fredrik Ekdahl\n"
-							"	- Raynald Lesieur\n"
-							"	- Andreas Färber\n"
-							"	- Joerg Meyer\n"
-							"Testing:\n"
-							"	- Petter H. Juliussen\n"
-							"Who gave me all the knowledge:\n"
-							"	- the yellowTAB team"),
-						B_TRANSLATE("OK"));
-	alert->SetFlags(alert->Flags() | B_CLOSE_ON_ESCAPE);
-	alert->Go();
+	BAboutWindow* about = new BAboutWindow("Bluetooth", BLUETOOTH_APP_SIGNATURE);
+	about->AddCopyright(2010, "Oliver Ruiz Dorantes");
+	about->AddText(B_TRANSLATE(
+		"With support of:\n"
+		" - Mika Lindqvist\n"
+		" - Adrien Destugues\n"
+		" - Maksym Yevmenkin\n\n"
+		"Thanks to the individuals who helped" B_UTF8_ELLIPSIS "\n\n"
+		"Shipping/donating hardware:\n"
+		" - Henry Jair Abril Florez (el Colombian)\n"
+		"	& Stefanie Bartolich\n"
+		" - Edwin Erik Amsler\n"
+		" - Dennis d'Entremont\n"
+		" - Luroh\n"
+		" - Pieter Panman\n\n"
+		"Economically:\n"
+		" - Karl vom Dorff, Andrea Bernardi (OSDrawer),\n"
+		" - Matt M, Doug F, Hubert H,\n"
+		" - Sebastian B, Andrew M, Jared E,\n"
+		" - Frederik H, Tom S, Ferry B,\n"
+		" - Greg G, David F, Richard S, Martin W:\n\n"
+		"With patches:\n"
+		" - Michael Weirauch\n"
+		" - Fredrik Ekdahl\n"
+		" - Raynald Lesieur\n"
+		" - Andreas Färber\n"
+		" - Joerg Meyer\n"
+		"Testing:\n"
+		" - Petter H. Juliussen\n"
+		"Who gave me all the knowledge:\n"
+		" - the yellowTAB team"));
+	about->Show();
 }
 
 
 int
 main(int, char**)
 {
-	BluetoothApplication myApplication;
-	myApplication.Run();
+	BluetoothApplication app;
+	app.Run();
 
 	return 0;
 }

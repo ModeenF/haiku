@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/sockio.h>
 #include <unistd.h>
 
 #include <Message.h>
@@ -24,6 +25,12 @@
 #include <NetworkRoster.h>
 
 #include <NetServer.h>
+
+extern "C" {
+#	include <freebsd_network/compat/sys/cdefs.h>
+#	include <freebsd_network/compat/sys/ioccom.h>
+#	include <net80211/ieee80211_ioctl.h>
+}
 
 #include "MediaTypes.h"
 
@@ -90,7 +97,7 @@ usage(int status)
 		printf("\n");
 	}
 	printf("And <flags> can be: up, down, [-]promisc, [-]allmulti, [-]bcast, "
-			"loopback\n"
+			"[-]ht, loopback\n"
 		"If you specify \"auto-config\" instead of an address, it will be "
 			"configured automatically.\n\n"
 		"Example:\n"
@@ -274,17 +281,33 @@ configure_wireless(const char* name, char* const* args, int32 argCount)
 {
 	enum {
 		NONE,
+		SCAN,
 		LIST,
 		JOIN,
-		LEAVE
+		LEAVE,
+		CONTROL
 	} mode = NONE;
 
-	if (!strcmp(args[0], "list") || !strcmp(args[0], "scan"))
+	int controlOption = -1;
+	int controlValue = -1;
+
+	if (!strcmp(args[0], "scan"))
+		mode = SCAN;
+	else if (!strcmp(args[0], "list"))
 		mode = LIST;
 	else if (!strcmp(args[0], "join"))
 		mode = JOIN;
 	else if (!strcmp(args[0], "leave"))
 		mode = LEAVE;
+	else if (!strcmp(args[0], "ht")) {
+		mode = CONTROL;
+		controlOption = IEEE80211_IOC_HTCONF;
+		controlValue = 3;
+	} else if (!strcmp(args[0], "-ht")) {
+		mode = CONTROL;
+		controlOption = IEEE80211_IOC_HTCONF;
+		controlValue = 0;
+	}
 
 	if (mode == NONE)
 		return false;
@@ -304,6 +327,16 @@ configure_wireless(const char* name, char* const* args, int32 argCount)
 	argCount--;
 
 	switch (mode) {
+		case SCAN:
+		{
+			status_t status = device.Scan(true, true);
+			if (status != B_OK) {
+				fprintf(stderr, "%s: Scan on \"%s\" failed: %s\n", kProgramName,
+					name, strerror(status));
+				exit(1);
+			}
+			// fall through
+		}
 		case LIST:
 		{
 			// list wireless network(s)
@@ -387,6 +420,21 @@ configure_wireless(const char* name, char* const* args, int32 argCount)
 			if (status != B_OK) {
 				fprintf(stderr, "%s: Leaving network failed: %s\n",
 					kProgramName, strerror(status));
+				exit(1);
+			}
+			break;
+		}
+
+		case CONTROL:
+		{
+			ieee80211req request;
+			memset(&request, 0, sizeof(request));
+			request.i_type = controlOption;
+			request.i_val = controlValue;
+			status_t status = device.Control(SIOCS80211, &request);
+			if (status != B_OK) {
+				fprintf(stderr, "%s: Control failed: %s\n", kProgramName,
+					strerror(status));
 				exit(1);
 			}
 			break;

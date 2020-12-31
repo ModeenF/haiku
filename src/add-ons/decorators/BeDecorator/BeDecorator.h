@@ -26,13 +26,14 @@ public:
 
 protected:
 	virtual Decorator*			_AllocateDecorator(DesktopSettings& settings,
-									BRect rect);
+									BRect rect, Desktop* desktop);
 };
 
 
 class BeDecorator: public SATDecorator {
 public:
-								BeDecorator(DesktopSettings& settings, BRect frame);
+								BeDecorator(DesktopSettings& settings,
+									BRect frame, Desktop* desktop);
 	virtual						~BeDecorator();
 
 	virtual	void				GetComponentColors(Component component,
@@ -68,9 +69,18 @@ private:
 			ServerBitmap*		_GetBitmapForButton(Decorator::Tab* tab,
 									Component item, bool down, int32 width,
 									int32 height);
+			ServerBitmap* 		_CreateTemporaryBitmap(BRect bounds) const;
 			void				_GetComponentColors(Component component,
 									ComponentColors _colors,
 									Decorator::Tab* tab = NULL);
+
+private:
+			status_t			fCStatus;
+
+			ServerBitmap*		fCloseBitmap;
+			ServerBitmap*		fBigZoomBitmap;
+			ServerBitmap*		fSmallZoomBitmap;
+			ServerBitmap*		fGlintBitmap;
 };
 
 

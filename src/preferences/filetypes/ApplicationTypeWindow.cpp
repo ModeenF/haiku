@@ -54,6 +54,8 @@ const uint32 kMsgAppFlagsChanged = 'afch';
 const uint32 kMsgIconChanged = 'icch';
 const uint32 kMsgTypeIconsChanged = 'tich';
 
+const uint32 kMsgVersionInfoChanged = 'tvch';
+
 const uint32 kMsgTypeSelected = 'tpsl';
 const uint32 kMsgAddType = 'adtp';
 const uint32 kMsgTypeAdded = 'tpad';
@@ -64,15 +66,20 @@ const uint32 kMsgTypeRemoved = 'tprm';
 //! TextView that filters the tab key to be able to tab-navigate while editing
 class TabFilteringTextView : public BTextView {
 public:
-								TabFilteringTextView(const char* name);
+								TabFilteringTextView(const char* name,
+									uint32 changedMessageWhat = 0);
 	virtual						~TabFilteringTextView();
 
+	virtual void				InsertText(const char* text, int32 length,
+									int32 offset, const text_run_array* runs);
+	virtual	void				DeleteText(int32 fromOffset, int32 toOffset);
 	virtual	void				KeyDown(const char* bytes, int32 count);
 	virtual	void				TargetedByScrollView(BScrollView* scroller);
 	virtual	void				MakeFocus(bool focused = true);
 
 private:
 			BScrollView*		fScrollView;
+			uint32				fChangedMessageWhat;
 };
 
 
@@ -112,16 +119,37 @@ public:
 // #pragma mark -
 
 
-TabFilteringTextView::TabFilteringTextView(const char* name)
+TabFilteringTextView::TabFilteringTextView(const char* name,
+	uint32 changedMessageWhat)
 	:
 	BTextView(name, B_WILL_DRAW | B_PULSE_NEEDED | B_NAVIGABLE),
-	fScrollView(NULL)
+	fScrollView(NULL),
+	fChangedMessageWhat(changedMessageWhat)
 {
 }
 
 
 TabFilteringTextView::~TabFilteringTextView()
 {
+}
+
+
+void
+TabFilteringTextView::InsertText(const char* text, int32 length, int32 offset,
+	const text_run_array* runs)
+{
+	BTextView::InsertText(text, length, offset, runs);
+	if (fChangedMessageWhat != 0)
+		Window()->PostMessage(fChangedMessageWhat);
+}
+
+
+void
+TabFilteringTextView::DeleteText(int32 fromOffset, int32 toOffset)
+{
+	BTextView::DeleteText(fromOffset, toOffset);
+	if (fChangedMessageWhat != 0)
+		Window()->PostMessage(fChangedMessageWhat);
 }
 
 
@@ -302,8 +330,8 @@ ApplicationTypeWindow::ApplicationTypeWindow(BPoint position,
 
 	// Signature
 
-	fSignatureControl = new BTextControl(B_TRANSLATE("Signature:"), NULL,
-		new BMessage(kMsgSignatureChanged));
+	fSignatureControl = new BTextControl("signature",
+		B_TRANSLATE("Signature:"), NULL, new BMessage(kMsgSignatureChanged));
 	fSignatureControl->SetModificationMessage(
 		new BMessage(kMsgSignatureChanged));
 
@@ -396,30 +424,40 @@ ApplicationTypeWindow::ApplicationTypeWindow(BPoint position,
 	BBox* versionBox = new BBox("versionBox");
 	versionBox->SetLabel(B_TRANSLATE("Version info"));
 
-	fMajorVersionControl = new BTextControl(B_TRANSLATE("Version:"),
-		NULL, NULL);
+	fMajorVersionControl = new BTextControl("version major",
+		B_TRANSLATE("Version:"), NULL, new BMessage(kMsgVersionInfoChanged));
 	_MakeNumberTextControl(fMajorVersionControl);
 
-	fMiddleVersionControl = new BTextControl(".", NULL, NULL);
+	fMiddleVersionControl = new BTextControl("version middle", ".", NULL,
+		new BMessage(kMsgVersionInfoChanged));
 	_MakeNumberTextControl(fMiddleVersionControl);
 
-	fMinorVersionControl = new BTextControl(".", NULL, NULL);
+	fMinorVersionControl = new BTextControl("version minor", ".", NULL,
+		new BMessage(kMsgVersionInfoChanged));
 	_MakeNumberTextControl(fMinorVersionControl);
 
 	fVarietyMenu = new BPopUpMenu("variety", true, true);
-	fVarietyMenu->AddItem(new BMenuItem(B_TRANSLATE("Development"), NULL));
-	fVarietyMenu->AddItem(new BMenuItem(B_TRANSLATE("Alpha"), NULL));
-	fVarietyMenu->AddItem(new BMenuItem(B_TRANSLATE("Beta"), NULL));
-	fVarietyMenu->AddItem(new BMenuItem(B_TRANSLATE("Gamma"), NULL));
-	item = new BMenuItem(B_TRANSLATE("Golden master"), NULL);
+	fVarietyMenu->AddItem(new BMenuItem(B_TRANSLATE("Development"),
+		new BMessage(kMsgVersionInfoChanged)));
+	fVarietyMenu->AddItem(new BMenuItem(B_TRANSLATE("Alpha"),
+		new BMessage(kMsgVersionInfoChanged)));
+	fVarietyMenu->AddItem(new BMenuItem(B_TRANSLATE("Beta"),
+		new BMessage(kMsgVersionInfoChanged)));
+	fVarietyMenu->AddItem(new BMenuItem(B_TRANSLATE("Gamma"),
+		new BMessage(kMsgVersionInfoChanged)));
+	item = new BMenuItem(B_TRANSLATE("Golden master"),
+		new BMessage(kMsgVersionInfoChanged));
 	fVarietyMenu->AddItem(item);
 	item->SetMarked(true);
-	fVarietyMenu->AddItem(new BMenuItem(B_TRANSLATE("Final"), NULL));
+	fVarietyMenu->AddItem(new BMenuItem(B_TRANSLATE("Final"),
+		new BMessage(kMsgVersionInfoChanged)));
 
 	BMenuField* varietyField = new BMenuField("", fVarietyMenu);
-	fInternalVersionControl = new BTextControl("/", NULL, NULL);
-	fShortDescriptionControl =
-		new BTextControl(B_TRANSLATE("Short description:"), NULL, NULL);
+	fInternalVersionControl = new BTextControl("version internal", "/", NULL,
+		new BMessage(kMsgVersionInfoChanged));
+	fShortDescriptionControl = new BTextControl("short description",
+		B_TRANSLATE("Short description:"), NULL,
+		new BMessage(kMsgVersionInfoChanged));
 
 	// TODO: workaround for a GCC 4.1.0 bug? Or is that really what the standard says?
 	version_info versionInfo;
@@ -429,7 +467,8 @@ ApplicationTypeWindow::ApplicationTypeWindow(BPoint position,
 	BStringView* longLabel = new BStringView(NULL,
 		B_TRANSLATE("Long description:"));
 	longLabel->SetExplicitAlignment(labelAlignment);
-	fLongDescriptionView = new TabFilteringTextView("long desc");
+	fLongDescriptionView = new TabFilteringTextView("long desc",
+		kMsgVersionInfoChanged);
 	fLongDescriptionView->SetMaxBytes(sizeof(versionInfo.long_info));
 
 	scrollView = new BScrollView("desc scrollview", fLongDescriptionView,
@@ -444,24 +483,23 @@ ApplicationTypeWindow::ApplicationTypeWindow(BPoint position,
 	// TODO: the same does not work when applied to the layout items
 	float width = be_plain_font->StringWidth("99") + 16;
 	fMajorVersionControl->TextView()->SetExplicitMinSize(
-		BSize(width, fMajorVersionControl->MinSize().height));
+		BSize(width, B_SIZE_UNSET));
 	fMiddleVersionControl->TextView()->SetExplicitMinSize(
-		BSize(width, fMiddleVersionControl->MinSize().height));
+		BSize(width, B_SIZE_UNSET));
 	fMinorVersionControl->TextView()->SetExplicitMinSize(
-		BSize(width, fMinorVersionControl->MinSize().height));
+		BSize(width, B_SIZE_UNSET));
 	fInternalVersionControl->TextView()->SetExplicitMinSize(
-		BSize(width, fInternalVersionControl->MinSize().height));
+		BSize(width, B_SIZE_UNSET));
 
 	BLayoutBuilder::Grid<>(versionBox, padding / 2, padding / 2)
 		.SetInsets(padding, padding * 2, padding, padding)
-		.Add(fMajorVersionControl->CreateLabelLayoutItem(), 0, 0)
-		.Add(fMajorVersionControl->CreateTextViewLayoutItem(), 1, 0)
+		.AddTextControl(fMajorVersionControl, 0, 0)
 		.Add(fMiddleVersionControl, 2, 0, 2)
 		.Add(fMinorVersionControl, 4, 0, 2)
 		.Add(varietyField, 6, 0, 3)
 		.Add(fInternalVersionControl, 9, 0, 2)
-		.Add(fShortDescriptionControl->CreateLabelLayoutItem(), 0, 1)
-		.Add(fShortDescriptionControl->CreateTextViewLayoutItem(), 1, 1, 10)
+		.AddTextControl(fShortDescriptionControl, 0, 1,
+			B_ALIGN_HORIZONTAL_UNSET, 1, 10)
 		.Add(longLabel, 0, 2)
 		.Add(scrollView, 1, 2, 10, 3)
 		.SetRowWeight(3, 3);
@@ -866,14 +904,6 @@ ApplicationTypeWindow::_VersionInfo() const
 
 
 void
-ApplicationTypeWindow::FrameResized(float width, float height)
-{
-	// This works around a flaw of BTextView
-	fLongDescriptionView->SetTextRect(fLongDescriptionView->Bounds());
-}
-
-
-void
 ApplicationTypeWindow::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
@@ -898,6 +928,10 @@ ApplicationTypeWindow::MessageReceived(BMessage* message)
 		case kMsgTypeIconsChanged:
 			fOriginalInfo.typeIconsChanged = true;
 			_CheckSaveMenuItem(CHECK_TYPE_ICONS);
+			break;
+
+		case kMsgVersionInfoChanged:
+			_CheckSaveMenuItem(CHECK_VERSION);
 			break;
 
 		case kMsgSave:

@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en-US" xml:lang="en-US">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="zh-CN" xml:lang="zh-CN">
 <head>
 <!-- 
  *
- * Copyright 2008-2015, Haiku. All rights reserved.
+ * Copyright 2008-2017, Haiku. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
  *		Humdinger <humdingerb@gmail.com>
  * Translators:
- *		Pengphei Han
  *		dill
+ *		Pengphei Han
  *
 -->
 	<meta http-equiv="content-type" content="text/html; charset=utf-8" />
@@ -20,6 +20,7 @@
 	<meta name="robots" content="all" />
 	<title>应用程序
 </title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<link rel="stylesheet" type="text/css" href="../Haiku-doc.css" />
 </head>
 <body>
@@ -31,23 +32,27 @@
 <div class="nav">
 <div class="inner">
 <ul class="lang-menu">
-<li class="now"><img src="../images/flags/zh_CN.png" alt="" />  中文 ［中文］</li>
-<li><a href="../fr/applications.html"><img src="../images/flags/fr.png" alt="" />Français</a></li>
-<li><a href="../de/applications.html"><img src="../images/flags/de.png" alt="" />Deutsch</a></li>
-<li><a href="../it/applications.html"><img src="../images/flags/it.png" alt="" />Italiano</a></li>
-<li><a href="../ru/applications.html"><img src="../images/flags/ru.png" alt="" />Русский</a></li>
-<li><a href="../es/applications.html"><img src="../images/flags/es.png" alt="" />Español</a></li>
-<li><a href="../sv_SE/applications.html"><img src="../images/flags/sv_SE.png" alt="" />Svenska</a></li>
-<li><a href="../jp/applications.html"><img src="../images/flags/jp.png" alt="" />日本語</a></li>
-<li><a href="../uk/applications.html"><img src="../images/flags/uk.png" alt="" />Українська</a></li>
-<li><a href="../pt_PT/applications.html"><img src="../images/flags/pt_PT.png" alt="" />Português</a></li>
-<li><a href="../fi/applications.html"><img src="../images/flags/fi.png" alt="" />Suomi</a></li>
-<li><a href="../sk/applications.html"><img src="../images/flags/sk.png" alt="" />Slovenčina</a></li>
-<li><a href="../hu/applications.html"><img src="../images/flags/hu.png" alt="" />Magyar</a></li>
-<li><a href="../pt_BR/applications.html"><img src="../images/flags/pt_BR.png" alt="" />Português (Brazil)</a></li>
-<li><a href="../ca/applications.html"><img src="../images/flags/ca.png" alt="" />Català</a></li>
-<li><a href="../pl/applications.html"><img src="../images/flags/pl.png" alt="" />Polski</a></li>
-<li><a href="../en/applications.html"><img src="../images/flags/gb.png" alt="" />English</a></li>
+<li class="now"> 中文 ［中文］&nbsp;<span class="dropdown-caret">&#9660;</span></li>
+<li><a href="../id/applications.html">Bahasa Indonesia</a></li>
+<li><a href="../ca/applications.html">Català</a></li>
+<li><a href="../de/applications.html">Deutsch</a></li>
+<li><a href="../en/applications.html">English</a></li>
+<li><a href="../es/applications.html">Español</a></li>
+<li><a href="../fr/applications.html">Français</a></li>
+<li><a href="../fur/applications.html">Furlan</a></li>
+<li><a href="../it/applications.html">Italiano</a></li>
+<li><a href="../hu/applications.html">Magyar</a></li>
+<li><a href="../pl/applications.html">Polski</a></li>
+<li><a href="../pt_PT/applications.html">Português</a></li>
+<li><a href="../pt_BR/applications.html">Português (Brazil)</a></li>
+<li><a href="../ro/applications.html">Română</a></li>
+<li><a href="../sk/applications.html">Slovenčina</a></li>
+<li><a href="../fi/applications.html">Suomi</a></li>
+<li><a href="../sv_SE/applications.html">Svenska</a></li>
+<li><a href="../tr/applications.html">Türkçe</a></li>
+<li><a href="../ru/applications.html">Русский</a></li>
+<li><a href="../uk/applications.html">Українська</a></li>
+<li><a href="../jp/applications.html">日本語</a></li>
 </ul>
 <span>
  «  <a href="workshop-filetypes+attributes.html">操作讲解</a> 
@@ -58,30 +63,29 @@
 
 <div id="content">
 <div>
-<div class="box-info">本节的翻译还未完成。在未完成之前，所有的未完成部分都将使用英语原文。</div>
 
 <h1>应用程序
 </h1>
 
 <p>在深入了解 Haiku 系统内置应用程序之前，我们需要对如何进行程序的安装和卸载进行一个详细的了解。木钱，最方便的查询，安装，更新以及卸载程序的方式是通过 Haiku 的包管理系统。由于 Haiku 保持了对其启蒙系统 BeOS 的二进制和源代码的兼容，您可能会发现原有的压缩档（.zip 和 .pkg）仍然可以进行程序安装。</p>
-<div class="box-info">Below you'll always find the <tt>/system/</tt> hierarchy of the mentioned. If you intend to install packages only for a single user (once Haiku becomes multi-user aware), you should use the mirrored filesystem hierarchy under home: <tt>~/config/</tt>. See topic <a href="filesystem-layout.html">Filesystem layout</a> for more information.</div>
+<div class="box-info">在下面的指南中，您可能会发现 <tt>/system/</tt>  目录经常被提及。如果您希望仅为单个用户（在 Haiku 成为多用户系统后）安装软件包，您应该使用 Home 目录下映射的文件系统目录： <tt>~/config/</tt>。更多信息请参考 <a href="filesystem-layout.html">文件系统布局</a> 。</div>
 
 <h2>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="hpkg" name="hpkg">Haiku 软件包 (.hpkg)</a></h2>
-<p>The simplest way is to use <a href="applications/haikudepot.html">HaikuDepot</a> to find, download and automatically install and uninstall a package. If you have downloaded a package from somewhere else — maybe because it's not (yet) in a public repository — just double-click it to open in HaikuDepot and install from there.</p>
-<p>You'll find the newly installed application in <tt>/system/apps/</tt> or, in case of a commandline application, in <tt>/system/bin/</tt>. All other files the program depends upon (libraries, data, add-ons, etc.) appear automatically in the right locations in the filesystem.</p>
+<p>最简单的方法是使用 <a href="applications/haikudepot.html">HaikuDepot</a> 查询，下载和自动安装或者卸载软件包。如果您曾在其他地址下载了一个软件包，或者该包不存在于公开的仓库中，只需要双击该包并在 HaikuDepot 中打开，然后从中进行安装。</p>
+<p>您可以在 <tt>/system/apps/</tt> 或者 <tt>/system/bin/</tt> 中找到新安装的应用程序和命令行程序。所有其他的程序依赖的文件根据类型 (库文件，数据，附加组件等) 不同会自动安装在文件系统的相应位置。</p>
 <p>在 <a href="deskbar.html">桌面栏</a> 或者 <a href="desktop-applets/launchbox.html">快速启动</a> 两个主题中讲述了如何为新的程序安装快捷方式。</p>
 <div class="box-info">善意提醒，尽管您可以像其他压缩文件一样打开 .hpkg 文件，但是当您安装软件包时，包管理系统并不会进行此类操作。相应的文件系统仅仅在相应文件夹中展开这些文件，但是并不会有实际的文件物理移动操作发生。这也是安装卸载程序包快速和干净的原因。</div>
 <p>如果某个软件包依赖于其他的库或者包，那么将会弹出窗口，询问是否下载和安装所必需的文件。</p>
-<p>Uninstalling is just as easy: Simply find the package in HaikuDepot and click <span class="button">Uninstall</span>.</p>
-<p>If you're working in the Terminal or want to do un/installing of packages in a script, you should have a look at the command <tt>pkgman --help</tt>.</p>
+<p>软件包卸载也很容易：在 HaikuDepot 中找到该软件包，然后点击 <span class="button">卸载</span> 即可。</p>
+<p>如果您使用终端或者希望通过脚本来安装或者卸载软件包，您可以使用命令 <tt>pkgman --help</tt> 来获取相关信息。</p>
 
 <h2>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="beos_apps" name="beos_apps">原有 BeOS 压缩档（.zip 和 .pkg）</a></h2>
 <p>BeOS 压缩档包含了相应应用程序目录中的所有需要文件，可以简单的双击（双击打开 <span class="app">Expander</span> 或者老的 <span class="app">PackageInstaller</span> 程序）并解压到 <tt>/boot/home/</tt> 中的任何地方，然后从这里运行程序。这些程序的卸载也非常容易，直接删掉程序目录即可。</p>
-<p>This is true for the majority of old BeOS applications. If you happen upon one that doesn't work out-of-the-box, because it wants to spread its files to hard-coded locations that are not guaranteed to exist, you can try to fix things manually. The folder <tt>/system/non-packaged/</tt> allows you to recreate the needed folder hierarchy. As more and more real .hpkg packages become available and old BeOS applications get re-packaged, this will become less needed. Please consult this <a href="http://www.haiku-os.org/guides/daily-tasks/install-applications">online article</a> on how to use the <tt>non-packaged</tt> hierarchy.</p>
+<p>对于大多数原有的 BeOS 应用程序，上述方法都可用。如果您碰巧遇到了无法使用的程序，它希望向已经不存在的硬编码位置释放文件，您可以尝试手动进行修改。<tt>/system/non-packaged/</tt> 目录允许您重新创建需要的目录结构。由于越来越多的 .hpkg 软件包可用，以及原有 BeOS 应用的重新打包，这些操作可能将越少使用。请咨询这些 <a href="http://www.haiku-os.org/guides/daily-tasks/install-applications"> 在线文档</a> 了解如何使用 <tt>non-packaged</tt> 文件系统结构。</p>
 
 <h2>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
@@ -97,7 +101,7 @@
 	<tr><td style="width:24px;"><img src="../images/apps-images/codycam-icon_16.png" alt="icon" width="16" height="16" /></td><td><a href="applications/codycam.html">摄像头</a></td><td> </td>
 		<td valign="top">一个用于定时从网络摄像头向服务器上传图像的工具。</td></tr>
 	<tr><td style="width:24px;"><img src="../images/apps-images/debugger-icon_16.png" alt="icon" width="16" height="16" /></td><td><a href="applications/debugger.html">Debugger</a></td><td> </td>
-		<td valign="top">A graphical debugger.</td></tr>
+		<td valign="top">一个图形化的调试器。</td></tr>
 	<tr><td style="width:24px;"><img src="../images/apps-images/deskcalc-icon_16.png" alt="icon" width="16" height="16" /></td><td><a href="applications/deskcalc.html">计算器</a></td><td> </td>
 		<td valign="top">一个计算器软件。</td></tr>
 	<tr><td style="width:24px;"><img src="../images/apps-images/diskprobe-icon_16.png" alt="icon" width="16" height="16" /></td><td><a href="applications/diskprobe.html">磁盘扫描器</a></td><td> </td>
@@ -122,7 +126,7 @@
 		<td valign="top">支持所有音频，视频文件的播放器。</td></tr>
 	<tr><td style="width:24px;"><img src="../images/apps-images/midiplayer-icon_16.png" alt="icon" width="16" height="16" /></td><td><a href="applications/midiplayer.html">MIDI播放器</a></td><td> </td>
 		<td valign="top">MIDI 文件播放器。 </td></tr>
-	<tr><td style="width:24px;"><img src="../images/apps-images/packageinstaller-icon_16.png" alt="icon" width="16" height="16" /></td><td><a href="applications/packageinstaller.html">软件包安装器</a></td><td> </td>
+	<tr><td style="width:24px;"><img src="../images/apps-images/packageinstaller-icon_16.png" alt="icon" width="16" height="16" /></td><td><a href="applications/packageinstaller.html">遗留软件包安装器</a></td><td> </td>
 		<td valign="top">用于 BeOS 的 PKG 格式软件包的安装工具。</td></tr>
 	<tr><td style="width:24px;"><img src="../images/apps-images/people-icon_16.png" alt="icon" width="16" height="16" /></td><td><a href="applications/people.html">联系人</a></td><td> </td>
 		<td valign="top">一个联系人管理软件。</td></tr>
@@ -132,6 +136,8 @@
 		<td valign="top">一个截图软件。</td></tr>
 	<tr><td style="width:24px;"><img src="../images/apps-images/showimage-icon_16.png" alt="icon" width="16" height="16" /></td><td><a href="applications/showimage.html">图片查看器</a></td><td> </td>
 		<td valign="top">一个简单的图像查看软件。 </td></tr>
+	<tr><td style="width:24px;"><img src="../images/apps-images/softwareupdater-icon_16.png" alt="icon" width="16" height="16" /></td><td><a href="applications/softwareupdater.html">软件更新器</a></td><td> </td>
+		<td valign="top">一个工具用以更新软件包和Haiku系统。</td></tr>
 	<tr><td style="width:24px;"><img src="../images/apps-images/soundrecorder-icon_16.png" alt="icon" width="16" height="16" /></td><td><a href="applications/soundrecorder.html">录音机</a></td><td> </td>
 		<td valign="top"><span style="color:silver">一个用于从内部或者麦克风记录音频的工具。[<i>仍然缺失</i>]</span></td></tr>
 	<tr><td style="width:24px;"><img src="../images/apps-images/stylededit-icon_16.png" alt="icon" width="16" height="16" /></td><td><a href="applications/stylededit.html">StyledEdit</a></td><td> </td>

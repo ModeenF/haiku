@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2014 Haiku, Inc. All rights reserved.
+ * Copyright 2001-2016 Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -133,6 +133,21 @@ AccelerantHWInterface::AccelerantHWInterface()
 	fAccDPMSMode(NULL),
 	fAccSetDPMSMode(NULL),
 
+	// brightness hooks
+	fAccSetBrightness(NULL),
+	fAccGetBrightness(NULL),
+
+	// overlay hooks
+	fAccOverlayCount(NULL),
+	fAccOverlaySupportedSpaces(NULL),
+	fAccOverlaySupportedFeatures(NULL),
+	fAccAllocateOverlayBuffer(NULL),
+	fAccReleaseOverlayBuffer(NULL),
+	fAccGetOverlayConstraints(NULL),
+	fAccAllocateOverlay(NULL),
+	fAccReleaseOverlay(NULL),
+	fAccConfigureOverlay(NULL),
+
 	fModeCount(0),
 	fModeList(NULL),
 
@@ -162,9 +177,6 @@ AccelerantHWInterface::AccelerantHWInterface()
 
 AccelerantHWInterface::~AccelerantHWInterface()
 {
-	delete fBackBuffer;
-	delete fFrontBuffer;
-
 	delete[] fRectParams;
 	delete[] fBlitParams;
 
@@ -390,6 +402,31 @@ AccelerantHWInterface::_SetupDefaultHooks()
 	fAccDPMSMode = (dpms_mode)fAccelerantHook(B_DPMS_MODE, NULL);
 	fAccSetDPMSMode = (set_dpms_mode)fAccelerantHook(B_SET_DPMS_MODE, NULL);
 
+	// brightness
+	fAccGetBrightness = (get_brightness)fAccelerantHook(B_GET_BRIGHTNESS, NULL);
+	fAccSetBrightness = (set_brightness)fAccelerantHook(B_SET_BRIGHTNESS, NULL);
+
+	return B_OK;
+}
+
+
+void
+AccelerantHWInterface::_UpdateHooksAfterModeChange()
+{
+	// update acceleration hooks
+#if USE_ACCELERATION
+	fAccFillRect = (fill_rectangle)fAccelerantHook(B_FILL_RECTANGLE,
+		(void *)&fDisplayMode);
+	fAccInvertRect = (invert_rectangle)fAccelerantHook(B_INVERT_RECTANGLE,
+		(void *)&fDisplayMode);
+	fAccScreenBlit = (screen_to_screen_blit)fAccelerantHook(
+		B_SCREEN_TO_SCREEN_BLIT, (void *)&fDisplayMode);
+#else
+	fAccFillRect = NULL;
+	fAccInvertRect = NULL;
+	fAccScreenBlit = NULL;
+#endif
+
 	// overlay
 	fAccOverlayCount = (overlay_count)fAccelerantHook(B_OVERLAY_COUNT, NULL);
 	fAccOverlaySupportedSpaces = (overlay_supported_spaces)fAccelerantHook(
@@ -408,8 +445,6 @@ AccelerantHWInterface::_SetupDefaultHooks()
 		= (release_overlay)fAccelerantHook(B_RELEASE_OVERLAY, NULL);
 	fAccConfigureOverlay
 		= (configure_overlay)fAccelerantHook(B_CONFIGURE_OVERLAY, NULL);
-
-	return B_OK;
 }
 
 
@@ -463,10 +498,10 @@ AccelerantHWInterface::_FindBestMode(const display_mode& compareMode,
 			+ abs(mode.timing.h_total * mode.timing.v_total
 					- compareMode.timing.h_total * compareMode.timing.v_total)
 				/ 100
-			+ abs(mode.timing.pixel_clock - compareMode.timing.pixel_clock)
+			+ abs((int)(mode.timing.pixel_clock - compareMode.timing.pixel_clock))
 				/ 100
 			+ (int32)(500 * fabs(aspectRatio - compareAspectRatio))
-			+ 100 * abs(mode.space - compareMode.space);
+			+ 100 * abs((int)(mode.space - compareMode.space));
 
 		if (bestIndex == -1 || diff < bestDiff) {
 			bestDiff = diff;
@@ -529,7 +564,7 @@ AccelerantHWInterface::SetMode(const display_mode& mode)
 	// error.
 
 	// prevent from doing the unnecessary
-	if (fModeCount > 0 && fFrontBuffer && fDisplayMode == mode) {
+	if (fModeCount > 0 && fFrontBuffer.Get() != NULL && fDisplayMode == mode) {
 		// TODO: better comparison of display modes
 		return B_OK;
 	}
@@ -539,7 +574,7 @@ AccelerantHWInterface::SetMode(const display_mode& mode)
 	if (!_IsValidMode(mode))
 		return B_BAD_VALUE;
 
-	if (fFrontBuffer == NULL)
+	if (fFrontBuffer.Get() == NULL)
 		return B_NO_INIT;
 
 	// just try to set the mode - we let the graphics driver
@@ -637,19 +672,7 @@ AccelerantHWInterface::SetMode(const display_mode& mode)
 		depth, fFrameBufferConfig.bytes_per_row);
 #endif
 
-	// update acceleration hooks
-#if USE_ACCELERATION
-	fAccFillRect = (fill_rectangle)fAccelerantHook(B_FILL_RECTANGLE,
-		(void *)&fDisplayMode);
-	fAccInvertRect = (invert_rectangle)fAccelerantHook(B_INVERT_RECTANGLE,
-		(void *)&fDisplayMode);
-	fAccScreenBlit = (screen_to_screen_blit)fAccelerantHook(
-		B_SCREEN_TO_SCREEN_BLIT, (void *)&fDisplayMode);
-#else
-	fAccFillRect = NULL;
-	fAccInvertRect = NULL;
-	fAccScreenBlit = NULL;
-#endif
+	_UpdateHooksAfterModeChange();
 
 	// in case there is no accelerated blit function, using
 	// an offscreen located backbuffer will not be beneficial!
@@ -657,17 +680,17 @@ AccelerantHWInterface::SetMode(const display_mode& mode)
 		fOffscreenBackBuffer = false;
 
 	// update backbuffer if neccessary
-	if (!fBackBuffer || fBackBuffer->Width() != fFrontBuffer->Width()
+	if (fBackBuffer.Get() == NULL
+		|| fBackBuffer->Width() != fFrontBuffer->Width()
 		|| fBackBuffer->Height() != fFrontBuffer->Height()
 		|| fOffscreenBackBuffer
-		|| (fFrontBuffer->ColorSpace() == B_RGB32 && fBackBuffer != NULL
+		|| (fFrontBuffer->ColorSpace() == B_RGB32 && fBackBuffer.Get() != NULL
 			&& !HWInterface::IsDoubleBuffered())) {
 		// NOTE: backbuffer is always B_RGBA32, this simplifies the
 		// drawing backend implementation tremendously for the time
 		// being. The color space conversion is handled in CopyBackToFront()
 
-		delete fBackBuffer;
-		fBackBuffer = NULL;
+		fBackBuffer.Unset();
 
 		// TODO: Above not true anymore for single buffered mode!!!
 		// -> fall back to double buffer for fDisplayMode.space != B_RGB32
@@ -683,17 +706,17 @@ AccelerantHWInterface::SetMode(const display_mode& mode)
 
 		if (doubleBuffered) {
 			if (fOffscreenBackBuffer) {
-				fBackBuffer = new(nothrow) AccelerantBuffer(*fFrontBuffer,
-					true);
+				fBackBuffer.SetTo(
+					new(nothrow) AccelerantBuffer(*fFrontBuffer.Get(), true));
 			} else {
-				fBackBuffer = new(nothrow) MallocBuffer(fFrontBuffer->Width(),
-					fFrontBuffer->Height());
+				fBackBuffer.SetTo(new(nothrow) MallocBuffer(
+					fFrontBuffer->Width(), fFrontBuffer->Height()));
 			}
 
-			status = fBackBuffer ? fBackBuffer->InitCheck() : B_NO_MEMORY;
+			status = fBackBuffer.Get() != NULL
+				? fBackBuffer->InitCheck() : B_NO_MEMORY;
 			if (status < B_OK) {
-				delete fBackBuffer;
-				fBackBuffer = NULL;
+				fBackBuffer.Unset();
 				fOffscreenBackBuffer = false;
 				return status;
 			}
@@ -1096,6 +1119,30 @@ AccelerantHWInterface::DPMSCapabilities()
 
 
 status_t
+AccelerantHWInterface::SetBrightness(float brightness)
+{
+	AutoReadLocker _(this);
+
+	if (!fAccSetBrightness)
+		return B_UNSUPPORTED;
+
+	return fAccSetBrightness(brightness);
+}
+
+
+status_t
+AccelerantHWInterface::GetBrightness(float* brightness)
+{
+	AutoReadLocker _(this);
+
+	if (!fAccGetBrightness)
+		return B_UNSUPPORTED;
+
+	return fAccGetBrightness(brightness);
+}
+
+
+status_t
 AccelerantHWInterface::GetAccelerantPath(BString& string)
 {
 	image_info info;
@@ -1469,21 +1516,21 @@ AccelerantHWInterface::MoveCursorTo(float x, float y)
 RenderingBuffer*
 AccelerantHWInterface::FrontBuffer() const
 {
-	return fFrontBuffer;
+	return fFrontBuffer.Get();
 }
 
 
 RenderingBuffer*
 AccelerantHWInterface::BackBuffer() const
 {
-	return fBackBuffer;
+	return fBackBuffer.Get();
 }
 
 
 bool
 AccelerantHWInterface::IsDoubleBuffered() const
 {
-	return fBackBuffer != NULL;
+	return fBackBuffer.Get() != NULL;
 }
 
 

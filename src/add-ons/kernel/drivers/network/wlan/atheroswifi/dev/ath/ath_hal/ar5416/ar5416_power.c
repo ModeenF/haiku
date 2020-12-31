@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: ISC
+ *
  * Copyright (c) 2002-2008 Sam Leffler, Errno Consulting
  * Copyright (c) 2002-2008 Atheros Communications, Inc.
  *
@@ -14,7 +16,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/dev/ath/ath_hal/ar5416/ar5416_power.c 326695 2017-12-08 15:57:29Z pfg $
  */
 #include "opt_ah.h"
 
@@ -50,6 +52,7 @@ ar5416SetPowerModeAwake(struct ath_hal *ah, int setChip)
 			& AR_RTC_PM_STATUS_M) == AR_RTC_STATUS_SHUTDOWN) {
 			if (!ar5416SetResetReg(ah, HAL_RESET_POWER_ON))
 				goto bad;			
+			AH5416(ah)->ah_initPLL(ah, AH_NULL);
 		}
 
 		if (AR_SREV_HOWL(ah))
@@ -123,7 +126,6 @@ ar5416SetPowerModeNetworkSleep(struct ath_hal *ah, int setChip)
 HAL_BOOL
 ar5416SetPowerMode(struct ath_hal *ah, HAL_POWER_MODE mode, int setChip)
 {
-	struct ath_hal_5212 *ahp = AH5212(ah);
 #ifdef AH_DEBUG
 	static const char* modes[] = {
 		"AWAKE",
@@ -133,27 +135,35 @@ ar5416SetPowerMode(struct ath_hal *ah, HAL_POWER_MODE mode, int setChip)
 	};
 #endif
 	int status = AH_TRUE;
+
+#if 0
 	if (!setChip)
 		return AH_TRUE;
+#endif
 
 	HALDEBUG(ah, HAL_DEBUG_POWER, "%s: %s -> %s (%s)\n", __func__,
-	    modes[ahp->ah_powerMode], modes[mode], setChip ? "set chip " : "");
+	    modes[ah->ah_powerMode], modes[mode], setChip ? "set chip " : "");
 	switch (mode) {
 	case HAL_PM_AWAKE:
+		if (setChip)
+			ah->ah_powerMode = mode;
 		status = ar5416SetPowerModeAwake(ah, setChip);
 		break;
 	case HAL_PM_FULL_SLEEP:
 		ar5416SetPowerModeSleep(ah, setChip);
+		if (setChip)
+			ah->ah_powerMode = mode;
 		break;
 	case HAL_PM_NETWORK_SLEEP:
 		ar5416SetPowerModeNetworkSleep(ah, setChip);
+		if (setChip)
+			ah->ah_powerMode = mode;
 		break;
 	default:
 		HALDEBUG(ah, HAL_DEBUG_ANY, "%s: unknown power mode 0x%x\n",
 		    __func__, mode);
 		return AH_FALSE;
 	}
-	ahp->ah_powerMode = mode;
 	return status;
 }
 

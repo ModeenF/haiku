@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2001 Atsushi Onoe
  * Copyright (c) 2002-2009 Sam Leffler, Errno Consulting
  * All rights reserved.
@@ -23,10 +25,10 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/net80211/ieee80211_ioctl.h 326272 2017-11-27 15:23:17Z pfg $
  */
-#ifndef _FBSD_COMPAT_NET80211_IEEE80211_IOCTL_H_
-#define _FBSD_COMPAT_NET80211_IEEE80211_IOCTL_H_
+#ifndef _NET80211_IEEE80211_IOCTL_H_
+#define _NET80211_IEEE80211_IOCTL_H_
 
 /*
  * IEEE 802.11 ioctls.
@@ -84,7 +86,11 @@ struct ieee80211_nodestats {
 	uint32_t	ns_tx_deauth_code;	/* last deauth reason */
 	uint32_t	ns_tx_disassoc;		/* disassociations */
 	uint32_t	ns_tx_disassoc_code;	/* last disassociation reason */
-	uint32_t	ns_spare[8];
+
+	/* Hardware A-MSDU decode */
+	uint32_t	ns_rx_amsdu_more;	/* RX decap A-MSDU, more coming from A-MSDU */
+	uint32_t	ns_rx_amsdu_more_end;	/* RX decap A-MSDU (or any other frame), no more coming */
+	uint32_t	ns_spare[6];
 };
 
 /*
@@ -241,8 +247,15 @@ struct ieee80211_stats {
 	uint32_t	is_mesh_notproxy;	/* dropped 'cuz not proxying */
 	uint32_t	is_rx_badalign;		/* dropped 'cuz misaligned */
 	uint32_t	is_hwmp_proxy;		/* PREP for proxy route */
-	
-	uint32_t	is_spare[11];
+	uint32_t	is_beacon_bad;		/* Number of bad beacons */
+	uint32_t	is_ampdu_bar_tx;	/* A-MPDU BAR frames TXed */
+	uint32_t	is_ampdu_bar_tx_retry;	/* A-MPDU BAR frames TX rtry */
+	uint32_t	is_ampdu_bar_tx_fail;	/* A-MPDU BAR frames TX fail */
+
+	uint32_t	is_ff_encapfail;	/* failed FF encap */
+	uint32_t	is_amsdu_encapfail;	/* failed A-MSDU encap */
+
+	uint32_t	is_spare[5];
 };
 
 /*
@@ -305,7 +318,7 @@ struct ieee80211req_mlme {
 	uint8_t		im_ssid[IEEE80211_NWID_LEN];
 };
 
-/* 
+/*
  * MAC ACL operations.
  */
 enum {
@@ -335,8 +348,10 @@ enum {
 
 struct ieee80211req_mesh_route {
 	uint8_t		imr_flags;
-#define	IEEE80211_MESHRT_FLAGS_VALID	0x01
-#define	IEEE80211_MESHRT_FLAGS_PROXY	0x02
+#define	IEEE80211_MESHRT_FLAGS_DISCOVER	0x01
+#define	IEEE80211_MESHRT_FLAGS_VALID	0x02
+#define	IEEE80211_MESHRT_FLAGS_PROXY	0x04
+#define	IEEE80211_MESHRT_FLAGS_GATE	0x08
 	uint8_t		imr_dest[IEEE80211_ADDR_LEN];
 	uint8_t		imr_nexthop[IEEE80211_ADDR_LEN];
 	uint16_t	imr_nhops;
@@ -413,12 +428,8 @@ struct ieee80211req_sta_info {
 	uint16_t	isi_len;		/* total length (mult of 4) */
 	uint16_t	isi_ie_off;		/* offset to IE data */
 	uint16_t	isi_ie_len;		/* IE length */
-#ifdef __HAIKU__
-	struct ieee80211_channel	isi_chan;	/* Handing out the conmplete channel info */
-#else
 	uint16_t	isi_freq;		/* MHz */
 	uint32_t	isi_flags;		/* channel flags */
-#endif
 	uint32_t	isi_state;		/* state flags */
 	uint8_t		isi_authmode;		/* authentication algorithm */
 	int8_t		isi_rssi;		/* receive signal strength */
@@ -551,6 +562,7 @@ struct ieee80211_devcaps_req {
 	uint32_t	dc_drivercaps;		/* general driver caps */
 	uint32_t	dc_cryptocaps;		/* hardware crypto support */
 	uint32_t	dc_htcaps;		/* HT/802.11n support */
+	uint32_t	dc_vhtcaps;		/* VHT/802.11ac capabilities */
 	struct ieee80211req_chaninfo dc_chaninfo;
 };
 #define	IEEE80211_DEVCAPS_SIZE(_nchan) \
@@ -697,6 +709,10 @@ struct ieee80211req {
 #define	IEEE80211_IOC_RIFS		111	/* RIFS config (on, off) */
 #define	IEEE80211_IOC_GREENFIELD	112	/* Greenfield (on, off) */
 #define	IEEE80211_IOC_STBC		113	/* STBC Tx/RX (on, off) */
+#define	IEEE80211_IOC_LDPC		114	/* LDPC Tx/RX (on, off) */
+
+/* VHT */
+#define	IEEE80211_IOC_VHTCONF		130	/* VHT config (off, on; widths) */
 
 #define	IEEE80211_IOC_MESH_ID		170	/* mesh identifier */
 #define	IEEE80211_IOC_MESH_AP		171	/* accepting peerings */
@@ -709,6 +725,7 @@ struct ieee80211req {
 #define	IEEE80211_IOC_MESH_PR_SIG	178	/* mesh sig protocol */
 #define	IEEE80211_IOC_MESH_PR_CC	179	/* mesh congestion protocol */
 #define	IEEE80211_IOC_MESH_PR_AUTH	180	/* mesh auth protocol */
+#define	IEEE80211_IOC_MESH_GATE		181	/* mesh gate XXX: 173? */
 
 #define	IEEE80211_IOC_HWMP_ROOTMODE	190	/* HWMP root mode */
 #define	IEEE80211_IOC_HWMP_MAXHOPS	191	/* number of hops before drop */
@@ -718,6 +735,12 @@ struct ieee80211req {
 #define	IEEE80211_IOC_TDMA_SLOTCNT	202	/* TDMA: slots in bss */
 #define	IEEE80211_IOC_TDMA_SLOTLEN	203	/* TDMA: slot length (usecs) */
 #define	IEEE80211_IOC_TDMA_BINTERVAL	204	/* TDMA: beacon intvl (slots) */
+
+#define	IEEE80211_IOC_QUIET		205	/* Quiet Enable/Disable */
+#define	IEEE80211_IOC_QUIET_PERIOD	206	/* Quiet Period */
+#define	IEEE80211_IOC_QUIET_OFFSET	207	/* Quiet Offset */
+#define	IEEE80211_IOC_QUIET_DUR		208	/* Quiet Duration */
+#define	IEEE80211_IOC_QUIET_COUNT	209	/* Quiet Count */
 
 #ifdef __HAIKU__
 /*
@@ -803,25 +826,21 @@ struct ieee80211_scan_req {
  * in isr_len.  Result records are rounded to a multiple of 4 bytes.
  */
 struct ieee80211req_scan_result {
-	uint16_t					isr_len;		/* total length (mult of 4) */
-	uint16_t					isr_ie_off;		/* offset to SSID+IE data */
-	uint16_t					isr_ie_len;		/* IE length */
-#ifdef __HAIKU__
-	struct ieee80211_channel	isr_chan;	/* Handing out the conmplete channel info */
-#else
+	uint16_t	isr_len;		/* total length (mult of 4) */
+	uint16_t	isr_ie_off;		/* offset to SSID+IE data */
+	uint16_t	isr_ie_len;		/* IE length */
 	uint16_t	isr_freq;		/* MHz */
 	uint16_t	isr_flags;		/* channel flags */
-#endif
-	int8_t						isr_noise;
-	int8_t						isr_rssi;
-	uint16_t					isr_intval;		/* beacon interval */
-	uint8_t						isr_capinfo;		/* capabilities */
-	uint8_t						isr_erp;		/* ERP element */
-	uint8_t						isr_bssid[IEEE80211_ADDR_LEN];
-	uint8_t						isr_nrates;
-	uint8_t						isr_rates[IEEE80211_RATE_MAXSIZE];
-	uint8_t						isr_ssid_len;		/* SSID length */
-	uint8_t						isr_meshid_len;		/* MESH ID length */
+	int8_t		isr_noise;
+	int8_t		isr_rssi;
+	uint16_t	isr_intval;		/* beacon interval */
+	uint8_t		isr_capinfo;		/* capabilities */
+	uint8_t		isr_erp;		/* ERP element */
+	uint8_t		isr_bssid[IEEE80211_ADDR_LEN];
+	uint8_t		isr_nrates;
+	uint8_t		isr_rates[IEEE80211_RATE_MAXSIZE];
+	uint8_t		isr_ssid_len;		/* SSID length */
+	uint8_t		isr_meshid_len;		/* MESH ID length */
 	/* variable length SSID, followed by variable length MESH ID,
 	  followed by IE data */
 };
@@ -870,4 +889,4 @@ struct ieee80211_clone_params {
 #define	IEEE80211_CLONE_TDMA		0x0010	/* operate in TDMA mode */
 #endif /* __FreeBSD__ */
 
-#endif /* _FBSD_COMPAT_NET80211_IEEE80211_IOCTL_H_ */
+#endif /* _NET80211_IEEE80211_IOCTL_H_ */

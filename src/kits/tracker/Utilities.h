@@ -271,8 +271,10 @@ class PositionPassingMenuItem : public BMenuItem {
 public:
 	PositionPassingMenuItem(const char* title, BMessage*,
 		char shortcut = 0, uint32 modifiers = 0);
-
 	PositionPassingMenuItem(BMenu*, BMessage*);
+	PositionPassingMenuItem(BMessage* data);
+
+	static BArchivable* Instantiate(BMessage* data);
 
 protected:
 	virtual status_t Invoke(BMessage* = 0);
@@ -414,6 +416,8 @@ const BMenuItem* EachMenuItem(const BMenu* menu, bool recursive,
 
 int64 StringToScalar(const char* text);
 	// string to num, understands kB, MB, etc.
+
+int32 ListIconSize();
 
 // misc calls
 void EmbedUniqueVolumeInfo(BMessage* message, const BVolume* volume);

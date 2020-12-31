@@ -74,7 +74,7 @@
 
 // TODO: should extract from /etc/passwd instead???
 const char *kDefaultShell = "/bin/sh";
-const char *kTerminalType = "xterm";
+const char *kTerminalType = "xterm-256color";
 
 /*
  * Set environment variable.
@@ -536,7 +536,7 @@ Shell::_Spawn(int row, int col, const ShellParameters& parameters)
 
 		struct winsize ws = { handshake.row, handshake.col };
 
-		ioctl(0, TIOCSWINSZ, &ws);
+		ioctl(0, TIOCSWINSZ, &ws, sizeof(ws));
 
 		tcsetpgrp(0, getpgrp());
 			// set this process group ID as the controlling terminal

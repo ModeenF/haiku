@@ -66,7 +66,7 @@ public:
 									uint64* _droppedEvents);
 
 private:
-    virtual	void				EventOccurred(NotificationService& service,
+	virtual	void				EventOccurred(NotificationService& service,
 									const KMessage* event);
 
 	virtual	void				ThreadEnqueuedInRunQueue(Thread* thread);
@@ -220,10 +220,12 @@ SystemProfiler::_MaybeNotifyProfilerThreadLocked()
 		int cpu = smp_get_current_cpu();
 		fReentered[cpu] = true;
 
-		SpinLocker _(fWaitingProfilerThread->scheduler_lock);
-		thread_unblock_locked(fWaitingProfilerThread, B_OK);
-
+		Thread* profilerThread = fWaitingProfilerThread;
 		fWaitingProfilerThread = NULL;
+
+		SpinLocker _(profilerThread->scheduler_lock);
+		thread_unblock_locked(profilerThread, B_OK);
+
 		fReentered[cpu] = false;
 	}
 }
@@ -368,7 +370,7 @@ SystemProfiler::Init()
 	// clone the user area
 	void* areaBase;
 	fKernelArea = clone_area("profiling samples", &areaBase,
-		B_ANY_KERNEL_ADDRESS, B_READ_AREA | B_WRITE_AREA,
+		B_ANY_KERNEL_ADDRESS, B_KERNEL_READ_AREA | B_KERNEL_WRITE_AREA,
 		fUserArea);
 	if (fKernelArea < 0)
 		return fKernelArea;
@@ -1019,7 +1021,7 @@ SystemProfiler::_ImageAdded(struct image* image)
 		return false;
 
 	event->team = image->team;
-	event->info = image->info;
+	event->info = image->info.basic_info;
 
 	fHeader->size = fBufferSize;
 
@@ -1039,7 +1041,7 @@ SystemProfiler::_ImageRemoved(struct image* image)
 		return false;
 
 	event->team = image->team;
-	event->image = image->info.id;
+	event->image = image->info.basic_info.id;
 
 	fHeader->size = fBufferSize;
 
@@ -1541,6 +1543,9 @@ stop_system_profiler()
 status_t
 _user_system_profiler_start(struct system_profiler_parameters* userParameters)
 {
+	if (geteuid() != 0)
+		return B_PERMISSION_DENIED;
+
 	// copy params to the kernel
 	struct system_profiler_parameters parameters;
 	if (userParameters == NULL || !IS_USER_ADDRESS(userParameters)
@@ -1604,6 +1609,9 @@ _user_system_profiler_start(struct system_profiler_parameters* userParameters)
 status_t
 _user_system_profiler_next_buffer(size_t bytesRead, uint64* _droppedEvents)
 {
+	if (geteuid() != 0)
+		return B_PERMISSION_DENIED;
+
 	if (_droppedEvents != NULL && !IS_USER_ADDRESS(_droppedEvents))
 		return B_BAD_ADDRESS;
 
@@ -1618,7 +1626,7 @@ _user_system_profiler_next_buffer(size_t bytesRead, uint64* _droppedEvents)
 	BReference<SystemProfiler> reference(profiler);
 	locker.Unlock();
 
-	uint64 droppedEvents;
+	uint64 droppedEvents = 0;
 	status_t error = profiler->NextBuffer(bytesRead,
 		_droppedEvents != NULL ? &droppedEvents : NULL);
 	if (error == B_OK && _droppedEvents != NULL)
@@ -1631,6 +1639,9 @@ _user_system_profiler_next_buffer(size_t bytesRead, uint64* _droppedEvents)
 status_t
 _user_system_profiler_stop()
 {
+	if (geteuid() != 0)
+		return B_PERMISSION_DENIED;
+
 	team_id team = thread_get_current_thread()->team->id;
 
 	InterruptsSpinLocker locker(sProfilerLock);
@@ -1650,6 +1661,9 @@ _user_system_profiler_stop()
 status_t
 _user_system_profiler_recorded(system_profiler_parameters* userParameters)
 {
+	if (geteuid() != 0)
+		return B_PERMISSION_DENIED;
+
 	if (userParameters == NULL || !IS_USER_ADDRESS(userParameters))
 		return B_BAD_ADDRESS;
 	if (sRecordedParameters == NULL)

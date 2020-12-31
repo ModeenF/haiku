@@ -144,7 +144,7 @@ ps2_packet_to_movement(standard_mouse_cookie* cookie, uint8 packet[],
 		pos->wheel_xdelta = xDeltaWheel;
 
 		TRACE("ps2: ps2_packet_to_movement xdelta: %d, ydelta: %d, buttons %x, "
-			"clicks: %d, timestamp %Ld\n",
+			"clicks: %d, timestamp %" B_PRIdBIGTIME "\n",
 			xDelta, yDelta, buttons, cookie->click_count, currentTime);
 	}
 }
@@ -225,27 +225,6 @@ standard_mouse_handle_int(ps2_dev* dev)
 	if (cookie->packet_index == 0 && (data & 0xc0) != 0) {
 		INFO("ps2: strange mouse data, x/y overflow, trying resync\n");
 		return B_HANDLED_INTERRUPT;
-	}
-
-	if (cookie->packet_index == 1) {
-		int xDelta
-			= ((cookie->buffer[0] & 0x10) ? 0xFFFFFF00 : 0) | data;
-		if (xDelta < -100 || xDelta > 100) {
-			INFO("ps2: strange mouse data, x-delta %d, trying resync\n",
-				xDelta);
-			cookie->packet_index = 0;
-			return B_HANDLED_INTERRUPT;
-		}
-	}
-	if (cookie->packet_index == 2) {
-		int yDelta
-			= ((cookie->buffer[0] & 0x20) ? 0xFFFFFF00 : 0) | data;
-		if (yDelta < -100 || yDelta > 100) {
-			INFO("ps2: strange mouse data, y-delta %d, trying resync\n",
-				yDelta);
-			cookie->packet_index = 0;
-			return B_HANDLED_INTERRUPT;
-		}
 	}
 
 	cookie->buffer[cookie->packet_index++] = data;
@@ -514,7 +493,7 @@ standard_mouse_ioctl(void* _cookie, uint32 op, void* buffer, size_t length)
 			return user_memcpy(&cookie->click_speed, buffer, sizeof(bigtime_t));
 
 		default:
-			TRACE("ps2: ioctl unknown mouse opcode: %ld\n", op);
+			TRACE("ps2: ioctl unknown mouse opcode: %" B_PRIu32 "\n", op);
 			return B_DEV_INVALID_IOCTL;
 	}
 }

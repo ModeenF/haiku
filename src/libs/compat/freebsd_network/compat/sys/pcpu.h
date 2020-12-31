@@ -7,6 +7,7 @@
 
 
 #include <OS.h>
+#include <sys/smp.h>
 
 
 struct thread;

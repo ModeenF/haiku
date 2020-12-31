@@ -2,7 +2,7 @@
 ** PCL6Writer.cpp
 ** Copyright 2005, Michael Pfeiffer, laplace@users.sourceforge.net.
 ** All rights reserved.
-** Distributed under the terms of the OpenBeOS License.
+** Distributed under the terms of the MIT License.
 */
 
 
@@ -26,7 +26,7 @@ PCL6Writer::PCL6Writer(PCL6WriterStream* stream, uint32 bufferSize)
 
 PCL6Writer::~PCL6Writer()
 {
-	delete fBuffer;
+	delete[] fBuffer;
 	fBuffer = NULL;
 }
 

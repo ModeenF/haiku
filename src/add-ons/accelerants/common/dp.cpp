@@ -1,5 +1,5 @@
 /*
- * Copyright 2012, Haiku, Inc. All Rights Reserved.
+ * Copyright 2012-2016, Haiku, Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -13,12 +13,12 @@
 #define TRACE_DISPLAY
 #ifdef TRACE_DISPLAY
 extern "C" void _sPrintf(const char* format, ...);
-#   define TRACE(x...) _sPrintf("radeon_hd: " x)
+#   define TRACE(x...) _sPrintf("dp_common: " x)
 #else
 #   define TRACE(x...) ;
 #endif
 
-#define ERROR(x...) _sPrintf("radeon_hd: " x)
+#define ERROR(x...) _sPrintf("dp_common: " x)
 
 
 uint32
@@ -63,18 +63,4 @@ uint32
 dp_get_pixel_clock_max(int linkRate, int laneCount, int bpp)
 {
 	return (linkRate * laneCount * 8) / bpp;
-}
-
-
-uint32
-dp_get_link_rate_max(dp_info* dpInfo)
-{
-	return dp_decode_link_rate(dpInfo->config[DP_MAX_LINK_RATE]);
-}
-
-
-uint32
-dp_get_lane_count_max(dp_info* dpInfo)
-{
-	return dpInfo->config[DP_MAX_LANE_COUNT] & DP_MAX_LANE_COUNT_MASK;
 }

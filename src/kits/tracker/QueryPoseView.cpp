@@ -80,7 +80,7 @@ using std::nothrow;
 BQueryPoseView::BQueryPoseView(Model* model)
 	:
 	BPoseView(model, kListMode),
-	fShowResultsFromTrash(false),
+	fRefFilter(NULL),
 	fQueryList(NULL),
 	fQueryListContainer(NULL),
 	fCreateOldPoseList(false)
@@ -128,7 +128,7 @@ BQueryPoseView::SetUpDefaultColumnsIfNeeded()
 	if (fColumnList->CountItems() != 0)
 		return;
 
-	fColumnList->AddItem(new BColumn(B_TRANSLATE("Name"), kColumnStart, 145,
+	fColumnList->AddItem(new BColumn(B_TRANSLATE("Name"), StartOffset(), 145,
 		B_ALIGN_LEFT, kAttrStatName, B_STRING_TYPE, true, true));
 	fColumnList->AddItem(new BColumn(B_TRANSLATE("Location"), 200, 225,
 		B_ALIGN_LEFT, kAttrPath, B_STRING_TYPE, true, false));
@@ -201,33 +201,6 @@ BQueryPoseView::Refresh()
 }
 
 
-bool
-BQueryPoseView::ShouldShowPose(const Model* model, const PoseInfo* poseInfo)
-{
-	// add_poses, etc. filter
-	ASSERT(TargetModel());
-
-	TTracker* tracker = dynamic_cast<TTracker*>(be_app);
-	if (!fShowResultsFromTrash && tracker != NULL
-		&& tracker->InTrashNode(model->EntryRef())) {
-		return false;
-	}
-
-	bool result = _inherited::ShouldShowPose(model, poseInfo);
-
-	PoseList* oldPoseList = fQueryListContainer->OldPoseList();
-	if (result && oldPoseList != NULL) {
-		// pose will get added - remove it from the old pose list
-		// because it is supposed to be showing
-		BPose* pose = oldPoseList->FindPose(model);
-		if (pose != NULL)
-			oldPoseList->RemoveItem(pose);
-	}
-
-	return result;
-}
-
-
 void
 BQueryPoseView::AddPosesCompleted()
 {
@@ -281,8 +254,6 @@ BQueryPoseView::InitDirentIterator(const entry_ref* ref)
 		return NULL;
 	}
 
-	fShowResultsFromTrash = fQueryListContainer->ShowResultsFromTrash();
-
 	TTracker::WatchNode(sourceModel.NodeRef(), B_WATCH_NAME | B_WATCH_STAT
 		| B_WATCH_ATTR, this);
 
@@ -309,7 +280,7 @@ BQueryPoseView::InitDirentIterator(const entry_ref* ref)
 		timeData.tm_min = 0;
 		nextHour = mktime(&timeData);
 
-		PRINT(("%" B_PRId32 " minutes, %" B_PRId32 " seconds till next hour\n",
+		PRINT(("%" B_PRIdTIME " minutes, %" B_PRIdTIME " seconds till next hour\n",
 			(nextHour - now) / 60, (nextHour - now) % 60));
 
 		time_t nextMinute = now + 60;
@@ -318,7 +289,7 @@ BQueryPoseView::InitDirentIterator(const entry_ref* ref)
 		timeData.tm_sec = 0;
 		nextMinute = mktime(&timeData);
 
-		PRINT(("%" B_PRId32 " seconds till next minute\n", nextMinute - now));
+		PRINT(("%" B_PRIdTIME " seconds till next minute\n", nextMinute - now));
 
 		bigtime_t delta;
 		if (fQueryListContainer->DynamicDateRefreshEveryMinute())
@@ -359,6 +330,8 @@ BQueryPoseView::InitDirentIterator(const entry_ref* ref)
 			NewLockingMemberFunctionObject(&BQueryPoseView::Refresh, this),
 			delta);
 	}
+
+	SetRefFilter(new QueryRefFilter(fQueryListContainer->ShowResultsFromTrash()));
 
 	return fQueryListContainer->Clone();
 }
@@ -414,6 +387,26 @@ BQueryPoseView::ActiveOnDevice(dev_t device) const
 	}
 
 	return false;
+}
+
+
+//	#pragma mark - QueryRefFilter
+
+
+QueryRefFilter::QueryRefFilter(bool showResultsFromTrash)
+	:
+	fShowResultsFromTrash(showResultsFromTrash)
+{
+}
+
+
+bool
+QueryRefFilter::Filter(const entry_ref* ref, BNode* node, stat_beos* st,
+	const char* filetype)
+{
+	TTracker* tracker = dynamic_cast<TTracker*>(be_app);
+	return !(!fShowResultsFromTrash && tracker != NULL
+		&& tracker->InTrashNode(ref));
 }
 
 

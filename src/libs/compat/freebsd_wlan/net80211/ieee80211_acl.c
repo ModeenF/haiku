@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2004-2008 Sam Leffler, Errno Consulting
  * All rights reserved.
  *
@@ -24,7 +26,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
+__FBSDID("$FreeBSD: releng/12.0/sys/net80211/ieee80211_acl.c 326272 2017-11-27 15:23:17Z pfg $");
 
 /*
  * IEEE 802.11 MAC ACL support.
@@ -42,6 +44,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/systm.h> 
+#include <sys/malloc.h>   
 #include <sys/mbuf.h>   
 #include <sys/module.h>
 #include <sys/queue.h>
@@ -87,7 +90,7 @@ struct aclstate {
 #define	ACL_HASH(addr)	\
 	(((const uint8_t *)(addr))[IEEE80211_ADDR_LEN - 1] % ACL_HASHSIZE)
 
-MALLOC_DEFINE(M_80211_ACL, "acl", "802.11 station acl");
+static MALLOC_DEFINE(M_80211_ACL, "acl", "802.11 station acl");
 
 static	int acl_free_all(struct ieee80211vap *);
 
@@ -99,8 +102,8 @@ acl_attach(struct ieee80211vap *vap)
 {
 	struct aclstate *as;
 
-	as = (struct aclstate *) malloc(sizeof(struct aclstate),
-		M_80211_ACL, M_NOWAIT | M_ZERO);
+	as = (struct aclstate *) IEEE80211_MALLOC(sizeof(struct aclstate),
+		M_80211_ACL, IEEE80211_M_NOWAIT | IEEE80211_M_ZERO);
 	if (as == NULL)
 		return 0;
 	ACL_LOCK_INIT(as, "acl");
@@ -123,7 +126,7 @@ acl_detach(struct ieee80211vap *vap)
 	acl_free_all(vap);
 	vap->iv_as = NULL;
 	ACL_LOCK_DESTROY(as);
-	free(as, M_80211_ACL);
+	IEEE80211_FREE(as, M_80211_ACL);
 }
 
 static __inline struct acl *
@@ -147,12 +150,12 @@ _acl_free(struct aclstate *as, struct acl *acl)
 
 	TAILQ_REMOVE(&as->as_list, acl, acl_list);
 	LIST_REMOVE(acl, acl_hash);
-	free(acl, M_80211_ACL);
+	IEEE80211_FREE(acl, M_80211_ACL);
 	as->as_nacls--;
 }
 
 static int
-acl_check(struct ieee80211vap *vap, const uint8_t mac[IEEE80211_ADDR_LEN])
+acl_check(struct ieee80211vap *vap, const struct ieee80211_frame *wh)
 {
 	struct aclstate *as = vap->iv_as;
 
@@ -161,9 +164,9 @@ acl_check(struct ieee80211vap *vap, const uint8_t mac[IEEE80211_ADDR_LEN])
 	case ACL_POLICY_RADIUS:
 		return 1;
 	case ACL_POLICY_ALLOW:
-		return _find_acl(as, mac) != NULL;
+		return _find_acl(as, wh->i_addr2) != NULL;
 	case ACL_POLICY_DENY:
-		return _find_acl(as, mac) == NULL;
+		return _find_acl(as, wh->i_addr2) == NULL;
 	}
 	return 0;		/* should not happen */
 }
@@ -175,7 +178,8 @@ acl_add(struct ieee80211vap *vap, const uint8_t mac[IEEE80211_ADDR_LEN])
 	struct acl *acl, *new;
 	int hash;
 
-	new = (struct acl *) malloc(sizeof(struct acl), M_80211_ACL, M_NOWAIT | M_ZERO);
+	new = (struct acl *) IEEE80211_MALLOC(sizeof(struct acl),
+	    M_80211_ACL, IEEE80211_M_NOWAIT | IEEE80211_M_ZERO);
 	if (new == NULL) {
 		IEEE80211_DPRINTF(vap, IEEE80211_MSG_ACL,
 			"ACL: add %s failed, no memory\n", ether_sprintf(mac));
@@ -188,7 +192,7 @@ acl_add(struct ieee80211vap *vap, const uint8_t mac[IEEE80211_ADDR_LEN])
 	LIST_FOREACH(acl, &as->as_hash[hash], acl_hash) {
 		if (IEEE80211_ADDR_EQ(acl->acl_macaddr, mac)) {
 			ACL_UNLOCK(as);
-			free(new, M_80211_ACL);
+			IEEE80211_FREE(new, M_80211_ACL);
 			IEEE80211_DPRINTF(vap, IEEE80211_MSG_ACL,
 				"ACL: add %s failed, already present\n",
 				ether_sprintf(mac));
@@ -302,8 +306,8 @@ acl_getioctl(struct ieee80211vap *vap, struct ieee80211req *ireq)
 			ireq->i_len = space;	/* return required space */
 			return 0;		/* NB: must not error */
 		}
-		ap = (struct ieee80211req_maclist *) malloc(space,
-		    M_TEMP, M_NOWAIT);
+		ap = (struct ieee80211req_maclist *) IEEE80211_MALLOC(space,
+		    M_TEMP, IEEE80211_M_NOWAIT);
 		if (ap == NULL)
 			return ENOMEM;
 		i = 0;
@@ -318,7 +322,7 @@ acl_getioctl(struct ieee80211vap *vap, struct ieee80211req *ireq)
 			ireq->i_len = space;
 		} else
 			error = copyout(ap, ireq->i_data, ireq->i_len);
-		free(ap, M_TEMP);
+		IEEE80211_FREE(ap, M_TEMP);
 		return error;
 	}
 	return EINVAL;

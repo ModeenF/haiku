@@ -150,6 +150,8 @@ FilePlaylistItem::GetAttribute(const Attribute& attribute,
 	BString& string) const
 {
 	if (attribute == ATTR_STRING_NAME) {
+		if (fRefs[0].name == NULL)
+			return B_NAME_NOT_FOUND;
 		string = fRefs[0].name;
 		return B_OK;
 	}
@@ -183,7 +185,20 @@ status_t
 FilePlaylistItem::GetAttribute(const Attribute& attribute,
 	int32& value) const
 {
-	return B_NOT_SUPPORTED;
+	switch (attribute) {
+		case ATTR_INT32_TRACK:
+			return _GetAttribute("Audio:Track", B_INT32_TYPE, &value,
+				sizeof(int32));
+		case ATTR_INT32_YEAR:
+			return _GetAttribute("Media:Year", B_INT32_TYPE, &value,
+				sizeof(int32));
+		case ATTR_INT32_RATING:
+			return _GetAttribute("Media:Rating", B_INT32_TYPE, &value,
+				sizeof(int32));
+
+		default:
+			return B_NOT_SUPPORTED;
+	}
 }
 
 
@@ -192,6 +207,9 @@ FilePlaylistItem::SetAttribute(const Attribute& attribute,
 	const int64& value)
 {
 	switch (attribute) {
+		case ATTR_INT64_FRAME:
+			return _SetAttribute("Media:Frame", B_INT64_TYPE, &value,
+				sizeof(int64));
 		case ATTR_INT64_DURATION:
 			return _SetAttribute("Media:Length", B_INT64_TYPE, &value,
 				sizeof(int64));
@@ -206,12 +224,41 @@ FilePlaylistItem::GetAttribute(const Attribute& attribute,
 	int64& value) const
 {
 	switch (attribute) {
+		case ATTR_INT64_FRAME:
+			return _GetAttribute("Media:Frame", B_INT64_TYPE, &value,
+				sizeof(int64));
 		case ATTR_INT64_DURATION:
 			return _GetAttribute("Media:Length", B_INT64_TYPE, &value,
 				sizeof(int64));
 		default:
 			return B_NOT_SUPPORTED;
 	}
+}
+
+
+status_t
+FilePlaylistItem::SetAttribute(const Attribute& attribute,
+	const float& value)
+{
+	if (attribute == ATTR_FLOAT_VOLUME) {
+		return _SetAttribute("Media:Volume", B_FLOAT_TYPE, &value,
+			sizeof(float));
+	}
+
+	return B_NOT_SUPPORTED;
+}
+
+
+status_t
+FilePlaylistItem::GetAttribute(const Attribute& attribute,
+	float& value) const
+{
+	if (attribute == ATTR_FLOAT_VOLUME) {
+		return _GetAttribute("Media:Volume", B_FLOAT_TYPE, &value,
+			sizeof(float));
+	}
+
+	return B_NOT_SUPPORTED;
 }
 
 
@@ -288,7 +335,7 @@ FilePlaylistItem::RestoreFromTrash()
 // #pragma mark -
 
 TrackSupplier*
-FilePlaylistItem::CreateTrackSupplier() const
+FilePlaylistItem::_CreateTrackSupplier() const
 {
 	MediaFileTrackSupplier* supplier
 		= new(std::nothrow) MediaFileTrackSupplier();
@@ -400,7 +447,7 @@ FilePlaylistItem::ImageRef() const
 
 
 bigtime_t
-FilePlaylistItem::_CalculateDuration() const
+FilePlaylistItem::_CalculateDuration()
 {
 	BMediaFile mediaFile(&Ref());
 

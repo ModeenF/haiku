@@ -7,16 +7,6 @@ SubDirHdrs [ FDirName $(SUBDIR) $(DOTDOT) pci ] ;
 SubDirCcFlags -D_KERNEL_MODE ;
 
 
-local common_src =
-	acgetline.c
-	ahids.c
-	ahtable.c
-	ahuuids.c
-	cmfsize.c
-	dmtbdump.c
-	dmtbinfo.c
-	;
-
 local dispatcher_src =
 	dsargs.c
 	dscontrol.c
@@ -27,6 +17,7 @@ local dispatcher_src =
 	dsmthdat.c
 	dsobject.c
 	dsopcode.c
+	dspkginit.c
 	dsutils.c
 	dswexec.c
 	dswload.c
@@ -54,6 +45,7 @@ local events_src =
 	;
 
 local executer_src =
+	exconcat.c
 	exconfig.c
 	exconvrt.c
 	excreate.c
@@ -73,10 +65,12 @@ local executer_src =
 	exresnte.c
 	exresolv.c
 	exresop.c
+	exserial.c
 	exstore.c
 	exstoren.c
 	exstorob.c
 	exsystem.c
+	extrace.c
 	exutils.c
 	;
 
@@ -162,9 +156,9 @@ local tables_src =
 local utilities_src =
 	utaddress.c
 	utalloc.c
+	utascii.c
 	utbuffer.c
 	utcache.c
-	utclib.c
 	utcopy.c
 	utdecode.c
 	utdebug.c
@@ -172,7 +166,6 @@ local utilities_src =
 	uterror.c
 	uteval.c
 	utexcep.c
-	utfileio.c
 	utglobal.c
 	uthex.c
 	utids.c
@@ -186,10 +179,11 @@ local utilities_src =
 	utosi.c
 	utownerid.c
 	utpredef.c
-	utprint.c
 	utresrc.c
 	utstate.c
 	utstring.c
+	utstrsuppt.c
+	utstrtoul64.c
 	uttrack.c
 	utuuid.c
 	utxface.c
@@ -199,7 +193,6 @@ local utilities_src =
 	;
 
 StaticLibrary libacpi_ca.a :
-	$(common_src)
 	$(compiler_src)
 	$(dispatcher_src)
 	$(events_src)
@@ -212,7 +205,6 @@ StaticLibrary libacpi_ca.a :
 	$(utilities_src)
 	;
 
-SEARCH on [ FGristFiles $(common_src)  ] = [ FDirName $(HAIKU_TOP) src add-ons kernel bus_managers acpi acpica common ] ;
 SEARCH on [ FGristFiles $(dispatcher_src)  ] = [ FDirName $(HAIKU_TOP) src add-ons kernel bus_managers acpi acpica components dispatcher ] ;
 SEARCH on [ FGristFiles $(events_src)  ] = [ FDirName $(HAIKU_TOP) src add-ons kernel bus_managers acpi acpica components events ] ;
 SEARCH on [ FGristFiles $(executer_src)  ] = [ FDirName $(HAIKU_TOP) src add-ons kernel bus_managers acpi acpica components executer ] ;

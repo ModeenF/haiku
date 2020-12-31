@@ -1,10 +1,25 @@
-1	finnish	x-vnd.Haiku-Mandelbrot	3766380907
-File	Mandelbrot		Tiedosto
-Palette 3	Mandelbrot		Paletti 3
-Quit	Mandelbrot		Lopeta
-Palette 2	Mandelbrot		Paletti 2
-Palette 4	Mandelbrot		Paletti 4
-Palette	Mandelbrot		Paletti
+1	finnish	x-vnd.Haiku-Mandelbrot	3875916167
+Burning Ship	MandelbrotWindow		Palava laiva
+Grassland	MandelbrotWindow		Grassland
+Lightning	MandelbrotWindow		Salamointi
+About	MandelbrotWindow		Ohjelmasta
+Palette	MandelbrotWindow		Paletti
+Set	MandelbrotWindow		Aseta
+Tricorn	MandelbrotWindow		Kolmijyväinen
+Royal	MandelbrotWindow		Kuninkaallinen
+Orbit Trap	MandelbrotWindow		Kehäansa
+Deepfrost	MandelbrotWindow		Syväjäätynyt
+Subsampling	MandelbrotWindow		Alinäyte
+1 (none)	MandelbrotWindow		1 (ei mitään)
+Quit	MandelbrotWindow		Poistu
+File	MandelbrotWindow		Tiedosto
+Julia	MandelbrotWindow		Julia
+Frost	MandelbrotWindow		Pakkanen
+Fire	MandelbrotWindow		Tuli
 Mandelbrot	System name		Mandelbrot
-Palette 1	Mandelbrot		Paletti 1
-Iterations	Mandelbrot		Iteroinnit
+Iterations	MandelbrotWindow		Kertaukset
+High contrast	MandelbrotWindow		Korkea kontrasti
+Multibrot	MandelbrotWindow		Multibrot
+Spring	MandelbrotWindow		Kevät
+Midnight	MandelbrotWindow		Keskiyö
+Mandelbrot	MandelbrotWindow		Mandelbrot

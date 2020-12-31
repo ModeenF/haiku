@@ -7,6 +7,7 @@
  *		Niels S. Reedijk
  */
 
+
 #include <util/kernel_cpp.h>
 #include "usb_private.h"
 #include <USB_rle.h>
@@ -16,7 +17,6 @@
 Stack *gUSBStack = NULL;
 
 
-#ifdef HAIKU_TARGET_PLATFORM_HAIKU
 /*!	The function is an evil hack to allow <tt> <kdebug>usb_keyboard </tt> to
 	execute transfers.
 	When invoked the first time, a new transfer is started, each time the
@@ -137,7 +137,6 @@ debug_clear_stall(int argc, char *argv[])
 
 	return B_TIMED_OUT;
 }
-#endif
 
 
 static int32
@@ -149,27 +148,8 @@ bus_std_ops(int32 op, ...)
 			if (gUSBStack)
 				return B_OK;
 
-#ifdef HAIKU_TARGET_PLATFORM_BEOS
-			// This code is to handle plain R5 (non-BONE) where the same module
-			// gets loaded multiple times (once for each exported module
-			// interface, the USB v2 and v3 API in our case). We don't want to
-			// ever create multiple stacks however, so we "share" the same stack
-			// for both modules by storing it's address in a shared area.
-			void *address = NULL;
-			area_id shared = find_area("shared usb stack");
-			if (shared >= B_OK && clone_area("usb stack clone", &address,
-				B_ANY_KERNEL_ADDRESS, B_KERNEL_READ_AREA, shared) >= B_OK) {
-				gUSBStack = *((Stack **)address);
-				TRACE_MODULE("found shared stack at %p\n", gUSBStack);
-				return B_OK;
-			}
-#endif
-
 #ifdef TRACE_USB
 			set_dprintf_enabled(true);
-#ifndef HAIKU_TARGET_PLATFORM_HAIKU
-			load_driver_symbols("usb");
-#endif
 #endif
 			Stack *stack = new(std::nothrow) Stack();
 			TRACE_MODULE("usb_module: stack created %p\n", stack);
@@ -183,7 +163,6 @@ bus_std_ops(int32 op, ...)
 
 			gUSBStack = stack;
 
-#ifdef HAIKU_TARGET_PLATFORM_HAIKU
 			add_debugger_command("get_usb_pipe_for_id",
 				&debug_get_pipe_for_id,
 				"Sets _usbPipe by resolving _usbPipeID");
@@ -195,14 +174,6 @@ bus_std_ops(int32 op, ...)
 				&debug_clear_stall,
 				"Tries to issue a clear feature request for the endpoint halt"
 				" feature on pipe _usbPipe");
-#elif HAIKU_TARGET_PLATFORM_BEOS
-			// Plain R5 workaround, see comment above.
-			shared = create_area("shared usb stack", &address,
-				B_ANY_KERNEL_ADDRESS, B_PAGE_SIZE, B_NO_LOCK,
-				B_KERNEL_WRITE_AREA);
-			if (shared >= B_OK)
-				*((Stack **)address) = gUSBStack;
-#endif
 			break;
 		}
 
@@ -211,10 +182,8 @@ bus_std_ops(int32 op, ...)
 			delete gUSBStack;
 			gUSBStack = NULL;
 
-#ifdef HAIKU_TARGET_PLATFORM_HAIKU
 			remove_debugger_command("get_usb_pipe_for_id",
 				&debug_get_pipe_for_id);
-#endif
 			break;
 
 		default:
@@ -250,65 +219,80 @@ uninstall_notify(const char *driverName)
 
 
 const usb_device_descriptor *
-get_device_descriptor(usb_device device)
+get_device_descriptor(usb_device dev)
 {
-	TRACE_MODULE("get_device_descriptor(%" B_PRId32 ")\n", device);
-	Object *object = gUSBStack->GetObject(device);
+	TRACE_MODULE("get_device_descriptor(%" B_PRId32 ")\n", dev);
+	Object *object = gUSBStack->GetObject(dev);
 	if (!object || (object->Type() & USB_OBJECT_DEVICE) == 0)
 		return NULL;
+	Device *device = (Device *)object;
+	if (device->InitCheck() != B_OK)
+		return NULL;
 
-	return ((Device *)object)->DeviceDescriptor();
+	return device->DeviceDescriptor();
 }
 
 
 const usb_configuration_info *
-get_nth_configuration(usb_device device, uint32 index)
+get_nth_configuration(usb_device dev, uint32 index)
 {
 	TRACE_MODULE("get_nth_configuration(%" B_PRId32 ", %" B_PRIu32 ")\n",
-		device, index);
-	Object *object = gUSBStack->GetObject(device);
+		dev, index);
+	Object *object = gUSBStack->GetObject(dev);
 	if (!object || (object->Type() & USB_OBJECT_DEVICE) == 0)
 		return NULL;
+	Device *device = (Device *)object;
+	if (device->InitCheck() != B_OK)
+		return NULL;
 
-	return ((Device *)object)->ConfigurationAt((int32)index);
+	return device->ConfigurationAt((int32)index);
 }
 
 
 const usb_configuration_info *
-get_configuration(usb_device device)
+get_configuration(usb_device dev)
 {
-	TRACE_MODULE("get_configuration(%" B_PRId32 ")\n", device);
-	Object *object = gUSBStack->GetObject(device);
+	TRACE_MODULE("get_configuration(%" B_PRId32 ")\n", dev);
+	Object *object = gUSBStack->GetObject(dev);
 	if (!object || (object->Type() & USB_OBJECT_DEVICE) == 0)
 		return NULL;
+	Device *device = (Device *)object;
+	if (device->InitCheck() != B_OK)
+		return NULL;
 
-	return ((Device *)object)->Configuration();
+	return device->Configuration();
 }
 
 
 status_t
-set_configuration(usb_device device,
+set_configuration(usb_device dev,
 	const usb_configuration_info *configuration)
 {
-	TRACE_MODULE("set_configuration(%" B_PRId32 ", %p)\n", device,
+	TRACE_MODULE("set_configuration(%" B_PRId32 ", %p)\n", dev,
 		configuration);
-	Object *object = gUSBStack->GetObject(device);
+	Object *object = gUSBStack->GetObject(dev);
 	if (!object || (object->Type() & USB_OBJECT_DEVICE) == 0)
 		return B_DEV_INVALID_PIPE;
+	Device *device = (Device *)object;
+	if (device->InitCheck() != B_OK)
+		return B_NO_INIT;
 
-	return ((Device *)object)->SetConfiguration(configuration);
+	return device->SetConfiguration(configuration);
 }
 
 
 status_t
-set_alt_interface(usb_device device, const usb_interface_info *interface)
+set_alt_interface(usb_device dev, const usb_interface_info *interface)
 {
-	TRACE_MODULE("set_alt_interface(%" B_PRId32 ", %p)\n", device, interface);
-	Object *object = gUSBStack->GetObject(device);
+	TRACE_MODULE("set_alt_interface(%" B_PRId32 ", %p)\n", dev, interface);
+	Object *object = gUSBStack->GetObject(dev);
 	if (!object || (object->Type() & USB_OBJECT_DEVICE) == 0)
 		return B_DEV_INVALID_PIPE;
+	Device *device = (Device *)object;
+	if (device->InitCheck() != B_OK)
+		return B_NO_INIT;
 
-	return ((Device *)object)->SetAltInterface(interface);
+	return device->SetAltInterface(interface);
 }
 
 
@@ -352,50 +336,59 @@ get_status(usb_id handle, uint16 *status)
 
 
 status_t
-get_descriptor(usb_device device, uint8 type, uint8 index, uint16 languageID,
+get_descriptor(usb_device dev, uint8 type, uint8 index, uint16 languageID,
 	void *data, size_t dataLength, size_t *actualLength)
 {
 	TRACE_MODULE("get_descriptor(%" B_PRId32 ", 0x%02x, 0x%02x, 0x%04x, %p, "
 		"%" B_PRIuSIZE ", %p)\n",
-		device, type, index, languageID, data, dataLength, actualLength);
-	Object *object = gUSBStack->GetObject(device);
+		dev, type, index, languageID, data, dataLength, actualLength);
+	Object *object = gUSBStack->GetObject(dev);
 	if (!object || (object->Type() & USB_OBJECT_DEVICE) == 0)
 		return B_DEV_INVALID_PIPE;
+	Device *device = (Device *)object;
+	if (device->InitCheck() != B_OK)
+		return B_NO_INIT;
 
-	return ((Device *)object)->GetDescriptor(type, index, languageID,
+	return device->GetDescriptor(type, index, languageID,
 		data, dataLength, actualLength);
 }
 
 
 status_t
-send_request(usb_device device, uint8 requestType, uint8 request,
+send_request(usb_device dev, uint8 requestType, uint8 request,
 	uint16 value, uint16 index, uint16 length, void *data, size_t *actualLength)
 {
 	TRACE_MODULE("send_request(%" B_PRId32 ", 0x%02x, 0x%02x, 0x%04x, 0x%04x, "
-		"%d, %p, %p)\n", device, requestType, request, value, index, length,
+		"%d, %p, %p)\n", dev, requestType, request, value, index, length,
 		data, actualLength);
-	Object *object = gUSBStack->GetObject(device);
+	Object *object = gUSBStack->GetObject(dev);
 	if (!object || (object->Type() & USB_OBJECT_DEVICE) == 0)
 		return B_DEV_INVALID_PIPE;
+	Device *device = (Device *)object;
+	if (device->InitCheck() != B_OK)
+		return B_NO_INIT;
 
-	return ((Device *)object)->DefaultPipe()->SendRequest(requestType, request,
+	return device->DefaultPipe()->SendRequest(requestType, request,
 		value, index, length, data, length, actualLength);
 }
 
 
 status_t
-queue_request(usb_device device, uint8 requestType, uint8 request,
+queue_request(usb_device dev, uint8 requestType, uint8 request,
 	uint16 value, uint16 index, uint16 length, void *data,
 	usb_callback_func callback, void *callbackCookie)
 {
 	TRACE_MODULE("queue_request(%" B_PRId32 ", 0x%02x, 0x%02x, 0x%04x, 0x%04x,"
-		" %u, %p, %p, %p)\n", device, requestType, request, value, index,
+		" %u, %p, %p, %p)\n", dev, requestType, request, value, index,
 		length, data, callback,	callbackCookie);
-	Object *object = gUSBStack->GetObject(device);
+	Object *object = gUSBStack->GetObject(dev);
 	if (!object || (object->Type() & USB_OBJECT_DEVICE) == 0)
 		return B_DEV_INVALID_PIPE;
+	Device *device = (Device *)object;
+	if (device->InitCheck() != B_OK)
+		return B_NO_INIT;
 
-	return ((Device *)object)->DefaultPipe()->QueueRequest(requestType,
+	return device->DefaultPipe()->QueueRequest(requestType,
 		request, value, index, length, data, length, callback, callbackCookie);
 }
 
@@ -518,9 +511,12 @@ usb_ioctl(uint32 opcode, void *buffer, size_t bufferSize)
 			Object *object = gUSBStack->GetObject(*(usb_id *)buffer);
 			if (!object || (object->Type() & USB_OBJECT_DEVICE) == 0)
 				return B_BAD_VALUE;
+			Device *device = (Device *)object;
+			if (device->InitCheck() != B_OK)
+				return B_NO_INIT;
 
 			uint32 index = 0;
-			return ((Device *)object)->BuildDeviceName((char *)buffer, &index,
+			return device->BuildDeviceName((char *)buffer, &index,
 				bufferSize, NULL);
 		}
 	}

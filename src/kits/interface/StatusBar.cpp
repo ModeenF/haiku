@@ -43,7 +43,7 @@ BStatusBar::BStatusBar(BRect frame, const char *name, const char *label,
 BStatusBar::BStatusBar(const char *name, const char *label,
 		const char *trailingLabel)
 	:
-	BView(BRect(0, 0, -1, -1), name, B_FOLLOW_LEFT | B_FOLLOW_TOP, 
+	BView(BRect(0, 0, -1, -1), name, B_FOLLOW_LEFT | B_FOLLOW_TOP,
 		B_WILL_DRAW | B_SUPPORTS_LAYOUT),
 	fLabel(label),
 	fTrailingLabel(trailingLabel)
@@ -148,7 +148,7 @@ BStatusBar::AttachedToWindow()
 	fTextDivider = Bounds().Width();
 
 	if ((fInternalFlags & kCustomBarColor) == 0)
-		fBarColor = ui_color(B_CONTROL_MARK_COLOR);
+		fBarColor = ui_color(B_STATUS_BAR_COLOR);
 }
 
 
@@ -234,7 +234,7 @@ BStatusBar::MaxSize()
 	float width, height;
 	GetPreferredSize(&width, &height);
 
-	return BLayoutUtils::ComposeSize(ExplicitMaxSize(), 
+	return BLayoutUtils::ComposeSize(ExplicitMaxSize(),
 		BSize(B_SIZE_UNLIMITED, height));
 }
 
@@ -345,59 +345,8 @@ BStatusBar::Draw(BRect updateRect)
 
 	rect = outerFrame;
 
-	if (be_control_look != NULL) {
-		be_control_look->DrawStatusBar(this, rect, updateRect,
-			backgroundColor, fBarColor, _BarPosition(barFrame));
-		return;
-	}
-
-	// First bevel
-	SetHighColor(tint_color(backgroundColor, B_DARKEN_1_TINT));
-	StrokeLine(rect.LeftBottom(), rect.LeftTop());
-	StrokeLine(rect.RightTop());
-
-	SetHighColor(tint_color(backgroundColor, B_LIGHTEN_2_TINT));
-	StrokeLine(BPoint(rect.left + 1, rect.bottom), rect.RightBottom());
-	StrokeLine(BPoint(rect.right, rect.top + 1));
-
-	rect.InsetBy(1, 1);
-
-	// Second bevel
-	SetHighColor(tint_color(backgroundColor, B_DARKEN_4_TINT));
-	StrokeLine(rect.LeftBottom(), rect.LeftTop());
-	StrokeLine(rect.RightTop());
-
-	SetHighColor(backgroundColor);
-	StrokeLine(BPoint(rect.left + 1, rect.bottom), rect.RightBottom());
-	StrokeLine(BPoint(rect.right, rect.top + 1));
-
-	rect = barFrame;
-	rect.right = _BarPosition(barFrame);
-
-	// draw bar itself
-
-	if (rect.right >= rect.left) {
-		// Bevel
-		SetHighColor(tint_color(fBarColor, B_LIGHTEN_2_TINT));
-		StrokeLine(rect.LeftBottom(), rect.LeftTop());
-		StrokeLine(rect.RightTop());
-
-		SetHighColor(tint_color(fBarColor, B_DARKEN_2_TINT));
-		StrokeLine(BPoint(rect.left + 1, rect.bottom), rect.RightBottom());
-		StrokeLine(BPoint(rect.right, rect.top + 1));
-
-		// filling
-		SetHighColor(fBarColor);
-		FillRect(rect.InsetByCopy(1, 1));
-	}
-
-	if (rect.right < barFrame.right) {
-		// empty space
-		rect.left = rect.right + 1;
-		rect.right = barFrame.right;
-		SetHighColor(tint_color(backgroundColor, B_LIGHTEN_MAX_TINT));
-		FillRect(rect);
-	}
+	be_control_look->DrawStatusBar(this, rect, updateRect,
+		backgroundColor, fBarColor, _BarPosition(barFrame));
 }
 
 
@@ -419,7 +368,7 @@ BStatusBar::MessageReceived(BMessage *message)
 			break;
 		}
 
-		case B_RESET_STATUS_BAR: 
+		case B_RESET_STATUS_BAR:
 		{
 			const char *label = NULL, *trailing_label = NULL;
 
@@ -435,7 +384,7 @@ BStatusBar::MessageReceived(BMessage *message)
 		{
 			// Change the bar color IF we don't have an application-set color.
 			if ((fInternalFlags & kCustomBarColor) == 0) {
-				message->FindColor(ui_color_name(B_CONTROL_MARK_COLOR),
+				message->FindColor(ui_color_name(B_STATUS_BAR_COLOR),
 					&fBarColor);
 			}
 
@@ -523,7 +472,7 @@ void
 BStatusBar::SetMaxValue(float max)
 {
 	// R5 and/or Zeta's SetMaxValue does not trigger an invalidate here.
-	// this is probably not ideal behavior, but it does break apps in some cases 
+	// this is probably not ideal behavior, but it does break apps in some cases
 	// as observed with SpaceMonitor.
 	// TODO: revisit this when we break binary compatibility
 	fMax = max;
@@ -595,8 +544,7 @@ BStatusBar::SetTo(float value, const char* text, const char* trailingText)
 	}
 
 	// TODO: Ask the BControlLook in the first place about dirty rect.
-	if (be_control_look != NULL)
-		update.InsetBy(-1, -1);
+	update.InsetBy(-1, -1);
 
 	Invalidate(update);
 }

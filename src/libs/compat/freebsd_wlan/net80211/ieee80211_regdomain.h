@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2005-2008 Sam Leffler, Errno Consulting
  * All rights reserved.
  *
@@ -22,10 +24,10 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/net80211/ieee80211_regdomain.h 326272 2017-11-27 15:23:17Z pfg $
  */
-#ifndef _FBSD_COMPAT_NET80211_IEEE80211_REGDOMAIN_H_
-#define _FBSD_COMPAT_NET80211_IEEE80211_REGDOMAIN_H_
+#ifndef _NET80211_IEEE80211_REGDOMAIN_H_
+#define _NET80211_IEEE80211_REGDOMAIN_H_
 
 /*
  * 802.11 regulatory domain definitions.
@@ -258,6 +260,17 @@ enum RegdomainCode {
 	SKU_SR9			= 0x0298, /* Ubiquiti SR9 (900MHz/GSM) */
 	SKU_XR9			= 0x0299, /* Ubiquiti XR9 (900MHz/GSM) */
 	SKU_GZ901		= 0x029a, /* Zcomax GZ-901 (900MHz/GSM) */
+	SKU_XC900M		= 0x029b, /* Xagyl XC900M (900MHz/GSM) */
+					  /*
+					   * The XC900M by default uses the
+					   * same mapping as the XR9.  It
+					   * can optionally use a slightly
+					   * offset channel spacing (905MHz-
+					   * 925MHz) versus the XR9 (907MHz-
+					   * 922MHz), giving an extra channel.
+					   * This requires a jumper on the
+					   * NIC to be changed.
+					   */
 };
 
 #if defined(__KERNEL__) || defined(_KERNEL)
@@ -279,4 +292,4 @@ struct ieee80211_regdomain_req;
 int	ieee80211_setregdomain(struct ieee80211vap *,
 	    struct ieee80211_regdomain_req *);
 #endif /* defined(__KERNEL__) || defined(_KERNEL) */
-#endif /* _FBSD_COMPAT_NET80211_IEEE80211_REGDOMAIN_H_ */
+#endif /* _NET80211_IEEE80211_REGDOMAIN_H_ */

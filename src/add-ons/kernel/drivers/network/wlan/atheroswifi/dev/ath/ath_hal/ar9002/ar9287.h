@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: ISC
+ *
  * Copyright (c) 2010 Atheros Communications, Inc.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -13,7 +15,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/dev/ath/ath_hal/ar9002/ar9287.h 326695 2017-12-08 15:57:29Z pfg $
  */
 
 #ifndef _ATH_AR9287_H_
@@ -45,9 +47,7 @@ struct ath_hal_9287 {
 #define	AH9287(_ah)	((struct ath_hal_9287 *)(_ah))
 
 #define	AR9287_DEFAULT_RXCHAINMASK	3
-#define	AR9285_DEFAULT_RXCHAINMASK	1
 #define	AR9287_DEFAULT_TXCHAINMASK	3
-#define	AR9285_DEFAULT_TXCHAINMASK	1
 
 #define	AR_PHY_CCA_NOM_VAL_9287_2GHZ		-112
 #define	AR_PHY_CCA_NOM_VAL_9287_5GHZ		-112

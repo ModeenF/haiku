@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2007-2009 Sam Leffler, Errno Consulting
  * Copyright (c) 2007-2009 Intel Corporation
  * All rights reserved.
@@ -26,7 +28,7 @@
 
 #include <sys/cdefs.h>
 #ifdef __FreeBSD__
-__FBSDID("$FreeBSD$");
+__FBSDID("$FreeBSD: releng/12.0/sys/net80211/ieee80211_tdma.c 326272 2017-11-27 15:23:17Z pfg $");
 #endif
 
 /*
@@ -35,6 +37,8 @@ __FBSDID("$FreeBSD$");
 #include "opt_inet.h"
 #include "opt_tdma.h"
 #include "opt_wlan.h"
+
+#ifdef	IEEE80211_SUPPORT_TDMA
 
 #include <sys/param.h>
 #include <sys/systm.h> 
@@ -113,7 +117,7 @@ static void tdma_vdetach(struct ieee80211vap *vap);
 static int tdma_newstate(struct ieee80211vap *, enum ieee80211_state, int);
 static void tdma_beacon_miss(struct ieee80211vap *vap);
 static void tdma_recv_mgmt(struct ieee80211_node *, struct mbuf *,
-	int subtype, int rssi, int nf);
+	int subtype, const struct ieee80211_rx_stats *rxs, int rssi, int nf);
 static int tdma_update(struct ieee80211vap *vap,
 	const struct ieee80211_tdma_param *tdma, struct ieee80211_node *ni,
 	int pickslot);
@@ -147,8 +151,9 @@ ieee80211_tdma_vattach(struct ieee80211vap *vap)
 	KASSERT(vap->iv_caps & IEEE80211_C_TDMA,
 	     ("not a tdma vap, caps 0x%x", vap->iv_caps));
 
-	ts = (struct ieee80211_tdma_state *) malloc(
-	     sizeof(struct ieee80211_tdma_state), M_80211_VAP, M_NOWAIT | M_ZERO);
+	ts = (struct ieee80211_tdma_state *) IEEE80211_MALLOC(
+	     sizeof(struct ieee80211_tdma_state), M_80211_VAP,
+	     IEEE80211_M_NOWAIT | IEEE80211_M_ZERO);
 	if (ts == NULL) {
 		printf("%s: cannot allocate TDMA state block\n", __func__);
 		/* NB: fall back to adhdemo mode */
@@ -173,6 +178,8 @@ ieee80211_tdma_vattach(struct ieee80211vap *vap)
 	settxparms(vap, IEEE80211_MODE_11NG, TDMA_TXRATE_11NG_DEFAULT);
 	settxparms(vap, IEEE80211_MODE_HALF, TDMA_TXRATE_HALF_DEFAULT);
 	settxparms(vap, IEEE80211_MODE_QUARTER, TDMA_TXRATE_QUARTER_DEFAULT);
+	settxparms(vap, IEEE80211_MODE_VHT_2GHZ, TDMA_TXRATE_11NG_DEFAULT);
+	settxparms(vap, IEEE80211_MODE_VHT_5GHZ, TDMA_TXRATE_11NA_DEFAULT);
 
 	setackpolicy(vap->iv_ic, 1);	/* disable ACK's */
 
@@ -197,7 +204,7 @@ tdma_vdetach(struct ieee80211vap *vap)
 		return;
 	}
 	ts->tdma_opdetach(vap);
-	free(vap->iv_tdma, M_80211_VAP);
+	IEEE80211_FREE(vap->iv_tdma, M_80211_VAP);
 	vap->iv_tdma = NULL;
 
 	setackpolicy(vap->iv_ic, 0);	/* enable ACK's */
@@ -206,9 +213,9 @@ tdma_vdetach(struct ieee80211vap *vap)
 static void
 sta_leave(void *arg, struct ieee80211_node *ni)
 {
-	struct ieee80211vap *vap = arg;
+	struct ieee80211vap *vap = ni->ni_vap;
 
-	if (ni->ni_vap == vap && ni != vap->iv_bss)
+	if (ni != vap->iv_bss)
 		ieee80211_node_leave(ni);
 }
 
@@ -243,7 +250,8 @@ tdma_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 		ieee80211_cancel_scan(vap);		/* background scan */
 		if (ostate == IEEE80211_S_RUN) {
 			/* purge station table; entries are stale */
-			ieee80211_iterate_nodes(&ic->ic_sta, sta_leave, vap);
+			ieee80211_iterate_nodes_vap(&ic->ic_sta, vap,
+			    sta_leave, NULL);
 		}
 		if (vap->iv_flags_ext & IEEE80211_FEXT_SCANREQ) {
 			ieee80211_check_scan(vap,
@@ -286,6 +294,8 @@ tdma_beacon_miss(struct ieee80211vap *vap)
 {
 	struct ieee80211_tdma_state *ts = vap->iv_tdma;
 
+	IEEE80211_LOCK_ASSERT(vap->iv_ic);
+
 	KASSERT((vap->iv_ic->ic_flags & IEEE80211_F_SCAN) == 0, ("scanning"));
 	KASSERT(vap->iv_state == IEEE80211_S_RUN,
 	    ("wrong state %d", vap->iv_state));
@@ -316,7 +326,7 @@ tdma_beacon_miss(struct ieee80211vap *vap)
 
 static void
 tdma_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
-	int subtype, int rssi, int nf)
+	int subtype, const struct ieee80211_rx_stats *rxs, int rssi, int nf)
 {
 	struct ieee80211com *ic = ni->ni_ic;
 	struct ieee80211vap *vap = ni->ni_vap;
@@ -327,7 +337,8 @@ tdma_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 		struct ieee80211_frame *wh = mtod(m0, struct ieee80211_frame *);
 		struct ieee80211_scanparams scan;
 
-		if (ieee80211_parse_beacon(ni, m0, &scan) != 0)
+		/* XXX TODO: use rxstatus to determine off-channel beacons */
+		if (ieee80211_parse_beacon(ni, m0, ic->ic_curchan, &scan) != 0)
 			return;
 		if (scan.tdma == NULL) {
 			/*
@@ -337,8 +348,7 @@ tdma_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 			 */
 			IEEE80211_DISCARD(vap,
 			    IEEE80211_MSG_ELEMID | IEEE80211_MSG_INPUT,
-			    wh, ieee80211_mgt_subtype_name[subtype >>
-				IEEE80211_FC0_SUBTYPE_SHIFT],
+			    wh, ieee80211_mgt_subtype_name(subtype),
 			    "%s", "no TDMA ie");
 			vap->iv_stats.is_rx_mgtdiscard++;
 			return;
@@ -387,7 +397,7 @@ tdma_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 		 *     2x parsing of the frame but should happen infrequently
 		 */
 	}
-	ts->tdma_recv_mgmt(ni, m0, subtype, rssi, nf);
+	ts->tdma_recv_mgmt(ni, m0, subtype, rxs, rssi, nf);
 }
 
 /*
@@ -740,7 +750,7 @@ tdma_ioctl_get80211(struct ieee80211vap *vap, struct ieee80211req *ireq)
 	struct ieee80211_tdma_state *ts = vap->iv_tdma;
 
 	if ((vap->iv_caps & IEEE80211_C_TDMA) == 0)
-		return EOPNOTSUPP;
+		return ENOSYS;
 
 	switch (ireq->i_type) {
 	case IEEE80211_IOC_TDMA_SLOT:
@@ -768,7 +778,7 @@ tdma_ioctl_set80211(struct ieee80211vap *vap, struct ieee80211req *ireq)
 	struct ieee80211_tdma_state *ts = vap->iv_tdma;
 
 	if ((vap->iv_caps & IEEE80211_C_TDMA) == 0)
-		return EOPNOTSUPP;
+		return ENOSYS;
 
 	switch (ireq->i_type) {
 	case IEEE80211_IOC_TDMA_SLOT:
@@ -818,3 +828,5 @@ restart:
 	return ERESTART;
 }
 IEEE80211_IOCTL_SET(tdma, tdma_ioctl_set80211);
+
+#endif	/* IEEE80211_SUPPORT_TDMA */

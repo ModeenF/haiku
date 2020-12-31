@@ -1,9 +1,6 @@
 /*
  * Copyright 2004-2005, Axel Dörfler, axeld@pinc-software.de. All rights reserved.
  * Distributed under the terms of the MIT License.
- *
- * calculate_cpu_conversion_factor() was written by Travis Geiselbrecht and
- * licensed under the NewOS license.
  */
 
 
@@ -216,9 +213,20 @@ check_cpu_features()
 	if (is_440) {
 		// the FPU is implemented as an Auxiliary Processing Unit,
 		// so we must enable transfers by setting the DAPUIB bit to 0
+		// (11th bit)
 		asm volatile(
 			"mfccr0 %%r3\n"
-			"\tlis %%r4,~(1<<(20-16))\n"
+			"\tlis %%r4,~(1<<(31-11-16))\n"
+			"\tand %%r3,%%r3,%%r4\n"
+			"\tmtccr0 %%r3"
+			: : : "r3", "r4");
+
+		// kernel_args is a packed structure with 64bit fields so...
+		// we must enable unaligned transfers by setting the FLSTA bit to 0
+		// XXX: actually doesn't work for float ops which gcc emits :-(
+		asm volatile(
+			"mfccr0 %%r3\n"
+			"\tli %%r4,~(1<<(31-23))\n"
 			"\tand %%r3,%%r3,%%r4\n"
 			"\tmtccr0 %%r3"
 			: : : "r3", "r4");
@@ -249,7 +257,7 @@ check_cpu_features()
 
 
 extern "C" void
-arch_spin(bigtime_t microseconds)
+spin(bigtime_t microseconds)
 {
 	for(bigtime_t i=0;i<microseconds;i=i+1)
 	{

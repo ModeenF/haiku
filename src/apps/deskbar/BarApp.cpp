@@ -54,7 +54,10 @@ All rights reserved.
 #include <Messenger.h>
 #include <Path.h>
 #include <Roster.h>
+
+#include <DeskbarPrivate.h>
 #include <RosterPrivate.h>
+#include "tracker_private.h"
 
 #include "BarView.h"
 #include "BarWindow.h"
@@ -67,7 +70,6 @@ All rights reserved.
 #include "Utilities.h"
 
 #include "icons.h"
-#include "tracker_private.h"
 
 
 BLocker TBarApp::sSubscriberLock;
@@ -236,11 +238,11 @@ TBarApp::InitSettings()
 	settings.left = fDefaultSettings.left = false;
 	settings.top = fDefaultSettings.top = true;
 	settings.state = fDefaultSettings.state = kExpandoState;
-	settings.width = fDefaultSettings.width = 0;
+	settings.width = fDefaultSettings.width = gMinimumWindowWidth;
 	settings.switcherLoc = fDefaultSettings.switcherLoc = BPoint(5000, 5000);
 	settings.showClock = fDefaultSettings.showClock = true;
 	// applications
-	settings.trackerAlwaysFirst = fDefaultSettings.trackerAlwaysFirst = false;
+	settings.trackerAlwaysFirst = fDefaultSettings.trackerAlwaysFirst = true;
 	settings.sortRunningApps = fDefaultSettings.sortRunningApps = false;
 	settings.superExpando = fDefaultSettings.superExpando = false;
 	settings.expandNewTeams = fDefaultSettings.expandNewTeams = false;
@@ -334,6 +336,12 @@ TBarApp::InitSettings()
 				fDefaultSettings.autoHide);
 		}
 
+		// constrain width setting within limits
+		if (settings.width < gMinimumWindowWidth)
+			settings.width = gMinimumWindowWidth;
+		else if (settings.width > gMaximumWindowWidth)
+			settings.width = gMaximumWindowWidth;
+
 		filePath = dirPath;
 		filePath.Append(clockSettingsFileName);
 		fClockSettingsFile = new BFile(filePath.Path(), O_RDWR);
@@ -360,17 +368,42 @@ void
 TBarApp::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
-		case 'gloc':
-		case 'sloc':
-		case 'gexp':
-		case 'sexp':
-		case 'info':
-		case 'exst':
-		case 'cwnt':
-		case 'icon':
-		case 'remv':
-		case 'adon':
-			// pass any BDeskbar originating messages on to the window
+		// BDeskbar originating messages we can handle
+		case kMsgIsAlwaysOnTop:
+		{
+			BMessage reply('rply');
+			reply.AddBool("always on top", fSettings.alwaysOnTop);
+			message->SendReply(&reply);
+			break;
+		}
+		case kMsgIsAutoRaise:
+		{
+			BMessage reply('rply');
+			reply.AddBool("auto raise", fSettings.autoRaise);
+			message->SendReply(&reply);
+			break;
+		}
+		case kMsgIsAutoHide:
+		{
+			BMessage reply('rply');
+			reply.AddBool("auto hide", fSettings.autoHide);
+			message->SendReply(&reply);
+			break;
+		}
+
+		// pass rest of BDeskbar originating messages onto the window
+		// (except for setters handled below)
+		case kMsgLocation:
+		case kMsgSetLocation:
+		case kMsgIsExpanded:
+		case kMsgExpand:
+		case kMsgGetItemInfo:
+		case kMsgHasItem:
+		case kMsgCountItems:
+		case kMsgMaxItemSize:
+		case kMsgAddView:
+		case kMsgRemoveItem:
+		case kMsgAddAddOn:
 			fBarWindow->PostMessage(message);
 			break;
 
@@ -463,24 +496,28 @@ TBarApp::MessageReceived(BMessage* message)
 				BDragger::ShowAllDraggers();
 			break;
 
+		case kMsgAlwaysOnTop: // from BDeskbar
 		case kAlwaysTop:
 			fSettings.alwaysOnTop = !fSettings.alwaysOnTop;
 
 			if (fPreferencesWindow != NULL)
 				fPreferencesWindow->PostMessage(kUpdatePreferences);
 
-			fBarWindow->SetFeel(fSettings.alwaysOnTop ? B_FLOATING_ALL_WINDOW_FEEL
+			fBarWindow->SetFeel(fSettings.alwaysOnTop
+				? B_FLOATING_ALL_WINDOW_FEEL
 				: B_NORMAL_WINDOW_FEEL);
 			break;
 
+		case kMsgAutoRaise: // from BDeskbar
 		case kAutoRaise:
-			fSettings.autoRaise = fSettings.alwaysOnTop ? false :
-				!fSettings.autoRaise;
+			fSettings.autoRaise = fSettings.alwaysOnTop ? false
+				: !fSettings.autoRaise;
 
 			if (fPreferencesWindow != NULL)
 				fPreferencesWindow->PostMessage(kUpdatePreferences);
 			break;
 
+		case kMsgAutoHide: // from BDeskbar
 		case kAutoHide:
 			fSettings.autoHide = !fSettings.autoHide;
 
@@ -653,6 +690,7 @@ TBarApp::MessageReceived(BMessage* message)
 		}
 		// fall-through
 
+		case kRealignReplicants:
 		case kShowHideTime:
 		case kShowSeconds:
 		case kShowDayOfWeek:

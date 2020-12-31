@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2007-2009 Sam Leffler, Errno Consulting
  * Copyright (c) 2007-2009 Intel Corporation
  * All rights reserved.
@@ -23,10 +25,10 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/net80211/ieee80211_tdma.h 326272 2017-11-27 15:23:17Z pfg $
  */
-#ifndef _FBSD_COMPAT_NET80211_IEEE80211_TDMA_H_
-#define _FBSD_COMPAT_NET80211_IEEE80211_TDMA_H_
+#ifndef _NET80211_IEEE80211_TDMA_H_
+#define _NET80211_IEEE80211_TDMA_H_
 
 /*
  * TDMA-mode implementation definitions.
@@ -81,7 +83,8 @@ struct ieee80211_tdma_state {
 	int	(*tdma_newstate)(struct ieee80211vap *, enum ieee80211_state,
 		    int arg);
 	void	(*tdma_recv_mgmt)(struct ieee80211_node *,
-		    struct mbuf *, int, int, int);
+		    struct mbuf *, int,
+		    const struct ieee80211_rx_stats *rxs, int, int);
 	void	(*tdma_opdetach)(struct ieee80211vap *);
 };
  
@@ -99,4 +102,4 @@ struct ieee80211_beacon_offsets;
 void	ieee80211_tdma_update_beacon(struct ieee80211vap *vap,
 	    struct ieee80211_beacon_offsets *bo);
 #endif /* _KERNEL */
-#endif /* _FBSD_COMPAT_NET80211_IEEE80211_TDMA_H_ */
+#endif /* !_NET80211_IEEE80211_TDMA_H_ */

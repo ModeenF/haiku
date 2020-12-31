@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2015 Haiku, Inc. All rights reserved.
+ * Copyright 2002-2017 Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -7,6 +7,7 @@
  *		Jerome Duval, jerome.duval@free.fr
  *		Jonas Sundström, jonas@kirilla.se
  *		John Scipione, jscipione@gmail.com
+ *		Brian Hill, supernova@warpmail.net
  */
 
 
@@ -17,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <Alert.h>
 #include <Bitmap.h>
 #include <Catalog.h>
 #include <ControlLook.h>
@@ -33,6 +35,7 @@
 #include <PopUpMenu.h>
 
 #include <be_apps/Tracker/Background.h>
+#include <ScreenDefs.h>
 
 #include "ImageFilePanel.h"
 
@@ -70,6 +73,7 @@ BackgroundsView::BackgroundsView()
 	fCurrent(NULL),
 	fCurrentInfo(NULL),
 	fLastImageIndex(-1),
+	fRecentFoldersLimit(10),
 	fPathList(1, true),
 	fImageList(1, true),
 	fFoundPositionSetting(false)
@@ -95,9 +99,15 @@ BackgroundsView::BackgroundsView()
 	fYPlacementText = new BTextControl(B_TRANSLATE("Y:"), NULL,
 		new BMessage(kMsgImagePlacement));
 
+	// right-align text view
+	fXPlacementText->TextView()->SetAlignment(B_ALIGN_RIGHT);
+	fYPlacementText->TextView()->SetAlignment(B_ALIGN_RIGHT);
+
+	// max 5 characters allowed
 	fXPlacementText->TextView()->SetMaxBytes(5);
 	fYPlacementText->TextView()->SetMaxBytes(5);
 
+	// limit to numbers only
 	for (int32 i = 0; i < 256; i++) {
 		if ((i < '0' || i > '9') && i != '-') {
 			fXPlacementText->TextView()->DisallowChar(i);
@@ -144,8 +154,6 @@ BackgroundsView::BackgroundsView()
 		B_TRANSLATE("Current workspace"),
 		new BMessage(kMsgCurrentWorkspace)));
 	menuItem->SetMarked(true);
-	fLastWorkspaceIndex =
-		fWorkspaceMenu->IndexOf(fWorkspaceMenu->FindMarked());
 	fWorkspaceMenu->AddSeparatorItem();
 	fWorkspaceMenu->AddItem(new BMenuItem(B_TRANSLATE("Default folder"),
 		new BMessage(kMsgDefaultFolder)));
@@ -349,8 +357,6 @@ BackgroundsView::MessageReceived(BMessage* message)
 		case kMsgCurrentWorkspace:
 		case kMsgAllWorkspaces:
 			fImageMenu->FindItem(kMsgNoImage)->SetLabel(B_TRANSLATE("None"));
-			fLastWorkspaceIndex = fWorkspaceMenu->IndexOf(
-				fWorkspaceMenu->FindMarked());
 			if (fCurrent && fCurrent->IsDesktop()) {
 				_UpdateButtons();
 			} else {
@@ -361,8 +367,6 @@ BackgroundsView::MessageReceived(BMessage* message)
 
 		case kMsgDefaultFolder:
 			fImageMenu->FindItem(kMsgNoImage)->SetLabel(B_TRANSLATE("None"));
-			fLastWorkspaceIndex = fWorkspaceMenu->IndexOf(
-				fWorkspaceMenu->FindMarked());
 			_SetDesktop(false);
 			_LoadDefaultFolder();
 			break;
@@ -385,10 +389,6 @@ BackgroundsView::MessageReceived(BMessage* message)
 					_FindImageItem(fLastImageIndex)->SetMarked(true);
 				else
 					fImageMenu->ItemAt(0)->SetMarked(true);
-			} else if (pointer == fFolderPanel) {
-				if (fLastWorkspaceIndex >= 0)
-					fWorkspaceMenu->ItemAt(fLastWorkspaceIndex)
-						->SetMarked(true);
 			}
 			break;
 		}
@@ -402,24 +402,25 @@ BackgroundsView::MessageReceived(BMessage* message)
 			break;
 
 		case kMsgFolderSelected:
+		{
 			fImageMenu->FindItem(kMsgNoImage)->SetLabel(B_TRANSLATE("Default"));
-			fLastWorkspaceIndex = fWorkspaceMenu->IndexOf(
-				fWorkspaceMenu->FindMarked());
 			_SetDesktop(false);
-
-			_LoadRecentFolder(*fPathList.ItemAt(fWorkspaceMenu->IndexOf(
-				fWorkspaceMenu->FindMarked()) - 6));
+			BString folderPathStr;
+			if (message->FindString("folderPath", &folderPathStr) == B_OK) {
+				BPath folderPath(folderPathStr);
+				_LoadRecentFolder(folderPath);
+			}
 			break;
-
+		}
 		case kMsgApplySettings:
 		{
 			_Save();
 
-			//_NotifyServer();
-			thread_id notify_thread;
-			notify_thread = spawn_thread(BackgroundsView::_NotifyThread,
-				"notifyServer", B_NORMAL_PRIORITY, this);
-			resume_thread(notify_thread);
+			// Notify the server and Screen preflet
+			thread_id notifyThread;
+			notifyThread = spawn_thread(BackgroundsView::_NotifyThread,
+				"notifyThread", B_NORMAL_PRIORITY, this);
+			resume_thread(notifyThread);
 			_UpdateButtons();
 			break;
 		}
@@ -439,9 +440,8 @@ BackgroundsView::_LoadDesktopFolder()
 {
 	BPath path;
 	if (find_directory(B_DESKTOP_DIRECTORY, &path) == B_OK) {
-		status_t err;
-		err = get_ref_for_path(path.Path(), &fCurrentRef);
-		if (err != B_OK)
+		status_t error = get_ref_for_path(path.Path(), &fCurrentRef);
+		if (error != B_OK)
 			printf("error in LoadDesktopSettings\n");
 		_LoadFolder(true);
 	}
@@ -455,9 +455,8 @@ BackgroundsView::_LoadDefaultFolder()
 	if (find_directory(B_USER_SETTINGS_DIRECTORY, &path) == B_OK) {
 		BString pathString = path.Path();
 		pathString << "/Tracker/DefaultFolderTemplate";
-		status_t err;
-		err = get_ref_for_path(pathString.String(), &fCurrentRef);
-		if (err != B_OK)
+		status_t error = get_ref_for_path(pathString.String(), &fCurrentRef);
+		if (error != B_OK)
 			printf("error in LoadDefaultFolderSettings\n");
 		_LoadFolder(false);
 	}
@@ -467,9 +466,8 @@ BackgroundsView::_LoadDefaultFolder()
 void
 BackgroundsView::_LoadRecentFolder(BPath path)
 {
-	status_t err;
-	err = get_ref_for_path(path.Path(), &fCurrentRef);
-	if (err != B_OK)
+	status_t error = get_ref_for_path(path.Path(), &fCurrentRef);
+	if (error != B_OK)
 		printf("error in LoadRecentFolder\n");
 	_LoadFolder(false);
 }
@@ -579,8 +577,7 @@ BackgroundsView::_UpdateWithCurrent(void)
 void
 BackgroundsView::_Save()
 {
-	bool textWidgetLabelOutline
-		= fIconLabelOutline->Value() == B_CONTROL_ON;
+	bool textWidgetLabelOutline = fIconLabelOutline->Value() == B_CONTROL_ON;
 
 	BackgroundImage::Mode mode = _FindPlacementMode();
 	BPoint offset(atoi(fXPlacementText->Text()), atoi(fYPlacementText->Text()));
@@ -659,8 +656,14 @@ BackgroundsView::_Save()
 
 	status_t status = fCurrent->SetBackgroundImage(&node);
 	if (status != B_OK) {
-		// TODO: this should be a BAlert!
-		printf("setting background image failed: %s\n", strerror(status));
+		BString error(strerror(status));
+		BString text(B_TRANSLATE("Setting the background image failed:"));
+		text.Append("\n").Append(error);
+		BAlert* alert = new BAlert(B_TRANSLATE("Set background image error"),
+			text, B_TRANSLATE("OK"));
+		alert->SetShortcut(0, B_ESCAPE);
+		alert->Go(NULL);
+		printf("setting background image failed: %s\n", error.String());
 	}
 }
 
@@ -675,36 +678,36 @@ BackgroundsView::_NotifyServer()
 	} else {
 		int32 i = -1;
 		BMessage reply;
-		int32 err;
+		int32 error;
 		BEntry currentEntry(&fCurrentRef);
 		BPath currentPath(&currentEntry);
 		bool isCustomFolder
 			= !fWorkspaceMenu->FindItem(kMsgDefaultFolder)->IsMarked();
 
 		do {
-			BMessage msg(B_GET_PROPERTY);
+			BMessage message(B_GET_PROPERTY);
 			i++;
 
 			// look at the "Poses" in every Tracker window
-			msg.AddSpecifier("Poses");
-			msg.AddSpecifier("Window", i);
+			message.AddSpecifier("Poses");
+			message.AddSpecifier("Window", i);
 
 			reply.MakeEmpty();
-			tracker.SendMessage(&msg, &reply);
+			tracker.SendMessage(&message, &reply);
 
 			// break out of the loop when we're at the end of
 			// the windows
 			if (reply.what == B_MESSAGE_NOT_UNDERSTOOD
-				&& reply.FindInt32("error", &err) == B_OK
-				&& err == B_BAD_INDEX)
+				&& reply.FindInt32("error", &error) == B_OK
+				&& error == B_BAD_INDEX)
 				break;
 
 			// don't stop for windows that don't understand
 			// a request for "Poses"; they're not displaying
 			// folders
 			if (reply.what == B_MESSAGE_NOT_UNDERSTOOD
-				&& reply.FindInt32("error", &err) == B_OK
-				&& err != B_BAD_SCRIPT_SYNTAX)
+				&& reply.FindInt32("error", &error) == B_OK
+				&& error != B_BAD_SCRIPT_SYNTAX)
 				continue;
 
 			BMessenger trackerWindow;
@@ -713,14 +716,14 @@ BackgroundsView::_NotifyServer()
 
 			if (isCustomFolder) {
 				// found a window with poses, ask for its path
-				msg.MakeEmpty();
-				msg.what = B_GET_PROPERTY;
-				msg.AddSpecifier("Path");
-				msg.AddSpecifier("Poses");
-				msg.AddSpecifier("Window", i);
+				message.MakeEmpty();
+				message.what = B_GET_PROPERTY;
+				message.AddSpecifier("Path");
+				message.AddSpecifier("Poses");
+				message.AddSpecifier("Window", i);
 
 				reply.MakeEmpty();
-				tracker.SendMessage(&msg, &reply);
+				tracker.SendMessage(&message, &reply);
 
 				// go on with the next if this din't have a path
 				if (reply.what == B_MESSAGE_NOT_UNDERSTOOD)
@@ -743,12 +746,22 @@ BackgroundsView::_NotifyServer()
 }
 
 
+void
+BackgroundsView::_NotifyScreenPreflet()
+{
+	BMessenger messenger("application/x-vnd.Haiku-Screen");
+	if (messenger.IsValid())
+		messenger.SendMessage(UPDATE_DESKTOP_COLOR_MSG);
+}
+
+
 int32
 BackgroundsView::_NotifyThread(void* data)
 {
 	BackgroundsView* view = (BackgroundsView*)data;
 
 	view->_NotifyServer();
+	view->_NotifyScreenPreflet();
 	return B_OK;
 }
 
@@ -811,27 +824,21 @@ BackgroundsView::_LoadSettings()
 
 	PRINT_OBJECT(fSettings);
 
-	BString string;
-	if (fSettings.FindString("paneldir", &string) == B_OK)
-		fPanel->SetPanelDirectory(string.String());
+	BString settingStr;
+	if (fSettings.FindString("paneldir", &settingStr) == B_OK)
+		fPanel->SetPanelDirectory(settingStr.String());
 
-	if (fSettings.FindString("folderpaneldir", &string) == B_OK)
-		fFolderPanel->SetPanelDirectory(string.String());
+	if (fSettings.FindString("folderpaneldir", &settingStr) == B_OK)
+		fFolderPanel->SetPanelDirectory(settingStr.String());
 
 	int32 index = 0;
-	while (fSettings.FindString("recentfolder", index, &string) == B_OK) {
-		if (index == 0)
-			fWorkspaceMenu->AddSeparatorItem();
-
-		path.SetTo(string.String());
-		int32 i = _AddPath(path);
-		BString s;
-		s << B_TRANSLATE("Folder: ") << path.Leaf();
-		BMenuItem* item = new BMenuItem(s.String(),
-			new BMessage(kMsgFolderSelected));
-		fWorkspaceMenu->AddItem(item, -i - 1 + 6);
+	while (fSettings.FindString("recentfolder", index, &settingStr) == B_OK) {
+		path.SetTo(settingStr.String());
+		_AddRecentFolder(path);
 		index++;
 	}
+
+	fWorkspaceMenu->ItemAt(1)->SetMarked(true);
 	fWorkspaceMenu->SetTargetForItems(this);
 
 	PRINT(("Settings Loaded\n"));
@@ -857,6 +864,7 @@ BackgroundsView::_UpdatePreview()
 		&& imageEnabled;
 	if (fXPlacementText->IsEnabled() ^ textEnabled)
 		fXPlacementText->SetEnabled(textEnabled);
+
 	if (fYPlacementText->IsEnabled() ^ textEnabled)
 		fYPlacementText->SetEnabled(textEnabled);
 
@@ -912,10 +920,13 @@ BackgroundsView::_FindPlacementMode()
 
 	if (fPlacementMenu->FindItem(kMsgCenterPlacement)->IsMarked())
 		mode = BackgroundImage::kCentered;
+
 	if (fPlacementMenu->FindItem(kMsgScalePlacement)->IsMarked())
 		mode = BackgroundImage::kScaledToFit;
+
 	if (fPlacementMenu->FindItem(kMsgManualPlacement)->IsMarked())
 		mode = BackgroundImage::kAtOffset;
+
 	if (fPlacementMenu->FindItem(kMsgTilePlacement)->IsMarked())
 		mode = BackgroundImage::kTiled;
 
@@ -1024,46 +1035,59 @@ BackgroundsView::RefsReceived(BMessage* message)
 				BMessenger(this).SendMessage(kMsgCurrentWorkspace);
 				break;
 			}
-			BMenuItem* item;
-			int32 index = _AddPath(path);
-			if (index >= 0) {
-				item = fWorkspaceMenu->ItemAt(index + 6);
-				fLastWorkspaceIndex = index + 6;
-			} else {
-				if (fWorkspaceMenu->CountItems() <= 5)
-					fWorkspaceMenu->AddSeparatorItem();
-				BString s;
-				s << B_TRANSLATE("Folder: ") << path.Leaf();
-				item = new BMenuItem(s.String(),
-					new BMessage(kMsgFolderSelected));
-				fWorkspaceMenu->AddItem(item, -index - 1 + 6);
-				item->SetTarget(this);
-				fLastWorkspaceIndex = -index - 1 + 6;
-			}
 
-			item->SetMarked(true);
-			BMessenger(this).SendMessage(kMsgFolderSelected);
+			// Add the newly selected path as a recent folder,
+			// removing the oldest entry if needed
+			_AddRecentFolder(path, true);
 		}
 	}
 }
 
 
-int32
-BackgroundsView::_AddPath(BPath path)
+static BPath*
+FindPath(BPath* currentPath, void* newPath)
 {
-	int32 count = fPathList.CountItems();
-	int32 index = 0;
-	for (; index < count; index++) {
-		BPath* p = fPathList.ItemAt(index);
-		int c = BString(p->Path()).ICompare(path.Path());
-		if (c == 0)
-			return index;
+	BPath* pathToCheck = static_cast<BPath*>(newPath);
+	int compare = ICompare(currentPath->Path(), pathToCheck->Path());
+	return compare == 0 ? currentPath : NULL;
+}
 
-		if (c > 0)
-			break;
+
+void
+BackgroundsView::_AddRecentFolder(BPath path, bool notifyApp)
+{
+	BPath* currentPath = fPathList.EachElement(FindPath, &path);
+	BMenuItem* item;
+	BMessage* folderSelectedMsg = new BMessage(kMsgFolderSelected);
+	folderSelectedMsg->AddString("folderPath", path.Path());
+
+	if (currentPath == NULL) {
+		// "All Workspaces", "Current Workspace", "--", "Default folder",
+		// "Other folder...", If only these 5 exist,
+		// we need a new separator to add path specific recent folders.
+		if (fWorkspaceMenu->CountItems() <= 5)
+			fWorkspaceMenu->AddSeparatorItem();
+		// Maxed out the number of recent folders, remove the oldest entry
+		if (fPathList.CountItems() == fRecentFoldersLimit) {
+			fPathList.RemoveItemAt(0);
+			fWorkspaceMenu->RemoveItem(6);
+		}
+		// Add the new recent folder
+		BString folderMenuText(B_TRANSLATE("Folder: %path"));
+		folderMenuText.ReplaceFirst("%path", path.Leaf());
+		item = new BMenuItem(folderMenuText.String(), folderSelectedMsg);
+		fWorkspaceMenu->AddItem(item);
+		fPathList.AddItem(new BPath(path));
+		item->SetTarget(this);
+	} else {
+		int32 itemIndex = fPathList.IndexOf(currentPath);
+		item = fWorkspaceMenu->ItemAt(itemIndex + 6);
 	}
-	fPathList.AddItem(new BPath(path), index);
-	return -index - 1;
+
+	item->SetMarked(true);
+
+	if (notifyApp)
+		BMessenger(this).SendMessage(folderSelectedMsg);
 }
 
 

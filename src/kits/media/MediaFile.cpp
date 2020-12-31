@@ -11,13 +11,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <BufferIO.h>
 #include <File.h>
 #include <MediaTrack.h>
+#include <Url.h>
 
-#include "debug.h"
+#include "MediaDebug.h"
 
 #include "MediaExtractor.h"
+#include "MediaStreamer.h"
 #include "MediaWriter.h"
 
 
@@ -43,7 +44,7 @@ BMediaFile::BMediaFile(const entry_ref* ref, int32 flags)
 	CALLED();
 	_Init();
 	fDeleteSource = true;
-	_InitReader(new(std::nothrow) BFile(ref, O_RDONLY), flags);
+	_InitReader(new(std::nothrow) BFile(ref, O_RDONLY), NULL, flags);
 }
 
 
@@ -51,7 +52,7 @@ BMediaFile::BMediaFile(BDataIO* source, int32 flags)
 {
 	CALLED();
 	_Init();
-	_InitReader(source, flags);
+	_InitReader(source, NULL, flags);
 }
 
 
@@ -62,7 +63,7 @@ BMediaFile::BMediaFile(const entry_ref* ref, const media_file_format* mfi,
 	_Init();
 	fDeleteSource = true;
 	_InitWriter(new(std::nothrow) BFile(ref, B_CREATE_FILE | B_ERASE_FILE
-		| B_WRITE_ONLY), mfi, flags);
+		| B_WRITE_ONLY), NULL, mfi, flags);
 }
 
 
@@ -71,7 +72,7 @@ BMediaFile::BMediaFile(BDataIO* destination, const media_file_format* mfi,
 {
 	CALLED();
 	_Init();
-	_InitWriter(destination, mfi, flags);
+	_InitWriter(destination, NULL, mfi, flags);
 }
 
 
@@ -79,6 +80,38 @@ BMediaFile::BMediaFile(BDataIO* destination, const media_file_format* mfi,
 BMediaFile::BMediaFile(const media_file_format* mfi, int32 flags)
 {
 	debugger("BMediaFile::BMediaFile not implemented");
+}
+
+
+BMediaFile::BMediaFile(const BUrl& url)
+{
+	CALLED();
+	_Init();
+	fDeleteSource = true;
+	_InitReader(NULL, &url);
+}
+
+
+BMediaFile::BMediaFile(const BUrl& url, int32 flags)
+{
+	CALLED();
+	_Init();
+	fDeleteSource = true;
+	_InitReader(NULL, &url, flags);
+}
+
+
+BMediaFile::BMediaFile(const BUrl& destination, const media_file_format* mfi,
+	int32 flags)
+{
+	CALLED();
+	_Init();
+	fDeleteSource = true;
+	_InitWriter(NULL, &destination, mfi, flags);
+	// TODO: Implement streaming server support, it's
+	// a pretty complex thing compared to client mode
+	// and will require to expand the current BMediaFile
+	// design to be aware of it.
 }
 
 
@@ -108,6 +141,18 @@ BMediaFile::SetTo(BDataIO* destination)
 
 	_UnInit();
 	_InitReader(destination);
+
+	return fErr;
+}
+
+
+status_t
+BMediaFile::SetTo(const BUrl& url)
+{
+	CALLED();
+
+	_UnInit();
+	_InitReader(NULL, &url);
 
 	return fErr;
 }
@@ -181,7 +226,8 @@ BMediaFile::TrackAt(int32 index)
 		return NULL;
 	}
 	if (fTrackList[index] == NULL) {
-		TRACE("BMediaFile::TrackAt, creating new track for index %ld\n", index);
+		TRACE("BMediaFile::TrackAt, creating new track for index %"
+			B_PRId32 "\n", index);
 		fTrackList[index] = new(std::nothrow) BMediaTrack(fExtractor, index);
 		TRACE("BMediaFile::TrackAt, new track is %p\n", fTrackList[index]);
 	}
@@ -202,7 +248,7 @@ BMediaFile::ReleaseTrack(BMediaTrack* track)
 	for (int32 i = 0; i < fTrackNum; i++) {
 		if (fTrackList[i] == track) {
 			TRACE("BMediaFile::ReleaseTrack, releasing track %p with index "
-				"%ld\n", track, i);
+				"%" B_PRId32 "\n", track, i);
 			delete track;
 			fTrackList[i] = NULL;
 			return B_OK;
@@ -222,7 +268,7 @@ BMediaFile::ReleaseAllTracks()
 	for (int32 i = 0; i < fTrackNum; i++) {
 		if (fTrackList[i]) {
 			TRACE("BMediaFile::ReleaseAllTracks, releasing track %p with "
-				"index %ld\n", fTrackList[i], i);
+				"index %" B_PRId32 "\n", fTrackList[i], i);
 			delete fTrackList[i];
 			fTrackList[i] = NULL;
 		}
@@ -405,6 +451,7 @@ BMediaFile::_Init()
 	fTrackNum = 0;
 	fTrackList = NULL;
 	fExtractor = NULL;
+	fStreamer = NULL;
 	fWriter = NULL;
 	fWriterID = 0;
 	fErr = B_OK;
@@ -424,59 +471,59 @@ BMediaFile::_UnInit()
 	free(fTrackList);
 	fTrackList = NULL;
 	fTrackNum = 0;
+
+	// Tells the extractor to stop its asynchronous processing
+	// before deleting its source
+	if (fExtractor != NULL)
+		fExtractor->StopProcessing();
+
+	if (fDeleteSource) {
+		delete fSource;
+		fDeleteSource = false;
+	}
+	fSource = NULL;
+
+	// Deleting the extractor or writer can cause unloading of the plugins.
+	// The source must be deleted before that, because it can come from a
+	// plugin (for example the http_streamer)
 	delete fExtractor;
 	fExtractor = NULL;
 	delete fWriter;
 	fWriter = NULL;
-	if (fDeleteSource) {
-		delete fSource;
-		fSource = NULL;
-		fDeleteSource = false;
-	}
+	delete fStreamer;
+	fStreamer = NULL;
 }
 
 
 void
-BMediaFile::_InitReader(BDataIO* source, int32 flags)
+BMediaFile::_InitReader(BDataIO* source, const BUrl* url, int32 flags)
 {
 	CALLED();
 
-	if (source == NULL) {
+	if (source == NULL && url == NULL) {
 		fErr = B_NO_MEMORY;
 		return;
 	}
 
-	fSource = source;
-
-	if (BFile* file = dynamic_cast<BFile*>(source)) {
+	if (source == NULL)
+		_InitStreamer(*url, &source);
+	else if (BFile* file = dynamic_cast<BFile*>(source))
 		fErr = file->InitCheck();
-		if (fErr != B_OK)
-			return;
-	}
 
-	if (dynamic_cast<BBufferIO *>(source)) {
-		// Already buffered
-	} else {
-		// Source needs to be at least a BPositionIO to wrap with a BBufferIO
-		if (dynamic_cast<BPositionIO *>(source)) {
-			fSource = new(std::nothrow) BBufferIO(dynamic_cast<BPositionIO *>(
-				source), 65536, fDeleteSource);
-			if (fSource == NULL) {
-				fErr = B_NO_MEMORY;
-				return;
-			}
-			fDeleteSource = true;
-		} else
-			TRACE("Unable to improve performance with a BufferIO\n");
-	}
+	if (fErr != B_OK)
+		return;
 
-	fExtractor = new(std::nothrow) MediaExtractor(fSource, flags);
+	fExtractor = new(std::nothrow) MediaExtractor(source, flags);
+
 	if (fExtractor == NULL)
 		fErr = B_NO_MEMORY;
 	else
 		fErr = fExtractor->InitCheck();
+
 	if (fErr != B_OK)
 		return;
+
+	fSource = source;
 
 	fExtractor->GetFileFormatInfo(&fMFI);
 	fTrackNum = fExtractor->StreamCount();
@@ -490,8 +537,8 @@ BMediaFile::_InitReader(BDataIO* source, int32 flags)
 
 
 void
-BMediaFile::_InitWriter(BDataIO* target, const media_file_format* fileFormat,
-	int32 flags)
+BMediaFile::_InitWriter(BDataIO* target, const BUrl* url,
+	const media_file_format* fileFormat, int32 flags)
 {
 	CALLED();
 
@@ -500,15 +547,21 @@ BMediaFile::_InitWriter(BDataIO* target, const media_file_format* fileFormat,
 		return;
 	}
 
-	if (target == NULL) {
+	if (target == NULL && url == NULL) {
 		fErr = B_NO_MEMORY;
 		return;
 	}
 
 	fMFI = *fileFormat;
-	fSource = target;
 
-	fWriter = new(std::nothrow) MediaWriter(fSource, fMFI);
+	if (target == NULL) {
+		_InitStreamer(*url, &target);
+		if (fErr != B_OK)
+			return;
+	}
+
+	fWriter = new(std::nothrow) MediaWriter(target, fMFI);
+
 	if (fWriter == NULL)
 		fErr = B_NO_MEMORY;
 	else
@@ -516,9 +569,28 @@ BMediaFile::_InitWriter(BDataIO* target, const media_file_format* fileFormat,
 	if (fErr != B_OK)
 		return;
 
+	// Get the actual source from the writer
+	fSource = fWriter->Target();
 	fTrackNum = 0;
 }
 
+
+void
+BMediaFile::_InitStreamer(const BUrl& url, BDataIO** adapter)
+{
+	if (fStreamer != NULL)
+		delete fStreamer;
+
+	TRACE(url.UrlString());
+
+	fStreamer = new(std::nothrow) MediaStreamer(url);
+	if (fStreamer == NULL) {
+		fErr = B_NO_MEMORY;
+		return;
+	}
+
+	fErr = fStreamer->CreateAdapter(adapter);
+}
 
 /*
 //unimplemented

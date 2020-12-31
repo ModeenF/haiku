@@ -2,16 +2,16 @@
 
 SYSTEM_BIN = [ FFilterByBuildFeatures
 	addattr alert arp autologin
-	bc beep bfsinfo
-	catattr checkfs checkitout chop clear collectcatkeys compress copyattr
-	dc desklink df diskimage draggers
+	beep bfsinfo
+	catattr checkfs checkitout chop clear collectcatkeys copyattr
+	desklink df diskimage draggers
 	driveinfo dstcheck dumpcatalog
 	eject error
 	fdinfo ffm filepanel finddir findpaths fortune fstrim
-	ftp@libedit ftpd
+	ftpd
 	getarch groupadd groupdel groupmod
 	hd hey
-	ideinfo@ide idestatus@ide ifconfig iroster isvolume
+	ifconfig iroster isvolume
 	kernel_debugger keymap keystore
 	launch_roster linkcatkeys listarea listattr listimage listdev listfont
 	listport listres listsem listusb locale logger login lsindex
@@ -19,10 +19,9 @@ SYSTEM_BIN = [ FFilterByBuildFeatures
 	modifiers mount mountvolume
 	netstat notify
 	open
-	package package_repo passwd pc ping ping6 pkgman
-	prio profile ps
+	package package_repo passwd pc ping ping6 pkgman prio profile ps
 	query quit
-	rc reindex release renice resattr rmattr rmindex roster
+	ramdisk rc reindex release renice resattr resizefs rmattr rmindex roster
 	route
 	safemode screen_blanker screeninfo screenmode setarch setmime settype
 	setversion setvolume shutdown
@@ -30,13 +29,13 @@ SYSTEM_BIN = [ FFilterByBuildFeatures
 	tcptester telnet telnetd top
 	traceroute trash
 	unchop unmount
-	uptime urlwrapper useradd userdel
+	urlwrapper useradd userdel
 	version vmstat
 	waitfor watch writembr@x86,x86_64 xres
 ] ;
 
 SYSTEM_APPS = [ FFilterByBuildFeatures
-	AboutSystem ActivityMonitor
+	AboutSystem
 	BootManager@x86,x86_64
 	CharacterMap
 	Debugger@libedit DeskCalc Devices DiskProbe DiskUsage DriveSetup
@@ -49,7 +48,6 @@ SYSTEM_APPS = [ FFilterByBuildFeatures
 ] ;
 
 DESKBAR_APPLICATIONS =
-	ActivityMonitor
 	CharacterMap
 	DeskCalc Devices DiskProbe DiskUsage DriveSetup
 	Expander
@@ -68,12 +66,12 @@ SYSTEM_PREFERENCES = [ FFilterByBuildFeatures
 	Backgrounds
 	<preference>Deskbar
 	FileTypes
-	Keyboard Keymap
+	Input
+	Keymap
 	Locale
-	Mouse
 	Network Notifications
 	Screen Shortcuts
-	Time Touchpad <preference>Tracker
+	Time <preference>Tracker
 	VirtualMemory
 ] ;
 
@@ -89,7 +87,9 @@ rule HaikuImageGetSystemLibs
 		# libs with standard grist
 		[ MultiArchDefaultGristFiles [ FFilterByBuildFeatures
 			libbe.so libbsd.so libbnetapi.so
-			libdebug.so libdevice.so
+			libdebug.so
+			libdebugger.so@primary
+			libdevice.so
 			libgnu.so
 			libnetwork.so
 			libpackage.so
@@ -184,45 +184,38 @@ SYSTEM_ADD_ONS_DRIVERS_NET = [ FFilterByBuildFeatures
 		atheros813x ar81xx attansic_l1 attansic_l2
 		broadcom440x broadcom570x
 		dec21xxx
+		emulex_oce
 		ipro100 ipro1000
 		jmicron2x0
 		marvell_yukon
 		nforce
 		pcnet
 		rtl8139 rtl81xx
-		sis19x syskonnect
+		sis19x sis900 syskonnect
 		via_rhine vt612x
 	}@ # x86,x86_64
 
 	etherpci
 	pegasus
-	sis900
 	usb_asix usb_davicom usb_ecm
 	wb840
-
-	# WLAN drivers
-	x86,x86_64 @{
-		aironetwifi atheroswifi
-		broadcom43xx
-		iprowifi2100 iprowifi2200 iprowifi3945 iprowifi4965
-		marvell88w8363 marvell88w8335
-		ralinkwifi
-		wavelanwifi
-	}@ # x86,x86_64
-
-	# WWAN drivers
-	#usb_beceemwmx@gpl
 ] ;
 
 SYSTEM_ADD_ONS_DRIVERS_POWER = [ FFilterByBuildFeatures
-	acpi_button@x86
+	acpi_button@x86,x86_64
 ] ;
 
+SYSTEM_ADD_ONS_DRIVERS_SENSOR = [ FFilterByBuildFeatures
+	acpi_als@x86,x86_64
+] ;
+
+
 SYSTEM_ADD_ONS_BUS_MANAGERS = [ FFilterByBuildFeatures
-	acpi@x86,x86_64	agp_gart@x86,x86_64 ata@ata
+	acpi@x86,x86_64	agp_gart@x86,x86_64 ata
 	config_manager
 	firewire@x86
-	ide@ide scsi isa@x86,x86_64
+	i2c@x86,x86_64
+	scsi isa@x86,x86_64
 	pci ps2@x86,x86_64
 	random
 	usb
@@ -238,7 +231,7 @@ SYSTEM_ADD_ONS_FILE_SYSTEMS =
 	log_overlay
 	ntfs
 	packagefs
-	reiserfs@x86
+	reiserfs
 	udf
 	write_overlay
 ;
@@ -287,3 +280,17 @@ AddFilesToHaikuImage system settings network : $(networkSettingsFiles) ;
 SEARCH on <post-install>fresh_install
 	= [ FDirName $(HAIKU_TOP) data system settings ] ;
 AddFilesToHaikuImage system settings : <post-install>fresh_install ;
+
+# repository config and cache files
+local repository ;
+for repository in $(HAIKU_REPOSITORIES) {
+	local config = [ on $(repository) return $(HAIKU_REPOSITORY_CONFIG_FILE) ] ;
+	local cache = [ on $(repository) return $(HAIKU_REPOSITORY_CACHE_FILE) ] ;
+	if $(HAIKU_UPDATE_ALL_PACKAGES) {
+		HAIKU_INCLUDE_IN_IMAGE on $(config) $(cache) = 1 ;
+	}
+	AddFilesToHaikuImage system settings package-repositories
+		: $(config) : $(repository:G=) ;
+	AddFilesToHaikuImage system cache package-repositories
+		: $(cache) : $(repository:G=) ;
+}

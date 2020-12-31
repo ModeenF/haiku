@@ -1,4 +1,4 @@
-/* $FreeBSD$ */
+/* $FreeBSD: releng/12.0/sys/net80211/ieee80211_amrr.h 206358 2010-04-07 15:29:13Z rpaulo $ */
 /*	$OpenBSD: ieee80211_amrr.h,v 1.3 2006/06/17 19:34:31 damien Exp $	*/
 
 /*-
@@ -17,8 +17,8 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#ifndef _FBSD_COMPAT_NET80211_IEEE80211_AMRR_H_
-#define _FBSD_COMPAT_NET80211_IEEE80211_AMRR_H_
+#ifndef _NET80211_IEEE80211_AMRR_H_
+#define _NET80211_IEEE80211_AMRR_H_
 
 /*-
  * Naive implementation of the Adaptive Multi Rate Retry algorithm:
@@ -58,4 +58,4 @@ struct ieee80211_amrr_node {
 	u_int	amn_retrycnt;
 };
 
-#endif /* _FBSD_COMPAT_NET80211_IEEE80211_AMRR_H_ */
+#endif /* _NET80211_IEEE80211_AMRR_H_ */

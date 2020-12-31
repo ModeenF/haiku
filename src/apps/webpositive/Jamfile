@@ -1,7 +1,7 @@
 SubDir HAIKU_TOP src apps webpositive ;
 
-SubDirC++Flags $(defines) -Wno-error=sequence-point --std=c++11 ;
-SubDirCcFlags $(defines) -Wno-error=sequence-point ;
+SubDirC++Flags $(defines) -Wno-error=sequence-point -Wno-error=format-truncation ;
+SubDirCcFlags $(defines) -Wno-error=sequence-point -Wno-error=format-truncation ;
 
 # source directories
 local sourceDirs =
@@ -18,7 +18,6 @@ local sources =
 
 	# support
 	BaseURL.cpp
-	BitmapButton.cpp
 	BookmarkBar.cpp
 	FontSelectionView.cpp
 	SettingsMessage.cpp
@@ -85,6 +84,9 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			:
 			$(sources)
 			;
+
+		ExtractArchiveToHaikuImage home config settings WebPositive
+			: $(SUBDIR)/bookmarks/WebPositiveBookmarks.zip ;
 
 		EnableBuildFeatures webpositive ;
 

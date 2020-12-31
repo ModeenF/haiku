@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -112,6 +112,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #include "acpi.h"
@@ -205,8 +241,8 @@ AcpiExDoMatch (
          * True if equal: (P[i] == M)
          * Change to:     (M == P[i])
          */
-        Status = AcpiExDoLogicalOp (AML_LEQUAL_OP, MatchObj, PackageObj,
-                    &LogicalResult);
+        Status = AcpiExDoLogicalOp (
+            AML_LOGICAL_EQUAL_OP, MatchObj, PackageObj, &LogicalResult);
         if (ACPI_FAILURE (Status))
         {
             return (FALSE);
@@ -218,8 +254,8 @@ AcpiExDoMatch (
          * True if less than or equal: (P[i] <= M) (P[i] NotGreater than M)
          * Change to:                  (M >= P[i]) (M NotLess than P[i])
          */
-        Status = AcpiExDoLogicalOp (AML_LLESS_OP, MatchObj, PackageObj,
-                    &LogicalResult);
+        Status = AcpiExDoLogicalOp (
+            AML_LOGICAL_LESS_OP, MatchObj, PackageObj, &LogicalResult);
         if (ACPI_FAILURE (Status))
         {
             return (FALSE);
@@ -232,8 +268,8 @@ AcpiExDoMatch (
          * True if less than: (P[i] < M)
          * Change to:         (M > P[i])
          */
-        Status = AcpiExDoLogicalOp (AML_LGREATER_OP, MatchObj, PackageObj,
-                    &LogicalResult);
+        Status = AcpiExDoLogicalOp (
+            AML_LOGICAL_GREATER_OP, MatchObj, PackageObj, &LogicalResult);
         if (ACPI_FAILURE (Status))
         {
             return (FALSE);
@@ -245,8 +281,8 @@ AcpiExDoMatch (
          * True if greater than or equal: (P[i] >= M) (P[i] NotLess than M)
          * Change to:                     (M <= P[i]) (M NotGreater than P[i])
          */
-        Status = AcpiExDoLogicalOp (AML_LGREATER_OP, MatchObj, PackageObj,
-                    &LogicalResult);
+        Status = AcpiExDoLogicalOp (
+            AML_LOGICAL_GREATER_OP, MatchObj, PackageObj, &LogicalResult);
         if (ACPI_FAILURE (Status))
         {
             return (FALSE);
@@ -259,8 +295,8 @@ AcpiExDoMatch (
          * True if greater than: (P[i] > M)
          * Change to:            (M < P[i])
          */
-        Status = AcpiExDoLogicalOp (AML_LLESS_OP, MatchObj, PackageObj,
-                    &LogicalResult);
+        Status = AcpiExDoLogicalOp (
+            AML_LOGICAL_LESS_OP, MatchObj, PackageObj, &LogicalResult);
         if (ACPI_FAILURE (Status))
         {
             return (FALSE);
@@ -376,13 +412,13 @@ AcpiExOpcode_6A_0T_1R (
              * non-match.
              */
             if (!AcpiExDoMatch ((UINT32) Operand[1]->Integer.Value,
-                                ThisElement, Operand[2]))
+                    ThisElement, Operand[2]))
             {
                 continue;
             }
 
             if (!AcpiExDoMatch ((UINT32) Operand[3]->Integer.Value,
-                                ThisElement, Operand[4]))
+                    ThisElement, Operand[4]))
             {
                 continue;
             }
@@ -403,6 +439,7 @@ AcpiExOpcode_6A_0T_1R (
 
         ACPI_ERROR ((AE_INFO, "Unknown AML opcode 0x%X",
             WalkState->Opcode));
+
         Status = AE_AML_BAD_OPCODE;
         goto Cleanup;
     }

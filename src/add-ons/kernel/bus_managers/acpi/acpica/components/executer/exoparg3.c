@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -112,6 +112,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #include "acpi.h"
@@ -178,7 +214,8 @@ AcpiExOpcode_3A_0T_0R (
     case AML_FATAL_OP:          /* Fatal (FatalType  FatalCode  FatalArg) */
 
         ACPI_DEBUG_PRINT ((ACPI_DB_INFO,
-            "FatalOp: Type %X Code %X Arg %X <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n",
+            "FatalOp: Type %X Code %X Arg %X "
+            "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n",
             (UINT32) Operand[0]->Integer.Value,
             (UINT32) Operand[1]->Integer.Value,
             (UINT32) Operand[2]->Integer.Value));
@@ -186,8 +223,8 @@ AcpiExOpcode_3A_0T_0R (
         Fatal = ACPI_ALLOCATE (sizeof (ACPI_SIGNAL_FATAL_INFO));
         if (Fatal)
         {
-            Fatal->Type     = (UINT32) Operand[0]->Integer.Value;
-            Fatal->Code     = (UINT32) Operand[1]->Integer.Value;
+            Fatal->Type = (UINT32) Operand[0]->Integer.Value;
+            Fatal->Code = (UINT32) Operand[1]->Integer.Value;
             Fatal->Argument = (UINT32) Operand[2]->Integer.Value;
         }
 
@@ -206,8 +243,10 @@ AcpiExOpcode_3A_0T_0R (
          * op is intended for use by disassemblers in order to properly
          * disassemble control method invocations. The opcode or group of
          * opcodes should be surrounded by an "if (0)" clause to ensure that
-         * AML interpreters never see the opcode.
+         * AML interpreters never see the opcode. Thus, something is
+         * wrong if an external opcode ever gets here.
          */
+        ACPI_ERROR ((AE_INFO, "Executed External Op"));
         Status = AE_OK;
         goto Cleanup;
 
@@ -215,6 +254,7 @@ AcpiExOpcode_3A_0T_0R (
 
         ACPI_ERROR ((AE_INFO, "Unknown AML opcode 0x%X",
             WalkState->Opcode));
+
         Status = AE_AML_BAD_OPCODE;
         goto Cleanup;
     }
@@ -262,7 +302,7 @@ AcpiExOpcode_3A_1T_1R (
          * either a String or a Buffer, so just use its type.
          */
         ReturnDesc = AcpiUtCreateInternalObject (
-                        (Operand[0])->Common.Type);
+            (Operand[0])->Common.Type);
         if (!ReturnDesc)
         {
             Status = AE_NO_MEMORY;
@@ -287,8 +327,8 @@ AcpiExOpcode_3A_1T_1R (
 
         else if ((Index + Length) > Operand[0]->String.Length)
         {
-            Length = (ACPI_SIZE) Operand[0]->String.Length -
-                        (ACPI_SIZE) Index;
+            Length =
+                (ACPI_SIZE) Operand[0]->String.Length - (ACPI_SIZE) Index;
         }
 
         /* Strings always have a sub-pointer, not so for buffers */
@@ -334,8 +374,8 @@ AcpiExOpcode_3A_1T_1R (
         {
             /* We have a buffer, copy the portion requested */
 
-            memcpy (Buffer, Operand[0]->String.Pointer + Index,
-                         Length);
+            memcpy (Buffer,
+                Operand[0]->String.Pointer + Index, Length);
         }
 
         /* Set the length of the new String/Buffer */
@@ -352,6 +392,7 @@ AcpiExOpcode_3A_1T_1R (
 
         ACPI_ERROR ((AE_INFO, "Unknown AML opcode 0x%X",
             WalkState->Opcode));
+
         Status = AE_AML_BAD_OPCODE;
         goto Cleanup;
     }
@@ -369,12 +410,12 @@ Cleanup:
         AcpiUtRemoveReference (ReturnDesc);
         WalkState->ResultObj = NULL;
     }
-
-    /* Set the return object and exit */
-
     else
     {
+        /* Set the return object and exit */
+
         WalkState->ResultObj = ReturnDesc;
     }
+
     return_ACPI_STATUS (Status);
 }

@@ -15,7 +15,7 @@
 
 // Update kColorWhichLastContinuous with the largest color constant which
 // leaves no gaps in the color_which integer values.
-static const int32 kColorWhichLastContinuous = B_LINK_ACTIVE_COLOR;
+static const int32 kColorWhichLastContinuous = B_STATUS_BAR_COLOR;
 static const int32 kColorWhichCount = kColorWhichLastContinuous + 3;
 	// + 1 for index-offset, + 2 for B_SUCCESS_COLOR, B_FAILURE_COLOR
 
@@ -45,7 +45,7 @@ index_to_color_which(int32 index)
 			return (color_which)(index + 1);
 		else {
 			return (color_which)(index + B_SUCCESS_COLOR
-				- kColorWhichCount - 3);
+				- kColorWhichCount + 3);
 		}
 	}
 

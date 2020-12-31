@@ -9,11 +9,11 @@ UseHeaders [ FDirName $(HAIKU_TOP) headers build os interface ] : true ;
 UseHeaders [ FDirName $(HAIKU_TOP) headers build os storage ] : true ;
 UseHeaders [ FDirName $(HAIKU_TOP) headers build os support ] : true ;
 
-UsePrivateBuildHeaders kernel system ;
+UsePrivateBuildHeaders kernel libroot system ;
 
 {
 	local defines = [ FDefines
-		HAIKU_BUILD_ATTRIBUTES_DIR="\\\"$(HAIKU_BUILD_ATTRIBUTES_DIR)\\\""
+		'HAIKU_BUILD_ATTRIBUTES_DIR="\"$(HAIKU_BUILD_ATTRIBUTES_DIR)\""'
 		_HAIKU_BUILD_DONT_REMAP_FD_FUNCTIONS=1
 	] ;
 	SubDirCcFlags $(defines) ;
@@ -29,7 +29,6 @@ UsePrivateBuildHeaders kernel system ;
 
 	defines = [ FDefines KMESSAGE_CONTAINER_ONLY=1 ] ;
 	ObjectC++Flags KMessage.cpp : $(defines) ;
-
 }
 
 # locate the library
@@ -37,11 +36,11 @@ MakeLocate libroot_build.so : $(HOST_BUILD_COMPATIBILITY_LIB_DIR) ;
 
 # darwin already has strlcpy and strlcat in libSystem
 local strlSources ;
-if $(HOST_PLATFORM) != darwin {
+if $(HOST_PLATFORM) != darwin && $(HOST_PLATFORM) != haiku_host {
 	strlSources = strlcpy.c strlcat.c ;
 }
 
-if $(HOST_PLATFORM) = cygwin || $(HOST_PLATFORM) = sunos {
+if $(HOST_PLATFORM) = mingw {
 	strlSources += stpcpy.c strcasestr.c ;
 }
 
@@ -65,6 +64,7 @@ local librootSources =
 	misc.cpp
 	sem.cpp
 	thread.cpp
+	SHA256.cpp
 
 	$(hostPlatformSources)
 
@@ -100,5 +100,7 @@ SEARCH on [ FGristFiles driver_settings.cpp ]
 	= [ FDirName $(HAIKU_TOP) src system libroot os ] ;
 SEARCH on [ FGristFiles $(strlSources) strnlen.cpp ]
 	= [ FDirName $(HAIKU_TOP) src system libroot posix string ] ;
+SEARCH on [ FGristFiles SHA256.cpp ]
+	= [ FDirName $(HAIKU_TOP) src system libroot posix crypt ] ;
 SEARCH on [ FGristFiles KMessage.cpp ]
     = [ FDirName $(HAIKU_TOP) src system kernel messaging ] ;

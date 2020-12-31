@@ -23,6 +23,7 @@
 // void (KernelExport.h) and once with int (stdio.h).
 #include <cstdio>
 #include <cstring>
+#include <arpa/inet.h>
 
 #include <ByteOrder.h>
 #include <net_buffer.h>
@@ -123,10 +124,10 @@ KPPPInterface::KPPPInterface(const char *name, ppp_interface_entry *entry,
 		// load settings from description file
 		char path[B_PATH_NAME_LENGTH];
 		sprintf(path, "ptpnet/%s", name);
-			// XXX: TODO: change base path to "/etc/ptpnet"
 
 		void *handle = load_driver_settings(path);
 		if (!handle) {
+			ERROR("KPPPInterface: Unable to load %s PPP driver settings!\n", path);
 			fInitStatus = B_ERROR;
 			return;
 		}
@@ -138,6 +139,7 @@ KPPPInterface::KPPPInterface(const char *name, ppp_interface_entry *entry,
 			// use the given settings
 
 	if (!fSettings) {
+		ERROR("KPPPInterface: No fSettings!\n");
 		fInitStatus = B_ERROR;
 		return;
 	}
@@ -145,6 +147,7 @@ KPPPInterface::KPPPInterface(const char *name, ppp_interface_entry *entry,
 	// add internal modules
 	// LCP
 	if (!AddProtocol(&LCP())) {
+		ERROR("KPPPInterface: Could not add LCP protocol!\n");
 		fInitStatus = B_ERROR;
 		return;
 	}
@@ -259,7 +262,7 @@ KPPPInterface::~KPPPInterface()
 	while (true) {
 		Down();
 		{
-			MutexLocker (fLock);
+			MutexLocker locker(fLock);
 			if (State() == PPP_INITIAL_STATE && Phase() == PPP_DOWN_PHASE)
 				break;
 		}
@@ -635,8 +638,7 @@ KPPPInterface::Control(uint32 op, void *data, size_t length)
 					return B_ERROR;
 
 				ppp_control_info *controlInfo = (ppp_control_info*) control->data;
-				if (controlInfo->index != 0 || !Device())
-				{
+				if (controlInfo->index != 0 || !Device()) {
 					dprintf("index is 0 or no Device\n");
 					return B_BAD_INDEX;
 				}
@@ -2012,10 +2014,12 @@ KPPPInterface::CalculateBaudRate()
 		Device()->OutputTransferRate());
 	else {
 		fIfnet->link_speed = 0;
-		for (int32 index = 0; index < CountChildren(); index++)
-			if (ChildAt(index)->Ifnet())
-				fIfnet->link_speed += ChildAt(index)->Ifnet()->link_speed;
+		for (int32 index = 0; index < CountChildren(); index++) {
+			if (ChildAt(index)->Ifnet()) {
+				fIfnet->link_speed = ChildAt(index)->Ifnet()->link_speed;
 				return;
+			}
+		}
 	}
 }
 

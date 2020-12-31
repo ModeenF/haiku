@@ -21,10 +21,10 @@
 #define DEFINE_MACRO(macro, value) DEFINE_COMPUTED_ASM_MACRO(macro, value)
 
 #define DEFINE_OFFSET_MACRO(prefix, structure, member) \
-    DEFINE_MACRO(prefix##_##member, offsetof(struct structure, member));
+	DEFINE_MACRO(prefix##_##member, offsetof(struct structure, member));
 
 #define DEFINE_SIZEOF_MACRO(prefix, structure) \
-    DEFINE_MACRO(prefix##_sizeof, sizeof(struct structure));
+	DEFINE_MACRO(prefix##_sizeof, sizeof(struct structure));
 
 
 void
@@ -79,6 +79,18 @@ dummy()
 	DEFINE_SIZEOF_MACRO(SYSCALL_INFO, syscall_info);
 	DEFINE_OFFSET_MACRO(SYSCALL_INFO, syscall_info, function);
 	DEFINE_OFFSET_MACRO(SYSCALL_INFO, syscall_info, parameter_size);
+
+	// struct extended_syscall_info
+	DEFINE_SIZEOF_MACRO(EXTENDED_SYSCALL_INFO, extended_syscall_info);
+	DEFINE_OFFSET_MACRO(EXTENDED_SYSCALL_INFO, extended_syscall_info,
+		parameter_count);
+	DEFINE_OFFSET_MACRO(EXTENDED_SYSCALL_INFO, extended_syscall_info,
+		parameters);
+
+	// struct syscall_parameter_info
+	DEFINE_SIZEOF_MACRO(SYSCALL_PARAMETER_INFO, syscall_parameter_info);
+	DEFINE_OFFSET_MACRO(SYSCALL_PARAMETER_INFO, syscall_parameter_info,
+		used_size);
 
 	// struct signal_frame_data
 	DEFINE_SIZEOF_MACRO(SIGNAL_FRAME_DATA, signal_frame_data);

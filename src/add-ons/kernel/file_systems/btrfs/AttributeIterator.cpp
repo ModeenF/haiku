@@ -1,13 +1,11 @@
 /*
+ * Copyright 2017, Chế Vũ Gia Hy, cvghy116@gmail.com.
  * Copyright 2011, Jérôme Duval, korli@users.berlios.de.
  * This file may be used under the terms of the MIT License.
  */
 
 
 #include "AttributeIterator.h"
-
-#include <new>
-#include <stdlib.h>
 
 
 //#define TRACE_BTRFS
@@ -25,9 +23,10 @@ AttributeIterator::AttributeIterator(Inode* inode)
 	fInode(inode),
 	fIterator(NULL)
 {
-	struct btrfs_key key;
+	btrfs_key key;
 	key.SetType(BTRFS_KEY_TYPE_XATTR_ITEM);
 	key.SetObjectID(inode->ID());
+	key.SetOffset(BTREE_BEGIN);
 	fIterator = new(std::nothrow) TreeIterator(inode->GetVolume()->FSTree(),
 		key);
 }
@@ -36,6 +35,7 @@ AttributeIterator::AttributeIterator(Inode* inode)
 AttributeIterator::~AttributeIterator()
 {
 	delete fIterator;
+	fIterator = NULL;
 }
 
 
@@ -49,21 +49,20 @@ AttributeIterator::InitCheck()
 status_t
 AttributeIterator::GetNext(char* name, size_t* _nameLength)
 {
-	btrfs_key key;
-	btrfs_dir_entry *entries;
-	size_t entries_length;
-	status_t status = fIterator->GetPreviousEntry(key, (void**)&entries,
+	btrfs_dir_entry* entries;
+	uint32 entries_length;
+	status_t status = fIterator->GetPreviousEntry((void**)&entries,
 		&entries_length);
 	if (status != B_OK)
 		return status;
 
-	btrfs_dir_entry *entry = entries;
+	btrfs_dir_entry* entry = entries;
 	uint16 current = 0;
 	while (current < entries_length) {
 		current += entry->Length();
 		break;
 		// TODO there could be several entries with the same name hash
-		entry = (btrfs_dir_entry *)((uint8*)entry + entry->Length());
+		entry = (btrfs_dir_entry*)((uint8*)entry + entry->Length());
 	}
 
 	TRACE("DirectoryIterator::GetNext() entries_length %ld name_length %d\n",
@@ -85,4 +84,3 @@ AttributeIterator::Rewind()
 	fOffset = -1ULL;
 	return B_OK;
 }
-

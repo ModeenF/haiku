@@ -37,25 +37,25 @@ char __dont_remove_copyright_from_binary[] = "Copyright (c) 2002, 2003 "
 #include <string.h>
 
 #include <Alert.h>
-#include <Application.h>
 #include <Autolock.h>
 #include <Directory.h>
 #include <Roster.h>
 #include <MediaDefs.h>
 #include <MediaFormats.h>
 #include <Messenger.h>
+#include <Server.h>
 
 #include <syscalls.h>
 
 #include "AppManager.h"
 #include "BufferManager.h"
 #include "DataExchange.h"
-#include "MediaMisc.h"
+#include "MediaDebug.h"
 #include "MediaFilesManager.h"
+#include "MediaMisc.h"
 #include "NodeManager.h"
 #include "NotificationManager.h"
 #include "ServerInterface.h"
-#include "debug.h"
 #include "media_server.h"
 
 
@@ -69,10 +69,10 @@ NotificationManager* gNotificationManager;
 #define REPLY_TIMEOUT ((bigtime_t)500000)
 
 
-class ServerApp : BApplication {
+class ServerApp : public BServer {
 public:
-	ServerApp();
-	~ServerApp();
+								ServerApp(status_t& error);
+	virtual						~ServerApp();
 
 protected:
 	virtual void				ArgvReceived(int32 argc, char** argv);
@@ -89,7 +89,7 @@ private:
 private:
 			port_id				_ControlPort() const { return fControlPort; }
 
-	static	int32				_ControlThread(void* arg);
+			static	int32		_ControlThread(void* arg);
 
 			BLocker				fLocker;
 			port_id				fControlPort;
@@ -97,9 +97,9 @@ private:
 };
 
 
-ServerApp::ServerApp()
+ServerApp::ServerApp(status_t& error)
  	:
- 	BApplication(B_MEDIA_SERVER_SIGNATURE),
+	BServer(B_MEDIA_SERVER_SIGNATURE, true, &error),
 	fLocker("media server locker")
 {
  	gNotificationManager = new NotificationManager;
@@ -435,7 +435,7 @@ ServerApp::_HandleMessage(int32 code, const void* data, size_t size)
 			request.SendReply(status, &reply, sizeof(reply));
 			break;
 		}
-		
+
 		case SERVER_RELEASE_NODE_ALL:
 		{
 			const server_release_node_request& request
@@ -922,7 +922,7 @@ ServerApp::_ControlThread(void* _server)
 void
 ServerApp::MessageReceived(BMessage* msg)
 {
-	TRACE("ServerApp::MessageReceived %lx enter\n", msg->what);
+	TRACE("ServerApp::MessageReceived %" B_PRIu32 " enter\n", msg->what);
 	switch (msg->what) {
 		case MEDIA_SERVER_REQUEST_NOTIFICATIONS:
 		case MEDIA_SERVER_CANCEL_NOTIFICATIONS:
@@ -938,6 +938,10 @@ ServerApp::MessageReceived(BMessage* msg)
 			gMediaFilesManager->HandleAddSystemBeepEvent(msg);
 			break;
 
+		case MEDIA_SERVER_RESCAN_COMPLETED:
+			gAppManager->NotifyRosters();
+			break;
+
 		case B_SOME_APP_QUIT:
 		{
 			BString mimeSig;
@@ -948,7 +952,7 @@ ServerApp::MessageReceived(BMessage* msg)
 				gNodeManager->CleanupDormantFlavorInfos();
 
 			team_id id;
-			if (msg->FindInt32("team", &id) == B_OK
+			if (msg->FindInt32("be:team", &id) == B_OK
 					&& gAppManager->HasTeam(id)) {
 				gAppManager->UnregisterTeam(id);
 			}
@@ -957,11 +961,10 @@ ServerApp::MessageReceived(BMessage* msg)
 
 		default:
 			BApplication::MessageReceived(msg);
-			printf("\nmedia_server: unknown message received:\n");
-			msg->PrintToStream();
+			TRACE("\nmedia_server: unknown message received!\n");
 			break;
 	}
-	TRACE("ServerApp::MessageReceived %lx leave\n", msg->what);
+	TRACE("ServerApp::MessageReceived %" B_PRIu32 " leave\n", msg->what);
 }
 
 
@@ -971,8 +974,11 @@ ServerApp::MessageReceived(BMessage* msg)
 int
 main()
 {
-	new ServerApp;
-	be_app->Run();
-	delete be_app;
-	return 0;
+	status_t status;
+	ServerApp app(status);
+
+	if (status == B_OK)
+		app.Run();
+
+	return status == B_OK ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -147,7 +147,6 @@ public:
 	virtual						~URLTextView();
 
 	virtual	void				MessageReceived(BMessage* message);
-	virtual	void				FrameResized(float width, float height);
 	virtual	void				MouseDown(BPoint where);
 	virtual	void				KeyDown(const char* bytes, int32 numBytes);
 	virtual	void				MakeFocus(bool focused = true);
@@ -164,12 +163,8 @@ protected:
 	virtual	void				DeleteText(int32 fromOffset, int32 toOffset);
 
 private:
-			void				_AlignTextRect();
-
-private:
 			URLInputGroup*		fURLInputGroup;
 			TextViewCompleter*	fURLAutoCompleter;
-			BString				fPreviousText;
 			bool				fUpdateAutoCompleterChoices;
 };
 
@@ -180,11 +175,11 @@ URLInputGroup::URLTextView::URLTextView(URLInputGroup* parent)
 	fURLInputGroup(parent),
 	fURLAutoCompleter(new TextViewCompleter(this,
 		new BrowsingHistoryChoiceModel())),
-	fPreviousText(""),
 	fUpdateAutoCompleterChoices(true)
 {
 	MakeResizable(true);
 	SetStylable(true);
+	SetInsets(be_control_look->DefaultLabelSpacing(), 2, 0, 2);
 	fURLAutoCompleter->SetModificationsReported(true);
 }
 
@@ -207,14 +202,6 @@ URLInputGroup::URLTextView::MessageReceived(BMessage* message)
 			BTextView::MessageReceived(message);
 			break;
 	}
-}
-
-
-void
-URLInputGroup::URLTextView::FrameResized(float width, float height)
-{
-	BTextView::FrameResized(width, height);
-	_AlignTextRect();
 }
 
 
@@ -284,8 +271,8 @@ URLInputGroup::URLTextView::KeyDown(const char* bytes, int32 numBytes)
 			break;
 
 		case B_ESCAPE:
-			// Revert to text as it was when we received keyboard focus.
-			SetText(fPreviousText.String());
+			// Text already unlocked && replaced in BrowserWindow,
+			// now select it.
 			SelectAll();
 			break;
 
@@ -294,23 +281,32 @@ URLInputGroup::URLTextView::KeyDown(const char* bytes, int32 numBytes)
 			break;
 
 		default:
+		{
+			BString currentText = Text();
 			BTextView::KeyDown(bytes, numBytes);
+			// Lock the URL input if it was modified
+			if (!fURLInputGroup->IsURLInputLocked()
+				&& Text() != currentText)
+				fURLInputGroup->LockURLInput();
 			break;
+		}
 	}
 }
 
 void
 URLInputGroup::URLTextView::MakeFocus(bool focus)
 {
+	// Unlock the URL input if focus was lost.
+	if (!focus)
+		fURLInputGroup->LockURLInput(false);
+
 	if (focus == IsFocus())
 		return;
 
 	BTextView::MakeFocus(focus);
 
-	if (focus) {
-		fPreviousText = Text();
+	if (focus)
 		SelectAll();
-	}
 
 	fURLInputGroup->Invalidate();
 }
@@ -375,17 +371,20 @@ URLInputGroup::URLTextView::InsertText(const char* inText, int32 inLength,
 
 	BFont font;
 	GetFont(&font);
-	const rgb_color black = (rgb_color) { 0, 0, 0, 255 };
-	const rgb_color gray = (rgb_color) { 60, 60, 60, 255 };
+	const rgb_color hostColor = ui_color(B_DOCUMENT_TEXT_COLOR);
+	const rgb_color urlColor = tint_color(hostColor,
+		(hostColor.Brightness() < 128 ? B_LIGHTEN_1_TINT : B_DARKEN_1_TINT));
 	if (baseUrlStart > 0)
-		SetFontAndColor(0, baseUrlStart, &font, B_FONT_ALL, &gray);
+		SetFontAndColor(0, baseUrlStart, &font, B_FONT_ALL, &urlColor);
 	if (baseUrlEnd > baseUrlStart) {
 		font.SetFace(B_BOLD_FACE);
-		SetFontAndColor(baseUrlStart, baseUrlEnd, &font, B_FONT_ALL, &black);
+		SetFontAndColor(baseUrlStart, baseUrlEnd, &font, B_FONT_ALL,
+			&hostColor);
 	}
 	if (baseUrlEnd < TextLength()) {
 		font.SetFace(B_REGULAR_FACE);
-		SetFontAndColor(baseUrlEnd, TextLength(), &font, B_FONT_ALL, &gray);
+		SetFontAndColor(baseUrlEnd, TextLength(), &font, B_FONT_ALL,
+			&urlColor);
 	}
 
 	fURLAutoCompleter->TextModified(fUpdateAutoCompleterChoices);
@@ -398,25 +397,6 @@ URLInputGroup::URLTextView::DeleteText(int32 fromOffset, int32 toOffset)
 	BTextView::DeleteText(fromOffset, toOffset);
 
 	fURLAutoCompleter->TextModified(fUpdateAutoCompleterChoices);
-}
-
-
-void
-URLInputGroup::URLTextView::_AlignTextRect()
-{
-	// Layout the text rect to be in the middle, normally this means there
-	// is one pixel spacing on each side.
-	BRect textRect(Bounds());
-	textRect.left = 0.0;
-	float vInset = max_c(1,
-		floorf((textRect.Height() - LineHeight(0)) / 2.0 + 0.5));
-	float hInset = kHorizontalTextRectInset;
-
-	if (be_control_look)
-		hInset = be_control_look->DefaultLabelSpacing();
-
-	textRect.InsetBy(hInset, vInset);
-	SetTextRect(textRect);
 }
 
 
@@ -523,6 +503,7 @@ public:
 	{
 		SetDrawingMode(B_OP_ALPHA);
 		SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
+		SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
 	}
 
 	~PageIconView()
@@ -582,7 +563,8 @@ private:
 URLInputGroup::URLInputGroup(BMessage* goMessage)
 	:
 	BGroupView(B_HORIZONTAL, 0.0),
-	fWindowActive(false)
+	fWindowActive(false),
+	fURLLocked(false)
 {
 	GroupLayout()->SetInsets(2, 2, 2, 2);
 
@@ -597,7 +579,7 @@ URLInputGroup::URLInputGroup(BMessage* goMessage)
 // TODO: Fix in Haiku, no in-built support for archived BBitmaps from
 // resources?
 //	fGoButton = new BitmapButton("kActionGo", NULL);
-	fGoButton = new BitmapButton(kGoBitmapBits, kGoBitmapWidth,
+	fGoButton = new BBitmapButton(kGoBitmapBits, kGoBitmapWidth,
 		kGoBitmapHeight, kGoBitmapFormat, goMessage);
 	GroupLayout()->AddView(fGoButton, 0.0f);
 
@@ -607,6 +589,7 @@ URLInputGroup::URLInputGroup(BMessage* goMessage)
 
 	SetExplicitAlignment(BAlignment(B_ALIGN_USE_FULL_WIDTH,
 		B_ALIGN_VERTICAL_CENTER));
+
 }
 
 
@@ -665,6 +648,10 @@ URLInputGroup::TextView() const
 void
 URLInputGroup::SetText(const char* text)
 {
+	// Ignore setting the text, if the input is locked.
+	if (fURLLocked)
+		return;
+
 	if (!text || !Text() || strcmp(Text(), text) != 0) {
 		fTextView->SetUpdateAutoCompleterChoices(false);
 		fTextView->SetText(text);
@@ -693,3 +680,16 @@ URLInputGroup::SetPageIcon(const BBitmap* icon)
 	fIconView->SetIcon(icon);
 }
 
+
+bool
+URLInputGroup::IsURLInputLocked() const
+{
+	return fURLLocked;
+}
+
+
+void
+URLInputGroup::LockURLInput(bool lock)
+{
+	fURLLocked = lock;
+}

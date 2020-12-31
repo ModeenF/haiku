@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2002-2007 Sam Leffler, Errno Consulting
  * All rights reserved.
  *
@@ -28,17 +30,20 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
+__FBSDID("$FreeBSD: releng/12.0/sys/dev/bwi/if_bwi_pci.c 338948 2018-09-26 17:12:14Z imp $");
 
 /*
  * PCI/Cardbus front-end for the Broadcom Wireless LAN controller driver.
  */
+
+#include "opt_wlan.h"
 
 #include <sys/param.h>
 #include <sys/systm.h> 
 #include <sys/module.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
+#include <sys/malloc.h>
 #include <sys/mutex.h>
 #include <sys/errno.h>
 
@@ -50,8 +55,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/socket.h>
  
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_media.h>
 #include <net/if_arp.h>
+#include <net/ethernet.h>
 
 #include <net80211/ieee80211_var.h>
 #include <net80211/ieee80211_radiotap.h>
@@ -156,12 +163,6 @@ bwi_pci_attach(device_t dev)
 		device_printf(dev, "could not map interrupt\n");
 		goto bad1;
 	}
-	if (bus_setup_intr(dev, sc->sc_irq_res,
-			   INTR_TYPE_NET | INTR_MPSAFE,
-			   NULL, bwi_intr, sc, &sc->sc_irq_handle)) {
-		device_printf(dev, "could not establish interrupt\n");
-		goto bad2;
-	}
 
 	/* Get more PCI information */
 	sc->sc_pci_did = pci_get_device(dev);
@@ -169,11 +170,17 @@ bwi_pci_attach(device_t dev)
 	sc->sc_pci_subvid = pci_get_subvendor(dev);
 	sc->sc_pci_subdid = pci_get_subdevice(dev);
 
-	error = bwi_attach(sc);
-	if (error == 0)					/* success */
-		return 0;
+	if ((error = bwi_attach(sc)) != 0)
+		goto bad2;
 
-	bus_teardown_intr(dev, sc->sc_irq_res, sc->sc_irq_handle);
+	if (bus_setup_intr(dev, sc->sc_irq_res,
+			   INTR_TYPE_NET | INTR_MPSAFE,
+			   NULL, bwi_intr, sc, &sc->sc_irq_handle)) {
+		device_printf(dev, "could not establish interrupt\n");
+		goto bad2;
+	}
+	return (0);
+
 bad2:
 	bus_release_resource(dev, SYS_RES_IRQ, 0, sc->sc_irq_res);
 bad1:
@@ -249,6 +256,8 @@ static driver_t bwi_driver = {
 };
 static	devclass_t bwi_devclass;
 DRIVER_MODULE(bwi, pci, bwi_driver, bwi_devclass, 0, 0);
+MODULE_PNP_INFO("U16:vendor;U16:device;D:#", pci, bwi, bwi_devices,
+    nitems(bwi_devices) - 1);
 MODULE_DEPEND(bwi, wlan, 1, 1, 1);		/* 802.11 media layer */
 MODULE_DEPEND(bwi, firmware, 1, 1, 1);		/* firmware support */
 MODULE_DEPEND(bwi, wlan_amrr, 1, 1, 1);

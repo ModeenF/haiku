@@ -115,6 +115,8 @@ fill_pci_info_for_entry(pci_module_info* pci, irq_routing_entry& entry)
 	uint8 headerType = pci->read_pci_config(entry.pci_bus, entry.pci_device, 0,
 		PCI_header_type, 1);
 	if (headerType == 0xff) {
+		TRACE("PCI %" B_PRIu8 ":%" B_PRIu8 " entry not found\n",
+			entry.pci_bus, entry.pci_device);
 		// the device is not present
 		return B_ENTRY_NOT_FOUND;
 	}
@@ -128,16 +130,23 @@ fill_pci_info_for_entry(pci_module_info* pci, irq_routing_entry& entry)
 		// check for device presence by looking for a valid vendor
 		uint16 vendorId = pci->read_pci_config(entry.pci_bus, entry.pci_device,
 			function, PCI_vendor_id, 2);
-		if (vendorId == 0xffff)
+		if (vendorId == 0xffff) {
+			TRACE("PCI %" B_PRIu8 ":%" B_PRIu8 ":%" B_PRIu8 " vendor 0xffff\n",
+				entry.pci_bus, entry.pci_device, function);
 			continue;
+		}
 
 		uint8 interruptPin = pci->read_pci_config(entry.pci_bus,
 			entry.pci_device, function, PCI_interrupt_pin, 1);
 
 		// Finally match the pin with the entry, note that PCI pins are 1 based
 		// while ACPI ones are 0 based.
-		if (interruptPin != entry.pin + 1)
+		if (interruptPin != entry.pin + 1) {
+			TRACE("PCI %" B_PRIu8 ":%" B_PRIu8 ":%" B_PRIu8 " IRQ Pin %" B_PRIu8
+				" != %" B_PRIu8 "\n", entry.pci_bus, entry.pci_device, function,
+				interruptPin, entry.pin + 1);
 			continue;
+		}
 
 		if (entry.bios_irq == 0) {
 			// Keep the originally assigned IRQ around so we can use it for
@@ -227,12 +236,14 @@ choose_link_device_configurations(acpi_module_info* acpi,
 			link->possible_irqs);
 		if (status != B_OK) {
 			panic("failed to read possible irqs of link device");
+			delete link;
 			return status;
 		}
 
 		status = read_current_irq(acpi, link->handle, link->current_irq);
 		if (status != B_OK) {
 			panic("failed to read current irq of link device");
+			delete link;
 			return status;
 		}
 
@@ -434,6 +445,8 @@ ensure_all_functions_matched(pci_module_info* pci, uint8 bus,
 {
 	for (uint8 device = 0; device < kMaxPCIDeviceCount; device++) {
 		if (pci->read_pci_config(bus, device, 0, PCI_vendor_id, 2) == 0xffff) {
+			TRACE("PCI bus %" B_PRIu8 ":%" B_PRIu8 " not present.\n",
+				bus, device);
 			// not present
 			continue;
 		}
@@ -450,6 +463,8 @@ ensure_all_functions_matched(pci_module_info* pci, uint8 bus,
 			if (pci->read_pci_config(bus, device, function, PCI_vendor_id, 2)
 				== 0xffff) {
 				// not present
+				TRACE("PCI %" B_PRIu8 ":%" B_PRIu8 ":%" B_PRIu8 " "
+					"not present.\n", bus, device, function);
 				continue;
 			}
 
@@ -483,6 +498,8 @@ ensure_all_functions_matched(pci_module_info* pci, uint8 bus,
 			uint8 interruptPin = pci->read_pci_config(bus, device, function,
 				PCI_interrupt_pin, 1);
 			if (interruptPin == 0 || interruptPin > 4) {
+				TRACE("PCI %" B_PRIu8 ":%" B_PRIu8 ":%" B_PRIu8 " "
+					"not routed.\n", bus, device, function);
 				// not routed
 				continue;
 			}
@@ -492,9 +509,15 @@ ensure_all_functions_matched(pci_module_info* pci, uint8 bus,
 			if (irqEntry != NULL) {
 				// we already have a matching entry for that device/pin, make
 				// sure the function mask includes us
+				TRACE("PCI %" B_PRIu8 ":%" B_PRIu8 ":%" B_PRIu8 " "
+					"already matched. Will mask.\n", bus, device, function);
 				irqEntry->pci_function_mask |= 1 << function;
 				continue;
 			}
+
+			TRACE("PCI %" B_PRIu8 ":%" B_PRIu8 ":%" B_PRIu8 " has %" B_PRIu8 " "
+				"parents, searching them...\n", bus, device, function,
+				parents.Count());
 
 			// This function has no matching routing table entry yet. Try to
 			// figure one out in the parent, based on the device number and
@@ -507,6 +530,8 @@ ensure_all_functions_matched(pci_module_info* pci, uint8 bus,
 					parent.device, parentPin);
 				if (irqEntry == NULL) {
 					// try the unmatched table as well
+					TRACE("PCI %" B_PRIu8 ":%" B_PRIu8 ":%" B_PRIu8 " "
+						"no matchedTable entry.\n", bus, device, function);
 					irqEntry = find_routing_table_entry(unmatchedTable,
 						parent.bus, parent.device, parentPin);
 				}
@@ -514,6 +539,10 @@ ensure_all_functions_matched(pci_module_info* pci, uint8 bus,
 				if (irqEntry == NULL) {
 					// no match in that parent, go further up
 					parentPin = ((parent.device + parentPin - 1) % 4) + 1;
+
+					TRACE("PCI %" B_PRIu8 ":%" B_PRIu8 ":%" B_PRIu8 " "
+						"no unmatchedTable entry, looking at parent pin %"
+						B_PRIu8 "...\n", bus, device, function, parentPin);
 					continue;
 				}
 
@@ -551,16 +580,20 @@ ensure_all_functions_matched(pci_module_info* pci, uint8 bus,
 			}
 
 			if (!matched) {
-				if (pci->read_pci_config(bus, device, function,
-						PCI_interrupt_line, 1) == 0) {
+				uint32 interrupt_line = pci->read_pci_config(bus, device,
+					function, PCI_interrupt_line, 1);
+				// On x86, interrupt line 255 means "unknown" or "no connection"
+				// (PCI Local Bus spec 3.0, section 6.2.4 / page 223, footnote.)
+				if (interrupt_line == 0 || interrupt_line == 255) {
 					dprintf("assuming no interrupt use on PCI device"
-						" %u:%u:%u (bios irq 0, no routing information)\n",
-						bus, device, function);
+						" %u:%u:%u (bios irq 0, interrupt line %" B_PRId32 ")\n",
+						bus, device, function, interrupt_line);
 					continue;
 				}
 
-				panic("unable to find irq routing for PCI %u:%u:%u", bus,
-					device, function);
+				dprintf("WARNING: unable to find irq routing for PCI "
+					"%" B_PRIu8 ":%" B_PRIu8 ":%" B_PRIu8 ". Device may be "
+					"unstable / broken.\n", bus, device, function);
 				return B_ERROR;
 			}
 		}

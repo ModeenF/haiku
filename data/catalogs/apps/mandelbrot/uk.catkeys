@@ -1,10 +1,25 @@
-1	ukrainian	x-vnd.Haiku-Mandelbrot	3766380907
-File	Mandelbrot		Файл
-Palette 3	Mandelbrot		Палітра 3
-Quit	Mandelbrot		Вийти
-Palette 2	Mandelbrot		Палітра 2
-Palette 4	Mandelbrot		Палітра 4
-Palette	Mandelbrot		Палітра
+1	ukrainian	x-vnd.Haiku-Mandelbrot	3875916167
+Burning Ship	MandelbrotWindow		Палаючий корабель
+Grassland	MandelbrotWindow		Газон
+Lightning	MandelbrotWindow		Свічення
+About	MandelbrotWindow		Про це
+Palette	MandelbrotWindow		Палітра
+Set	MandelbrotWindow		Встановити
+Tricorn	MandelbrotWindow		Tricorn
+Royal	MandelbrotWindow		Королівський
+Orbit Trap	MandelbrotWindow		Orbit Trap
+Deepfrost	MandelbrotWindow		Глибока заморозка
+Subsampling	MandelbrotWindow		Підгрупування
+1 (none)	MandelbrotWindow		1 (пусто)
+Quit	MandelbrotWindow		Вийти
+File	MandelbrotWindow		Файл
+Julia	MandelbrotWindow		Жуліа
+Frost	MandelbrotWindow		Мороз
+Fire	MandelbrotWindow		Вогонь
 Mandelbrot	System name		Mandelbrot
-Palette 1	Mandelbrot		Палітра 1
-Iterations	Mandelbrot		Наближення
+Iterations	MandelbrotWindow		Ітерації
+High contrast	MandelbrotWindow		Високий контраст
+Multibrot	MandelbrotWindow		Multibrot
+Spring	MandelbrotWindow		Весна
+Midnight	MandelbrotWindow		Північ
+Mandelbrot	MandelbrotWindow		Мандельброт

@@ -35,12 +35,15 @@ All rights reserved.
 //! Menu items with small icons.
 
 
-#include "IconCache.h"
 #include "IconMenuItem.h"
 
+#include <ControlLook.h>
 #include <Debug.h>
 #include <Menu.h>
+#include <MenuField.h>
 #include <NodeInfo.h>
+
+#include "IconCache.h"
 
 
 static void
@@ -123,7 +126,8 @@ ModelMenuItem::DrawContent()
 {
 	if (fDrawText) {
 		BPoint drawPoint(ContentLocation());
-		drawPoint.x += 20 + (fExtraPad ? 6 : 0);
+		drawPoint.x += ListIconSize() + ListIconSize() / 4
+			+ (fExtraPad ? 6 : 0);
 		if (fHeightDelta > 0)
 			drawPoint.y += ceil(fHeightDelta / 2);
 		Menu()->MovePenTo(drawPoint);
@@ -161,12 +165,12 @@ ModelMenuItem::DrawIcon()
 	// draw small icon, synchronously
 	if (IsEnabled()) {
 		IconCache::sIconCache->Draw(fModel.ResolveIfLink(), Menu(), where,
-			kNormalIcon, B_MINI_ICON);
+			kNormalIcon, (icon_size)ListIconSize());
 	} else {
 		// dimmed, for now use a special blitter; icon cache should
 		// know how to blit one eventually
 		IconCache::sIconCache->SyncDraw(fModel.ResolveIfLink(), Menu(), where,
-			kNormalIcon, B_MINI_ICON, DimmedIconBlitter);
+			kNormalIcon, (icon_size)ListIconSize(), DimmedIconBlitter);
 	}
 
 	Menu()->PopState();
@@ -177,10 +181,11 @@ void
 ModelMenuItem::GetContentSize(float* width, float* height)
 {
 	_inherited::GetContentSize(width, height);
-	fHeightDelta = 16 - *height;
-	if (*height < 16)
-		*height = 16;
-	*width = *width + 20 + (fExtraPad ? 18 : 0);
+	float iconSize = ListIconSize();
+	fHeightDelta = iconSize - *height;
+	if (*height < iconSize)
+		*height = iconSize;
+	*width = *width + iconSize / 4 + iconSize + (fExtraPad ? 18 : 0);
 }
 
 
@@ -250,12 +255,16 @@ SpecialModelMenuItem::DrawContent()
 
 	It's currently used in the mount and new file template menus.
 */
-IconMenuItem::IconMenuItem(const char* label, BMessage* message, BBitmap* icon)
+IconMenuItem::IconMenuItem(const char* label, BMessage* message, BBitmap* icon,
+	icon_size which)
 	:
 	PositionPassingMenuItem(label, message),
-	fDeviceIcon(icon),
-	fHeightDelta(0)
+	fDeviceIcon(NULL),
+	fHeightDelta(0),
+	fWhich(which)
 {
+	SetIcon(icon);
+
 	// IconMenuItem is used in synchronously invoked menus, make sure
 	// we invoke with a timeout
 	SetTimeout(kSynchMenuInvokeTimeout);
@@ -267,13 +276,14 @@ IconMenuItem::IconMenuItem(const char* label, BMessage* message,
 	:
 	PositionPassingMenuItem(label, message),
 	fDeviceIcon(NULL),
-	fHeightDelta(0)
+	fHeightDelta(0),
+	fWhich(which)
 {
 	if (nodeInfo != NULL) {
 		fDeviceIcon = new BBitmap(BRect(0, 0, which - 1, which - 1),
 			kDefaultIconDepth);
 
-		if (nodeInfo->GetTrackerIcon(fDeviceIcon, B_MINI_ICON)) {
+		if (nodeInfo->GetTrackerIcon(fDeviceIcon, B_MINI_ICON) != B_OK) {
 			delete fDeviceIcon;
 			fDeviceIcon = NULL;
 		}
@@ -290,7 +300,8 @@ IconMenuItem::IconMenuItem(const char* label, BMessage* message,
 	:
 	PositionPassingMenuItem(label, message),
 	fDeviceIcon(NULL),
-	fHeightDelta(0)
+	fHeightDelta(0),
+	fWhich(which)
 {
 	BMimeType mime(iconType);
 	fDeviceIcon = new BBitmap(BRect(0, 0, which - 1, which - 1),
@@ -316,7 +327,8 @@ IconMenuItem::IconMenuItem(BMenu* submenu, BMessage* message,
 	:
 	PositionPassingMenuItem(submenu, message),
 	fDeviceIcon(NULL),
-	fHeightDelta(0)
+	fHeightDelta(0),
+	fWhich(which)
 {
 	BMimeType mime(iconType);
 	fDeviceIcon = new BBitmap(BRect(0, 0, which - 1, which - 1),
@@ -334,6 +346,63 @@ IconMenuItem::IconMenuItem(BMenu* submenu, BMessage* message,
 	// IconMenuItem is used in synchronously invoked menus, make sure
 	// we invoke with a timeout
 	SetTimeout(kSynchMenuInvokeTimeout);
+}
+
+
+IconMenuItem::IconMenuItem(BMessage* data)
+	:
+	PositionPassingMenuItem(data),
+	fDeviceIcon(NULL),
+	fHeightDelta(0),
+	fWhich(B_MINI_ICON)
+{
+	if (data != NULL) {
+		fWhich = (icon_size)data->GetInt32("_which", B_MINI_ICON);
+
+		fDeviceIcon = new BBitmap(BRect(0, 0, fWhich - 1, fWhich - 1),
+			kDefaultIconDepth);
+
+		if (data->HasData("_deviceIconBits", B_RAW_TYPE)) {
+			ssize_t numBytes;
+			const void* bits;
+			if (data->FindData("_deviceIconBits", B_RAW_TYPE, &bits, &numBytes)
+					== B_OK) {
+				fDeviceIcon->SetBits(bits, numBytes, (int32)0,
+					kDefaultIconDepth);
+			}
+		}
+	}
+
+	// IconMenuItem is used in synchronously invoked menus, make sure
+	// we invoke with a timeout
+	SetTimeout(kSynchMenuInvokeTimeout);
+}
+
+
+BArchivable*
+IconMenuItem::Instantiate(BMessage* data)
+{
+	//if (validate_instantiation(data, "IconMenuItem"))
+		return new IconMenuItem(data);
+
+	return NULL;
+}
+
+
+status_t
+IconMenuItem::Archive(BMessage* data, bool deep) const
+{
+	status_t result = PositionPassingMenuItem::Archive(data, deep);
+
+	if (result == B_OK)
+		result = data->AddInt32("_which", (int32)fWhich);
+
+	if (result == B_OK && fDeviceIcon != NULL) {
+		result = data->AddData("_deviceIconBits", B_RAW_TYPE,
+			fDeviceIcon->Bits(), fDeviceIcon->BitsLength());
+	}
+
+	return result;
 }
 
 
@@ -360,9 +429,12 @@ void
 IconMenuItem::DrawContent()
 {
 	BPoint drawPoint(ContentLocation());
-	drawPoint.x += 20;
+	if (fDeviceIcon != NULL)
+		drawPoint.x += (float)fWhich + 4.0f;
+
 	if (fHeightDelta > 0)
-		drawPoint.y += ceil(fHeightDelta / 2);
+		drawPoint.y += ceilf(fHeightDelta / 2);
+
 	Menu()->MovePenTo(drawPoint);
 	_inherited::DrawContent();
 
@@ -370,9 +442,9 @@ IconMenuItem::DrawContent()
 
 	BPoint where(ContentLocation());
 	float deltaHeight = fHeightDelta < 0 ? -fHeightDelta : 0;
-	where.y += ceil(deltaHeight / 2);
+	where.y += ceilf(deltaHeight / 2);
 
-	if (fDeviceIcon) {
+	if (fDeviceIcon != NULL) {
 		if (IsEnabled())
 			Menu()->SetDrawingMode(B_OP_ALPHA);
 		else {
@@ -384,4 +456,74 @@ IconMenuItem::DrawContent()
 	}
 
 	Menu()->PopState();
+}
+
+
+void
+IconMenuItem::SetMarked(bool mark)
+{
+	_inherited::SetMarked(mark);
+
+	if (!mark)
+		return;
+
+	// we are marking the item
+
+	BMenu* menu = Menu();
+	if (menu == NULL)
+		return;
+
+	// we have a parent menu
+
+	BMenu* _menu = menu;
+	while ((_menu = _menu->Supermenu()) != NULL)
+		menu = _menu;
+
+	// went up the hierarchy to found the topmost menu
+
+	if (menu == NULL || menu->Parent() == NULL)
+		return;
+
+	// our topmost menu has a parent
+
+	if (dynamic_cast<BMenuField*>(menu->Parent()) == NULL)
+		return;
+
+	// our topmost menu's parent is a BMenuField
+
+	BMenuItem* topLevelItem = menu->ItemAt((int32)0);
+
+	if (topLevelItem == NULL)
+		return;
+
+	// our topmost menu has a menu item
+
+	IconMenuItem* topLevelIconMenuItem
+		= dynamic_cast<IconMenuItem*>(topLevelItem);
+	if (topLevelIconMenuItem == NULL)
+		return;
+
+	// our topmost menu's item is an IconMenuItem
+
+	// update the icon
+	topLevelIconMenuItem->SetIcon(fDeviceIcon);
+	menu->Invalidate();
+}
+
+
+void
+IconMenuItem::SetIcon(BBitmap* icon)
+{
+	if (icon != NULL) {
+		if (fDeviceIcon != NULL)
+			delete fDeviceIcon;
+
+		fDeviceIcon = new BBitmap(BRect(0, 0, fWhich - 1, fWhich - 1),
+			icon->ColorSpace());
+		fDeviceIcon->SetBits(icon->Bits(), icon->BitsLength(), 0,
+			icon->ColorSpace());
+	} else {
+		delete fDeviceIcon;
+		fDeviceIcon = NULL;
+	}
 }

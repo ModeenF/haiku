@@ -16,8 +16,7 @@
 
 #include <Box.h>
 #include <Catalog.h>
-#include <GridLayoutBuilder.h>
-#include <GroupLayoutBuilder.h>
+#include <LayoutBuilder.h>
 #include <MenuField.h>
 #include <MenuItem.h>
 #include <PopUpMenu.h>
@@ -70,15 +69,13 @@ BluetoothSettingsView::BluetoothSettingsView(const char* name)
 	fInquiryTimeControl->SetHashMarkCount(255 / 15);
 	fInquiryTimeControl->SetEnabled(true);
 
-	fExtDeviceView = new ExtendedLocalDeviceView(BRect(0, 0, 5, 5), NULL);
+	fExtDeviceView = new ExtendedLocalDeviceView(NULL);
 
 	// localdevices menu
 	_BuildLocalDevicesMenu();
 	fLocalDevicesMenuField = new BMenuField("devices",
 		B_TRANSLATE("Local devices found on system:"),
 		fLocalDevicesMenu);
-
-	SetLayout(new BGroupLayout(B_VERTICAL));
 
 	if (ActiveLocalDevice != NULL) {
 		fExtDeviceView->SetLocalDevice(ActiveLocalDevice);
@@ -95,27 +92,21 @@ BluetoothSettingsView::BluetoothSettingsView(const char* name)
 	fClassMenuField = new BMenuField("class", B_TRANSLATE("Identify host as:"),
 		fClassMenu);
 
-	// controls pane
-	AddChild(BGridLayoutBuilder(10, 10)
+	BLayoutBuilder::Grid<>(this, 0)
+		.SetInsets(10)
 		.Add(fClassMenuField->CreateLabelLayoutItem(), 0, 0)
 		.Add(fClassMenuField->CreateMenuBarLayoutItem(), 1, 0)
 
 		.Add(fPolicyMenuField->CreateLabelLayoutItem(), 0, 1)
 		.Add(fPolicyMenuField->CreateMenuBarLayoutItem(), 1, 1)
 
-		.Add(BSpaceLayoutItem::CreateGlue(), 0, 2, 2)
-
-		.Add(fInquiryTimeControl, 0, 3, 2)
-		.Add(BSpaceLayoutItem::CreateGlue(), 0, 4, 2)
+		.Add(fInquiryTimeControl, 0, 2, 2)
 
 		.Add(fLocalDevicesMenuField->CreateLabelLayoutItem(), 0, 5)
 		.Add(fLocalDevicesMenuField->CreateMenuBarLayoutItem(), 1, 5)
 
 		.Add(fExtDeviceView, 0, 6, 2)
-		.Add(BSpaceLayoutItem::CreateGlue(), 0, 7, 2)
-
-		.SetInsets(10, 10, 10, 10)
-	);
+	.End();
 }
 
 
@@ -195,6 +186,7 @@ BluetoothSettingsView::MessageReceived(BMessage* message)
 		}
 		default:
 			BView::MessageReceived(message);
+			break;
 	}
 }
 
@@ -222,7 +214,7 @@ BluetoothSettingsView::_BuildConnectionPolicy()
 	BMessage* message = NULL;
 	BMenuItem* item = NULL;
 
-	fPolicyMenu = new BPopUpMenu(B_TRANSLATE("Policy..."));
+	fPolicyMenu = new BPopUpMenu(B_TRANSLATE("Policy" B_UTF8_ELLIPSIS));
 
 	message = new BMessage(kMsgSetConnectionPolicy);
 	message->AddInt8("Policy", 1);
@@ -246,7 +238,7 @@ BluetoothSettingsView::_BuildClassMenu()
 	BMessage* message = NULL;
 	BMenuItem* item = NULL;
 
-	fClassMenu = new BPopUpMenu(B_TRANSLATE("Identify us as..."));
+	fClassMenu = new BPopUpMenu(B_TRANSLATE("Identify us as" B_UTF8_ELLIPSIS));
 
 	message = new BMessage(kMsgSetDeviceClass);
 	message->AddInt8("DeviceClass", 1);
@@ -301,10 +293,11 @@ BluetoothSettingsView::_BuildLocalDevicesMenu()
 	LocalDevice* lDevice;
 
 	if (!fLocalDevicesMenu)
-		fLocalDevicesMenu = new BPopUpMenu(B_TRANSLATE("Pick device..."));
+		fLocalDevicesMenu = new BPopUpMenu(B_TRANSLATE("Pick device"
+			B_UTF8_ELLIPSIS));
 
 	while (fLocalDevicesMenu->CountItems() > 0) {
-		BMenuItem* item = fLocalDevicesMenu->RemoveItem(0L);
+		BMenuItem* item = fLocalDevicesMenu->RemoveItem((int32)0);
 
 		if (item != NULL) {
 			delete item;

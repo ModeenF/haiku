@@ -1,5 +1,5 @@
 /*
- * Copyright 2013, Rene Gollent, rene@gollent.com.
+ * Copyright 2013-2016, Rene Gollent, rene@gollent.com.
  * Distributed under the terms of the MIT License.
  */
 #include "StartTeamWindow.h"
@@ -14,7 +14,7 @@
 #include <StringView.h>
 #include <TextControl.h>
 
-#include "MessageCodes.h"
+#include "AppMessageCodes.h"
 #include "UserInterface.h"
 
 
@@ -24,7 +24,7 @@ enum {
 };
 
 
-StartTeamWindow::StartTeamWindow()
+StartTeamWindow::StartTeamWindow(TargetHostInterface* hostInterface)
 	:
 	BWindow(BRect(), "Start new team", B_TITLED_WINDOW,
 		B_AUTO_UPDATE_SIZE_LIMITS | B_CLOSE_ON_ESCAPE),
@@ -34,7 +34,8 @@ StartTeamWindow::StartTeamWindow()
 	fBrowseTeamButton(NULL),
 	fBrowseTeamPanel(NULL),
 	fStartButton(NULL),
-	fCancelButton(NULL)
+	fCancelButton(NULL),
+	fTargetHostInterface(hostInterface)
 {
 }
 
@@ -46,9 +47,9 @@ StartTeamWindow::~StartTeamWindow()
 
 
 StartTeamWindow*
-StartTeamWindow::Create()
+StartTeamWindow::Create(TargetHostInterface* hostInterface)
 {
-	StartTeamWindow* self = new StartTeamWindow;
+	StartTeamWindow* self = new StartTeamWindow(hostInterface);
 
 	try {
 		self->_Init();
@@ -60,6 +61,7 @@ StartTeamWindow::Create()
 	return self;
 
 }
+
 
 void
 StartTeamWindow::_Init()
@@ -88,12 +90,13 @@ StartTeamWindow::_Init()
 			.Add(fStartButton)
 		.End();
 
-	fTeamTextControl->SetExplicitMinSize(BSize(200.0, B_SIZE_UNSET));
+	fTeamTextControl->SetExplicitMinSize(BSize(300.0, B_SIZE_UNSET));
 	fGuideText->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
 
 	fStartButton->SetTarget(this);
 	fCancelButton->SetTarget(this);
 }
+
 
 void
 StartTeamWindow::Show()
@@ -101,6 +104,7 @@ StartTeamWindow::Show()
 	CenterOnScreen();
 	BWindow::Show();
 }
+
 
 void
 StartTeamWindow::MessageReceived(BMessage* message)
@@ -123,6 +127,9 @@ StartTeamWindow::MessageReceived(BMessage* message)
 				fBrowseTeamPanel->SetMessage(message);
 			}
 
+			fBrowseTeamPanel->SetPanelDirectory(fTeamTextControl->TextView()
+					->Text());
+
 			fBrowseTeamPanel->Show();
 			break;
 		}
@@ -141,6 +148,7 @@ StartTeamWindow::MessageReceived(BMessage* message)
 			appMessage.AddString("path", fTeamTextControl->TextView()->Text());
 			appMessage.AddString("arguments", fArgumentsTextControl->TextView()
 					->Text());
+			appMessage.AddPointer("interface", fTargetHostInterface);
 			BMessage reply;
 			be_app_messenger.SendMessage(&appMessage, &reply);
 			status_t error = reply.FindInt32("status");

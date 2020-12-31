@@ -1,6 +1,6 @@
 /*
 ** Copyright 2003, Oliver Tappe, zooey@hirschkaefer.de. All rights reserved.
-** Distributed under the terms of the OpenBeOS License.
+** Distributed under the terms of the MIT License.
 */
 
 #include <cstdio>
@@ -127,8 +127,9 @@ main(int argc, char **argv)
 		case TARGET_ATTRIBUTE: {
 			BEntry entry(outputFile.String());
 			entry_ref eref;
-			entry.GetRef(&eref);
-			res = targetCatImpl.WriteToAttribute(eref);
+			res = entry.GetRef(&eref);
+			if (res == B_OK)
+				res = targetCatImpl.WriteToAttribute(eref);
 			if (res != B_OK) {
 				fprintf(stderr,
 					"couldn't write target-attribute to %s - error: %s\n",
@@ -140,14 +141,16 @@ main(int argc, char **argv)
 		case TARGET_RESOURCE: {
 			BEntry entry(outputFile.String());
 			entry_ref eref;
-			entry.GetRef(&eref);
-			res = targetCatImpl.WriteToResource(eref);
+			res = entry.GetRef(&eref);
+			if (res == B_OK)
+				res = targetCatImpl.WriteToResource(eref);
 			if (res != B_OK) {
 				fprintf(stderr,
 					"couldn't write target-resource to %s - error: %s\n",
 					outputFile.String(), strerror(res));
 				exit(-1);
 			}
+			break;
 		}
 		default: {
 			res = targetCatImpl.WriteToFile(outputFile.String());

@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -111,11 +111,48 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #include "acpi.h"
 #include "accommon.h"
 #include "acnamesp.h"
+#include "amlcode.h"
 
 #define _COMPONENT          ACPI_UTILITIES
         ACPI_MODULE_NAME    ("utdecode")
@@ -191,7 +228,7 @@ const char        *AcpiGbl_RegionTypes[ACPI_NUM_PREDEFINED_REGIONS] =
 };
 
 
-char *
+const char *
 AcpiUtGetRegionName (
     UINT8                   SpaceId)
 {
@@ -213,7 +250,7 @@ AcpiUtGetRegionName (
         return ("InvalidSpaceId");
     }
 
-    return (ACPI_CAST_PTR (char, AcpiGbl_RegionTypes[SpaceId]));
+    return (AcpiGbl_RegionTypes[SpaceId]);
 }
 
 
@@ -241,7 +278,7 @@ static const char        *AcpiGbl_EventTypes[ACPI_NUM_FIXED_EVENTS] =
 };
 
 
-char *
+const char *
 AcpiUtGetEventName (
     UINT32                  EventId)
 {
@@ -251,7 +288,7 @@ AcpiUtGetEventName (
         return ("InvalidEventID");
     }
 
-    return (ACPI_CAST_PTR (char, AcpiGbl_EventTypes[EventId]));
+    return (AcpiGbl_EventTypes[EventId]);
 }
 
 
@@ -273,7 +310,8 @@ AcpiUtGetEventName (
  *
  * The type ACPI_TYPE_ANY (Untyped) is used as a "don't care" when searching;
  * when stored in a table it really means that we have thus far seen no
- * evidence to indicate what type is actually going to be stored for this entry.
+ * evidence to indicate what type is actually going to be stored for this
+ & entry.
  */
 static const char           AcpiGbl_BadType[] = "UNDEFINED";
 
@@ -315,31 +353,47 @@ static const char           *AcpiGbl_NsTypeNames[] =
 };
 
 
-char *
+const char *
 AcpiUtGetTypeName (
     ACPI_OBJECT_TYPE        Type)
 {
 
     if (Type > ACPI_TYPE_INVALID)
     {
-        return (ACPI_CAST_PTR (char, AcpiGbl_BadType));
+        return (AcpiGbl_BadType);
     }
 
-    return (ACPI_CAST_PTR (char, AcpiGbl_NsTypeNames[Type]));
+    return (AcpiGbl_NsTypeNames[Type]);
 }
 
 
-char *
+const char *
 AcpiUtGetObjectTypeName (
     ACPI_OPERAND_OBJECT     *ObjDesc)
 {
+    ACPI_FUNCTION_TRACE (UtGetObjectTypeName);
+
 
     if (!ObjDesc)
     {
-        return ("[NULL Object Descriptor]");
+        ACPI_DEBUG_PRINT ((ACPI_DB_EXEC, "Null Object Descriptor\n"));
+        return_STR ("[NULL Object Descriptor]");
     }
 
-    return (AcpiUtGetTypeName (ObjDesc->Common.Type));
+    /* These descriptor types share a common area */
+
+    if ((ACPI_GET_DESCRIPTOR_TYPE (ObjDesc) != ACPI_DESC_TYPE_OPERAND) &&
+        (ACPI_GET_DESCRIPTOR_TYPE (ObjDesc) != ACPI_DESC_TYPE_NAMED))
+    {
+        ACPI_DEBUG_PRINT ((ACPI_DB_EXEC,
+            "Invalid object descriptor type: 0x%2.2X [%s] (%p)\n",
+            ACPI_GET_DESCRIPTOR_TYPE (ObjDesc),
+            AcpiUtGetDescriptorName (ObjDesc), ObjDesc));
+
+        return_STR ("Invalid object");
+    }
+
+    return_STR (AcpiUtGetTypeName (ObjDesc->Common.Type));
 }
 
 
@@ -355,7 +409,7 @@ AcpiUtGetObjectTypeName (
  *
  ******************************************************************************/
 
-char *
+const char *
 AcpiUtGetNodeName (
     void                    *Object)
 {
@@ -431,7 +485,7 @@ static const char           *AcpiGbl_DescTypeNames[] =
 };
 
 
-char *
+const char *
 AcpiUtGetDescriptorName (
     void                    *Object)
 {
@@ -446,9 +500,7 @@ AcpiUtGetDescriptorName (
         return ("Not a Descriptor");
     }
 
-    return (ACPI_CAST_PTR (char,
-        AcpiGbl_DescTypeNames[ACPI_GET_DESCRIPTOR_TYPE (Object)]));
-
+    return (AcpiGbl_DescTypeNames[ACPI_GET_DESCRIPTOR_TYPE (Object)]);
 }
 
 
@@ -506,11 +558,6 @@ AcpiUtGetReferenceName (
 }
 
 
-#if defined(ACPI_DEBUG_OUTPUT) || defined(ACPI_DEBUGGER)
-/*
- * Strings and procedures used for debug only
- */
-
 /*******************************************************************************
  *
  * FUNCTION:    AcpiUtGetMutexName
@@ -525,7 +572,7 @@ AcpiUtGetReferenceName (
 
 /* Names for internal mutex objects, used for debug output */
 
-static char                 *AcpiGbl_MutexNames[ACPI_NUM_MUTEX] =
+static const char           *AcpiGbl_MutexNames[ACPI_NUM_MUTEX] =
 {
     "ACPI_MTX_Interpreter",
     "ACPI_MTX_Namespace",
@@ -533,11 +580,9 @@ static char                 *AcpiGbl_MutexNames[ACPI_NUM_MUTEX] =
     "ACPI_MTX_Events",
     "ACPI_MTX_Caches",
     "ACPI_MTX_Memory",
-    "ACPI_MTX_CommandComplete",
-    "ACPI_MTX_CommandReady"
 };
 
-char *
+const char *
 AcpiUtGetMutexName (
     UINT32                  MutexId)
 {
@@ -550,6 +595,12 @@ AcpiUtGetMutexName (
     return (AcpiGbl_MutexNames[MutexId]);
 }
 
+
+#if defined(ACPI_DEBUG_OUTPUT) || defined(ACPI_DEBUGGER)
+
+/*
+ * Strings and procedures used for debug only
+ */
 
 /*******************************************************************************
  *
@@ -565,7 +616,7 @@ AcpiUtGetMutexName (
 
 /* Names for Notify() values, used for debug output */
 
-static const char           *AcpiGbl_GenericNotify[ACPI_NOTIFY_MAX + 1] =
+static const char           *AcpiGbl_GenericNotify[ACPI_GENERIC_NOTIFY_MAX + 1] =
 {
     /* 00 */ "Bus Check",
     /* 01 */ "Device Check",
@@ -579,32 +630,36 @@ static const char           *AcpiGbl_GenericNotify[ACPI_NOTIFY_MAX + 1] =
     /* 09 */ "Device PLD Check",
     /* 0A */ "Reserved",
     /* 0B */ "System Locality Update",
-    /* 0C */ "Shutdown Request",
-    /* 0D */ "System Resource Affinity Update"
+    /* 0C */ "Reserved (was previously Shutdown Request)",  /* Reserved in ACPI 6.0 */
+    /* 0D */ "System Resource Affinity Update",
+    /* 0E */ "Heterogeneous Memory Attributes Update"       /* ACPI 6.2 */
 };
 
-static const char           *AcpiGbl_DeviceNotify[4] =
+static const char           *AcpiGbl_DeviceNotify[5] =
 {
     /* 80 */ "Status Change",
     /* 81 */ "Information Change",
     /* 82 */ "Device-Specific Change",
-    /* 83 */ "Device-Specific Change"
+    /* 83 */ "Device-Specific Change",
+    /* 84 */ "Reserved"
 };
 
-static const char           *AcpiGbl_ProcessorNotify[4] =
+static const char           *AcpiGbl_ProcessorNotify[5] =
 {
     /* 80 */ "Performance Capability Change",
     /* 81 */ "C-State Change",
     /* 82 */ "Throttling Capability Change",
-    /* 83 */ "Device-Specific Change"
+    /* 83 */ "Guaranteed Change",
+    /* 84 */ "Minimum Excursion"
 };
 
-static const char           *AcpiGbl_ThermalNotify[4] =
+static const char           *AcpiGbl_ThermalNotify[5] =
 {
     /* 80 */ "Thermal Status Change",
     /* 81 */ "Thermal Trip Point Change",
     /* 82 */ "Thermal Device List Change",
-    /* 83 */ "Thermal Relationship Change"
+    /* 83 */ "Thermal Relationship Change",
+    /* 84 */ "Reserved"
 };
 
 
@@ -614,23 +669,23 @@ AcpiUtGetNotifyName (
     ACPI_OBJECT_TYPE        Type)
 {
 
-    /* 00 - 0D are common to all object types */
+    /* 00 - 0D are "common to all object types" (from ACPI Spec) */
 
-    if (NotifyValue <= ACPI_NOTIFY_MAX)
+    if (NotifyValue <= ACPI_GENERIC_NOTIFY_MAX)
     {
         return (AcpiGbl_GenericNotify[NotifyValue]);
     }
 
-    /* 0D - 7F are reserved */
+    /* 0E - 7F are reserved */
 
     if (NotifyValue <= ACPI_MAX_SYS_NOTIFY)
     {
         return ("Reserved");
     }
 
-    /* 80 - 83 are per-object-type */
+    /* 80 - 84 are per-object-type */
 
-    if (NotifyValue <= 0x83)
+    if (NotifyValue <= ACPI_SPECIFIC_NOTIFY_MAX)
     {
         switch (Type)
         {
@@ -660,6 +715,59 @@ AcpiUtGetNotifyName (
 
     return ("Hardware-Specific");
 }
+
+
+/*******************************************************************************
+ *
+ * FUNCTION:    AcpiUtGetArgumentTypeName
+ *
+ * PARAMETERS:  ArgType             - an ARGP_* parser argument type
+ *
+ * RETURN:      Decoded ARGP_* type
+ *
+ * DESCRIPTION: Decode an ARGP_* parser type, as defined in the amlcode.h file,
+ *              and used in the acopcode.h file. For example, ARGP_TERMARG.
+ *              Used for debug only.
+ *
+ ******************************************************************************/
+
+static const char           *AcpiGbl_ArgumentType[20] =
+{
+    /* 00 */ "Unknown ARGP",
+    /* 01 */ "ByteData",
+    /* 02 */ "ByteList",
+    /* 03 */ "CharList",
+    /* 04 */ "DataObject",
+    /* 05 */ "DataObjectList",
+    /* 06 */ "DWordData",
+    /* 07 */ "FieldList",
+    /* 08 */ "Name",
+    /* 09 */ "NameString",
+    /* 0A */ "ObjectList",
+    /* 0B */ "PackageLength",
+    /* 0C */ "SuperName",
+    /* 0D */ "Target",
+    /* 0E */ "TermArg",
+    /* 0F */ "TermList",
+    /* 10 */ "WordData",
+    /* 11 */ "QWordData",
+    /* 12 */ "SimpleName",
+    /* 13 */ "NameOrRef"
+};
+
+const char *
+AcpiUtGetArgumentTypeName (
+    UINT32                  ArgType)
+{
+
+    if (ArgType > ARGP_MAX)
+    {
+        return ("Unknown ARGP");
+    }
+
+    return (AcpiGbl_ArgumentType[ArgType]);
+}
+
 #endif
 
 

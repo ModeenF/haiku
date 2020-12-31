@@ -69,13 +69,17 @@ struct SymbolLookupCache {
 
 			size_t elementCount = (fTableSize + 31) / 32;
 			fValuesResolved = (uint32*)malloc(4 * elementCount);
-			memset(fValuesResolved, 0, 4 * elementCount);
 
 			if (fValues == NULL || fDSOs == NULL || fValuesResolved == NULL) {
 				free(fValuesResolved);
+				fValuesResolved = NULL;
 				free(fValues);
+				fValues = NULL;
 				free(fDSOs);
+				fDSOs = NULL;
 				fTableSize = 0;
+			} else {
+				memset(fValuesResolved, 0, 4 * elementCount);
 			}
 		}
 	}
@@ -128,7 +132,8 @@ void		patch_undefined_symbol(image_t* rootImage, image_t* image,
 				const char* name, image_t** foundInImage, void** symbol,
 				int32* type);
 
-elf_sym*	find_symbol(image_t* image, const SymbolLookupInfo& lookupInfo);
+elf_sym*	find_symbol(image_t* image, const SymbolLookupInfo& lookupInfo,
+				bool allowLocal = false);
 status_t	find_symbol(image_t* image, const SymbolLookupInfo& lookupInfo,
 				void** _location);
 status_t	find_symbol_breadth_first(image_t* image,

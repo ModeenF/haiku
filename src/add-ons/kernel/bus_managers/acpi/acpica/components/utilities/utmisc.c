@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -111,6 +111,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #include "acpi.h"
@@ -144,10 +180,10 @@ AcpiUtIsPciRootBridge (
      * ACPI 3.0+: check for a PCI Express root also.
      */
     if (!(strcmp (Id,
-            PCI_ROOT_HID_STRING)) ||
+        PCI_ROOT_HID_STRING)) ||
 
         !(strcmp (Id,
-            PCI_EXPRESS_ROOT_HID_STRING)))
+        PCI_EXPRESS_ROOT_HID_STRING)))
     {
         return (TRUE);
     }
@@ -181,7 +217,8 @@ AcpiUtIsAmlTable (
     if (ACPI_COMPARE_NAME (Table->Signature, ACPI_SIG_DSDT) ||
         ACPI_COMPARE_NAME (Table->Signature, ACPI_SIG_PSDT) ||
         ACPI_COMPARE_NAME (Table->Signature, ACPI_SIG_SSDT) ||
-        ACPI_COMPARE_NAME (Table->Signature, ACPI_SIG_OSDT))
+        ACPI_COMPARE_NAME (Table->Signature, ACPI_SIG_OSDT) ||
+        ACPI_IS_OEM_SIG (Table->Signature))
     {
         return (TRUE);
     }
@@ -257,17 +294,17 @@ AcpiUtSetIntegerWidth (
     {
         /* 32-bit case */
 
-        AcpiGbl_IntegerBitWidth    = 32;
+        AcpiGbl_IntegerBitWidth = 32;
         AcpiGbl_IntegerNybbleWidth = 8;
-        AcpiGbl_IntegerByteWidth   = 4;
+        AcpiGbl_IntegerByteWidth = 4;
     }
     else
     {
         /* 64-bit case (ACPI 2.0+) */
 
-        AcpiGbl_IntegerBitWidth    = 64;
+        AcpiGbl_IntegerBitWidth = 64;
         AcpiGbl_IntegerNybbleWidth = 16;
-        AcpiGbl_IntegerByteWidth   = 8;
+        AcpiGbl_IntegerByteWidth = 8;
     }
 }
 
@@ -327,7 +364,7 @@ AcpiUtCreateUpdateStateAndPush (
  *
  * RETURN:      Status
  *
- * DESCRIPTION: Walk through a package
+ * DESCRIPTION: Walk through a package, including subpackages
  *
  ******************************************************************************/
 
@@ -341,8 +378,8 @@ AcpiUtWalkPackageTree (
     ACPI_STATUS             Status = AE_OK;
     ACPI_GENERIC_STATE      *StateList = NULL;
     ACPI_GENERIC_STATE      *State;
-    UINT32                  ThisIndex;
     ACPI_OPERAND_OBJECT     *ThisSourceObj;
+    UINT32                  ThisIndex;
 
 
     ACPI_FUNCTION_TRACE (UtWalkPackageTree);
@@ -358,9 +395,11 @@ AcpiUtWalkPackageTree (
     {
         /* Get one element of the package */
 
-        ThisIndex     = State->Pkg.Index;
-        ThisSourceObj = (ACPI_OPERAND_OBJECT *)
-                        State->Pkg.SourceObject->Package.Elements[ThisIndex];
+        ThisIndex = State->Pkg.Index;
+        ThisSourceObj =
+            State->Pkg.SourceObject->Package.Elements[ThisIndex];
+        State->Pkg.ThisTargetObj =
+            &State->Pkg.SourceObject->Package.Elements[ThisIndex];
 
         /*
          * Check for:
@@ -371,18 +410,20 @@ AcpiUtWalkPackageTree (
          *    case below.
          */
         if ((!ThisSourceObj) ||
-            (ACPI_GET_DESCRIPTOR_TYPE (ThisSourceObj) != ACPI_DESC_TYPE_OPERAND) ||
+            (ACPI_GET_DESCRIPTOR_TYPE (ThisSourceObj) !=
+                ACPI_DESC_TYPE_OPERAND) ||
             (ThisSourceObj->Common.Type != ACPI_TYPE_PACKAGE))
         {
             Status = WalkCallback (ACPI_COPY_TYPE_SIMPLE, ThisSourceObj,
-                                    State, Context);
+                State, Context);
             if (ACPI_FAILURE (Status))
             {
                 return_ACPI_STATUS (Status);
             }
 
             State->Pkg.Index++;
-            while (State->Pkg.Index >= State->Pkg.SourceObject->Package.Count)
+            while (State->Pkg.Index >=
+                State->Pkg.SourceObject->Package.Count)
             {
                 /*
                  * We've handled all of the objects at this level,  This means
@@ -417,8 +458,8 @@ AcpiUtWalkPackageTree (
         {
             /* This is a subobject of type package */
 
-            Status = WalkCallback (ACPI_COPY_TYPE_PACKAGE, ThisSourceObj,
-                                        State, Context);
+            Status = WalkCallback (
+                ACPI_COPY_TYPE_PACKAGE, ThisSourceObj, State, Context);
             if (ACPI_FAILURE (Status))
             {
                 return_ACPI_STATUS (Status);
@@ -429,8 +470,8 @@ AcpiUtWalkPackageTree (
              * The callback above returned a new target package object.
              */
             AcpiUtPushGenericState (&StateList, State);
-            State = AcpiUtCreatePkgState (ThisSourceObj,
-                                            State->Pkg.ThisTargetObj, 0);
+            State = AcpiUtCreatePkgState (
+                ThisSourceObj, State->Pkg.ThisTargetObj, 0);
             if (!State)
             {
                 /* Free any stacked Update State objects */
@@ -446,6 +487,9 @@ AcpiUtWalkPackageTree (
     }
 
     /* We should never get here */
+
+    ACPI_ERROR ((AE_INFO,
+        "State list did not terminate correctly"));
 
     return_ACPI_STATUS (AE_AML_INTERNAL);
 }
@@ -471,7 +515,7 @@ void
 AcpiUtDisplayInitPathname (
     UINT8                   Type,
     ACPI_NAMESPACE_NODE     *ObjHandle,
-    char                    *Path)
+    const char              *Path)
 {
     ACPI_STATUS             Status;
     ACPI_BUFFER             Buffer;

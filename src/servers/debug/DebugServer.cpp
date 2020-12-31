@@ -1,9 +1,12 @@
 /*
+ * Copyright 2019, Adrien Destugues, pulkomandy@pulkomandy.tk.
  * Copyright 2011-2014, Rene Gollent, rene@gollent.com.
  * Copyright 2005-2009, Ingo Weinhold, bonefish@users.sf.net.
  * Distributed under the terms of the MIT License.
  */
 
+
+#include "DebugWindow.h"
 
 #include <map>
 
@@ -13,16 +16,13 @@
 #include <strings.h>
 #include <unistd.h>
 
-#include <Alert.h>
 #include <AppMisc.h>
 #include <AutoDeleter.h>
 #include <Autolock.h>
-#include <Catalog.h>
 #include <debug_support.h>
 #include <Entry.h>
 #include <FindDirectory.h>
 #include <Invoker.h>
-#include <Locale.h>
 #include <Path.h>
 
 #include <DriverSettings.h>
@@ -36,26 +36,9 @@
 #include <util/DoublyLinkedList.h>
 
 
-enum {
-	kActionKillTeam,
-	kActionDebugTeam,
-	kActionSaveReportTeam,
-	kActionPromptUser
-};
-
-
 static const char* kDebuggerSignature = "application/x-vnd.Haiku-Debugger";
 static const int32 MSG_DEBUG_THIS_TEAM = 'dbtt';
 
-
-//#define HANDOVER_USE_GDB 1
-#define HANDOVER_USE_DEBUGGER 1
-
-#undef B_TRANSLATION_CONTEXT
-#define B_TRANSLATION_CONTEXT "DebugServer"
-
-#define USE_GUI true
-	// define to false if the debug server shouldn't use GUI (i.e. an alert)
 
 //#define TRACE_DEBUG_SERVER
 #ifdef TRACE_DEBUG_SERVER
@@ -82,7 +65,8 @@ action_for_string(const char* action, int32& _action)
 	else if (strcmp(action, "log") == 0
 		|| strcmp(action, "report") == 0) {
 		_action = kActionSaveReportTeam;
-	}
+	} else if (strcasecmp(action, "core") == 0)
+		_action = kActionWriteCoreFile;
 	else if (strcasecmp(action, "user") == 0)
 		_action = kActionPromptUser;
 	else
@@ -116,8 +100,8 @@ match_team_name(const char* teamName, const char* parameterName)
 }
 
 
-static
-status_t action_for_team(const char* teamName, int32& _action,
+static status_t
+action_for_team(const char* teamName, int32& _action,
 	bool& _explicitActionFound)
 {
 	status_t error = B_OK;
@@ -223,6 +207,7 @@ private:
 
 	thread_id _EnterDebugger(bool saveReport);
 	status_t _SetupGDBArguments(BStringList &arguments, bool usingConsoled);
+	status_t _WriteCoreFile();
 	void _KillTeam();
 
 	int32 _HandleMessage(DebugMessage *message);
@@ -745,6 +730,72 @@ TeamDebugHandler::_KillTeam()
 }
 
 
+status_t
+TeamDebugHandler::_WriteCoreFile()
+{
+	// get a usable path for the core file
+	BPath directoryPath;
+	status_t error = find_directory(B_DESKTOP_DIRECTORY, &directoryPath);
+	if (error != B_OK) {
+		debug_printf("debug_server: Couldn't get desktop directory: %s\n",
+			strerror(error));
+		return error;
+	}
+
+	const char* executableName = strrchr(fExecutablePath, '/');
+	if (executableName == NULL)
+		executableName = fExecutablePath;
+	else
+		executableName++;
+
+	BString fileBaseName("core-");
+	fileBaseName << executableName << '-' << fTeam;
+	BPath filePath;
+
+	for (int32 index = 0;; index++) {
+		BString fileName(fileBaseName);
+		if (index > 0)
+			fileName << '-' << index;
+
+		error = filePath.SetTo(directoryPath.Path(), fileName.String());
+		if (error != B_OK) {
+			debug_printf("debug_server: Couldn't get core file path for team %"
+				B_PRId32 ": %s\n", fTeam, strerror(error));
+			return error;
+		}
+
+		struct stat st;
+		if (lstat(filePath.Path(), &st) != 0) {
+			if (errno == B_ENTRY_NOT_FOUND)
+				break;
+		}
+
+		if (index > 1000) {
+			debug_printf("debug_server: Couldn't get usable core file path for "
+				"team %" B_PRId32 "\n", fTeam);
+			return B_ERROR;
+		}
+	}
+
+	debug_nub_write_core_file message;
+	message.reply_port = fDebugContext.reply_port;
+	strlcpy(message.path, filePath.Path(), sizeof(message.path));
+
+	debug_nub_write_core_file_reply reply;
+
+	error = send_debug_message(&fDebugContext, B_DEBUG_WRITE_CORE_FILE,
+			&message, sizeof(message), &reply, sizeof(reply));
+	if (error == B_OK)
+		error = reply.error;
+	if (error != B_OK) {
+		debug_printf("debug_server: Failed to write core file for team %"
+			B_PRId32 ": %s\n", fTeam, strerror(error));
+	}
+
+	return error;
+}
+
+
 int32
 TeamDebugHandler::_HandleMessage(DebugMessage *message)
 {
@@ -824,24 +875,10 @@ TeamDebugHandler::_HandleMessage(DebugMessage *message)
 		_NotifyAppServer(fTeam);
 		_NotifyRegistrar(fTeam, true, false);
 
-		BString buffer(
-			B_TRANSLATE("The application:\n\n      %app\n\n"
-			"has encountered an error which prevents it from continuing. Haiku "
-			"will terminate the application and clean up."));
-		buffer.ReplaceFirst("%app", fTeamInfo.args);
+		DebugWindow *alert = new DebugWindow(fTeamInfo.args);
 
 		// TODO: It would be nice if the alert would go away automatically
 		// if someone else kills our teams.
-#ifdef HANDOVER_USE_DEBUGGER
-		BAlert *alert = new BAlert(NULL, buffer.String(),
-			B_TRANSLATE("Terminate"), B_TRANSLATE("Debug"),
-			B_TRANSLATE("Save report"), B_WIDTH_AS_USUAL, B_WARNING_ALERT);
-#else
-		BAlert *alert = new BAlert(NULL, buffer.String(),
-			B_TRANSLATE("Kill"), B_TRANSLATE("Debug"), NULL,
-			B_WIDTH_AS_USUAL, B_WARNING_ALERT);
-#endif
-		alert->SetFlags(alert->Flags() | B_CLOSE_ON_ESCAPE);
 		debugAction = alert->Go();
 		if (debugAction < 0) {
 			// Happens when closed by escape key
@@ -1027,6 +1064,9 @@ TeamDebugHandler::_HandlerThread()
 		// The team shall be killed. Since that is also the handling in case
 		// an error occurs while handing over the team to the debugger, we do
 		// nothing here.
+	} else if (debugAction == kActionWriteCoreFile) {
+		_WriteCoreFile();
+		debugAction = kActionKillTeam;
 	} else if ((debuggerThread = _EnterDebugger(
 			debugAction == kActionSaveReportTeam)) >= 0) {
 		// wait for the "handed over" or a "team deleted" message

@@ -23,7 +23,7 @@
 #include <image.h>
 #include <Path.h>
 
-#include "debug.h"
+#include "MediaDebug.h"
 
 #include "FormatManager.h"
 #include "MetaFormat.h"
@@ -204,6 +204,29 @@ AddOnManager::GetReaders(entry_ref* outRefs, int32* outCount,
 
 
 status_t
+AddOnManager::GetStreamers(entry_ref* outRefs, int32* outCount,
+	int32 maxCount)
+{
+	BAutolock locker(fLock);
+	RegisterAddOns();
+
+	int32 count = 0;
+	streamer_info* info;
+	for (fStreamerList.Rewind(); fStreamerList.GetNext(&info);) {
+			if (count == maxCount)
+				break;
+
+			*outRefs = info->ref;
+			outRefs++;
+			count++;
+	}
+
+	*outCount = count;
+	return B_OK;
+}
+
+
+status_t
 AddOnManager::GetEncoder(entry_ref* _encoderRef, int32 id)
 {
 	BAutolock locker(fLock);
@@ -354,6 +377,10 @@ AddOnManager::_RegisterAddOn(const entry_ref& ref)
 	if (encoder != NULL)
 		_RegisterEncoder(encoder, ref);
 
+	StreamerPlugin* streamer = dynamic_cast<StreamerPlugin*>(plugin);
+	if (streamer != NULL)
+		_RegisterStreamer(streamer, ref);
+
 	delete plugin;
 
 	return B_OK;
@@ -492,9 +519,13 @@ AddOnManager::_RegisterWriter(WriterPlugin* writer, const entry_ref& ref)
 		return;
 	}
 	for (uint i = 0 ; i < count ; i++) {
+		media_file_format fileFormat = fileFormats[i];
+		// Ignore non-writable formats
+		if ((fileFormat.capabilities & media_file_format::B_WRITABLE) == 0)
+			continue;
+
 		// Generate a proper ID before inserting this format, this encodes
 		// the specific plugin in the media_file_format.
-		media_file_format fileFormat = fileFormats[i];
 		fileFormat.id.node = ref.directory;
 		fileFormat.id.device = ref.device;
 		fileFormat.id.internal_id = info.internalID;
@@ -531,8 +562,8 @@ AddOnManager::_RegisterEncoder(EncoderPlugin* plugin, const entry_ref& ref)
 
 	while (true) {
 		memset(&info.codecInfo, 0, sizeof(media_codec_info));
-		memset(&info.intputFormat, 0, sizeof(media_format));
-		memset(&info.outputFormat, 0, sizeof(media_format));
+		info.intputFormat.Clear();
+		info.outputFormat.Clear();
 		if (plugin->RegisterNextEncoder(&cookie,
 			&info.codecInfo, &info.formatFamily, &info.intputFormat,
 			&info.outputFormat) != B_OK) {
@@ -546,6 +577,25 @@ AddOnManager::_RegisterEncoder(EncoderPlugin* plugin, const entry_ref& ref)
 		if (!fEncoderList.Insert(info))
 			break;
 	}
+}
+
+
+void
+AddOnManager::_RegisterStreamer(StreamerPlugin* streamer, const entry_ref& ref)
+{
+	BAutolock locker(fLock);
+
+	streamer_info* pInfo;
+	for (fStreamerList.Rewind(); fStreamerList.GetNext(&pInfo);) {
+		if (!strcmp(pInfo->ref.name, ref.name)) {
+			// We already know this streamer
+			return;
+		}
+	}
+
+	streamer_info info;
+	info.ref = ref;
+	fStreamerList.Insert(info);
 }
 
 

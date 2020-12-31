@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -110,6 +110,42 @@
  * United States government or any agency thereof requires an export license,
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
+ *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
  *
  *****************************************************************************/
 
@@ -228,7 +264,7 @@ AcpiTbValidateRsdp (
  *
  ******************************************************************************/
 
-ACPI_STATUS
+ACPI_STATUS ACPI_INIT_FUNCTION
 AcpiFindRootPointer (
     ACPI_PHYSICAL_ADDRESS   *TableAddress)
 {
@@ -243,8 +279,8 @@ AcpiFindRootPointer (
     /* 1a) Get the location of the Extended BIOS Data Area (EBDA) */
 
     TablePtr = AcpiOsMapMemory (
-                (ACPI_PHYSICAL_ADDRESS) ACPI_EBDA_PTR_LOCATION,
-                ACPI_EBDA_PTR_LENGTH);
+        (ACPI_PHYSICAL_ADDRESS) ACPI_EBDA_PTR_LOCATION,
+        ACPI_EBDA_PTR_LENGTH);
     if (!TablePtr)
     {
         ACPI_ERROR ((AE_INFO,
@@ -270,8 +306,8 @@ AcpiFindRootPointer (
          *     minimum of 1K length)
          */
         TablePtr = AcpiOsMapMemory (
-                    (ACPI_PHYSICAL_ADDRESS) PhysicalAddress,
-                    ACPI_EBDA_WINDOW_SIZE);
+            (ACPI_PHYSICAL_ADDRESS) PhysicalAddress,
+            ACPI_EBDA_WINDOW_SIZE);
         if (!TablePtr)
         {
             ACPI_ERROR ((AE_INFO,
@@ -281,14 +317,16 @@ AcpiFindRootPointer (
             return_ACPI_STATUS (AE_NO_MEMORY);
         }
 
-        MemRover = AcpiTbScanMemoryForRsdp (TablePtr, ACPI_EBDA_WINDOW_SIZE);
+        MemRover = AcpiTbScanMemoryForRsdp (
+            TablePtr, ACPI_EBDA_WINDOW_SIZE);
         AcpiOsUnmapMemory (TablePtr, ACPI_EBDA_WINDOW_SIZE);
 
         if (MemRover)
         {
             /* Return the physical address */
 
-            PhysicalAddress += (UINT32) ACPI_PTR_DIFF (MemRover, TablePtr);
+            PhysicalAddress +=
+                (UINT32) ACPI_PTR_DIFF (MemRover, TablePtr);
 
             *TableAddress = (ACPI_PHYSICAL_ADDRESS) PhysicalAddress;
             return_ACPI_STATUS (AE_OK);
@@ -299,8 +337,8 @@ AcpiFindRootPointer (
      * 2) Search upper memory: 16-byte boundaries in E0000h-FFFFFh
      */
     TablePtr = AcpiOsMapMemory (
-                (ACPI_PHYSICAL_ADDRESS) ACPI_HI_RSDP_WINDOW_BASE,
-                ACPI_HI_RSDP_WINDOW_SIZE);
+        (ACPI_PHYSICAL_ADDRESS) ACPI_HI_RSDP_WINDOW_BASE,
+        ACPI_HI_RSDP_WINDOW_SIZE);
 
     if (!TablePtr)
     {
@@ -311,7 +349,8 @@ AcpiFindRootPointer (
         return_ACPI_STATUS (AE_NO_MEMORY);
     }
 
-    MemRover = AcpiTbScanMemoryForRsdp (TablePtr, ACPI_HI_RSDP_WINDOW_SIZE);
+    MemRover = AcpiTbScanMemoryForRsdp (
+        TablePtr, ACPI_HI_RSDP_WINDOW_SIZE);
     AcpiOsUnmapMemory (TablePtr, ACPI_HI_RSDP_WINDOW_SIZE);
 
     if (MemRover)
@@ -331,7 +370,7 @@ AcpiFindRootPointer (
     return_ACPI_STATUS (AE_NOT_FOUND);
 }
 
-ACPI_EXPORT_SYMBOL (AcpiFindRootPointer)
+ACPI_EXPORT_SYMBOL_INIT (AcpiFindRootPointer)
 
 
 /*******************************************************************************
@@ -369,7 +408,8 @@ AcpiTbScanMemoryForRsdp (
     {
         /* The RSDP signature and checksum must both be correct */
 
-        Status = AcpiTbValidateRsdp (ACPI_CAST_PTR (ACPI_TABLE_RSDP, MemRover));
+        Status = AcpiTbValidateRsdp (
+            ACPI_CAST_PTR (ACPI_TABLE_RSDP, MemRover));
         if (ACPI_SUCCESS (Status))
         {
             /* Sig and checksum valid, we have found a real RSDP */

@@ -22,7 +22,9 @@ struct engine_state;
 
 class RemoteView : public BView {
 public:
-									RemoteView(BRect frame, uint16 listenPort);
+									RemoteView(BRect frame,
+										const char *remoteHost,
+										uint16 remotePort);
 virtual								~RemoteView();
 
 		status_t					InitCheck();
@@ -49,7 +51,7 @@ private:
 
 static	int							_StateCompareByKey(const uint32 *key,
 										const engine_state *state);
-		void						_CreateState(uint32 token);
+		engine_state *				_CreateState(uint32 token);
 		void						_DeleteState(uint32 token);
 		engine_state *				_FindState(uint32 token);
 
@@ -64,8 +66,7 @@ static	int32						_DrawEntry(void *data);
 
 		StreamingRingBuffer *		fReceiveBuffer;
 		StreamingRingBuffer *		fSendBuffer;
-		BNetEndpoint *				fReceiveEndpoint;
-		BNetEndpoint *				fSendEndpoint;
+		BNetEndpoint *				fEndpoint;
 		NetReceiver *				fReceiver;
 		NetSender *					fSender;
 

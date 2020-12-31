@@ -8,6 +8,7 @@
 
 #include <GraphicsDefs.h>
 #include <OS.h>
+#include <String.h>
 
 
 class BBitmap;
@@ -27,11 +28,9 @@ class BRect;
 #define B_UTF8_TRADEMARK	"\xE2\x84\xA2"
 #define B_UTF8_SMILING_FACE	"\xE2\x98\xBB"
 #define B_UTF8_HIROSHI		"\xE5\xBC\x98"
-#ifdef COMPILE_FOR_R5
-	#define B_MAX_MOUSE_BUTTONS 3
-#else
-	#define B_MAX_MOUSE_BUTTONS 16
-#endif
+
+
+#define B_MAX_MOUSE_BUTTONS 16
 
 
 // Key definitions
@@ -333,6 +332,8 @@ enum color_which {
 	B_TOOL_TIP_BACKGROUND_COLOR = 20,
 	B_TOOL_TIP_TEXT_COLOR = 21,
 
+	B_STATUS_BAR_COLOR = 37,
+
 	B_SUCCESS_COLOR = 100,
 	B_FAILURE_COLOR = 101,
 
@@ -419,12 +420,16 @@ status_t		set_scroll_bar_info(scroll_bar_info* info);
 
 status_t		get_mouse_type(int32* type);
 status_t		set_mouse_type(int32 type);
+status_t		get_mouse_type_by_name(BString mouse_name, int32* type);
+status_t		set_mouse_type_by_name(BString mouse_name, int32 type);
 status_t		get_mouse_map(mouse_map* map);
 status_t		set_mouse_map(mouse_map* map);
 status_t		get_click_speed(bigtime_t* speed);
 status_t		set_click_speed(bigtime_t speed);
 status_t		get_mouse_speed(int32* speed);
 status_t		set_mouse_speed(int32 speed);
+status_t		get_mouse_speed_by_name(BString mouse_name, int32* speed);
+status_t		set_mouse_speed_by_name(BString mouse_name, int32 speed);
 status_t		get_mouse_acceleration(int32* speed);
 status_t		set_mouse_acceleration(int32 speed);
 

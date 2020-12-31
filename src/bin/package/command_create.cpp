@@ -14,6 +14,7 @@
 #include <unistd.h>
 
 #include <Entry.h>
+#include <Path.h>
 
 #include <package/PackageInfo.h>
 #include <package/hpkg/HPKGDefs.h>
@@ -39,6 +40,7 @@ command_create(int argc, const char* const* argv)
 	bool quiet = false;
 	bool verbose = false;
 	int32 compressionLevel = BPackageKit::BHPKG::B_HPKG_COMPRESSION_LEVEL_BEST;
+	int32 compression = BPackageKit::BHPKG::B_HPKG_COMPRESSION_ZLIB;
 
 	while (true) {
 		static struct option sLongOptions[] = {
@@ -49,7 +51,7 @@ command_create(int argc, const char* const* argv)
 		};
 
 		opterr = 0; // don't print errors
-		int c = getopt_long(argc, (char**)argv, "+b0123456789C:hi:I:qv",
+		int c = getopt_long(argc, (char**)argv, "+b0123456789C:hi:I:qvz",
 			sLongOptions, NULL);
 		if (c == -1)
 			break;
@@ -96,6 +98,10 @@ command_create(int argc, const char* const* argv)
 				verbose = true;
 				break;
 
+			case 'z':
+				compression = BPackageKit::BHPKG::B_HPKG_COMPRESSION_ZSTD;
+				break;
+
 			default:
 				print_usage_and_exit(true);
 				break;
@@ -115,6 +121,18 @@ command_create(int argc, const char* const* argv)
 		return 1;
 	}
 
+	BPath outputPath(packageFileName, NULL, true);
+	BPath inputPath(changeToDirectory, NULL, true);
+	BPath parent;
+	while (outputPath.GetParent(&parent) == B_OK) {
+		if (outputPath == inputPath) {
+			fprintf(stderr, "Error: output package can't be in the same "
+				"directory as input files.");
+			return 1;
+		}
+		outputPath = parent;
+	}
+
 	// create package
 	BPackageWriterParameters writerParameters;
 	writerParameters.SetCompressionLevel(compressionLevel);
@@ -122,6 +140,10 @@ command_create(int argc, const char* const* argv)
 		writerParameters.SetCompression(
 			BPackageKit::BHPKG::B_HPKG_COMPRESSION_NONE);
 	}
+
+	if (compressionLevel == 0)
+		compression = BPackageKit::BHPKG::B_HPKG_COMPRESSION_NONE;
+	writerParameters.SetCompression(compression);
 
 	PackageWriterListener listener(verbose, quiet);
 	BPackageWriter packageWriter(&listener);

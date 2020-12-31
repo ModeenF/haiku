@@ -1,5 +1,5 @@
 /*
- * Copyright 2005-2011, Ingo Weinhold, ingo_weinhold@gmx.de.
+ * Copyright 2005-2016, Ingo Weinhold, ingo_weinhold@gmx.de.
  * Copyright 2015, Rene Gollent, rene@gollent.com.
  * Distributed under the terms of the MIT License.
  */
@@ -15,6 +15,7 @@
 
 #include <arch/debug.h>
 #include <arch/user_debugger.h>
+#include <core_dump.h>
 #include <cpu.h>
 #include <debugger.h>
 #include <kernel.h>
@@ -791,6 +792,7 @@ thread_hit_debug_event(debug_debugger_message event, const void *message,
 	// TODO: Maybe better use ref-counting and a flag in the breakpoint manager.
 	Team* team = thread_get_current_thread()->team;
 	ConditionVariable debugChangeCondition;
+	debugChangeCondition.Init(team, "debug change condition");
 	prepare_debugger_change(team, debugChangeCondition);
 
 	if (team->debug_info.breakpoint_manager != NULL) {
@@ -893,7 +895,7 @@ user_debug_post_syscall(uint32 syscall, void *args, uint64 returnValue,
 /**	\brief To be called when an unhandled processor exception (error/fault)
  *		   occurred.
  *	\param exception The debug_why_stopped value identifying the kind of fault.
- *	\param singal The signal corresponding to the exception.
+ *	\param signal The signal corresponding to the exception.
  *	\return \c true, if the caller shall continue normally, i.e. usually send
  *			a deadly signal. \c false, if the debugger insists to continue the
  *			program (e.g. because it has solved the removed the cause of the
@@ -1560,6 +1562,7 @@ nub_thread_cleanup(Thread *nubThread)
 		nubThread->id, nubThread->team->debug_info.debugger_port));
 
 	ConditionVariable debugChangeCondition;
+	debugChangeCondition.Init(nubThread->team, "debug change condition");
 	prepare_debugger_change(nubThread->team, debugChangeCondition);
 
 	team_debug_info teamDebugInfo;
@@ -1696,6 +1699,7 @@ debug_nub_thread(void *)
 			debug_nub_get_signal_handler_reply	get_signal_handler;
 			debug_nub_start_profiler_reply		start_profiler;
 			debug_profiler_update				profiler_update;
+			debug_nub_write_core_file_reply		write_core_file;
 		} reply;
 		int32 replySize = 0;
 		port_id replyPort = -1;
@@ -2271,7 +2275,8 @@ debug_nub_thread(void *)
 				void* samples = NULL;
 				if (result == B_OK) {
 					clonedSampleArea = clone_area("profiling samples", &samples,
-						B_ANY_KERNEL_ADDRESS, B_READ_AREA | B_WRITE_AREA,
+						B_ANY_KERNEL_ADDRESS,
+						B_KERNEL_READ_AREA | B_KERNEL_WRITE_AREA,
 						sampleArea);
 					if (clonedSampleArea >= 0) {
 						// we need the memory locked
@@ -2416,6 +2421,29 @@ debug_nub_thread(void *)
 						delete_area(sampleArea);
 					}
 				}
+
+				break;
+			}
+
+			case B_DEBUG_WRITE_CORE_FILE:
+			{
+				// get the parameters
+				replyPort = message.write_core_file.reply_port;
+				char* path = message.write_core_file.path;
+				path[sizeof(message.write_core_file.path) - 1] = '\0';
+
+				TRACE(("nub thread %" B_PRId32 ": B_DEBUG_WRITE_CORE_FILE"
+					": path: %s\n", nubThread->id, path));
+
+				// write the core file
+				status_t result = core_dump_write_core_file(path, false);
+
+				// prepare the reply
+				reply.write_core_file.error = result;
+				replySize = sizeof(reply.write_core_file);
+				sendReply = true;
+
+				break;
 			}
 		}
 
@@ -2520,6 +2548,7 @@ install_team_debugger(team_id teamID, port_id debuggerPort,
 	// get the team
 	Team* team;
 	ConditionVariable debugChangeCondition;
+	debugChangeCondition.Init(NULL, "debug change condition");
 	error = prepare_debugger_change(teamID, debugChangeCondition, team);
 	if (error != B_OK)
 		return error;
@@ -2809,6 +2838,10 @@ _user_disable_debugger(int state)
 status_t
 _user_install_default_debugger(port_id debuggerPort)
 {
+	// Do not allow non-root processes to install a default debugger.
+	if (geteuid() != 0)
+		return B_PERMISSION_DENIED;
+
 	// if supplied, check whether the port is a valid port
 	if (debuggerPort >= 0) {
 		port_info portInfo;
@@ -2830,6 +2863,9 @@ _user_install_default_debugger(port_id debuggerPort)
 port_id
 _user_install_team_debugger(team_id teamID, port_id debuggerPort)
 {
+	if (geteuid() != 0 && team_geteuid(teamID) != geteuid())
+		return B_PERMISSION_DENIED;
+
 	return install_team_debugger(teamID, debuggerPort, -1, false, false);
 }
 
@@ -2839,6 +2875,7 @@ _user_remove_team_debugger(team_id teamID)
 {
 	Team* team;
 	ConditionVariable debugChangeCondition;
+	debugChangeCondition.Init(NULL, "debug change condition");
 	status_t error = prepare_debugger_change(teamID, debugChangeCondition,
 		team);
 	if (error != B_OK)
@@ -2903,39 +2940,24 @@ _user_debug_thread(thread_id threadID)
 	if ((thread->debug_info.flags & B_THREAD_DEBUG_NUB_THREAD) != 0)
 		return B_NOT_ALLOWED;
 
-	// already marked stopped?
-	if ((thread->debug_info.flags & B_THREAD_DEBUG_STOPPED) != 0)
+	// already marked stopped or being told to stop?
+	if ((thread->debug_info.flags
+			& (B_THREAD_DEBUG_STOPPED | B_THREAD_DEBUG_STOP)) != 0) {
 		return B_OK;
+	}
 
 	// set the flag that tells the thread to stop as soon as possible
 	atomic_or(&thread->debug_info.flags, B_THREAD_DEBUG_STOP);
 
 	update_thread_user_debug_flag(thread);
 
-	// resume/interrupt the thread, if necessary
+	// send the thread a SIGNAL_DEBUG_THREAD, so it is interrupted (or
+	// continued)
 	threadDebugInfoLocker.Unlock();
-	SpinLocker schedulerLocker(thread->scheduler_lock);
+	ReadSpinLocker teamLocker(thread->team_lock);
+	SpinLocker locker(thread->team->signal_lock);
 
-	switch (thread->state) {
-		case B_THREAD_SUSPENDED:
-			// thread suspended: wake it up
-			scheduler_enqueue_in_run_queue(thread);
-			break;
-
-		default:
-			// thread may be waiting: interrupt it
-			thread_interrupt(thread, false);
-				// TODO: If the thread is already in the kernel and e.g.
-				// about to acquire a semaphore (before
-				// thread_prepare_to_block()), we won't interrupt it.
-				// Maybe we should rather send a signal (SIGTRAP).
-			schedulerLocker.Unlock();
-
-			schedulerLocker.SetTo(thread_get_current_thread()->scheduler_lock,
-				false);
-			scheduler_reschedule_if_necessary_locked();
-			break;
-	}
+	send_signal_to_thread_locked(thread, SIGNAL_DEBUG_THREAD, NULL, 0);
 
 	return B_OK;
 }

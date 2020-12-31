@@ -1,6 +1,5 @@
 SubDir HAIKU_TOP src tests kits support ;
 
-SetSubDirSupportedPlatformsBeOSCompatible ;
 AddSubDirSupportedPlatforms libbe_test ;
 
 # Let Jam know where to find some of our source files
@@ -74,6 +73,7 @@ UnitTestLib libsupporttest.so
 		StringCharAccessTest.cpp
 		StringSearchTest.cpp
 		StringReplaceTest.cpp
+		StringSplitTest.cpp
 
 		#BBlockCache
 		BlockCacheTest.cpp

@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2011, Haiku, Inc.
+ * Copyright 2004-2016, Haiku, Inc.
  * Distributed under the terms of the MIT License.
  *
  * Thread definition and structures
@@ -26,6 +26,8 @@
 #include <util/KernelReferenceable.h>
 #include <util/list.h>
 
+#include <SupportDefs.h>
+
 
 enum additional_thread_state {
 	THREAD_STATE_FREE_ON_RESCHED = 7, // free the thread structure upon reschedule
@@ -44,6 +46,9 @@ enum team_state {
 };
 
 #define	TEAM_FLAG_EXEC_DONE	0x01
+	// team has executed exec*()
+#define	TEAM_FLAG_DUMP_CORE	0x02
+	// a core dump is in progress
 
 typedef enum job_control_state {
 	JOB_CONTROL_STATE_NONE,
@@ -61,6 +66,9 @@ struct select_info;
 struct user_thread;				// defined in libroot/user_thread.h
 struct VMAddressSpace;
 struct xsi_sem_context;			// defined in xsi_semaphore.cpp
+struct LockedPages;
+
+typedef DoublyLinkedList<LockedPages> LockedPagesList;
 
 namespace Scheduler {
 	struct ThreadData;
@@ -80,9 +88,8 @@ struct thread_death_entry {
 };
 
 struct team_loading_info {
-	Thread*				thread;	// the waiting thread
+	ConditionVariable	condition;
 	status_t			result;		// the result of the loading
-	bool				done;		// set when loading is done/aborted
 };
 
 struct team_watcher {
@@ -94,8 +101,6 @@ struct team_watcher {
 
 #define MAX_DEAD_CHILDREN	32
 	// this is a soft limit for the number of child death entries in a team
-#define MAX_DEAD_THREADS	32
-	// this is a soft limit for the number of thread death entries in a team
 
 
 struct job_control_entry : DoublyLinkedListLinkImpl<job_control_entry> {
@@ -113,6 +118,8 @@ struct job_control_entry : DoublyLinkedListLinkImpl<job_control_entry> {
 	status_t			status;
 	uint16				reason;		// reason for the team's demise, one of the
 									// CLD_* values defined in <signal.h>
+	bigtime_t			user_time;
+	bigtime_t			kernel_time;
 
 	job_control_entry();
 	~job_control_entry();
@@ -234,7 +241,8 @@ struct Team : TeamThreadIteratorEntry<team_id>, KernelReferenceable,
 	struct xsi_sem_context *xsi_sem_context;
 	struct team_death_entry *death_entry;	// protected by fLock
 	struct list		dead_threads;
-	int				dead_threads_count;
+
+	LockedPagesList	locked_pages_list;
 
 	// protected by the team's fLock
 	team_dead_children dead_children;
@@ -392,6 +400,11 @@ public:
 									Thread* lockedThread = NULL) const;
 			bigtime_t			UserCPUTime() const;
 
+			ConditionVariable*	CoreDumpCondition() const
+									{ return fCoreDumpCondition; }
+			void				SetCoreDumpCondition(
+									ConditionVariable* condition)
+									{ fCoreDumpCondition = condition; }
 private:
 								Team(team_id id, bool kernel);
 
@@ -412,6 +425,9 @@ private:
 									// protected by scheduler lock
 			TeamUserTimeUserTimerList fUserTimeUserTimers;
 			int32				fUserDefinedTimerCount;	// accessed atomically
+
+			ConditionVariable*	fCoreDumpCondition;
+									// protected by fLock
 };
 
 
@@ -821,6 +837,12 @@ using BKernel::ProcessGroupList;
 	// the thread is currently in a syscall; set/reset only for certain
 	// functions (e.g. ioctl()) to allow inner functions to discriminate
 	// whether e.g. parameters were passed from userland or kernel
-
+#define	THREAD_FLAGS_TRAP_FOR_CORE_DUMP		0x1000
+	// core dump in progress; the thread shall not exit the kernel to userland,
+	// but shall invoke core_dump_trap_thread() instead.
+#ifdef _COMPAT_MODE
+#define	THREAD_FLAGS_COMPAT_MODE			0x2000
+	// the thread runs a compatibility mode (for instance IA32 on x86_64).
+#endif
 
 #endif	/* _KERNEL_THREAD_TYPES_H */

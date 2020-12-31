@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en-US" xml:lang="en-US">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="uk" xml:lang="uk">
 <head>
 <!-- 
  *
@@ -10,6 +10,7 @@
  * Authors:
  *		Humdinger <humdingerb@gmail.com>
  * Translators:
+ *		Humdinger
  *		totish
  *
 -->
@@ -17,44 +18,50 @@
 	<meta http-equiv="Content-Style-Type" content="text/css" />
 	<meta name="robots" content="all" />
 	<title>Bash і написання скриптів</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<link rel="stylesheet" type="text/css" href="../Haiku-doc.css" />
 </head>
 <body>
 
 <div id="banner">
-<div><span>User guide</span></div>
+<div><span>Настанова користувачеві</span></div>
 </div>
 
 <div class="nav">
 <div class="inner">
 <ul class="lang-menu">
-<li class="now"><img src="../images/flags/uk.png" alt="" /> Українська</li>
-<li><a href="../fr/bash-scripting.html"><img src="../images/flags/fr.png" alt="" />Français</a></li>
-<li><a href="../de/bash-scripting.html"><img src="../images/flags/de.png" alt="" />Deutsch</a></li>
-<li><a href="../it/bash-scripting.html"><img src="../images/flags/it.png" alt="" />Italiano</a></li>
-<li><a href="../ru/bash-scripting.html"><img src="../images/flags/ru.png" alt="" />Русский</a></li>
-<li><a href="../es/bash-scripting.html"><img src="../images/flags/es.png" alt="" />Español</a></li>
-<li><a href="../sv_SE/bash-scripting.html"><img src="../images/flags/sv_SE.png" alt="" />Svenska</a></li>
-<li><a href="../jp/bash-scripting.html"><img src="../images/flags/jp.png" alt="" />日本語</a></li>
-<li><a href="../zh_CN/bash-scripting.html"><img src="../images/flags/zh_CN.png" alt="" /> 中文 ［中文］</a></li>
-<li><a href="../pt_PT/bash-scripting.html"><img src="../images/flags/pt_PT.png" alt="" />Português</a></li>
-<li><a href="../fi/bash-scripting.html"><img src="../images/flags/fi.png" alt="" />Suomi</a></li>
-<li><a href="../sk/bash-scripting.html"><img src="../images/flags/sk.png" alt="" />Slovenčina</a></li>
-<li><a href="../hu/bash-scripting.html"><img src="../images/flags/hu.png" alt="" />Magyar</a></li>
-<li><a href="../pt_BR/bash-scripting.html"><img src="../images/flags/pt_BR.png" alt="" />Português (Brazil)</a></li>
-<li><a href="../ca/bash-scripting.html"><img src="../images/flags/ca.png" alt="" />Català</a></li>
-<li><a href="../pl/bash-scripting.html"><img src="../images/flags/pl.png" alt="" />Polski</a></li>
-<li><a href="../en/bash-scripting.html"><img src="../images/flags/gb.png" alt="" />English</a></li>
+<li class="now">Українська&nbsp;<span class="dropdown-caret">&#9660;</span></li>
+<li><a href="../id/bash-scripting.html">Bahasa Indonesia</a></li>
+<li><a href="../ca/bash-scripting.html">Català</a></li>
+<li><a href="../de/bash-scripting.html">Deutsch</a></li>
+<li><a href="../en/bash-scripting.html">English</a></li>
+<li><a href="../es/bash-scripting.html">Español</a></li>
+<li><a href="../fr/bash-scripting.html">Français</a></li>
+<li><a href="../fur/bash-scripting.html">Furlan</a></li>
+<li><a href="../it/bash-scripting.html">Italiano</a></li>
+<li><a href="../hu/bash-scripting.html">Magyar</a></li>
+<li><a href="../pl/bash-scripting.html">Polski</a></li>
+<li><a href="../pt_PT/bash-scripting.html">Português</a></li>
+<li><a href="../pt_BR/bash-scripting.html">Português (Brazil)</a></li>
+<li><a href="../ro/bash-scripting.html">Română</a></li>
+<li><a href="../sk/bash-scripting.html">Slovenčina</a></li>
+<li><a href="../fi/bash-scripting.html">Suomi</a></li>
+<li><a href="../sv_SE/bash-scripting.html">Svenska</a></li>
+<li><a href="../tr/bash-scripting.html">Türkçe</a></li>
+<li><a href="../zh_CN/bash-scripting.html"> 中文 ［中文］</a></li>
+<li><a href="../ru/bash-scripting.html">Русский</a></li>
+<li><a href="../jp/bash-scripting.html">日本語</a></li>
 </ul>
 <span>
- «  <a href="preferences.html">Preferences</a> 
-::  <a href="contents.html" class="uplink">Contents</a> 
+ «  <a href="preferences.html">Налаштування (Preferences)</a> 
+::  <a href="contents.html" class="uplink">Зміст</a> 
 <!-- ::  <a href="filesystem-layout.html">Filesystem layout</a>  » -->
 </span></div>
 </div>
 
 <div id="content">
 <div>
+<div class="box-info">Переклад даної сторінки ще неповний. Допоки це так, незавершені частини користайте у англійському варіанті. </div>
 
 <h1>Bash і написання скриптів</h1>
 
@@ -64,7 +71,8 @@
 <h2>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="bash" name="bash">Bash</a></h2>
-<p>Враховуючи, що скрипти залежать від оболонки , якою вони інтерпретуються,  спробуйте для початку ознайомитись з BASH, що використовується у  Haiku. В тенетах існує  багато ресурсів про неї, бо вона є досить поширеною.  Хорошою настановою послужить  робота Йохана Янсона (Johan Jansson) <a href="http://www.beforever.com/bashtut.htm" class="printurl">Introduction to bash - a tutorial for bash under BeOS</a>.</p>
+<p>Since scripts rely naturally a lot on the shell they are interpreted by, you should first familiarize yourself with the BASH that's used by Haiku. There are many resources online as it's a widely used shell. One nice document is Johan Jansson's <a href="https://web.archive.org/web/20011205095723/http://www.beforever.com/bashtut.htm" class="printurl">Introduction to bash - a tutorial for bash under BeOS</a>.<br />
+The <a href="https://www.gnu.org/software/bash/manual/bash.pdf" class="printurl">Bash Reference Manual (PDF, 720 KiB)</a> is a nice resource to get into the details.</p>
 
 <h2>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
@@ -73,13 +81,13 @@
 
 <h2>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a><a id="user-scripts" name="user-scripts">Скрипти в  Haiku</a></h2>
-<p>Зрозуміло, що в роботі Haiku теж використовуються скрипти. Завантаження і завершення роботи - типово скриптові процедури. Ці чітко визначені послідовності можуть бути розширені за допомогою користувацьких скриптів<br />
+<p>Зрозуміло, що в роботі Haiku теж використовуються скрипти. Завантаження і завершення роботи - типово скриптові процедури. Сьогодні замість них використовується <a href="https://dev.haiku-os.org/wiki/LaunchDaemon">launch_daemon</a>. Ці чітко визначені послідовності можуть бути розширені за допомогою користувацьких скриптів.<br />
 Якщо  вони ще не існують Вам доведеться самостійно їх створити. В іншому випадку просто додайте потрібні команди в те місце де вони повинні виконуватись.</p>
 
 <h3>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
-<a id="userbootscript" name="userbootscript"> UserBootscript</a></h3>
-<p><span class="path">/boot/home/config/boot/UserBootscript</span> буде виконаний після того як система завершить процес завантаження. Наприклад, Ви можете додати кілька програм, котрі стартуватимуть при кожному завантаженні:</p>
+<a id="userbootscript" name="userbootscript"> UserBootscript (Завантажувальний скрипт користувача)</a></h3>
+<p><span class="path">/boot/home/config/settings/boot/UserBootscript</span> буде виконаний після того як система завершить процес завантаження. Наприклад, Ви можете додати кілька програм, які стартуватимуть при кожному завантаженні:</p>
 <pre># Запуск LaunchBox
 /boot/system/apps/LaunchBox &amp;
 
@@ -87,26 +95,25 @@
 /boot/system/apps/Workspaces &amp;</pre>
 <p>Не забудьте додати в кінці команди знак "<tt>&amp;</tt>" щоб запустити цей процес у фоновому режимі, інакше скрипт зависне , поки ця команда не буде завершена (У нашому випадку, коли запущений додаток буде закрито).</p>
 
-<p>Простішою альтернативою для додатків, котрі запускаються під час завантаження - розмістити посилання на потрібні програми в папці<span class="path">/boot/home/config/boot/launch</span> directory. Це можна зробити правим кліком по додатку, котрий Ви бажаєте помістити в автозапуск вибором в меню <span class="menu">Створити посилання (Create Link)</span> і переміщенням по папках з використанням <a href="tracker.html#navigating">навігації</a> до потрібного каталогу.</p>
+<p>Простішою альтернативою для додатків, котрі запускаються під час завантаження - розміщення посилання на потрібні програми в теці<span class="path">/boot/home/config/settings/boot/launch</span>. Це можна зробити правим кліком по додатку, котрий Ви бажаєте помістити в автозапуск вибором в меню <span class="menu">Створити посилання (Create Link)</span> і переміщенням по теках з використанням <a href="tracker.html#navigating">навігації</a> до потрібного каталогу.</p>
 
-<h3>
-<a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
-<a id="usershutdownscript" name="usershutdownscript">UserShutdownScript</a></h3>
-<p><span class="path">/boot/home/config/boot/UserShutdownScript</span> буде виконаний в якості початкового етапу процесу завершення роботи.
+<h3><a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
+<a id="usershutdownscript" name="usershutdownscript">The UserShutdownScript - <i>not yet working</i></a></h3>
+<p><span class="path">/boot/home/config/settings/boot/UserShutdownScript</span> буде виконаний в якості початкового етапу процесу завершення роботи.
 Якщо скрипт поверне ненульовий результат після свого закінчення, то завершення роботи буду призупинено.</p>
 
 <h3>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
-<a id="usershutdownfinishscript" name="usershutdownfinishscript"> UserShutdownFinishScript</a></h3>
-<p><span class="path">/boot/home/config/boot/UserShutdownFinishScript</span> виконується в останню чергу в процесі завершення роботи. Майте на увазі, що більшість елементів системи вже не функціонують під час його виконання.</p>
+<a id="usershutdownfinishscript" name="usershutdownfinishscript">The UserShutdownFinishScript - <i>not yet working</i></a></h3>
+<p><span class="path">/boot/home/config/settings/boot/UserShutdownFinishScript</span> виконується в останню чергу в процесі завершення роботи. Майте на увазі, що більшість елементів системи вже не функціонують під час його виконання.</p>
 
 </div>
 </div>
 
 <div class="nav">
 <div class="inner"><span>
- «  <a href="preferences.html">Preferences</a> 
-::  <a href="contents.html" class="uplink">Contents</a> 
+ «  <a href="preferences.html">Налаштування (Preferences)</a> 
+::  <a href="contents.html" class="uplink">Зміст</a> 
 <!-- ::  <a href="filesystem-layout.html">Filesystem layout</a>  » -->
 </span></div>
 </div>

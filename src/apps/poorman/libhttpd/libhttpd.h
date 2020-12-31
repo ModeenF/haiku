@@ -36,6 +36,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <stdio.h>
 
 #if defined(AF_INET6) && defined(IN6_IS_ADDR_V4MAPPED)
 #define USE_IPV6
@@ -145,7 +146,7 @@ typedef struct {
     int should_linger;
     struct stat sb;
     int conn_fd;
-    char* file_address;
+    int processed_directory_index;
     } httpd_conn;
 
 /* Methods. */

@@ -29,9 +29,9 @@ class DebugDumper;
 struct ThreadData;
 class ThreadProcessing;
 
-struct CPUEntry;
-struct CoreEntry;
-struct PackageEntry;
+class CPUEntry;
+class CoreEntry;
+class PackageEntry;
 
 // The run queues. Holds the threads ready to run ordered by priority.
 // One queue per schedulable target per core. Additionally, each
@@ -397,7 +397,7 @@ CoreEntry::GetLoad() const
 	SCHEDULER_ENTER_FUNCTION();
 
 	ASSERT(fCPUCount > 0);
-	return fLoad / fCPUCount;
+	return std::min(fLoad / fCPUCount, kMaxLoad);
 }
 
 

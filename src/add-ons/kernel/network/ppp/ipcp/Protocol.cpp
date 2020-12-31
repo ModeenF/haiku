@@ -153,7 +153,7 @@ IPCP::StackControl(uint32 op, void *data)
 		break;
 
 		default:
-			ERROR("IPCP: Unknown ioctl: %ld\n", op);
+			ERROR("IPCP: Unknown ioctl: %" B_PRIu32 "\n", op);
 			return KPPPProtocol::StackControl(op, data);
 	}
 
@@ -315,8 +315,7 @@ IPCP::ReceiveIPPacket(net_buffer *packet, uint16 protocolNumber)
 
 	// TODO: add VJC support (the packet would be decoded here)
 
-	if (packet)
-	{
+	if (packet) {
 #if DEBUG
 		dump_packet(packet, "incoming");
 #endif

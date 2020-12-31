@@ -33,6 +33,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <stdio.h>
@@ -47,17 +48,15 @@
 
 static int _gettemp(char *, int *, int, int);
 
-static const unsigned char padchar[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+static const char padchar[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 
-#if 0
 int
 mkstemps(char *path, int slen)
 {
 	int fd;
 	return _gettemp(path, &fd, 0, slen) ? fd : -1;
 }
-#endif
 
 
 int
@@ -96,6 +95,7 @@ _gettemp(char *path, int *doopen, int domkdir, int slen)
 	char *pad;
 	struct stat sbuf;
 	int rval;
+	static unsigned int seed = 0;
 
 	if (doopen != NULL && domkdir) {
 		__set_errno(EINVAL);
@@ -114,8 +114,15 @@ _gettemp(char *path, int *doopen, int domkdir, int slen)
 	}
 
 	/* Fill space with random characters */
+	if (seed == 0) {
+		/* Select a pseudo-random seed on first call to avoid
+		to generate the same sequence of pattern */
+		struct timeval tv;
+		gettimeofday(&tv, 0);
+		seed = (getpid() << 16) ^ getuid() ^ tv.tv_sec ^ tv.tv_usec;
+	}
 	while (trv >= path && *trv == 'X') {
-		uint32_t value = rand() % (sizeof(padchar) - 1);
+		uint32_t value = rand_r(&seed) % (sizeof(padchar) - 1);
 		*trv-- = padchar[value];
 	}
 	start = trv + 1;

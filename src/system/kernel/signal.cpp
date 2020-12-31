@@ -1,6 +1,7 @@
 /*
+ * Copyright 2018, Jérôme Duval, jerome.duval@gmail.com.
  * Copyright 2014, Paweł Dziepak, pdziepak@quarnos.org.
- * Copyright 2011, Ingo Weinhold, ingo_weinhold@gmx.de.
+ * Copyright 2011-2016, Ingo Weinhold, ingo_weinhold@gmx.de.
  * Copyright 2002-2009, Axel Dörfler, axeld@pinc-software.de.
  * Copyright 2002, Angelo Mottola, a.mottola@libero.it.
  *
@@ -21,6 +22,7 @@
 #include <KernelExport.h>
 
 #include <cpu.h>
+#include <core_dump.h>
 #include <debug.h>
 #include <kernel.h>
 #include <kscheduler.h>
@@ -45,13 +47,15 @@
 
 #define BLOCKABLE_SIGNALS	\
 	(~(KILL_SIGNALS | SIGNAL_TO_MASK(SIGSTOP)	\
+	| SIGNAL_TO_MASK(SIGNAL_DEBUG_THREAD)	\
 	| SIGNAL_TO_MASK(SIGNAL_CONTINUE_THREAD)	\
 	| SIGNAL_TO_MASK(SIGNAL_CANCEL_THREAD)))
 #define STOP_SIGNALS \
 	(SIGNAL_TO_MASK(SIGSTOP) | SIGNAL_TO_MASK(SIGTSTP) \
 	| SIGNAL_TO_MASK(SIGTTIN) | SIGNAL_TO_MASK(SIGTTOU))
 #define CONTINUE_SIGNALS \
-	(SIGNAL_TO_MASK(SIGCONT) | SIGNAL_TO_MASK(SIGNAL_CONTINUE_THREAD))
+	(SIGNAL_TO_MASK(SIGCONT) | SIGNAL_TO_MASK(SIGNAL_CONTINUE_THREAD) \
+	| SIGNAL_TO_MASK(SIGNAL_DEBUG_THREAD))
 #define DEFAULT_IGNORE_SIGNALS \
 	(SIGNAL_TO_MASK(SIGCHLD) | SIGNAL_TO_MASK(SIGWINCH) \
 	| SIGNAL_TO_MASK(SIGCONT) \
@@ -925,14 +929,17 @@ handle_signals(Thread* thread)
 	sigset_t nonBlockedMask = ~thread->sig_block_mask;
 	sigset_t signalMask = thread->AllPendingSignals() & nonBlockedMask;
 
+	set_ac();
 	if (thread->user_thread->defer_signals > 0
 		&& (signalMask & NON_DEFERRABLE_SIGNALS) == 0
 		&& thread->sigsuspend_original_unblocked_mask == 0) {
 		thread->user_thread->pending_signals = signalMask;
+		clear_ac();
 		return;
 	}
 
 	thread->user_thread->pending_signals = 0;
+	clear_ac();
 
 	// determine syscall restart behavior
 	uint32 restartFlags = atomic_and(&thread->flags,
@@ -955,15 +962,25 @@ handle_signals(Thread* thread)
 		}
 
 		// Unless SIGKILL[THR] are pending, check, if the thread shall stop for
-		// debugging.
-		if ((signalMask & KILL_SIGNALS) == 0
-			&& (atomic_get(&thread->debug_info.flags) & B_THREAD_DEBUG_STOP)
-				!= 0) {
-			locker.Unlock();
-			teamLocker.Unlock();
+		// a core dump or for debugging.
+		if ((signalMask & KILL_SIGNALS) == 0) {
+			if ((atomic_get(&thread->flags) & THREAD_FLAGS_TRAP_FOR_CORE_DUMP)
+					!= 0) {
+				locker.Unlock();
+				teamLocker.Unlock();
 
-			user_debug_stop_thread();
-			continue;
+				core_dump_trap_thread();
+				continue;
+			}
+
+			if ((atomic_get(&thread->debug_info.flags) & B_THREAD_DEBUG_STOP)
+					!= 0) {
+				locker.Unlock();
+				teamLocker.Unlock();
+
+				user_debug_stop_thread();
+				continue;
+			}
 		}
 
 		// We're done, if there aren't any pending signals anymore.
@@ -1036,6 +1053,11 @@ handle_signals(Thread* thread)
 					// notify the debugger
 					if (debugSignal)
 						notify_debugger(thread, signal, handler, false);
+					continue;
+
+				case SIGNAL_DEBUG_THREAD:
+					// ignore -- used together with B_THREAD_DEBUG_STOP, which
+					// is handled above
 					continue;
 
 				case SIGNAL_CANCEL_THREAD:
@@ -1422,6 +1444,19 @@ send_signal_to_thread_locked(Thread* thread, uint32 signalNumber,
 				scheduler_enqueue_in_run_queue(thread);
 			else
 				thread_interrupt(thread, true);
+
+			break;
+		}
+		case SIGNAL_DEBUG_THREAD:
+		{
+			// Wake up thread if it was suspended, otherwise interrupt it.
+			thread->going_to_suspend = false;
+
+			SpinLocker locker(thread->scheduler_lock);
+			if (thread->state == B_THREAD_SUSPENDED)
+				scheduler_enqueue_in_run_queue(thread);
+			else
+				thread_interrupt(thread, false);
 
 			break;
 		}
@@ -2236,9 +2271,10 @@ _user_set_signal_mask(int how, const sigset_t *userSet, sigset_t *userOldSet)
 	sigset_t set, oldSet;
 	status_t status;
 
-	if ((userSet != NULL && user_memcpy(&set, userSet, sizeof(sigset_t)) < B_OK)
-		|| (userOldSet != NULL && user_memcpy(&oldSet, userOldSet,
-				sizeof(sigset_t)) < B_OK))
+	if ((userSet != NULL && (!IS_USER_ADDRESS(userSet)
+			|| user_memcpy(&set, userSet, sizeof(sigset_t)) < B_OK))
+		|| (userOldSet != NULL && (!IS_USER_ADDRESS(userOldSet)
+			|| user_memcpy(&oldSet, userOldSet, sizeof(sigset_t)) < B_OK)))
 		return B_BAD_ADDRESS;
 
 	status = sigprocmask_internal(how, userSet ? &set : NULL,
@@ -2260,10 +2296,11 @@ _user_sigaction(int signal, const struct sigaction *userAction,
 	struct sigaction act, oact;
 	status_t status;
 
-	if ((userAction != NULL && user_memcpy(&act, userAction,
-				sizeof(struct sigaction)) < B_OK)
-		|| (userOldAction != NULL && user_memcpy(&oact, userOldAction,
-				sizeof(struct sigaction)) < B_OK))
+	if ((userAction != NULL && (!IS_USER_ADDRESS(userAction)
+			|| user_memcpy(&act, userAction, sizeof(struct sigaction)) < B_OK))
+		|| (userOldAction != NULL && (!IS_USER_ADDRESS(userOldAction)
+			|| user_memcpy(&oact, userOldAction, sizeof(struct sigaction))
+				< B_OK)))
 		return B_BAD_ADDRESS;
 
 	status = sigaction_internal(signal, userAction ? &act : NULL,
@@ -2320,8 +2357,10 @@ _user_sigsuspend(const sigset_t *userMask)
 
 	if (userMask == NULL)
 		return B_BAD_VALUE;
-	if (user_memcpy(&mask, userMask, sizeof(sigset_t)) < B_OK)
+	if (!IS_USER_ADDRESS(userMask)
+		|| user_memcpy(&mask, userMask, sizeof(sigset_t)) < B_OK) {
 		return B_BAD_ADDRESS;
+	}
 
 	return sigsuspend_internal(&mask);
 }
@@ -2354,10 +2393,10 @@ _user_set_signal_stack(const stack_t* newUserStack, stack_t* oldUserStack)
 	struct stack_t newStack, oldStack;
 	bool onStack = false;
 
-	if ((newUserStack != NULL && user_memcpy(&newStack, newUserStack,
-				sizeof(stack_t)) < B_OK)
-		|| (oldUserStack != NULL && user_memcpy(&oldStack, oldUserStack,
-				sizeof(stack_t)) < B_OK))
+	if ((newUserStack != NULL && (!IS_USER_ADDRESS(newUserStack)
+			|| user_memcpy(&newStack, newUserStack, sizeof(stack_t)) < B_OK))
+		|| (oldUserStack != NULL && (!IS_USER_ADDRESS(oldUserStack)
+			|| user_memcpy(&oldStack, oldUserStack, sizeof(stack_t)) < B_OK)))
 		return B_BAD_ADDRESS;
 
 	if (thread->signal_stack_enabled) {

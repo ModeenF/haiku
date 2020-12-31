@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: ISC
+ *
  * Copyright (c) 2010 Adrian Chadd, Xenion Pty Ltd
  * Copyright (c) 2010 Atheros Communications, Inc.
  *
@@ -14,11 +16,9 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/dev/ath/ath_hal/ar9001/ar9130_eeprom.h 326695 2017-12-08 15:57:29Z pfg $
  */
 #ifndef	__AR9130_EEPROM_H__
 #define	__AR9130_EEPROM_H__
-
-extern	HAL_BOOL ar9130EepromRead(struct ath_hal *ah, u_int off, uint16_t *data);
 
 #endif

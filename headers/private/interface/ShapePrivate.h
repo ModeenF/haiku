@@ -27,7 +27,8 @@
 #define OP_SMALL_ARC_TO_CCW	0x08000000
 
 
-struct shape_data : public BReferenceable {
+class shape_data : public BReferenceable {
+public:
 	uint32*	opList;
 	BPoint*	ptList;
 	int32	opCount;
@@ -60,8 +61,8 @@ struct shape_data : public BReferenceable {
 		opSize = other.opSize;
 		ptCount = other.ptCount;
 		ptSize = other.ptSize;
-		memcpy(opList, other.opList, opSize);
-		memcpy(ptList, other.ptList, ptSize);
+		memcpy((void*)opList, other.opList, opSize);
+		memcpy((void*)ptList, other.ptList, ptSize);
 	}
 
 	BRect DetermineBoundingBox() const

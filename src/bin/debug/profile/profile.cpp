@@ -477,7 +477,7 @@ private:
 
 		try {
 			fImages[sharedImage->Name()] = sharedImage;
-		} catch (std::bad_alloc) {
+		} catch (std::bad_alloc&) {
 			return B_NO_MEMORY;
 		}
 
@@ -858,7 +858,8 @@ profile_single(const char* const* programArgs, int programArgCount)
 	thread_info threadInfo;
 	status_t error = get_thread_info(threadID, &threadInfo);
 	if (error != B_OK) {
-		fprintf(stderr, "%s: Failed to get info for thread %ld: %s\n",
+		fprintf(stderr,
+			"%s: Failed to get info for thread %" B_PRId32 ": %s\n",
 			kCommandName, threadID, strerror(error));
 		exit(1);
 	}

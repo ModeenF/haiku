@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -111,6 +111,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #define EXPORT_ACPI_INTERFACES
@@ -126,7 +162,7 @@
 /* Local macros for 16,32-bit to 64-bit conversion */
 
 #define ACPI_COPY_FIELD(Out, In, Field)  ((Out)->Field = (In)->Field)
-#define ACPI_COPY_ADDRESS(Out, In)                      \
+#define ACPI_COPY_ADDRESS(Out, In)                       \
     ACPI_COPY_FIELD(Out, In, ResourceType);              \
     ACPI_COPY_FIELD(Out, In, ProducerConsumer);          \
     ACPI_COPY_FIELD(Out, In, Decode);                    \
@@ -505,13 +541,15 @@ AcpiResourceToAddress64 (
     {
     case ACPI_RESOURCE_TYPE_ADDRESS16:
 
-        Address16 = ACPI_CAST_PTR (ACPI_RESOURCE_ADDRESS16, &Resource->Data);
+        Address16 = ACPI_CAST_PTR (
+            ACPI_RESOURCE_ADDRESS16, &Resource->Data);
         ACPI_COPY_ADDRESS (Out, Address16);
         break;
 
     case ACPI_RESOURCE_TYPE_ADDRESS32:
 
-        Address32 = ACPI_CAST_PTR (ACPI_RESOURCE_ADDRESS32, &Resource->Data);
+        Address32 = ACPI_CAST_PTR (
+            ACPI_RESOURCE_ADDRESS32, &Resource->Data);
         ACPI_COPY_ADDRESS (Out, Address32);
         break;
 
@@ -576,8 +614,8 @@ AcpiGetVendorResource (
 
     /* Walk the _CRS or _PRS resource list for this device */
 
-    Status = AcpiWalkResources (DeviceHandle, Name, AcpiRsMatchVendorResource,
-                &Info);
+    Status = AcpiWalkResources (
+        DeviceHandle, Name, AcpiRsMatchVendorResource, &Info);
     if (ACPI_FAILURE (Status))
     {
         return (Status);
@@ -696,7 +734,8 @@ AcpiWalkResourceBuffer (
     /* Buffer contains the resource list and length */
 
     Resource = ACPI_CAST_PTR (ACPI_RESOURCE, Buffer->Pointer);
-    ResourceEnd = ACPI_ADD_PTR (ACPI_RESOURCE, Buffer->Pointer, Buffer->Length);
+    ResourceEnd = ACPI_ADD_PTR (
+        ACPI_RESOURCE, Buffer->Pointer, Buffer->Length);
 
     /* Walk the resource list until the EndTag is found (or buffer end) */
 
@@ -757,7 +796,7 @@ ACPI_EXPORT_SYMBOL (AcpiWalkResourceBuffer)
  *                                device we are querying
  *              Name            - Method name of the resources we want.
  *                                (METHOD_NAME__CRS, METHOD_NAME__PRS, or
- *                                METHOD_NAME__AEI)
+ *                                METHOD_NAME__AEI or METHOD_NAME__DMA)
  *              UserFunction    - Called for each resource
  *              Context         - Passed to UserFunction
  *
@@ -788,12 +827,13 @@ AcpiWalkResources (
     if (!DeviceHandle || !UserFunction || !Name ||
         (!ACPI_COMPARE_NAME (Name, METHOD_NAME__CRS) &&
          !ACPI_COMPARE_NAME (Name, METHOD_NAME__PRS) &&
-         !ACPI_COMPARE_NAME (Name, METHOD_NAME__AEI)))
+         !ACPI_COMPARE_NAME (Name, METHOD_NAME__AEI) &&
+         !ACPI_COMPARE_NAME (Name, METHOD_NAME__DMA)))
     {
         return_ACPI_STATUS (AE_BAD_PARAMETER);
     }
 
-    /* Get the _CRS/_PRS/_AEI resource list */
+    /* Get the _CRS/_PRS/_AEI/_DMA resource list */
 
     Buffer.Length = ACPI_ALLOCATE_LOCAL_BUFFER;
     Status = AcpiRsGetMethodData (DeviceHandle, Name, &Buffer);

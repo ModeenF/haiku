@@ -1,6 +1,6 @@
 /*
  * Copyright 2009-2012, Ingo Weinhold, ingo_weinhold@gmx.de.
- * Copyright 2010-2015, Rene Gollent, rene@gollent.com.
+ * Copyright 2010-2017, Rene Gollent, rene@gollent.com.
  * Distributed under the terms of the MIT License.
  */
 
@@ -33,6 +33,7 @@
 #include <AutoDeleter.h>
 #include <AutoLocker.h>
 
+#include "AppMessageCodes.h"
 #include "Breakpoint.h"
 #include "BreakpointEditWindow.h"
 #include "ConsoleOutputView.h"
@@ -73,12 +74,105 @@ enum {
 enum {
 	MSG_CHOOSE_DEBUG_REPORT_LOCATION	= 'ccrl',
 	MSG_DEBUG_REPORT_SAVED				= 'drsa',
+	MSG_CHOOSE_CORE_FILE_LOCATION		= 'ccfl',
+	MSG_CORE_FILE_WRITTEN				= 'cfsa',
 	MSG_LOCATE_SOURCE_IF_NEEDED			= 'lsin',
 	MSG_SOURCE_ENTRY_QUERY_COMPLETE		= 'seqc',
 	MSG_CLEAR_STACK_TRACE				= 'clst',
 	MSG_HANDLE_LOAD_SETTINGS			= 'hlst',
 	MSG_UPDATE_STATUS_BAR				= 'upsb'
 };
+
+
+// #pragma mark - ThreadStackFrameSelectionKey
+
+
+struct TeamWindow::ThreadStackFrameSelectionKey {
+	::Thread*	thread;
+
+	ThreadStackFrameSelectionKey(::Thread* thread)
+		:
+		thread(thread)
+	{
+		thread->AcquireReference();
+	}
+
+	~ThreadStackFrameSelectionKey()
+	{
+		thread->ReleaseReference();
+	}
+
+	uint32 HashValue() const
+	{
+		return (uint32)thread->ID();
+	}
+
+	bool operator==(const ThreadStackFrameSelectionKey& other) const
+	{
+		return thread == other.thread;
+	}
+};
+
+
+// #pragma mark - ThreadStackFrameSelectionEntry
+
+
+struct TeamWindow::ThreadStackFrameSelectionEntry
+	: ThreadStackFrameSelectionKey {
+	ThreadStackFrameSelectionEntry* next;
+	StackFrame* selectedFrame;
+
+	ThreadStackFrameSelectionEntry(::Thread* thread, StackFrame* frame)
+		:
+		ThreadStackFrameSelectionKey(thread),
+		selectedFrame(frame)
+	{
+	}
+
+	inline StackFrame* SelectedFrame() const
+	{
+		return selectedFrame;
+	}
+
+	void SetSelectedFrame(StackFrame* frame)
+	{
+		selectedFrame = frame;
+	}
+};
+
+
+// #pragma mark - ThreadStackFrameSelectionEntryHashDefinition
+
+
+struct TeamWindow::ThreadStackFrameSelectionEntryHashDefinition {
+	typedef ThreadStackFrameSelectionKey 	KeyType;
+	typedef ThreadStackFrameSelectionEntry	ValueType;
+
+	size_t HashKey(const ThreadStackFrameSelectionKey& key) const
+	{
+		return key.HashValue();
+	}
+
+	size_t Hash(const ThreadStackFrameSelectionKey* value) const
+	{
+		return value->HashValue();
+	}
+
+	bool Compare(const ThreadStackFrameSelectionKey& key,
+		const ThreadStackFrameSelectionKey* value) const
+	{
+		return key == *value;
+	}
+
+	ThreadStackFrameSelectionEntry*& GetLink(
+		ThreadStackFrameSelectionEntry* value) const
+	{
+		return value->next;
+	}
+};
+
+
+// #pragma mark - PathViewMessageFilter
 
 
 class PathViewMessageFilter : public BMessageFilter {
@@ -114,6 +208,7 @@ TeamWindow::TeamWindow(::Team* team, UserInterfaceListener* listener)
 	fActiveImage(NULL),
 	fActiveStackTrace(NULL),
 	fActiveStackFrame(NULL),
+	fThreadSelectionInfoTable(NULL),
 	fActiveBreakpoint(NULL),
 	fActiveFunction(NULL),
 	fActiveSourceCode(NULL),
@@ -189,6 +284,17 @@ TeamWindow::~TeamWindow()
 	_SetActiveThread(NULL);
 
 	delete fFilePanel;
+
+	ThreadStackFrameSelectionEntry* entry
+		= fThreadSelectionInfoTable->Clear(true);
+
+	while (entry != NULL) {
+		ThreadStackFrameSelectionEntry* next = entry->next;
+		delete entry;
+		entry = next;
+	}
+
+	delete fThreadSelectionInfoTable;
 
 	if (fActiveSourceWorker > 0)
 		wait_for_thread(fActiveSourceWorker, NULL);
@@ -271,13 +377,19 @@ TeamWindow::MessageReceived(BMessage* message)
 			break;
 		}
 		case MSG_CHOOSE_DEBUG_REPORT_LOCATION:
+		case MSG_CHOOSE_CORE_FILE_LOCATION:
 		{
 			try {
 				char filename[B_FILE_NAME_LENGTH];
-				UiUtils::ReportNameForTeam(fTeam, filename, sizeof(filename));
+				if (message->what == MSG_CHOOSE_DEBUG_REPORT_LOCATION)
+					UiUtils::ReportNameForTeam(fTeam, filename, sizeof(filename));
+				else
+					UiUtils::CoreFileNameForTeam(fTeam, filename, sizeof(filename));
 				BMessenger msgr(this);
 				fFilePanel = new BFilePanel(B_SAVE_PANEL, &msgr,
-					NULL, 0, false, new BMessage(MSG_GENERATE_DEBUG_REPORT));
+					NULL, 0, false, new BMessage(
+						message->what == MSG_CHOOSE_DEBUG_REPORT_LOCATION ?
+							MSG_GENERATE_DEBUG_REPORT : MSG_WRITE_CORE_FILE));
 				fFilePanel->SetSaveText(filename);
 				fFilePanel->Show();
 			} catch (...) {
@@ -287,6 +399,7 @@ TeamWindow::MessageReceived(BMessage* message)
 			break;
 		}
 		case MSG_GENERATE_DEBUG_REPORT:
+		case MSG_WRITE_CORE_FILE:
 		{
 			delete fFilePanel;
 			fFilePanel = NULL;
@@ -297,17 +410,49 @@ TeamWindow::MessageReceived(BMessage* message)
 				&& message->HasString("name")) {
 				path.SetTo(&ref);
 				path.Append(message->FindString("name"));
-				if (get_ref_for_path(path.Path(), &ref) == B_OK)
-					fListener->DebugReportRequested(&ref);
+				if (get_ref_for_path(path.Path(), &ref) == B_OK) {
+					if (message->what == MSG_GENERATE_DEBUG_REPORT)
+						fListener->DebugReportRequested(&ref);
+					else
+						fListener->WriteCoreFileRequested(&ref);
+				}
 			}
 			break;
 		}
 		case MSG_DEBUG_REPORT_SAVED:
 		{
+			status_t finalStatus = message->GetInt32("status", B_OK);
 			BString data;
-			data.SetToFormat("Debug report successfully saved to '%s'",
-				message->FindString("path"));
+			if (finalStatus == B_OK) {
+				data.SetToFormat("Debug report successfully saved to '%s'",
+					message->FindString("path"));
+			} else {
+				data.SetToFormat("Failed to save debug report: '%s'",
+					strerror(finalStatus));
+			}
+
 			BAlert *alert = new(std::nothrow) BAlert("Report saved",
+				data.String(), "Close");
+			if (alert == NULL)
+				break;
+
+			alert->SetFlags(alert->Flags() | B_CLOSE_ON_ESCAPE);
+			alert->Go();
+			break;
+		}
+		case MSG_CORE_FILE_WRITTEN:
+		{
+			status_t finalStatus = message->GetInt32("status", B_OK);
+			BString data;
+			if (finalStatus == B_OK) {
+				data.SetToFormat("Core file successfully written to '%s'",
+					message->FindString("path"));
+			} else {
+				data.SetToFormat("Failed to write core file: '%s'",
+					strerror(finalStatus));
+			}
+
+			BAlert *alert = new(std::nothrow) BAlert("Core file written",
 				data.String(), "Close");
 			if (alert == NULL)
 				break;
@@ -330,9 +475,9 @@ TeamWindow::MessageReceived(BMessage* message)
 						fInspectorWindow->LoadSettings(fUiSettings);
 						fInspectorWindow->Show();
 					}
-	           	} catch (...) {
-	           		// TODO: notify user
-	           	}
+				} catch (...) {
+					// TODO: notify user
+				}
 			}
 
 			target_addr_t address;
@@ -341,7 +486,7 @@ TeamWindow::MessageReceived(BMessage* message)
 				addressMessage.AddUInt64("address", address);
 				fInspectorWindow->PostMessage(&addressMessage);
 			}
-           	break;
+			break;
 		}
 		case MSG_INSPECTOR_WINDOW_CLOSED:
 		{
@@ -409,9 +554,9 @@ TeamWindow::MessageReceived(BMessage* message)
 						fTeam, fListener, this);
 					if (fTeamSettingsWindow != NULL)
 						fTeamSettingsWindow->Show();
-	           	} catch (...) {
-	           		// TODO: notify user
-	           	}
+				} catch (...) {
+					// TODO: notify user
+				}
 			}
 			break;
 		}
@@ -439,9 +584,9 @@ TeamWindow::MessageReceived(BMessage* message)
 						fTeam, breakpoint, fListener, this);
 					if (fBreakpointEditWindow != NULL)
 						fBreakpointEditWindow->Show();
-	           	} catch (...) {
-	           		// TODO: notify user
-	           	}
+				} catch (...) {
+					// TODO: notify user
+				}
 			}
 			break;
 		}
@@ -963,6 +1108,16 @@ TeamWindow::DebugReportChanged(const Team::DebugReportEvent& event)
 {
 	BMessage message(MSG_DEBUG_REPORT_SAVED);
 	message.AddString("path", event.GetReportPath());
+	message.AddInt32("status", event.GetFinalStatus());
+	PostMessage(&message);
+}
+
+
+void
+TeamWindow::CoreFileChanged(const Team::CoreFileChangedEvent& event)
+{
+	BMessage message(MSG_CORE_FILE_WRITTEN);
+	message.AddString("path", event.GetTargetPath());
 	PostMessage(&message);
 }
 
@@ -981,6 +1136,13 @@ TeamWindow::FunctionSourceCodeChanged(Function* function)
 void
 TeamWindow::_Init()
 {
+	fThreadSelectionInfoTable = new ThreadStackFrameSelectionInfoTable;
+	if (fThreadSelectionInfoTable->Init() != B_OK) {
+		delete fThreadSelectionInfoTable;
+		fThreadSelectionInfoTable = NULL;
+		throw std::bad_alloc();
+	}
+
 	BScrollView* sourceScrollView;
 
 	const float splitSpacing = 3.0f;
@@ -1114,6 +1276,10 @@ TeamWindow::_Init()
 	fMenuBar->AddItem(menu);
 	item = new BMenuItem("Save debug report",
 		new BMessage(MSG_CHOOSE_DEBUG_REPORT_LOCATION));
+	menu->AddItem(item);
+	item->SetTarget(this);
+	item = new BMenuItem("Write core file",
+		new BMessage(MSG_CHOOSE_CORE_FILE_LOCATION));
 	menu->AddItem(item);
 	item->SetTarget(this);
 	item = new BMenuItem("Inspect memory",
@@ -1284,10 +1450,17 @@ TeamWindow::_SetActiveStackTrace(StackTrace* stackTrace)
 	fStackTraceView->SetStackTrace(fActiveStackTrace);
 	fSourceView->SetStackTrace(fActiveStackTrace, fActiveThread);
 
-	if (fActiveStackTrace != NULL)
-		_SetActiveStackFrame(fActiveStackTrace->FrameAt(0));
-	else
-		_SetActiveStackFrame(NULL);
+	StackFrame* frame = NULL;
+	if (fActiveStackTrace != NULL) {
+		ThreadStackFrameSelectionEntry* entry
+			= fThreadSelectionInfoTable->Lookup(fActiveThread);
+		if (entry != NULL)
+			frame = entry->SelectedFrame();
+		else
+			frame = fActiveStackTrace->FrameAt(0);
+	}
+
+	_SetActiveStackFrame(frame);
 }
 
 
@@ -1316,7 +1489,21 @@ TeamWindow::_SetActiveStackFrame(StackFrame* frame)
 
 		fActiveSourceObject = ACTIVE_SOURCE_STACK_FRAME;
 
-		_SetActiveFunction(fActiveStackFrame->Function());
+		ThreadStackFrameSelectionEntry* entry
+			= fThreadSelectionInfoTable->Lookup(fActiveThread);
+		if (entry == NULL) {
+			entry = new(std::nothrow) ThreadStackFrameSelectionEntry(
+				fActiveThread, fActiveStackFrame);
+			if (entry == NULL)
+				return;
+
+			ObjectDeleter<ThreadStackFrameSelectionEntry> entryDeleter(entry);
+			if (fThreadSelectionInfoTable->Insert(entry) == B_OK)
+				entryDeleter.Detach();
+		} else
+			entry->SetSelectedFrame(fActiveStackFrame);
+
+		_SetActiveFunction(fActiveStackFrame->Function(), false);
 	}
 
 	_UpdateCpuState();
@@ -1368,7 +1555,8 @@ TeamWindow::_SetActiveBreakpoint(UserBreakpoint* breakpoint)
 
 
 void
-TeamWindow::_SetActiveFunction(FunctionInstance* functionInstance)
+TeamWindow::_SetActiveFunction(FunctionInstance* functionInstance,
+	bool searchForFrame)
 {
 	if (functionInstance == fActiveFunction)
 		return;
@@ -1419,19 +1607,20 @@ TeamWindow::_SetActiveFunction(FunctionInstance* functionInstance)
 
 	locker.Lock();
 
+	if (!searchForFrame || fActiveStackTrace == NULL)
+		return;
+
 	// look if our current stack trace has a frame matching the selected
 	// function. If so, set it to match.
 	StackFrame* matchingFrame = NULL;
 	BReference<StackFrame> frameRef;
 
-	if (fActiveStackTrace != NULL) {
-		for (int32 i = 0; i < fActiveStackTrace->CountFrames(); i++) {
-			StackFrame* frame = fActiveStackTrace->FrameAt(i);
-			if (frame->Function() == fActiveFunction) {
-				matchingFrame = frame;
-				frameRef.SetTo(frame);
-				break;
-			}
+	for (int32 i = 0; i < fActiveStackTrace->CountFrames(); i++) {
+		StackFrame* frame = fActiveStackTrace->FrameAt(i);
+		if (frame->Function() == fActiveFunction) {
+			matchingFrame = frame;
+			frameRef.SetTo(frame);
+			break;
 		}
 	}
 
@@ -1535,8 +1724,11 @@ TeamWindow::_UpdateSourcePathState()
 		if (sourceFile != NULL && !sourceFile->GetLocatedPath(sourceText))
 			sourceFile->GetPath(sourceText);
 
-		if (fActiveFunction->GetFunction()->SourceCodeState()
-			!= FUNCTION_SOURCE_NOT_LOADED
+		function_source_state state = fActiveFunction->GetFunction()
+			->SourceCodeState();
+		if (state == FUNCTION_SOURCE_SUPPRESSED)
+			sourceText.Prepend("Disassembly for: ");
+		else if (state != FUNCTION_SOURCE_NOT_LOADED
 			&& fActiveSourceCode->GetSourceFile() == NULL
 			&& sourceFile != NULL) {
 			sourceText.Prepend("Click to locate source file '");
@@ -1604,6 +1796,15 @@ TeamWindow::_HandleThreadStateChanged(thread_id threadID)
 	::Thread* thread = fTeam->ThreadByID(threadID);
 	if (thread == NULL)
 		return;
+
+	if (thread->State() != THREAD_STATE_STOPPED) {
+		ThreadStackFrameSelectionEntry* entry
+			= fThreadSelectionInfoTable->Lookup(thread);
+		if (entry != NULL) {
+			fThreadSelectionInfoTable->Remove(entry);
+			delete entry;
+		}
+	}
 
 	// If the thread has been stopped and we don't have an active thread yet
 	// (or it isn't stopped), switch to this thread. Otherwise ignore the event.

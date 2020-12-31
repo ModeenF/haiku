@@ -106,7 +106,7 @@ find_physical_memory_ranges(size_t &total)
 
 	// On 64-bit PowerPC systems (G5), our mem base range address is larger
 	if (regAddressCells == 2) {
-		struct of_region<uint64> regions[64];
+		struct of_region<uint64, uint32> regions[64];
 		int count = of_getprop(package, "reg", regions, sizeof(regions));
 		if (count == OF_FAILED)
 			count = of_getprop(memory, "reg", regions, sizeof(regions));
@@ -136,7 +136,7 @@ find_physical_memory_ranges(size_t &total)
 	}
 
 	// Otherwise, normal 32-bit PowerPC G3 or G4 have a smaller 32-bit one
-	struct of_region<uint32> regions[64];
+	struct of_region<uint32, uint32> regions[64];
 	int count = of_getprop(package, "reg", regions, sizeof(regions));
 	if (count == OF_FAILED)
 		count = of_getprop(memory, "reg", regions, sizeof(regions));
@@ -574,7 +574,7 @@ map_callback(struct of_arguments *args)
 	void *virtualAddress = (void *)args->Argument(1);
 	int length = args->Argument(2);
 	int mode = args->Argument(3);
-	int &error = args->ReturnValue(0);
+	intptr_t &error = args->ReturnValue(0);
 
 	// insert range in physical allocated if needed
 
@@ -618,9 +618,9 @@ static int
 translate_callback(struct of_arguments *args)
 {
 	addr_t virtualAddress = (addr_t)args->Argument(0);
-	int &error = args->ReturnValue(0);
-	int &physicalAddress = args->ReturnValue(1);
-	int &mode = args->ReturnValue(2);
+	intptr_t &error = args->ReturnValue(0);
+	intptr_t &physicalAddress = args->ReturnValue(1);
+	intptr_t &mode = args->ReturnValue(2);
 
 	// Find page table entry for this address
 
@@ -759,6 +759,7 @@ arch_mmu_init(void)
 
 	// can we just keep the page table?
 	size_t suggestedTableSize = suggested_page_table_size(total);
+	dprintf("current page table size = %" B_PRIuSIZE "\n", tableSize);
 	dprintf("suggested page table size = %" B_PRIuSIZE "\n",
 		suggestedTableSize);
 	if (tableSize < suggestedTableSize) {
@@ -788,13 +789,14 @@ arch_mmu_init(void)
 			table = (page_table_entry_group *)tableBase;
 		}
 
-		dprintf("new table at: %p\n", table);
+		dprintf("OpenFirmware gave us a new page table at: %p\n", table);
 		sPageTable = table;
 		tableSize = suggestedTableSize;
 	} else {
 		// ToDo: we could check if the page table is much too large
 		//	and create a smaller one in this case (in order to save
 		//	memory).
+		dprintf("using original OpenFirmware page table at: %p\n", table);
 		sPageTable = table;
 	}
 
@@ -885,7 +887,7 @@ arch_mmu_init(void)
 
 	// set up new page table and turn on translation again
 
-	for (int32 i = 0; i < 16; i++) {
+	for (uint32 i = 0; i < 16; i++) {
 		ppc_set_segment_register((void *)(i * 0x10000000), sSegments[i]);
 			// one segment describes 256 MB of memory
 	}

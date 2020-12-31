@@ -57,6 +57,7 @@ struct rld_export {
 	const struct user_space_program_args *program_args;
 	const void* commpage_address;
 	int abi_version;
+	int api_version;
 };
 
 extern struct rld_export *__gRuntimeLoader;
@@ -88,7 +89,7 @@ typedef struct elf_version_info {
 typedef struct image_t {
 	// image identification
 	char				path[B_PATH_NAME_LENGTH];
-	char				name[B_OS_NAME_LENGTH];
+	char				name[B_FILE_NAME_LENGTH];
 	image_id			id;
 	image_type			type;
 
@@ -115,6 +116,12 @@ typedef struct image_t {
 	int					rela_len;
 	elf_rel				*pltrel;
 	int					pltrel_len;
+	addr_t				*init_array;
+	int					init_array_len;
+	addr_t				*preinit_array;
+	int					preinit_array_len;
+	addr_t				*term_array;
+	int					term_array_len;
 
 	unsigned			dso_tls_id;
 

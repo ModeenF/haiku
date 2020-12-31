@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en-US" xml:lang="en-US">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="hu" xml:lang="hu">
 <head>
 <!-- 
  *
@@ -11,12 +11,14 @@
  *		Humdinger <humdingerb@gmail.com>
  * Translators:
  *		Dancsó Róbert
+ *		Humdinger
  *
 -->
 	<meta http-equiv="content-type" content="text/html; charset=utf-8" />
 	<meta http-equiv="Content-Style-Type" content="text/css" />
 	<meta name="robots" content="all" />
 	<title>Bash és szkriptek</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<link rel="stylesheet" type="text/css" href="../Haiku-doc.css" />
 </head>
 <body>
@@ -28,23 +30,27 @@
 <div class="nav">
 <div class="inner">
 <ul class="lang-menu">
-<li class="now"><img src="../images/flags/hu.png" alt="" /> Magyar</li>
-<li><a href="../fr/bash-scripting.html"><img src="../images/flags/fr.png" alt="" />Français</a></li>
-<li><a href="../de/bash-scripting.html"><img src="../images/flags/de.png" alt="" />Deutsch</a></li>
-<li><a href="../it/bash-scripting.html"><img src="../images/flags/it.png" alt="" />Italiano</a></li>
-<li><a href="../ru/bash-scripting.html"><img src="../images/flags/ru.png" alt="" />Русский</a></li>
-<li><a href="../es/bash-scripting.html"><img src="../images/flags/es.png" alt="" />Español</a></li>
-<li><a href="../sv_SE/bash-scripting.html"><img src="../images/flags/sv_SE.png" alt="" />Svenska</a></li>
-<li><a href="../jp/bash-scripting.html"><img src="../images/flags/jp.png" alt="" />日本語</a></li>
-<li><a href="../uk/bash-scripting.html"><img src="../images/flags/uk.png" alt="" />Українська</a></li>
-<li><a href="../zh_CN/bash-scripting.html"><img src="../images/flags/zh_CN.png" alt="" /> 中文 ［中文］</a></li>
-<li><a href="../pt_PT/bash-scripting.html"><img src="../images/flags/pt_PT.png" alt="" />Português</a></li>
-<li><a href="../fi/bash-scripting.html"><img src="../images/flags/fi.png" alt="" />Suomi</a></li>
-<li><a href="../sk/bash-scripting.html"><img src="../images/flags/sk.png" alt="" />Slovenčina</a></li>
-<li><a href="../pt_BR/bash-scripting.html"><img src="../images/flags/pt_BR.png" alt="" />Português (Brazil)</a></li>
-<li><a href="../ca/bash-scripting.html"><img src="../images/flags/ca.png" alt="" />Català</a></li>
-<li><a href="../pl/bash-scripting.html"><img src="../images/flags/pl.png" alt="" />Polski</a></li>
-<li><a href="../en/bash-scripting.html"><img src="../images/flags/gb.png" alt="" />English</a></li>
+<li class="now">Magyar&nbsp;<span class="dropdown-caret">&#9660;</span></li>
+<li><a href="../id/bash-scripting.html">Bahasa Indonesia</a></li>
+<li><a href="../ca/bash-scripting.html">Català</a></li>
+<li><a href="../de/bash-scripting.html">Deutsch</a></li>
+<li><a href="../en/bash-scripting.html">English</a></li>
+<li><a href="../es/bash-scripting.html">Español</a></li>
+<li><a href="../fr/bash-scripting.html">Français</a></li>
+<li><a href="../fur/bash-scripting.html">Furlan</a></li>
+<li><a href="../it/bash-scripting.html">Italiano</a></li>
+<li><a href="../pl/bash-scripting.html">Polski</a></li>
+<li><a href="../pt_PT/bash-scripting.html">Português</a></li>
+<li><a href="../pt_BR/bash-scripting.html">Português (Brazil)</a></li>
+<li><a href="../ro/bash-scripting.html">Română</a></li>
+<li><a href="../sk/bash-scripting.html">Slovenčina</a></li>
+<li><a href="../fi/bash-scripting.html">Suomi</a></li>
+<li><a href="../sv_SE/bash-scripting.html">Svenska</a></li>
+<li><a href="../tr/bash-scripting.html">Türkçe</a></li>
+<li><a href="../zh_CN/bash-scripting.html"> 中文 ［中文］</a></li>
+<li><a href="../ru/bash-scripting.html">Русский</a></li>
+<li><a href="../uk/bash-scripting.html">Українська</a></li>
+<li><a href="../jp/bash-scripting.html">日本語</a></li>
 </ul>
 <span>
  «  <a href="preferences.html">Beállítások</a> 
@@ -55,6 +61,7 @@
 
 <div id="content">
 <div>
+<div class="box-info">Az oldal fordítása még folyamatban van. Amíg tart a fordítás, addig a lefordítatlan részek angolul jelennek meg.</div>
 
 <h1>Bash és szkriptek</h1>
 
@@ -64,7 +71,8 @@ A szkriptek az egyszerű parancsok futtatásától az összetettebb kódokig nag
 <h2>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="bash" name="bash">A Bash</a></h2>
-<p>Alapvetően a legtöbb shell támogatja a szkripteket. Azt javasoljuk, hogy ismerkedj meg a BASH-el, ugyanis a Haiku is azt használja. Annak köszönhetően, hogy ez egy igen elterjedt shell, rengeteg interneten elérhető anyagot találunk hozzá. Például egy remek dokumentációt is, melyet Johan Jansson készített: <a href="http://www.beforever.com/bashtut.htm" class="printurl">Introduction to bash - a tutorial for bash under BeOS</a>.</p>
+<p>Since scripts rely naturally a lot on the shell they are interpreted by, you should first familiarize yourself with the BASH that's used by Haiku. There are many resources online as it's a widely used shell. One nice document is Johan Jansson's <a href="https://web.archive.org/web/20011205095723/http://www.beforever.com/bashtut.htm" class="printurl">Introduction to bash - a tutorial for bash under BeOS</a>.<br />
+The <a href="https://www.gnu.org/software/bash/manual/bash.pdf" class="printurl">Bash Reference Manual (PDF, 720 KiB)</a> is a nice resource to get into the details.</p>
 
 <h2>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
@@ -73,13 +81,13 @@ A szkriptek az egyszerű parancsok futtatásától az összetettebb kódokig nag
 
 <h2>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a><a id="user-scripts" name="user-scripts">Szkriptek Haiku alatt</a></h2>
-<p>Haiku alatt a rendszer folyamatosan használ szkripteket. Az indítás és a leállítás tipikus szkriptelési folyamat. Ezek a felhasználó által is módosíthatóak.<br />
-Ha még nem léteznek a fájlok, akkor nyugodtan létrehozhatjuk őket. Egyébként egyszerűen csak adjuk hozzá a parancsokat, amiket futtatni szeretne.</p>
+<p>Haiku used to have scripts for booting and shutting down. Today it uses the <a href="https://dev.haiku-os.org/wiki/LaunchDaemon">launch_daemon</a> instead. However, the user can still augment this process with certain user scripts.
+If they don't exist already, you'll have to create the needed files yourself. Otherwise simply add your commands where in the process you want them to be executed.</p>
 
 <h3>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="userbootscript" name="userbootscript">UserBootscript</a></h3>
-<p>A <span class="path">/boot/home/config/boot/UserBootscript</span> akkor indul el, ha a rendszer befejezte a rendszertöltési folyamatot. Például számtalan programot indíthatunk automatikusan minden rendszertöltéskor:</p>
+<p>A <span class="path">/boot/home/config/settings/boot/UserBootscript</span> akkor indul el, ha a rendszer befejezte a rendszertöltési folyamatot. Például számtalan programot indíthatunk automatikusan minden rendszertöltéskor:</p>
 <pre># Start LaunchBox
 /boot/system/apps/LaunchBox &amp;
 
@@ -87,17 +95,17 @@ Ha még nem léteznek a fájlok, akkor nyugodtan létrehozhatjuk őket. Egyébk�
 /boot/system/apps/Workspaces &amp;</pre>
 <p>Itt megjegyezném, hogy az "<tt>&amp;</tt>" jellel végződő parancsok a háttérben fognak elindulni, és ott is futnak, amíg nem végeznek.</p>
 
-<p>Egy alternatív megoldás a programok rendszertöltéskori elindítására az, ha a programot berakjuk a <span class="path">/boot/home/config/boot/launch</span> mappába. Ez úgy tehetjük meg, hogy a programon jobb gombbal kattintunk, és a helyi menüből a <span class="menu">Hivatkozás létrehozása</span> menüben <a href="tracker.html#navigating">megkeressük</a> ezt a mappát.</p>
+<p>Egy alternatív megoldás a programok rendszertöltéskori elindítására az, ha a programot berakjuk a <span class="path">/boot/home/config/settings/boot/launch</span> mappába. Ez úgy tehetjük meg, hogy a programon jobb gombbal kattintunk, és a helyi menüből a <span class="menu">Hivatkozás létrehozása</span> menüben <a href="tracker.html#navigating">megkeressük</a> ezt a mappát.</p>
 
 <h3>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="usershutdownscript" name="usershutdownscript">UserShutdownScript</a></h3>
-<p>A <span class="path">/boot/home/config/boot/UserShutdownScript</span> a rendszer leállásakor elsőként indul el. Ha a szkript nem nullát ad vissza eredményként, akkor a rendszer megszakítja a leállítást.</p>
+<p>A <span class="path">/boot/home/config/settings/boot/UserShutdownScript</span> a rendszer leállásakor elsőként indul el. Ha a szkript nem nullát ad vissza eredményként, akkor a rendszer megszakítja a leállítást.</p>
 
 <h3>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="usershutdownfinishscript" name="usershutdownfinishscript">UserShutdownFinishScript</a></h3>
-<p>A <span class="path">/boot/home/config/boot/UserShutdownFinishScript</span> a leállítási folyamat végezetével indul el. Itt megjegyezném, hogy a legtöbb rendszer-folyamat addigra már leáll.</p>
+<p>A <span class="path">/boot/home/config/settings/boot/UserShutdownFinishScript</span> a leállítási folyamat végezetével indul el. Itt megjegyezném, hogy a legtöbb rendszer-folyamat addigra már leáll.</p>
 
 </div>
 </div>

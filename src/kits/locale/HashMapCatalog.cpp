@@ -159,10 +159,20 @@ parseQuotedChars(BString& stringToParse)
 
 	while (*in != 0) {
 		if (quoted) {
-			if (*in == 'n')
+			if (*in == 'a')
+				*out = '\a';
+			else if (*in == 'b')
+				*out = '\b';
+			else if (*in == 'f')
+				*out = '\f';
+			else if (*in == 'n')
 				*out = '\n';
+			else if (*in == 'r')
+				*out = '\r';
 			else if (*in == 't')
 				*out = '\t';
+			else if (*in == 'v')
+				*out = '\v';
 			else if (*in == '"')
 				*out = '"';
 			else if (*in == 'x') {
@@ -265,8 +275,7 @@ HashMapCatalog::ComputeFingerprint() const
 	int32 hash;
 	CatMap::Iterator iter = fCatMap.GetIterator();
 	CatMap::Entry entry;
-	while (iter.HasNext())
-	{
+	while (iter.HasNext()) {
 		entry = iter.Next();
 		hash = B_HOST_TO_LENDIAN_INT32(entry.key.fHashVal);
 		checksum += hash;

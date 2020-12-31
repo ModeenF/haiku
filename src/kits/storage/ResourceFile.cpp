@@ -17,7 +17,7 @@
 #include <stdio.h>
 
 #include <AutoDeleter.h>
-
+#include <BufferIO.h>
 #include <Elf.h>
 #include <Exception.h>
 #include <Pef.h>
@@ -67,6 +67,9 @@ const char* kFileTypeNames[] = {
 #define DBG(x)
 #define OUT	printf
 
+#define B_VERSION_INFO_TYPE 'APPV'
+
+static const uint32 kVersionInfoIntCount = 5;
 
 // #pragma mark - helper functions/classes
 
@@ -241,7 +244,7 @@ ResourceFile::SetTo(BFile* file, bool clobber)
 	if (error == B_OK) {
 		try {
 			_InitFile(*file, clobber);
-		} catch (Exception exception) {
+		} catch (Exception& exception) {
 			Unset();
 			if (exception.Error() != B_OK)
 				error = exception.Error();
@@ -292,7 +295,7 @@ ResourceFile::InitContainer(ResourcesContainer& container)
 			_ReadIndex(parseInfo);
 			_ReadInfoTable(parseInfo);
 			container.SetModified(false);
-		} catch (Exception exception) {
+		} catch (Exception& exception) {
 			if (exception.Error() != B_OK)
 				error = exception.Error();
 			else
@@ -323,8 +326,15 @@ ResourceFile::ReadResource(ResourceItem& resource, bool force)
 		}
 		if (error == B_OK) {
 			// convert the data, if necessary
-			if (!fHostEndianess)
-				swap_data(resource.Type(), data, size, B_SWAP_ALWAYS);
+			if (!fHostEndianess) {
+				if (resource.Type() == B_VERSION_INFO_TYPE) {
+					// Version info contains integers that need to be swapped
+					swap_data(B_UINT32_TYPE, data,
+						kVersionInfoIntCount * sizeof(uint32),
+						B_SWAP_ALWAYS);
+				} else
+					swap_data(resource.Type(), data, size, B_SWAP_ALWAYS);
+			}
 			resource.SetLoaded(true);
 			resource.SetModified(false);
 		}
@@ -771,9 +781,11 @@ ResourceFile::_ReadIndex(resource_parse_info& parseInfo)
 {
 	int32& resourceCount = parseInfo.resource_count;
 	off_t& fileSize = parseInfo.file_size;
+	BBufferIO buffer(&fFile, 2048, false);
+
 	// read the header
 	resource_index_section_header header;
-	read_exactly(fFile, kResourceIndexSectionOffset, &header,
+	read_exactly(buffer, kResourceIndexSectionOffset, &header,
 		kResourceIndexSectionHeaderSize,
 		"Failed to read the resource index section header.");
 	// check the header
@@ -810,6 +822,7 @@ ResourceFile::_ReadIndex(resource_parse_info& parseInfo)
 			"offset. Is: %lu, should be: %lu.",
 			unknownSectionOffset, kUnknownResourceSectionSize);
 	}
+
 	// info table offset and size
 	uint32 infoTableOffset = _GetInt(header.rish_info_table_offset);
 	uint32 infoTableSize = _GetInt(header.rish_info_table_size);
@@ -817,6 +830,7 @@ ResourceFile::_ReadIndex(resource_parse_info& parseInfo)
 		throw Exception(B_IO_ERROR, "Invalid info table location.");
 	parseInfo.info_table_offset = infoTableOffset;
 	parseInfo.info_table_size = infoTableSize;
+
 	// read the index entries
 	uint32 indexTableOffset = indexSectionOffset
 		+ kResourceIndexSectionHeaderSize;
@@ -826,8 +840,8 @@ ResourceFile::_ReadIndex(resource_parse_info& parseInfo)
 	bool tableEndReached = false;
 	for (int32 i = 0; !tableEndReached && i < maxResourceCount; i++) {
 		// read one entry
-		tableEndReached = !_ReadIndexEntry(parseInfo, i, indexTableOffset,
-			(i >= resourceCount));
+		tableEndReached = !_ReadIndexEntry(buffer, parseInfo, i,
+			indexTableOffset, (i >= resourceCount));
 		if (!tableEndReached)
 			actualResourceCount++;
 	}
@@ -845,41 +859,37 @@ ResourceFile::_ReadIndex(resource_parse_info& parseInfo)
 
 
 bool
-ResourceFile::_ReadIndexEntry(resource_parse_info& parseInfo, int32 index,
-	uint32 tableOffset, bool peekAhead)
+ResourceFile::_ReadIndexEntry(BPositionIO& buffer,
+	resource_parse_info& parseInfo, int32 index, uint32 tableOffset,
+	bool peekAhead)
 {
 	off_t& fileSize = parseInfo.file_size;
-	//
 	bool result = true;
 	resource_index_entry entry;
+
 	// read one entry
 	off_t entryOffset = tableOffset + index * kResourceIndexEntrySize;
-	read_exactly(fFile, entryOffset, &entry, kResourceIndexEntrySize,
+	read_exactly(buffer, entryOffset, &entry, kResourceIndexEntrySize,
 		"Failed to read a resource index entry.");
+
 	// check, if the end is reached early
 	if (result && check_pattern(entryOffset, &entry,
 			kResourceIndexEntrySize / 4, fHostEndianess)) {
-		if (!peekAhead) {
-//			Warnings::AddCurrentWarning("Unexpected end of resource index "
-//										"table at index: %ld (/%ld).",
-//										index + 1, resourceCount);
-		}
 		result = false;
 	}
 	uint32 offset = _GetInt(entry.rie_offset);
 	uint32 size = _GetInt(entry.rie_size);
+
 	// check the location
 	if (result && offset + size > fileSize) {
-		if (peekAhead) {
-//			Warnings::AddCurrentWarning("Invalid data after resource index "
-//										"table.");
-		} else {
+		if (!peekAhead) {
 			throw Exception(B_IO_ERROR, "Invalid resource index entry: index: "
 				"%ld, offset: %lu (%lx), size: %lu (%lx).", index + 1, offset,
 				offset, size, size);
 		}
 		result = false;
 	}
+
 	// add the entry
 	if (result) {
 		ResourceItem* item = new(std::nothrow) ResourceItem;
@@ -891,6 +901,7 @@ ResourceFile::_ReadIndexEntry(resource_parse_info& parseInfo, int32 index,
 			throw Exception(B_NO_MEMORY);
 		}
 	}
+
 	return result;
 }
 
@@ -1200,7 +1211,14 @@ ResourceFile::_WriteResources(ResourcesContainer& container)
 				// swap data, if necessary
 				if (!fHostEndianess) {
 					memcpy(data, itemData, itemSize);
-					swap_data(item->Type(), data, itemSize, B_SWAP_ALWAYS);
+					if (item->Type() == B_VERSION_INFO_TYPE) {
+						// Version info contains integers
+						// that need to be swapped
+						swap_data(B_UINT32_TYPE, data,
+							kVersionInfoIntCount * sizeof(uint32),
+							B_SWAP_ALWAYS);
+					} else
+						swap_data(item->Type(), data, itemSize, B_SWAP_ALWAYS);
 					itemData = data;
 				}
 				write_exactly(fFile, itemOffset, itemData, itemSize,
@@ -1255,7 +1273,7 @@ ResourceFile::_WriteResources(ResourcesContainer& container)
 		tableEnd->rite_terminator = 0;
 		write_exactly(fFile, infoTableOffset, buffer, infoTableSize,
 			"Failed to write info table.");
-	} catch (Exception exception) {
+	} catch (Exception& exception) {
 		if (exception.Error() != B_OK)
 			error = exception.Error();
 		else
@@ -1285,7 +1303,7 @@ ResourceFile::_MakeEmptyResourceFile()
 			fFileType = FILE_TYPE_X86_RESOURCE;
 			fFile.SetTo(file, kX86ResourcesOffset);
 			fEmptyResources = true;
-		} catch (Exception exception) {
+		} catch (Exception& exception) {
 			if (exception.Error() != B_OK)
 				error = exception.Error();
 			else

@@ -1,13 +1,14 @@
 /*
- * Copyright 2002-2015 Haiku, Inc. All rights reserved.
+ * Copyright 2002-2019 Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  */
 #ifndef _ELF_H
 #define _ELF_H
 
 
-#include <SupportDefs.h>
+#include <BeBuild.h>
 #include <ByteOrder.h>
+#include <SupportDefs.h>
 
 
 typedef uint32 Elf32_Addr;
@@ -27,6 +28,16 @@ typedef uint64 Elf64_Xword;
 typedef int64 Elf64_Sxword;
 
 typedef Elf64_Half Elf64_Versym;
+
+#if B_HAIKU_32_BIT
+	#define Elf_Addr Elf32_Addr
+	#define Elf_Phdr Elf32_Phdr
+	#define Elf_Half Elf32_Half
+#elif B_HAIKU_64_BIT
+	#define Elf_Addr Elf64_Addr
+	#define Elf_Phdr Elf64_Phdr
+	#define Elf_Half Elf64_Half
+#endif
 
 
 /*** ELF header ***/
@@ -75,8 +86,6 @@ typedef struct {
 #endif
 } Elf64_Ehdr;
 
-#define ELF_MAGIC	"\x7f""ELF"
-
 /* e_ident[] indices */
 #define EI_MAG0		0
 #define EI_MAG1		1
@@ -86,6 +95,20 @@ typedef struct {
 #define EI_DATA		5
 #define EI_VERSION	6
 #define EI_PAD		7
+
+/* Values for the magic number bytes. */
+#define ELFMAG0		0x7f
+#define ELFMAG1		'E'
+#define ELFMAG2		'L'
+#define ELFMAG3		'F'
+#define ELFMAG		"\x7f""ELF"
+#define SELFMAG		4
+
+/* e_ident */
+#define IS_ELF(ehdr)    ((ehdr).e_ident[EI_MAG0] == ELFMAG0 && \
+	(ehdr).e_ident[EI_MAG1] == ELFMAG1 && \
+	(ehdr).e_ident[EI_MAG2] == ELFMAG2 && \
+	(ehdr).e_ident[EI_MAG3] == ELFMAG3)
 
 /* e_type (Object file type) */
 #define ET_NONE			0 /* No file type */
@@ -145,14 +168,68 @@ typedef struct {
 #define EM_ST100		60 /* STMicroelectronics ST100 processor */
 #define EM_TINYJ		61 /* Advanced Logic Corp. TinyJ embedded processor */
 #define EM_X86_64		62 /* Advanced Micro Devices X86-64 processor */
+#define EM_PDSP			63 /* Sony DSP Processor */
+#define EM_FX66			66 /* Siemens FX66 microcontroller */
+#define EM_ST9PLUS		67 /* STMicroelectronics ST9+ 8/16 mc */
+#define EM_ST7			68 /* STmicroelectronics ST7 8 bit mc */
+#define EM_68HC16		69 /* Motorola MC68HC16 microcontroller */
+#define EM_68HC11		70 /* Motorola MC68HC11 microcontroller */
+#define EM_68HC08		71 /* Motorola MC68HC08 microcontroller */
+#define EM_68HC05		72 /* Motorola MC68HC05 microcontroller */
+#define EM_SVX			73 /* Silicon Graphics SVx */
+#define EM_ST19			74 /* STMicroelectronics ST19 8 bit mc */
+#define EM_VAX			75 /* Digital VAX */
+#define EM_CRIS			76 /* Axis Communications 32-bit embedded processor */
+#define EM_JAVELIN		77 /* Infineon Technologies 32-bit embedded processor */
+#define EM_FIREPATH		78 /* Element 14 64-bit DSP Processor */
+#define EM_ZSP			79 /* LSI Logic 16-bit DSP Processor */
+#define EM_MMIX			80 /* Donald Knuth's educational 64-bit processor */
+#define EM_HUANY		81 /* Harvard University machine-independent object files */
+#define EM_PRISM		82 /* SiTera Prism */
+#define EM_AVR			83 /* Atmel AVR 8-bit microcontroller */
+#define EM_FR30			84 /* Fujitsu FR30 */
+#define EM_D10V			85 /* Mitsubishi D10V */
+#define EM_D30V			86 /* Mitsubishi D30V */
+#define EM_V850			87 /* NEC v850 */
+#define EM_M32R			88 /* Mitsubishi M32R */
+#define EM_MN10300		89 /* Matsushita MN10300 */
+#define EM_MN10200		90 /* Matsushita MN10200 */
+#define EM_PJ			91 /* picoJava */
+#define EM_OPENRISC		92 /* OpenRISC 32-bit embedded processor */
+#define EM_ARC_A5		93 /* ARC Cores Tangent-A5 */
+#define EM_XTENSA		94 /* Tensilica Xtensa Architecture */
+#define EM_VIDCORE		95 /* Alphamosaic VideoCore */
+#define EM_CR			103 /* Nat. Semi. CompactRISC microprocessor */
+#define EM_BLACKFIN		106 /* Analog Devices Blackfin (DSP) processor */
+#define EM_ARCA			109 /* Arca RISC Microprocessor */
+#define EM_VIDCORE3		137 /* Broadcom VideoCore III */
+#define EM_ARM64		183 /* ARM 64 bit */
+#define EM_AARCH64		EM_ARM64
+#define EM_AVR32		185 /* AVR-32 */
+#define EM_STM8			186 /* ST STM8S */
+#define EM_CUDA			190 /* Nvidia CUDA */
+#define EM_VIDCORE5		198 /* Broadcom VideoCore V */
+#define EM_NORC			218 /* Nanoradio Optimized RISC */
+#define EM_AMDGPU		224 /* AMD GPU */
+#define EM_RISCV		243 /* RISC-V */
+#define EM_BPF			247 /* Linux kernel bpf virtual machine */
+
+#define EM_ALPHA        0x9026 /* Digital Alpha (nonstandard, but the value
+								  everyone uses) */
 
 /* architecture class (EI_CLASS) */
-#define ELFCLASS32	1
-#define ELFCLASS64	2
+#define ELFCLASSNONE	0
+#define ELFCLASS32		1
+#define ELFCLASS64		2
+
 /* endian (EI_DATA) */
+#define ELFDATANONE	0	/* invalid */
 #define ELFDATA2LSB	1	/* little endian */
 #define ELFDATA2MSB	2	/* big endian */
 
+/* ELF version (EI_VERSION) */
+#define EV_NONE		0	/* invalid */
+#define EV_CURRENT	1	/* current version */
 
 /*** section header ***/
 
@@ -204,6 +281,8 @@ typedef struct {
 #define SHT_REL			9
 #define SHT_SHLIB		10
 #define SHT_DYNSYM		11
+#define SHT_INIT_ARRAY	14
+#define SHT_FINI_ARRAY	15
 
 #define SHT_GNU_verdef	0x6ffffffd    /* version definition section */
 #define SHT_GNU_verneed	0x6ffffffe    /* version needs section */
@@ -265,6 +344,7 @@ typedef struct {
 #define PT_SHLIB		5
 #define PT_PHDR			6
 #define PT_TLS			7
+#define PT_EH_FRAME		0x6474e550
 #define PT_STACK		0x6474e551
 #define PT_RELRO		0x6474e552
 
@@ -340,6 +420,22 @@ typedef struct {
 
 /* special symbol indices */
 #define STN_UNDEF 0
+
+/* relocation types */
+
+#define R_386_NONE		0
+#define R_386_32		1	/* add symbol value */
+#define R_386_PC32		2	/* add PC relative symbol value */
+#define R_386_GOT32		3	/* add PC relative GOT offset */
+#define R_386_PLT32		4	/* add PC relative PLT offset */
+#define R_386_COPY		5	/* copy data from shared object */
+#define R_386_GLOB_DAT	6	/* set GOT entry to data address */
+#define R_386_JMP_SLOT	7	/* set GOT entry to code address */
+#define R_386_RELATIVE	8	/* add load address of shared object */
+#define R_386_GOTOFF	9	/* add GOT relative symbol address */
+#define R_386_GOTPC		10	/* add PC relative GOT table address */
+#define R_386_TLS_DTPMOD32	35
+#define R_386_TLS_DTPOFF32	36
 
 
 /* relocation table entry */
@@ -576,6 +672,166 @@ typedef struct {
 
 /* values for vna_flags */
 #define VER_FLG_WEAK	0x2		/* weak version identifier */
+
+
+/*** core files ***/
+
+/* note section header */
+
+typedef struct {
+	Elf32_Word n_namesz;		/* length of the note's name */
+	Elf32_Word n_descsz;		/* length of the note's descriptor */
+	Elf32_Word n_type;			/* note type */
+} Elf32_Nhdr;
+
+typedef struct {
+	Elf64_Word n_namesz;		/* length of the note's name */
+	Elf64_Word n_descsz;		/* length of the note's descriptor */
+	Elf64_Word n_type;			/* note type */
+} Elf64_Nhdr;
+
+/* values for note name */
+#define ELF_NOTE_CORE		"CORE"
+#define ELF_NOTE_HAIKU		"Haiku"
+
+/* values for note type (n_type) */
+/* ELF_NOTE_CORE/... */
+#define NT_FILE				0x46494c45 /* mapped files */
+
+/* ELF_NOTE_HAIKU/... */
+#define NT_TEAM				0x7465616d 	/* team */
+#define NT_AREAS			0x61726561 	/* areas */
+#define NT_IMAGES			0x696d6167 	/* images */
+#define NT_THREADS			0x74687264 	/* threads */
+#define NT_SYMBOLS			0x73796d73 	/* symbols */
+
+/* NT_TEAM: uint32 entrySize; Elf32_Note_Team; char[] args */
+typedef struct {
+	int32		nt_id;				/* team ID */
+	int32		nt_uid;				/* team owner ID */
+	int32		nt_gid;				/* team group ID */
+} Elf32_Note_Team;
+
+typedef Elf32_Note_Team Elf64_Note_Team;
+
+/* NT_AREAS:
+ * uint32 count;
+ * uint32 entrySize;
+ * Elf32_Note_Area_Entry[count];
+ * char[] names
+ */
+typedef struct {
+	int32		na_id;				/* area ID */
+	uint32		na_lock;			/* lock type (B_NO_LOCK, ...) */
+	uint32		na_protection;		/* protection (B_READ_AREA | ...) */
+	uint32		na_base;			/* area base address */
+	uint32		na_size;			/* area size */
+	uint32		na_ram_size;		/* physical memory used */
+} Elf32_Note_Area_Entry;
+
+/* NT_AREAS:
+ * uint32 count;
+ * uint32 entrySize;
+ * Elf64_Note_Area_Entry[count];
+ * char[] names
+ */
+typedef struct {
+	int32		na_id;				/* area ID */
+	uint32		na_lock;			/* lock type (B_NO_LOCK, ...) */
+	uint32		na_protection;		/* protection (B_READ_AREA | ...) */
+	uint32		na_pad1;
+	uint64		na_base;			/* area base address */
+	uint64		na_size;			/* area size */
+	uint64		na_ram_size;		/* physical memory used */
+} Elf64_Note_Area_Entry;
+
+/* NT_IMAGES:
+ * uint32 count;
+ * uint32 entrySize;
+ * Elf32_Note_Image_Entry[count];
+ * char[] names
+ */
+typedef struct {
+	int32		ni_id;				/* image ID */
+	int32		ni_type;			/* image type (B_APP_IMAGE, ...) */
+	uint32		ni_init_routine;	/* address of init function */
+	uint32		ni_term_routine;	/* address of termination function */
+	int32		ni_device;			/* device ID of mapped file */
+	int64		ni_node;			/* node ID of mapped file */
+	uint32		ni_text_base;		/* base address of text segment */
+	uint32		ni_text_size;		/* size of text segment */
+	int32		ni_text_delta;		/* delta of the text segment relative to
+									   load address specified in the ELF file */
+	uint32		ni_data_base;		/* base address of data segment */
+	uint32		ni_data_size;		/* size of data segment */
+	uint32		ni_symbol_table;	/* address of dynamic symbol table */
+	uint32		ni_symbol_hash;		/* address of dynamic symbol hash */
+	uint32		ni_string_table;	/* address of dynamic string table */
+} Elf32_Note_Image_Entry;
+
+/* NT_IMAGES:
+ * uint32 count;
+ * uint32 entrySize;
+ * Elf64_Note_Image_Entry[count];
+ * char[] names
+ */
+typedef struct {
+	int32		ni_id;				/* image ID */
+	int32		ni_type;			/* image type (B_APP_IMAGE, ...) */
+	uint64		ni_init_routine;	/* address of init function */
+	uint64		ni_term_routine;	/* address of termination function */
+	uint32		ni_pad1;
+	int32		ni_device;			/* device ID of mapped file */
+	int64		ni_node;			/* node ID of mapped file */
+	uint64		ni_text_base;		/* base address of text segment */
+	uint64		ni_text_size;		/* size of text segment */
+	int64		ni_text_delta;		/* delta of the text segment relative to
+									   load address specified in the ELF file */
+	uint64		ni_data_base;		/* base address of data segment */
+	uint64		ni_data_size;		/* size of data segment */
+	uint64		ni_symbol_table;	/* address of dynamic symbol table */
+	uint64		ni_symbol_hash;		/* address of dynamic symbol hash */
+	uint64		ni_string_table;	/* address of dynamic string table */
+} Elf64_Note_Image_Entry;
+
+/* NT_THREADS:
+ * uint32 count;
+ * uint32 entrySize;
+ * uint32 cpuStateSize;
+ * {Elf32_Note_Thread_Entry, uint8[cpuStateSize] cpuState}[count];
+ * char[] names
+ */
+typedef struct {
+	int32		nth_id;				/* thread ID */
+	int32		nth_state;			/* thread state (B_THREAD_RUNNING, ...) */
+	int32		nth_priority;		/* thread priority */
+	uint32		nth_stack_base;		/* thread stack base address */
+	uint32		nth_stack_end;		/* thread stack end address */
+} Elf32_Note_Thread_Entry;
+
+/* NT_THREADS:
+ * uint32 count;
+ * uint32 entrySize;
+ * uint32 cpuStateSize;
+ * {Elf64_Note_Thread_Entry, uint8[cpuStateSize] cpuState}[count];
+ * char[] names
+ */
+typedef struct {
+	int32		nth_id;				/* thread ID */
+	int32		nth_state;			/* thread state (B_THREAD_RUNNING, ...) */
+	int32		nth_priority;		/* thread priority */
+	uint32		nth_pad1;
+	uint64		nth_stack_base;		/* thread stack base address */
+	uint64		nth_stack_end;		/* thread stack end address */
+} Elf64_Note_Thread_Entry;
+
+/* NT_SYMBOLS:
+ * int32 imageId;
+ * uint32 symbolCount;
+ * uint32 entrySize;
+ * Elf{32,64}_Sym[count];
+ * char[] strings
+ */
 
 
 /*** inline functions ***/

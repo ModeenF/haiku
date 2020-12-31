@@ -1,9 +1,12 @@
-// SymLink.cpp
+/*
+ * Copyright 2007, Ingo Weinhold, ingo_weinhold@gmx.de.
+ * All rights reserved. Distributed under the terms of the MIT license.
+ */
 
 #include <limits.h>
 
 #include "AllocationInfo.h"
-#include "Debug.h"
+#include "DebugSupport.h"
 #include "SizeIndex.h"
 #include "SymLink.h"
 #include "Volume.h"

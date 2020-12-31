@@ -38,11 +38,6 @@ using namespace std;
 #define MEASURE_PRINT_JOB_TIME false
 
 
-enum {
-	kMaxMemorySize = 4 * 1024 * 1024
-};
-
-
 GraphicsDriver::GraphicsDriver(BMessage* message, PrinterData* printerData,
 	const PrinterCap* printerCap)
 	:
@@ -90,11 +85,7 @@ GraphicsDriver::_SetupData(BFile* spoolFile)
 		return true;
 	}
 
-#ifndef B_BEOS_VERSION_DANO
 	print_file_header pfh;
-#else			
-	BPrintJob::print_file_header pfh;
-#endif
 	spoolFile->Seek(0, SEEK_SET);
 	spoolFile->Read(&pfh, sizeof(pfh));
 
@@ -171,18 +162,11 @@ GraphicsDriver::_SetupBitmap()
 	fPageHeight = (fRealJobData->GetPhysicalRect().IntegerHeight()
 		* fOrgJobData->GetYres() + 71) / 72;
 
-	int widthByte = (fPageWidth * fPixelDepth + 7) / 8;
-	int size = widthByte * fPageHeight;
-#ifdef USE_PREVIEW_FOR_DEBUG
-	size = 0;
-#endif
+	fBitmap = NULL;
+	fRotatedBitmap = NULL;
+	BRect rect;
 
-	if (size < kMaxMemorySize) {
-		fBandCount  = 0;
-		fBandWidth  = fPageWidth;
-		fBandHeight = fPageHeight;
-	} else {
-		fBandCount  = (size + kMaxMemorySize - 1) / kMaxMemorySize;
+	for (fBandCount = 1; fBandCount < 256; fBandCount++) {
 		if (_NeedRotateBitmapBand()) {
 			fBandWidth  = (fPageWidth + fBandCount - 1) / fBandCount;
 			fBandHeight = fPageHeight;
@@ -190,7 +174,45 @@ GraphicsDriver::_SetupBitmap()
 			fBandWidth  = fPageWidth;
 			fBandHeight = (fPageHeight + fBandCount - 1) / fBandCount;
 		}
+
+		rect.Set(0, 0, fBandWidth - 1, fBandHeight - 1);
+		fBitmap = new(std::nothrow) BBitmap(rect, fOrgJobData->GetSurfaceType(),
+			true);
+		if (fBitmap == NULL || fBitmap->InitCheck() != B_OK) {
+			delete fBitmap;
+			fBitmap = NULL;
+			// Try with smaller bands
+			continue;
+		}
+
+		if (_NeedRotateBitmapBand()) {
+			BRect rotatedRect(0, 0, rect.bottom, rect.right);
+			delete fRotatedBitmap;
+			fRotatedBitmap = new(std::nothrow) BBitmap(rotatedRect,
+				fOrgJobData->GetSurfaceType(), false);
+			if (fRotatedBitmap == NULL || fRotatedBitmap->InitCheck() != B_OK) {
+				delete fBitmap;
+				fBitmap = NULL;
+				delete fRotatedBitmap;
+				fRotatedBitmap = NULL;
+
+				// Try with smaller bands
+				continue;
+			}
+		}
+
+		// If we get here, all needed allocations have succeeded, we can safely
+		// go ahead.
+		break;
+	};
+
+	if (fBitmap == NULL) {
+		debugger("Failed to allocate bitmaps for print rasterization");
+		return;
 	}
+
+	fView = new BView(rect, "", B_FOLLOW_ALL, B_WILL_DRAW);
+	fBitmap->AddChild(fView);
 
 	DBGMSG(("****************\n"));
 	DBGMSG(("page_width  = %d\n", fPageWidth));
@@ -198,18 +220,6 @@ GraphicsDriver::_SetupBitmap()
 	DBGMSG(("band_count  = %d\n", fBandCount));
 	DBGMSG(("band_height = %d\n", fBandHeight));
 	DBGMSG(("****************\n"));
-
-	BRect rect;
-	rect.Set(0, 0, fBandWidth - 1, fBandHeight - 1);
-	fBitmap = new BBitmap(rect, fOrgJobData->GetSurfaceType(), true);
-	fView   = new BView(rect, "", B_FOLLOW_ALL, B_WILL_DRAW);
-	fBitmap->AddChild(fView);
-
-	if (_NeedRotateBitmapBand()) {
-		BRect rotatedRect(0, 0, rect.bottom, rect.right);
-		fRotatedBitmap = new BBitmap(rotatedRect, fOrgJobData->GetSurfaceType(),
-			false);
-	}
 }
 
 
@@ -760,9 +770,8 @@ GraphicsDriver::EndDocument(bool)
 }
 
 
-void 
+void
 GraphicsDriver::WriteSpoolData(const void* buffer, size_t size)
-	throw (TransportException)
 {
 	if (fTransport == NULL)
 		return;
@@ -770,9 +779,8 @@ GraphicsDriver::WriteSpoolData(const void* buffer, size_t size)
 }
 
 
-void 
+void
 GraphicsDriver::WriteSpoolString(const char* format, ...)
-	throw (TransportException)
 {
 	if (fTransport == NULL)
 		return;
@@ -786,14 +794,34 @@ GraphicsDriver::WriteSpoolString(const char* format, ...)
 }
 
 
-void 
+void
 GraphicsDriver::WriteSpoolChar(char c)
-	throw (TransportException)
 {
 	if (fTransport == NULL)
 		return;
 
 	fTransport->Write(&c, 1);
+}
+
+
+void
+GraphicsDriver::ReadSpoolData(void* buffer, size_t size)
+{
+	if (fTransport == NULL)
+		return;
+	fTransport->Read(buffer, size);
+}
+
+
+int
+GraphicsDriver::ReadSpoolChar()
+{
+	if (fTransport == NULL)
+		return -1;
+
+	char c;
+	fTransport->Read(&c, 1);
+	return c;
 }
 
 

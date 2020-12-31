@@ -9,6 +9,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <Alert.h>
 #include <Application.h>
@@ -57,12 +58,7 @@ public:
 	virtual bool Filter(const entry_ref* ref,
 		BNode* node, struct stat_beos* st, const char* filetype)
 	{
-		// ToDo: Fix this properly in Tracker
-		// If you create a folder, then rename it, node is NULL.
-		// The BeBook says: "Note that the function is never sent an
-		// abstract entry, so the node, st, and filetype arguments will
-		// always be valid."
-		return node == NULL ? false : node->IsDirectory();
+		return node->IsDirectory();
 	}
 };
 
@@ -514,6 +510,7 @@ MediaConverterWindow::MessageReceived(BMessage* message)
 
 		default:
 			BWindow::MessageReceived(message);
+			break;
 	}
 }
 
@@ -568,7 +565,7 @@ MediaConverterWindow::BuildAudioVideoMenus()
 	media_file_format* mf_format = &(ffmi->fFileFormat);
 
 	media_format format, outfmt;
-	memset(&format, 0, sizeof(format));
+	format.Clear();
 	media_codec_info codec_info;
 	int32 cookie = 0;
 	CodecMenuItem* cmi;
@@ -621,7 +618,7 @@ MediaConverterWindow::BuildAudioVideoMenus()
 	// construct a generic video format.  Some of these parameters
 	// seem silly, but are needed for R4.5.x, which is more picky
 	// than subsequent BeOS releases will be.
-	memset(&format, 0, sizeof(format));
+	format.Clear();
 	format.type = B_MEDIA_RAW_VIDEO;
 	format.u.raw_video.last_active = (uint32)(240 - 1);
 	format.u.raw_video.orientation = B_VIDEO_TOP_LEFT_RIGHT;
@@ -1005,6 +1002,19 @@ MediaConverterWindow::_CreateMenu()
 void
 MediaConverterWindow::_SetOutputFolder(BEntry entry)
 {
-	fOutputDir.SetTo(&entry);
+	BPath path;
+	entry.GetPath(&path);
+	if (access(path.Path(), W_OK) != -1) {
+		fOutputDir.SetTo(&entry);
+	} else {
+		BString errorString(B_TRANSLATE("Error writing to location: %strPath%."
+			" Defaulting to location: /boot/home"));
+		errorString.ReplaceFirst("%strPath%", path.Path());
+		BAlert* alert = new BAlert(B_TRANSLATE("Error"),
+			errorString.String(), B_TRANSLATE("OK"));
+		alert->SetFlags(alert->Flags() | B_CLOSE_ON_ESCAPE);
+		alert->Go();
+		fOutputDir.SetTo("/boot/home");
+	}
 	TruncateOutputFolderPath();
 }

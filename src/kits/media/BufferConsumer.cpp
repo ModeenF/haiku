@@ -39,7 +39,7 @@
 #include <Buffer.h>
 #include <TimeSource.h>
 
-#include <debug.h>
+#include <MediaDebug.h>
 #include <MediaMisc.h>
 #include <DataExchange.h>
 
@@ -269,7 +269,7 @@ BBufferConsumer::SetOutputBuffersFor(const media_source &source,
 
 	int32 buffer_count = 0;
 
-	if (group > 0) {
+	if (group != NULL) {
 		if (group->CountBuffers(&buffer_count) != B_OK)
 			return B_ERROR;
 	}
@@ -328,9 +328,9 @@ BBufferConsumer::SendLatencyChange(const media_source& source,
 	command.latency = newLatency;
 	command.flags = flags;
 
-	TRACE("###### BBufferConsumer::SendLatencyChange: latency from %ld/%ld to "
-		"%ld/%ld changed to %Ld\n", source.port, source.id, destination.port,
-		destination.id, newLatency);
+	TRACE("###### BBufferConsumer::SendLatencyChange: latency from %" B_PRId32 "/%" B_PRId32 " to "
+		"%" B_PRId32 "/%" B_PRId32 " changed to %" B_PRId64 "\n", source.port, source.id,
+		destination.port, destination.id, newLatency);
 
 	return SendToPort(source.port, PRODUCER_LATENCY_CHANGED, &command,
 		sizeof(command));
@@ -379,7 +379,8 @@ BBufferConsumer::HandleMessage(int32 message, const void* data, size_t size)
 			const consumer_buffer_received_command* command
 				= static_cast<const consumer_buffer_received_command*>(data);
 
-			BBuffer* buffer = fBufferCache->GetBuffer(command->buffer);
+			BBuffer* buffer = fBufferCache->GetBuffer(command->buffer,
+				command->header.source_port);
 			if (buffer == NULL) {
 				ERROR("BBufferConsumer::CONSUMER_BUFFER_RECEIVED can't"
 					"find the buffer\n");
@@ -425,6 +426,10 @@ BBufferConsumer::HandleMessage(int32 message, const void* data, size_t size)
 		case CONSUMER_DISCONNECTED:
 		{
 			const consumer_disconnected_request *request = static_cast<const consumer_disconnected_request *>(data);
+			// We no longer need to cache the buffers requested by the other end
+			// of this port.
+			fBufferCache->FlushCacheForPort(request->source.port);
+
 			consumer_disconnected_reply reply;
 			Disconnected(request->source, request->destination);
 			request->SendReply(B_OK, &reply, sizeof(reply));

@@ -9,7 +9,13 @@
  */
 
 
+#include <StringForSize.h>
+#include <StringForRate.h>
+	// Must be first, or the BPrivate namespaces are confused
+
 #include "PackageManager.h"
+
+#include <InterfaceDefs.h>
 
 #include <sys/ioctl.h>
 #include <unistd.h>
@@ -60,13 +66,6 @@ PackageManager::JobFailed(BSupportKit::BJob* job)
 		error.ReplaceAll("\n", "\n*** ");
 		fprintf(stderr, "%s", error.String());
 	}
-}
-
-
-void
-PackageManager::JobAborted(BSupportKit::BJob* job)
-{
-	DIE(job->Result(), "aborted");
 }
 
 
@@ -149,8 +148,8 @@ PackageManager::ConfirmChanges(bool fromMostSpecific)
 			_PrintResult(*fInstalledRepositories.ItemAt(i));
 	}
 
-	if (!fDecisionProvider.YesNoDecisionNeeded(BString(), "Continue?", "y", "n",
-			"y")) {
+	if (!fDecisionProvider.YesNoDecisionNeeded(BString(), "Continue?", "yes",
+			"no", "yes")) {
 		exit(1);
 	}
 }
@@ -174,7 +173,13 @@ PackageManager::Warn(status_t error, const char* format, ...)
 void
 PackageManager::ProgressPackageDownloadStarted(const char* packageName)
 {
-	printf("Downloading %s...\n", packageName);
+	fShowProgress = isatty(STDOUT_FILENO);
+	fLastBytes = 0;
+	fLastRateCalcTime = system_time();
+	fDownloadRate = 0;
+
+	if (fShowProgress)
+		printf("  0%%");
 }
 
 
@@ -182,51 +187,73 @@ void
 PackageManager::ProgressPackageDownloadActive(const char* packageName,
 	float completionPercentage, off_t bytes, off_t totalBytes)
 {
-	if (!fInteractive)
+	if (bytes == totalBytes)
+		fLastBytes = totalBytes;
+	if (!fShowProgress)
 		return;
 
-	static const char* progressChars[] = {
-		"\xE2\x96\x8F",
-		"\xE2\x96\x8E",
-		"\xE2\x96\x8D",
-		"\xE2\x96\x8C",
-		"\xE2\x96\x8B",
-		"\xE2\x96\x8A",
-		"\xE2\x96\x89",
-		"\xE2\x96\x88",
-	};
+	// Do not update if nothing changed in the last 500ms
+	if (bytes <= fLastBytes || (system_time() - fLastRateCalcTime) < 500000)
+		return;
+
+	const bigtime_t time = system_time();
+	if (time != fLastRateCalcTime) {
+		fDownloadRate = (bytes - fLastBytes) * 1000000
+			/ (time - fLastRateCalcTime);
+	}
+	fLastRateCalcTime = time;
+	fLastBytes = bytes;
+
+	// Build the current file progress percentage and size string
+	BString leftStr;
+	BString rightStr;
 
 	int width = 70;
-
 	struct winsize winSize;
-	if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &winSize) == 0
-		&& winSize.ws_col < 77) {
-		// We need 7 characters for the percent display
-		width = winSize.ws_col - 7;
-	}
+	if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &winSize) == 0)
+		width = std::min(winSize.ws_col - 2, 78);
 
-	int position;
-	int ipart = (int)(completionPercentage * width);
-	int fpart = (int)(((completionPercentage * width) - ipart) * 8);
+	if (width < 30) {
+		// Not much space for anything, just draw a percentage
+		leftStr.SetToFormat("%3d%%", (int)(completionPercentage * 100));
+	} else {
+		leftStr.SetToFormat("%3d%% %s", (int)(completionPercentage * 100),
+				packageName);
 
-	printf("\r"); // return to the beginning of the line
+		char byteBuffer[32];
+		char totalBuffer[32];
+		char rateBuffer[32];
+		rightStr.SetToFormat("%s/%s  %s ",
+				string_for_size(bytes, byteBuffer, sizeof(byteBuffer)),
+				string_for_size(totalBytes, totalBuffer, sizeof(totalBuffer)),
+				fDownloadRate == 0 ? "--.-" :
+				string_for_rate(fDownloadRate, rateBuffer, sizeof(rateBuffer)));
 
-	for (position = 0; position < width; position++) {
-		if (position < ipart) {
-			// This part is fully downloaded, show a full block
-			printf(progressChars[7]);
-		} else if (position > ipart) {
-			// This part is not downloaded, show a space
-			printf(" ");
-		} else {
-			// This part is partially downloaded
-			printf(progressChars[fpart]);
+		if (leftStr.CountChars() + rightStr.CountChars() >= width)
+		{
+			// The full string does not fit! Try to make a shorter one.
+			leftStr.ReplaceLast(".hpkg", "");
+			leftStr.TruncateChars(width - rightStr.CountChars() - 2);
+			leftStr.Append(B_UTF8_ELLIPSIS " ");
 		}
+
+		int extraSpace = width - leftStr.CountChars() - rightStr.CountChars();
+
+		leftStr.Append(' ', extraSpace);
+		leftStr.Append(rightStr);
 	}
 
-	// Also print the progress percentage
-	printf(" %3d%%", (int)(completionPercentage * 100));
+	const int progChars = leftStr.CountBytes(0,
+		(int)(width * completionPercentage));
 
+	// Set bg to green, fg to white, and print progress bar.
+	// Then reset colors and print rest of text
+	// And finally remove any stray chars at the end of the line
+	printf("\r\x1B[42;37m%.*s\x1B[0m%s\x1B[K", progChars, leftStr.String(),
+		leftStr.String() + progChars);
+
+	// Force terminal to update when the line is complete, to avoid flickering
+	// because of updates at random times
 	fflush(stdout);
 }
 
@@ -234,17 +261,15 @@ PackageManager::ProgressPackageDownloadActive(const char* packageName,
 void
 PackageManager::ProgressPackageDownloadComplete(const char* packageName)
 {
-	if (fInteractive) {
-		// Overwrite the progress bar with whitespace
-		printf("\r");
-		struct winsize w;
-		ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-		for (int i = 0; i < (w.ws_col); i++)
-			printf(" ");
-		printf("\r\x1b[1A"); // Go to previous line.
+	if (fShowProgress) {
+		// Erase the line, return to the start, and reset colors
+		printf("\r\33[2K\r\x1B[0m");
 	}
 
-	printf("Downloading %s...done.\n", packageName);
+	char byteBuffer[32];
+	printf("100%% %s [%s]\n", packageName,
+		string_for_size(fLastBytes, byteBuffer, sizeof(byteBuffer)));
+	fflush(stdout);
 }
 
 
@@ -297,6 +322,9 @@ void
 PackageManager::ProgressApplyingChangesDone(InstalledRepository& repository)
 {
 	printf("[%s] Done.\n", repository.Name().String());
+
+	if (BPackageRoster().IsRebootNeeded())
+		printf("A reboot is necessary to complete the installation process.\n");
 }
 
 

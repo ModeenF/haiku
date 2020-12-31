@@ -1,8 +1,8 @@
 SubDir HAIKU_TOP src kits tracker ;
 
-SetSubDirSupportedPlatformsBeOSCompatible ;
 AddSubDirSupportedPlatforms libbe_test ;
 
+UseHeaders [ FDirName $(HAIKU_TOP) src add-ons input_server filters shortcut_catcher ] ;
 UsePrivateHeaders interface mount shared storage support tracker ;
 UsePrivateSystemHeaders ;
 
@@ -16,20 +16,16 @@ SubDirC++Flags
 local architectureObject ;
 for architectureObject in [ MultiArchSubDirSetup ] {
 	on $(architectureObject) {
-		local vectorIconLibs ;
-		if ! $(TARGET_PLATFORM_HAIKU_COMPATIBLE) && $(TARGET_PLATFORM)
-				!= libbe_test {
-			vectorIconLibs = [ MultiArchDefaultGristFiles libicon.a libagg.a ] ;
-		}
-
 		local libtracker = [ MultiArchDefaultGristFiles libtracker.so ] ;
 		AddResources $(libtracker) : TrackerIcons.rdef libtracker.rdef ;
 
 		SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src add-ons input_server
 			filters shortcut_catcher ] ;
+		SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src kits tracker infowindow ] ;
 
 		SharedLibrary $(libtracker) :
 			AttributeStream.cpp
+			AttributesView.cpp
 			AutoMounterSettings.cpp
 			BackgroundImage.cpp
 			Bitmaps.cpp
@@ -49,7 +45,9 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			FilePanelPriv.cpp
 			FilePermissionsView.cpp
 			FindPanel.cpp
+			GeneralInfoView.cpp
 			GroupedMenu.cpp
+			HeaderView.cpp
 			IconCache.cpp
 			IconMenuItem.cpp
 			InfoWindow.cpp
@@ -74,7 +72,6 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			RegExp.cpp
 			SelectionWindow.cpp
 			Settings.cpp
-			SettingsHandler.cpp
 			SettingsViews.cpp
 			SlowContextPopup.cpp
 			SlowMenu.cpp
@@ -100,17 +97,21 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			WidgetAttributeText.cpp
 
 			:
-			be localestub shared translation $(vectorIconLibs)
+			be localestub shared translation
 			[ TargetLibstdc++ ] [ TargetLibsupc++ ]
+			[ MultiArchDefaultGristFiles libcolumnlistview.a ]
 			[ MultiArchDefaultGristFiles libshortcuts_shared.a ]
 			;
 	}
 }
 
+SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src kits tracker infowindow ] ;
+
 DoCatalogs libtracker.so :
 	x-vnd.Haiku-libtracker
 	:
 	Tracker.cpp
+	AttributesView.cpp
 	AutoMounterSettings.cpp
 	ContainerWindow.cpp
 	CountView.cpp
@@ -122,6 +123,7 @@ DoCatalogs libtracker.so :
 	FindPanel.cpp
 	FSClipboard.cpp
 	FSUtils.cpp
+	GeneralInfoView.cpp
 	InfoWindow.cpp
 	LocalizedFolders.h
 	Model.cpp
@@ -141,6 +143,7 @@ DoCatalogs libtracker.so :
 	Tracker.cpp
 	TrackerInitialState.cpp
 	TrackerSettingsWindow.cpp
+	VirtualDirectoryWindow.cpp
 	WidgetAttributeText.cpp
 ;
 

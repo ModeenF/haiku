@@ -166,11 +166,6 @@ class InputServer : public BApplication {
 		status_t ControlDevices(const char *name, input_device_type type,
 					uint32 code, BMessage* message);
 
-		bool DoMouseAcceleration(int32*, int32*);
-		bool SetMousePos(long*, long*, long, long);
-		bool SetMousePos(long*, long*, BPoint);
-		bool SetMousePos(long*, long*, float, float);
-
 		bool SafeMode();
 
 		::AddOnManager* AddOnManager() { return fAddOnManager; }
@@ -192,6 +187,7 @@ class InputServer : public BApplication {
 		status_t _LoadSystemKeymap();
 		status_t _SaveKeymap(bool isDefault = false);
 		void _InitKeyboardMouseStates();
+		MouseSettings* _GetSettingsForMouse(BString mouseName);
 
 		status_t _StartEventLoop();
 		void _EventLoop();
@@ -217,7 +213,7 @@ class InputServer : public BApplication {
 		BLocker 		fInputDeviceListLocker;
 
 		KeyboardSettings fKeyboardSettings;
-		MouseSettings	fMouseSettings;
+		MultipleMouseSettings	fMouseSettings;
 
 		BPoint			fMousePos;		// current mouse position
 		key_info		fKeyInfo;		// current key info
@@ -246,6 +242,9 @@ class InputServer : public BApplication {
 		team_id			fAppServerTeam;
 		area_id			fCursorArea;
 		shared_cursor*	fCursorBuffer;
+
+		typedef std::map<BString, MouseSettings*> mouse_settings_object;
+		mouse_settings_object  fMouseSettingsObject;
 };
 
 extern InputServer* gInputServer;

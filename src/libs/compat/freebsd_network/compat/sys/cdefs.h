@@ -39,7 +39,11 @@
 #include <posix/sys/cdefs.h>
 
 
+#if 0
 #define __FBSDID(str)	static const char __fbsdid[] = str
+#else
+#define __FBSDID(str)
+#endif
 
 /*
  * This code has been put in place to help reduce the addition of
@@ -79,6 +83,13 @@
 
 #if defined(__GNUC__)
 # define __GNUC_VA_LIST_COMPATIBILITY 1
+#endif
+
+/*
+ * Compiler memory barriers, specific to gcc and clang.
+ */
+#if defined(__GNUC__)
+#define	__compiler_membar()	__asm __volatile(" " : : : "memory")
 #endif
 
 #ifndef __INTEL_COMPILER
@@ -160,13 +171,29 @@
 #define	__offsetof(type, field)	((size_t)(&((type *)0)->field))
 #else
 #define __offsetof(type, field)					\
-  (__offsetof__ (reinterpret_cast <size_t>			\
+  ((reinterpret_cast <size_t>			\
                  (&reinterpret_cast <const volatile char &>	\
                   (static_cast<type *> (0)->field))))
 #endif
 #endif
 #define	__rangeof(type, start, end) \
 	(__offsetof(type, end) - __offsetof(type, start))
+
+/*
+ * Given the pointer x to the member m of the struct s, return
+ * a pointer to the containing structure.  When using GCC, we first
+ * assign pointer x to a local variable, to check that its type is
+ * compatible with member m.
+ */
+#if __GNUC_PREREQ__(3, 1)
+#define	__containerof(x, s, m) ({					\
+	const volatile __typeof(((s *)0)->m) *__x = (x);		\
+	__DEQUALIFY(s *, (const volatile char *)__x - __offsetof(s, m));\
+})
+#else
+#define	__containerof(x, s, m)						\
+	__DEQUALIFY(s *, (const volatile char *)(x) - __offsetof(s, m))
+#endif
 
 /*
  * Compiler-dependent macros to help declare dead (non-returning) and
@@ -177,46 +204,48 @@
  * for a given compiler, let the compile fail if it is told to use
  * a feature that we cannot live without.
  */
-#ifdef lint
-#define	__pure2
-#define	__unused
-#define	__packed
-#define	__aligned(x)
-#define	__section(x)
-#else
+/*
+ * Compiler-dependent macros to help declare dead (non-returning) and
+ * pure (no side effects) functions, and unused variables.  They are
+ * null except for versions of gcc that are known to support the features
+ * properly (old versions of gcc-2 supported the dead and pure features
+ * in a different (wrong) way).  If we do not provide an implementation
+ * for a given compiler, let the compile fail if it is told to use
+ * a feature that we cannot live without.
+ */
+#define	__weak_symbol	__attribute__((__weak__))
 #if !__GNUC_PREREQ__(2, 5) && !defined(__INTEL_COMPILER)
+#define	__dead2
 #define	__pure2
 #define	__unused
 #endif
 #if __GNUC__ == 2 && __GNUC_MINOR__ >= 5 && __GNUC_MINOR__ < 7 && !defined(__INTEL_COMPILER)
+#define	__dead2		__attribute__((__noreturn__))
 #define	__pure2		__attribute__((__const__))
 #define	__unused
 /* XXX Find out what to do for __packed, __aligned and __section */
 #endif
-#if __GNUC_PREREQ__(2, 7)
+#if __GNUC_PREREQ__(2, 7) || defined(__INTEL_COMPILER)
+#undef __dead2
+#define	__dead2		__attribute__((__noreturn__))
 #define	__pure2		__attribute__((__const__))
 #define	__unused	__attribute__((__unused__))
+#define	__used		__attribute__((__used__))
 #define	__packed	__attribute__((__packed__))
 #define	__aligned(x)	__attribute__((__aligned__(x)))
 #define	__section(x)	__attribute__((__section__(x)))
 #endif
-
-#if __GNUC_PREREQ__(3, 1)
-#define	__used		__attribute__((__used__))
+#if __GNUC_PREREQ__(4, 3)
+#define	__alloc_size(x)	__attribute__((__alloc_size__(x)))
+#define	__alloc_size2(n, x)	__attribute__((__alloc_size__(n, x)))
 #else
-#if __GNUC_PREREQ__(2, 7)
-#define	__used
+#define	__alloc_size(x)
+#define	__alloc_size2(n, x)
 #endif
-#endif
-
-#if defined(__INTEL_COMPILER)
-#define __pure2		__attribute__((__const__))
-#define __unused	__attribute__((__unused__))
-#define __used		__attribute__((__used__))
-#define __packed	__attribute__((__packed__))
-#define __aligned(x)	__attribute__((__aligned__(x)))
-#define __section(x)	__attribute__((__section__(x)))
-#endif
+#if __GNUC_PREREQ__(4, 9)
+#define	__alloc_align(x)	__attribute__((__alloc_align__(x)))
+#else
+#define	__alloc_align(x)
 #endif
 
 /*
@@ -235,6 +264,21 @@
 #define	__scanflike(fmtarg, firstvararg) \
 	    __attribute__((__format__ (__scanf__, fmtarg, firstvararg)))
 #define	__format_arg(fmtarg)	__attribute__((__format_arg__ (fmtarg)))
+#endif
+
+/*
+ * C99 Static array indices in function parameter declarations.  Syntax such as:
+ * void bar(int myArray[static 10]);
+ * is allowed in C99 but not in C++.  Define __min_size appropriately so
+ * headers using it can be compiled in either language.  Use like this:
+ * void bar(int myArray[__min_size(10)]);
+ */
+#if !defined(__cplusplus) && \
+    (defined(__clang__) || __GNUC_PREREQ__(4, 6)) && \
+    (!defined(__STDC_VERSION__) || (__STDC_VERSION__ >= 199901))
+#define __min_size(x)	static (x)
+#else
+#define __min_size(x)	(x)
 #endif
 
 #if __GNUC_PREREQ__(3, 1)
@@ -305,6 +349,25 @@
 
 #ifndef	__UNCONST
 #define	__UNCONST(var)	((void*)(uintptr_t)(const void *)(var))
+#endif
+
+#ifndef	__DEVOLATILE
+#define	__DEVOLATILE(type, var)	((type)(uintptr_t)(volatile void *)(var))
+#endif
+
+#ifndef	__DEQUALIFY
+#define	__DEQUALIFY(type, var)	((type)(uintptr_t)(const volatile void *)(var))
+#endif
+
+#if __GNUC_PREREQ__(4,6) && !defined(__cplusplus)
+/* Nothing, gcc 4.6 and higher has _Static_assert built-in */
+#elif defined(__COUNTER__)
+#define	_Static_assert(x, y)	__Static_assert(x, __COUNTER__)
+#define	__Static_assert(x, y)	___Static_assert(x, y)
+#define	___Static_assert(x, y)	typedef char __assert_ ## y[(x) ? 1 : -1] \
+				__unused
+#else
+#define	_Static_assert(x, y)
 #endif
 
 #endif

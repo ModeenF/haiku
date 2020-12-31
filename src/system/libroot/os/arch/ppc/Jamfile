@@ -25,7 +25,9 @@ for architectureObject in [ MultiArchSubDirSetup ppc ] {
 			time.c
 			tls.c
 
+			# sources from generic
 			generic_system_time_nsecs.cpp
+			generic_stack_trace.cpp
 			;
 	}
 }

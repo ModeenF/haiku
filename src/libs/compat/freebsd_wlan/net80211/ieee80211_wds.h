@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2007-2008 Sam Leffler, Errno Consulting
  * All rights reserved.
  *
@@ -22,10 +24,10 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/net80211/ieee80211_wds.h 326272 2017-11-27 15:23:17Z pfg $
  */
-#ifndef _FBSD_COMPAT_NET80211_IEEE80211_WDS_H_
-#define _FBSD_COMPAT_NET80211_IEEE80211_WDS_H_
+#ifndef _NET80211_IEEE80211_WDS_H_
+#define _NET80211_IEEE80211_WDS_H_
 
 /*
  * WDS implementation definitions.
@@ -36,4 +38,4 @@ void	ieee80211_wds_detach(struct ieee80211com *);
 void	ieee80211_dwds_mcast(struct ieee80211vap *, struct mbuf *);
 void	ieee80211_dwds_discover(struct ieee80211_node *, struct mbuf *);
 int	ieee80211_node_wdsq_age(struct ieee80211_node *);
-#endif /* _FBSD_COMPAT_NET80211_IEEE80211_WDS_H_ */
+#endif /* !_NET80211_IEEE80211_WDS_H_ */

@@ -9,6 +9,7 @@
 
 #include <boot/kernel_args.h>
 #include <cpu.h>
+#include <tls.h>
 #include <vm/vm.h>
 #include <vm/vm_priv.h>
 
@@ -41,7 +42,8 @@ class Descriptor {
 public:
 	constexpr				Descriptor();
 	inline					Descriptor(uint32_t first, uint32_t second);
-	constexpr				Descriptor(DescriptorType type, bool kernelOnly);
+	constexpr				Descriptor(DescriptorType type, bool kernelOnly,
+								bool compatMode = false);
 
 protected:
 	union {
@@ -77,6 +79,15 @@ private:
 			Descriptor			fSecond;
 };
 
+
+class UserTLSDescriptor : public Descriptor {
+public:
+	inline						UserTLSDescriptor(uintptr_t base, size_t limit);
+
+			const Descriptor&	GetDescriptor() const	{ return *this; }
+};
+
+
 class GlobalDescriptorTable {
 public:
 	constexpr						GlobalDescriptorTable();
@@ -85,10 +96,12 @@ public:
 
 			unsigned				SetTSS(unsigned cpu,
 										const TSSDescriptor& tss);
+			unsigned				SetUserTLS(unsigned cpu,
+										addr_t base, size_t limit);
 private:
-	static constexpr	unsigned	kFirstTSS = 5;
+	static constexpr	unsigned	kFirstTSS = 6;
 	static constexpr	unsigned	kDescriptorCount
-										= kFirstTSS + SMP_MAX_CPUS * 2;
+										= kFirstTSS + SMP_MAX_CPUS * 3;
 
 	alignas(uint64_t)	Descriptor	fTable[kDescriptorCount];
 };
@@ -104,7 +117,7 @@ public:
 										unsigned ist, bool kernelOnly);
 	constexpr						InterruptDescriptor(uintptr_t isr);
 
-	static constexpr	InterruptDescriptor	Generate(unsigned index);
+	static 		InterruptDescriptor	Generate(unsigned index);
 
 private:
 						uint16_t	fBase0;
@@ -141,6 +154,7 @@ extern const InterruptServiceRoutine
 
 static GlobalDescriptorTable	sGDT;
 static InterruptDescriptorTable	sIDT;
+static uint32 sGDTIDTConstructed = 0;
 
 typedef void interrupt_handler_function(iframe* frame);
 interrupt_handler_function*
@@ -172,7 +186,7 @@ Descriptor::Descriptor(uint32_t first, uint32_t second)
 
 
 constexpr
-Descriptor::Descriptor(DescriptorType type, bool kernelOnly)
+Descriptor::Descriptor(DescriptorType type, bool kernelOnly, bool compatMode)
 	:
 	fLimit0(-1),
 	fBase0(0),
@@ -182,8 +196,8 @@ Descriptor::Descriptor(DescriptorType type, bool kernelOnly)
 	fPresent(1),
 	fLimit1(0xf),
 	fUnused(0),
-	fLong(is_code_segment(type) ? 1 : 0),
-	fDB(is_code_segment(type) ? 0 : 1),
+	fLong(is_code_segment(type) && !compatMode ? 1 : 0),
+	fDB(is_code_segment(type) && !compatMode ? 0 : 1),
 	fGranularity(1),
 	fBase1(0)
 {
@@ -210,6 +224,16 @@ TSSDescriptor::LoadTSS(unsigned index)
 }
 
 
+UserTLSDescriptor::UserTLSDescriptor(uintptr_t base, size_t limit)
+	: Descriptor(DescriptorType::DataWritable, false)
+{
+	fLimit0 = static_cast<uint16_t>(limit);
+	fBase0 = base & 0xffffff;
+	fLimit1 = (limit >> 16) & 0xf;
+	fBase1 = static_cast<uint8_t>(base >> 24);
+}
+
+
 constexpr
 GlobalDescriptorTable::GlobalDescriptorTable()
 	:
@@ -217,6 +241,7 @@ GlobalDescriptorTable::GlobalDescriptorTable()
 		Descriptor(),
 		Descriptor(DescriptorType::CodeExecuteOnly, true),
 		Descriptor(DescriptorType::DataWritable, true),
+		Descriptor(DescriptorType::CodeExecuteOnly, false, true),
 		Descriptor(DescriptorType::DataWritable, false),
 		Descriptor(DescriptorType::CodeExecuteOnly, false),
 	}
@@ -244,10 +269,21 @@ GlobalDescriptorTable::Load() const
 unsigned
 GlobalDescriptorTable::SetTSS(unsigned cpu, const TSSDescriptor& tss)
 {
-	auto index = kFirstTSS + cpu * 2;
+	auto index = kFirstTSS + cpu * 3;
 	ASSERT(index + 1 < kDescriptorCount);
 	fTable[index] = tss.GetLower();
 	fTable[index + 1] = tss.GetUpper();
+	return index;
+}
+
+
+unsigned
+GlobalDescriptorTable::SetUserTLS(unsigned cpu, uintptr_t base, size_t limit)
+{
+	auto index = kFirstTSS + cpu * 3 + 2;
+	ASSERT(index < kDescriptorCount);
+	UserTLSDescriptor desc(base, limit);
+	fTable[index] = desc.GetDescriptor();
 	return index;
 }
 
@@ -296,7 +332,7 @@ InterruptDescriptorTable::Load() const
 }
 
 
-constexpr InterruptDescriptor
+InterruptDescriptor
 InterruptDescriptor::Generate(unsigned index)
 {
 	return index == 3
@@ -329,13 +365,27 @@ x86_64_general_protection_fault(iframe* frame)
 }
 
 
+static void
+x86_64_stack_fault_exception(iframe* frame)
+{
+	// Non-canonical address accesses which reference the stack cause a stack
+	// fault exception instead of GPF. However, we can treat it like a GPF.
+	x86_64_general_protection_fault(frame);
+}
+
+
 // #pragma mark -
 
 
 void
 x86_descriptors_preboot_init_percpu(kernel_args* args, int cpu)
 {
-	new(&sGDT) GlobalDescriptorTable;
+	if (cpu == 0) {
+		new(&sGDT) GlobalDescriptorTable;
+		new(&sIDT) InterruptDescriptorTable;
+	}
+
+	smp_cpu_rendezvous(&sGDTIDTConstructed);
 	sGDT.Load();
 
 	memset(&gCPU[cpu].arch.tss, 0, sizeof(struct tss));
@@ -352,7 +402,8 @@ x86_descriptors_preboot_init_percpu(kernel_args* args, int cpu)
 			TSSDescriptor(uintptr_t(&gCPU[cpu].arch.tss), sizeof(struct tss)));
 	TSSDescriptor::LoadTSS(tssIndex);
 
-	new(&sIDT) InterruptDescriptorTable;
+	sGDT.SetUserTLS(cpu, 0, TLS_COMPAT_SIZE);
+
 	sIDT.Load();
 }
 
@@ -381,7 +432,7 @@ x86_descriptors_init(kernel_args* args)
 	table[9]  = x86_fatal_exception;		// Coprocessor Segment Overrun
 	table[10] = x86_fatal_exception;		// Invalid TSS Exception (#TS)
 	table[11] = x86_fatal_exception;		// Segment Not Present (#NP)
-	table[12] = x86_fatal_exception;		// Stack Fault Exception (#SS)
+	table[12] = x86_64_stack_fault_exception;	// Stack Fault Exception (#SS)
 	table[13] = x86_64_general_protection_fault; // General Protection Exception (#GP)
 	table[14] = x86_page_fault_exception;	// Page-Fault Exception (#PF)
 	table[16] = x86_unexpected_exception;	// x87 FPU Floating-Point Error (#MF)
@@ -390,3 +441,9 @@ x86_descriptors_init(kernel_args* args)
 	table[19] = x86_unexpected_exception;	// SIMD Floating-Point Exception (#XF)
 }
 
+
+unsigned
+x86_64_set_user_tls_segment_base(int cpu, addr_t base)
+{
+	return sGDT.SetUserTLS(cpu, base, TLS_COMPAT_SIZE);
+}

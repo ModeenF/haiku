@@ -22,6 +22,7 @@
 
 #include <ByteOrder.h>
 #include <KernelExport.h>
+#include <StackOrHeapArray.h>
 #include <util/AutoLock.h>
 #include <util/list.h>
 #include <util/DoublyLinkedList.h>
@@ -173,7 +174,7 @@ struct MulticastStateHash {
 	bool CompareValues(ValueType* value1, ValueType* value2) const
 		{ return value1->Interface()->index == value2->Interface()->index
 			&& value1->Address() == value2->Address(); }
-	ValueType*& GetLink(ValueType* value) const { return value->HashLink(); }
+	ValueType*& GetLink(ValueType* value) const { return value->MulticastGroupsHashLink(); }
 };
 
 
@@ -349,9 +350,9 @@ FragmentPacket::AddFragment(uint16 start, uint16 end, net_buffer* buffer,
 		gBufferModule->remove_header(buffer, previous->fragment.end - start);
 		start = previous->fragment.end;
 	}
-	if (next != NULL && next->fragment.start < end) {
-		TRACE("    remove trailer %d bytes", next->fragment.start - end);
-		gBufferModule->remove_trailer(buffer, next->fragment.start - end);
+	if (next != NULL && end > next->fragment.start) {
+		TRACE("    remove trailer %d bytes", end - next->fragment.start);
+		gBufferModule->remove_trailer(buffer, end - next->fragment.start);
 		end = next->fragment.start;
 	}
 
@@ -636,7 +637,9 @@ send_fragments(ipv6_protocol* protocol, struct net_route* route,
 	if (status != B_OK)
 		return status;
 
-	uint8 data[bytesLeft];
+	BStackOrHeapArray<uint8, 128> data(bytesLeft);
+	if (!data.IsValid())
+		return B_NO_MEMORY;
 	status = gBufferModule->read(buffer, headersLength, data, bytesLeft);
 	if (status != B_OK)
 		return status;

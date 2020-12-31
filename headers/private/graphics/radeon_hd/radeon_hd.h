@@ -111,7 +111,17 @@ enum radeon_chipset {
 	RADEON_HAWAII,		// DCE 8.5
 	RADEON_TOPAZ,		//Volcanic Islands, NO DCE
 	RADEON_TONGA,		// DCE 10.0
-	RADEON_CARRIZO		// DCE 11.0
+	RADEON_FIJI,		// DCE 10.1?
+	RADEON_CARRIZO,		// DCE 11.0
+	RADEON_STONEY,		// DCE 11.1?
+	RADEON_POLARIS11,	//Artic Islands, DCE 12.1?
+	RADEON_POLARIS10,	// DCE 12.0?
+	RADEON_POLARIS12,	// DCE 12.2?
+	RADEON_VEGAM,		// DCE 13.0?
+	RADEON_VEGA10,		// DCE 13.0?
+	RADEON_VEGA12,		// DCE 13.0?
+	RADEON_VEGA20,		// DCE 13.0?
+	RADEON_RAVEN,		// DCE 13?
 };
 
 // !! Must match chipset families above
@@ -168,7 +178,17 @@ static const char radeon_chip_name[][MAX_NAME_LENGTH] = {
 	"Hawaii",
 	"Topaz",
 	"Tonga",
-	"Carrizo"
+	"Fiji",
+	"Carrizo",
+	"Stoney Ridge",
+	"Polaris 11",
+	"Polaris 10",
+	"Polaris 12",
+	"Vega Mobile",
+	"Vega 10",
+	"Vega 12",
+	"Vega 20",
+	"Raven",
 };
 
 
@@ -188,7 +208,8 @@ struct overlay_registers;
 
 struct radeon_shared_info {
 	uint32			deviceIndex;		// accelerant index
-	uint32			pciID;				// device pciid
+	uint32			pciID;				// device pci id
+	uint32			pciRev;				// device pci revision
 	area_id			mode_list_area;		// area containing display mode list
 	uint32			mode_count;
 

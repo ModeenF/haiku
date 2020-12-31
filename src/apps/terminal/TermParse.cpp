@@ -6,6 +6,7 @@
  *
  * Authors:
  *		Kian Duffy, myob@users.sourceforge.net
+ *		Simon South, simon@simonsouth.net
  *		Siarzhuk Zharski, zharik@gmx.li
  */
 
@@ -473,6 +474,16 @@ TermParse::EscParse()
 
 				case CASE_CR:
 					fBuffer->InsertCR();
+					break;
+
+				case CASE_INDEX:
+					fBuffer->InsertLF();
+					parsestate = groundtable;
+					break;
+
+				case CASE_NEXT_LINE:
+					fBuffer->NextLine();
+					parsestate = groundtable;
 					break;
 
 				case CASE_SJIS_KANA:
@@ -1172,6 +1183,36 @@ TermParse::EscParse()
 					parsestate = groundtable;
 					break;
 
+				case CASE_CBT:	// cursor back tab
+					if ((column = param[0]) < 1)
+						column = 1;
+					fBuffer->InsertCursorBackTab(column);
+					parsestate = groundtable;
+					break;
+
+				case CASE_CFT:	// cursor forward tab
+					if ((column= param[0]) < 1)
+						column = 1;
+					for (int32 i = 0; i < column; ++i)
+						fBuffer->InsertTab();
+					parsestate = groundtable;
+					break;
+
+				case CASE_CNL:	// cursor next line
+					if ((row= param[0]) < 1)
+						row = 1;
+					fBuffer->SetCursorX(0);
+					fBuffer->MoveCursorDown(row);
+					parsestate = groundtable;
+					break;
+
+				case CASE_CPL:	// cursor previous line
+					if ((row= param[0]) < 1)
+						row = 1;
+					fBuffer->SetCursorX(0);
+					fBuffer->MoveCursorUp(row);
+					parsestate = groundtable;
+					break;
 				default:
 					break;
 			}
@@ -1271,9 +1312,10 @@ TermParse::_DeviceStatusReport(int n)
 			}
 		case 6:
 			// Cursor position report requested
-			len = sprintf(sbuf, "\033[%" B_PRId32 ";%" B_PRId32 "R",
-					fBuffer->Cursor().y + 1,
-					fBuffer->Cursor().x + 1);
+			len = snprintf(sbuf, sizeof(sbuf),
+				"\033[%" B_PRId32 ";%" B_PRId32 "R",
+				fBuffer->Cursor().y + 1,
+				fBuffer->Cursor().x + 1);
 			write(fFd, sbuf, len);
 			break ;
 		default:
@@ -1353,13 +1395,17 @@ TermParse::_DecPrivateModeSet(int value)
 			// Use All Motion Mouse Tracking
 			fBuffer->ReportAnyMouseEvent(true);
 			break;
+		case 1006:
+			// Enable extended mouse coordinates with SGR scheme
+			fBuffer->EnableExtendedMouseCoordinates(true);
+			break;
 		case 1034:
-			// TODO: Interprete "meta" key, sets eighth bit.
-			// Not supported yet.
+			// Interpret "meta" key, sets eighth bit.
+			fBuffer->EnableInterpretMetaKey(true);
 			break;
 		case 1036:
-			// TODO: Send ESC when Meta modifies a key
-			// Not supported yet.
+			// Send ESC when Meta modifies a key
+			fBuffer->EnableMetaKeySendsEscape(true);
 			break;
 		case 1039:
 			// TODO: Send ESC when Alt modifies a key
@@ -1428,13 +1474,17 @@ TermParse::_DecPrivateModeReset(int value)
 			// Disable All Motion Mouse Tracking.
 			fBuffer->ReportAnyMouseEvent(false);
 			break;
+		case 1006:
+			// Disable extended mouse coordinates with SGR scheme
+			fBuffer->EnableExtendedMouseCoordinates(false);
+			break;
 		case 1034:
-			// Don't interprete "meta" key.
-			// Not supported yet.
+			// Don't interpret "meta" key.
+			fBuffer->EnableInterpretMetaKey(false);
 			break;
 		case 1036:
-			// TODO: Don't send ESC when Meta modifies a key
-			// Not supported yet.
+			// Don't send ESC when Meta modifies a key
+			fBuffer->EnableMetaKeySendsEscape(false);
 			break;
 		case 1039:
 			// TODO: Don't send ESC when Alt modifies a key
@@ -1478,7 +1528,7 @@ TermParse::_ProcessOperatingSystemControls(uchar* params)
 				// colors can be in "idx1:name1;...;idxN:nameN;" sequence too!
 				uint32 count = 0;
 				char* p = strtok((char*)params, ";");
-				do {
+				while (p != NULL && count < kTermColorCount) {
 					indexes[count] = atoi(p);
 
 					if (!reset) {
@@ -1492,7 +1542,7 @@ TermParse::_ProcessOperatingSystemControls(uchar* params)
 						count++;
 
 					p = strtok(NULL, ";");
-				} while (p != NULL && count < kTermColorCount);
+				};
 
 				if (count > 0) {
 					if (!reset)

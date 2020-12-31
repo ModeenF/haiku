@@ -18,7 +18,6 @@
 #include <MenuItem.h>
 #include <PopUpMenu.h>
 #include <StringView.h>
-#include <TextView.h>
 
 #include <stdio.h>
 #define PNG_NO_PEDANTIC_WARNINGS
@@ -47,12 +46,12 @@ PNGView::PNGView(const BRect &frame, const char *name, uint32 resizeMode,
 	BStringView *versionView =  new BStringView("version", version);
 
 	BStringView *copyrightView =  new BStringView(
-		"Copyright", B_UTF8_COPYRIGHT "2003-2006 Haiku Inc.");
+		"Copyright", B_UTF8_COPYRIGHT "2003-2018 Haiku Inc.");
 
 	// setup PNG interlace options
 
 	fInterlaceMenu = new BPopUpMenu(B_TRANSLATE("Interlace Option"));
-	BMenuItem* item = new BMenuItem(B_TRANSLATE("None"), 
+	BMenuItem* item = new BMenuItem(B_TRANSLATE("None"),
 		_InterlaceMessage(PNG_INTERLACE_NONE));
 	if (fSettings->SetGetInt32(PNG_SETTING_INTERLACE) == PNG_INTERLACE_NONE)
 		item->SetMarked(true);
@@ -69,13 +68,10 @@ PNGView::PNGView(const BRect &frame, const char *name, uint32 resizeMode,
 	menuField->SetDivider(menuField->StringWidth(menuField->Label()) + 7.0f);
 	menuField->ResizeToPreferred();
 
-	fCopyrightView = new BTextView("PNG copyright");
-	fCopyrightView->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-	fCopyrightView->SetLowColor(fCopyrightView->ViewColor());
-	fCopyrightView->MakeEditable(false);
-	fCopyrightView->SetWordWrap(false);
-	fCopyrightView->MakeResizable(true);
-	fCopyrightView->SetText(png_get_copyright(NULL));
+	BString pngCopyright = png_get_copyright(NULL);
+	pngCopyright.ReplaceLast("\n", "");
+	BStringView* pngCopyrightView = new BStringView(
+		"PNG copyright", pngCopyright);
 
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.SetInsets(B_USE_DEFAULT_SPACING)
@@ -88,18 +84,7 @@ PNGView::PNGView(const BRect &frame, const char *name, uint32 resizeMode,
 			.AddGlue()
 			.End()
 		.AddGlue()
-		.Add(fCopyrightView);
-
-	BFont font;
-	GetFont(&font);
-	SetExplicitPreferredSize(BSize((font.Size() * 390) / 12,
-		(font.Size() * 180) / 12));
-
-	// TODO: remove this workaround for ticket #4217
-	fCopyrightView->SetExplicitPreferredSize(
-		BSize(fCopyrightView->LineWidth(4), fCopyrightView->TextHeight(0, 80)));
-	fCopyrightView->SetExplicitMaxSize(fCopyrightView->ExplicitPreferredSize());
-	fCopyrightView->SetExplicitMinSize(fCopyrightView->ExplicitPreferredSize());
+		.Add(pngCopyrightView);
 }
 
 
@@ -126,14 +111,6 @@ PNGView::AttachedToWindow()
 
 	// set target for interlace options menu items
 	fInterlaceMenu->SetTargetForItems(this);
-}
-
-
-void
-PNGView::FrameResized(float width, float height)
-{
-	// This works around a flaw of BTextView
-	fCopyrightView->SetTextRect(fCopyrightView->Bounds());
 }
 
 

@@ -1,12 +1,5 @@
 SubDir HAIKU_TOP src add-ons kernel drivers audio echo 3g ;
 
-SetSubDirSupportedPlatformsBeOSCompatible ;
-
-if $(TARGET_PLATFORM) != haiku {
-	UseHeaders [ FDirName $(HAIKU_TOP) headers os drivers ] : true ;
-	# We need the public pcmcia headers also when not compiling for Haiku.
-}
-
 SubDirHdrs $(HAIKU_TOP) src add-ons kernel drivers audio echo ;
 SubDirHdrs $(HAIKU_TOP) src add-ons kernel drivers audio echo generic ;
 SubDirHdrs $(HAIKU_TOP) src add-ons kernel drivers audio echo generic DSP ;
@@ -14,7 +7,7 @@ SubDirHdrs $(HAIKU_TOP) src add-ons kernel drivers audio echo generic ASIC ;
 
 UsePrivateSystemHeaders ;
 UsePrivateHeaders kernel 			# For kernel_cpp.cpp
-	media ;
+	audio ;
 
 # set some additional defines
 SubDirCcFlags -DECHO_BEOS -DECHO3G_FAMILY ;

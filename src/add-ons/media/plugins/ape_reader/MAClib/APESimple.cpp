@@ -8,19 +8,14 @@
 #include IO_HEADER_FILE
 #include "MACProgressHelper.h"
 #include "GlobalFunctions.h"
-#include "MD5.h"
 #include "CharacterHelper.h"
+#include "MD5.h"
 
 #define UNMAC_DECODER_OUTPUT_NONE       0
 #define UNMAC_DECODER_OUTPUT_WAV        1
 #define UNMAC_DECODER_OUTPUT_APE        2
 
 #define BLOCKS_PER_DECODE               9216
-
-#if __GNUC__ != 2
-using std::min;
-using std::max;
-#endif
 
 int DecompressCore(const str_utf16 * pInputFilename, const str_utf16 * pOutputFilename, int nOutputMode, int nCompressionLevel, int * pPercentageDone, APE_PROGRESS_CALLBACK ProgressCallback, int * pKillFlag);
 

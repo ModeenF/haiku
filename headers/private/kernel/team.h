@@ -50,6 +50,7 @@ void team_set_job_control_state(Team* team, job_control_state newState,
 void team_set_controlling_tty(int32 index);
 int32 team_get_controlling_tty();
 status_t team_set_foreground_process_group(int32 ttyIndex, pid_t processGroup);
+uid_t team_geteuid(team_id id);
 
 status_t start_watching_team(team_id team, void (*hook)(team_id, void *),
 			void *data);
@@ -69,7 +70,8 @@ thread_id _user_load_image(const char* const* flatArgs, size_t flatArgsSize,
 status_t _user_wait_for_team(team_id id, status_t *_returnCode);
 void _user_exit_team(status_t returnValue);
 status_t _user_kill_team(thread_id thread);
-pid_t _user_wait_for_child(thread_id child, uint32 flags, siginfo_t* info);
+pid_t _user_wait_for_child(thread_id child, uint32 flags, siginfo_t* info,
+			team_usage_info* usageInfo);
 status_t _user_exec(const char *path, const char* const* flatArgs,
 			size_t flatArgsSize, int32 argCount, int32 envCount, mode_t umask);
 thread_id _user_fork(void);

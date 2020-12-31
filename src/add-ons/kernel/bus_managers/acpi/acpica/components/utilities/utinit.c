@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -110,6 +110,42 @@
  * United States government or any agency thereof requires an export license,
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
+ *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
  *
  *****************************************************************************/
 
@@ -280,7 +316,7 @@ AcpiUtInitGlobals (
 
     /* Global Lock support */
 
-    AcpiGbl_GlobalLockSemaphore         = NULL;
+    AcpiGbl_GlobalLockSemaphore         = -1;
     AcpiGbl_GlobalLockMutex             = NULL;
     AcpiGbl_GlobalLockAcquired          = FALSE;
     AcpiGbl_GlobalLockHandle            = 0;
@@ -298,8 +334,6 @@ AcpiUtInitGlobals (
     AcpiGbl_NextOwnerIdOffset           = 0;
     AcpiGbl_DebuggerConfiguration       = DEBUGGER_THREADING;
     AcpiGbl_OsiMutex                    = NULL;
-    AcpiGbl_RegMethodsExecuted          = FALSE;
-    AcpiGbl_MaxLoopIterations           = 0xFFFF;
 
     /* Hardware oriented */
 
@@ -333,8 +367,6 @@ AcpiUtInitGlobals (
     AcpiGbl_DisplayFinalMemStats        = FALSE;
     AcpiGbl_DisableMemTracking          = FALSE;
 #endif
-
-    ACPI_DEBUGGER_EXEC (AcpiGbl_DbTerminateThreads = FALSE);
 
     return_ACPI_STATUS (AE_OK);
 }
@@ -383,6 +415,20 @@ AcpiUtSubsystemShutdown (
 {
     ACPI_FUNCTION_TRACE (UtSubsystemShutdown);
 
+
+    /* Just exit if subsystem is already shutdown */
+
+    if (AcpiGbl_Shutdown)
+    {
+        ACPI_ERROR ((AE_INFO, "ACPI Subsystem is already terminated"));
+        return_VOID;
+    }
+
+    /* Subsystem appears active, go ahead and shut it down */
+
+    AcpiGbl_Shutdown = TRUE;
+    AcpiGbl_StartupFlags = 0;
+    ACPI_DEBUG_PRINT ((ACPI_DB_INFO, "Shutting down ACPI Subsystem\n"));
 
 #ifndef ACPI_ASL_COMPILER
 

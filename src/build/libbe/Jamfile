@@ -14,6 +14,8 @@ BuildPlatformSharedLibrary libbe_build.so :
 	<libbe_build>storage_kit.o
 	<libbe_build>support_kit.o
 
+	libshared_build.a
+
 	z $(HOST_LIBSUPC++) $(HOST_LIBSTDC++)
 ;
 

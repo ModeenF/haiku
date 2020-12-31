@@ -1,12 +1,12 @@
 SubDir HAIKU_TOP src bin mail_utils ;
 
-SetSubDirSupportedPlatformsBeOSCompatible ;
-
-if $(TARGET_PLATFORM) != haiku {
-	UsePublicHeaders mail ;
-}
-
 UsePrivateHeaders mail ;
+
+StdBinCommands
+	mail.cpp
+	: be mail
+	: mail.rdef
+	;
 
 StdBinCommands
 	mail2mbox.cpp

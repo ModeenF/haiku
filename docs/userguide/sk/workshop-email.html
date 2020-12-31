@@ -1,16 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en-US" xml:lang="en-US">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="sk" xml:lang="sk">
 <head>
 <!-- 
  *
- * Copyright 2011, Haiku, Inc. All rights reserved.
+ * Copyright 2011-2015, Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
  *		Humdinger <humdingerb@gmail.com>
  * Translators:
  *		helix84
+ *		Humdinger
  *		Marek
  *
 -->
@@ -18,6 +19,7 @@
 	<meta http-equiv="Content-Style-Type" content="text/css" />
 	<meta name="robots" content="all" />
 	<title>Workshop: Spravovanie emailov</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<link rel="stylesheet" type="text/css" href="../Haiku-doc.css" />
 </head>
 <body>
@@ -29,23 +31,27 @@
 <div class="nav">
 <div class="inner">
 <ul class="lang-menu">
-<li class="now"><img src="../images/flags/sk.png" alt="" /> Slovenčina</li>
-<li><a href="../fr/workshop-email.html"><img src="../images/flags/fr.png" alt="" />Français</a></li>
-<li><a href="../de/workshop-email.html"><img src="../images/flags/de.png" alt="" />Deutsch</a></li>
-<li><a href="../it/workshop-email.html"><img src="../images/flags/it.png" alt="" />Italiano</a></li>
-<li><a href="../ru/workshop-email.html"><img src="../images/flags/ru.png" alt="" />Русский</a></li>
-<li><a href="../es/workshop-email.html"><img src="../images/flags/es.png" alt="" />Español</a></li>
-<li><a href="../sv_SE/workshop-email.html"><img src="../images/flags/sv_SE.png" alt="" />Svenska</a></li>
-<li><a href="../jp/workshop-email.html"><img src="../images/flags/jp.png" alt="" />日本語</a></li>
-<li><a href="../uk/workshop-email.html"><img src="../images/flags/uk.png" alt="" />Українська</a></li>
-<li><a href="../zh_CN/workshop-email.html"><img src="../images/flags/zh_CN.png" alt="" /> 中文 ［中文］</a></li>
-<li><a href="../pt_PT/workshop-email.html"><img src="../images/flags/pt_PT.png" alt="" />Português</a></li>
-<li><a href="../fi/workshop-email.html"><img src="../images/flags/fi.png" alt="" />Suomi</a></li>
-<li><a href="../hu/workshop-email.html"><img src="../images/flags/hu.png" alt="" />Magyar</a></li>
-<li><a href="../pt_BR/workshop-email.html"><img src="../images/flags/pt_BR.png" alt="" />Português (Brazil)</a></li>
-<li><a href="../ca/workshop-email.html"><img src="../images/flags/ca.png" alt="" />Català</a></li>
-<li><a href="../pl/workshop-email.html"><img src="../images/flags/pl.png" alt="" />Polski</a></li>
-<li><a href="../en/workshop-email.html"><img src="../images/flags/gb.png" alt="" />English</a></li>
+<li class="now">Slovenčina&nbsp;<span class="dropdown-caret">&#9660;</span></li>
+<li><a href="../id/workshop-email.html">Bahasa Indonesia</a></li>
+<li><a href="../ca/workshop-email.html">Català</a></li>
+<li><a href="../de/workshop-email.html">Deutsch</a></li>
+<li><a href="../en/workshop-email.html">English</a></li>
+<li><a href="../es/workshop-email.html">Español</a></li>
+<li><a href="../fr/workshop-email.html">Français</a></li>
+<li><a href="../fur/workshop-email.html">Furlan</a></li>
+<li><a href="../it/workshop-email.html">Italiano</a></li>
+<li><a href="../hu/workshop-email.html">Magyar</a></li>
+<li><a href="../pl/workshop-email.html">Polski</a></li>
+<li><a href="../pt_PT/workshop-email.html">Português</a></li>
+<li><a href="../pt_BR/workshop-email.html">Português (Brazil)</a></li>
+<li><a href="../ro/workshop-email.html">Română</a></li>
+<li><a href="../fi/workshop-email.html">Suomi</a></li>
+<li><a href="../sv_SE/workshop-email.html">Svenska</a></li>
+<li><a href="../tr/workshop-email.html">Türkçe</a></li>
+<li><a href="../zh_CN/workshop-email.html"> 中文 ［中文］</a></li>
+<li><a href="../ru/workshop-email.html">Русский</a></li>
+<li><a href="../uk/workshop-email.html">Українська</a></li>
+<li><a href="../jp/workshop-email.html">日本語</a></li>
 </ul>
 
 <span>
@@ -108,7 +114,7 @@ V každom prípade, snažte sa, aby názov stavu bol krátky. Takto sa vždy zme
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="queries" name="queries">Používanie požiadaviek</a></h2>
 <p>Samozrejme, môžte si vybrať priečinok na uloženie vašej pošty, môžte ho otvoriť a voilà, tu je vaša pošta. Ale časom sa priečinok preplní a zobrazenie všetkého trvá dlhšie a dlhšie ako tisíce súborov a ich atribúty treba analyzovať a zoradiť. Väčšinou sa naozaj nestaráte o dva roky staré e-maily od nigérijských princov a ich problémy s dedičstvom...</p>
-<div class="box-info">Veľa času počas plnenia adresára sa strávi pri vkladaní súborov čítaných z disku do správneho poradia a ich zobrazenie v okne. Ak musíte otvoriť priečinok s veľkým množstvom súborov, môžte si skrátiť čakanie urobením okna Trackera „neviditeľným“ alebo ho minimalizovať alebo prepnúť na inú pracovnú plochu. Sledujte <a href="applications/processcontroller.html">Monitor aktivity</a>, aby ste videli ako to ovplyvňuje využitie CPU. </div>
+<div class="box-info">Veľa času počas plnenia adresára sa strávi pri vkladaní súborov čítaných z disku do správneho poradia a ich zobrazenie v okne. Ak musíte otvoriť priečinok s veľkým množstvom súborov, môžte si skrátiť čakanie urobením okna Trackera „neviditeľným“ alebo ho minimalizovať alebo prepnúť na inú pracovnú plochu. Sledujte <a href="desktop-applets/processcontroller.html">Monitor aktivity</a>, aby ste videli ako to ovplyvňuje využitie CPU. </div>
 <p><a href="queries.html">Požiadavky</a>, na pomoc!</p>
 <p>Použitím požiadaviek môžte zúžiť zobrazenie vašej pošty. V podstate, ikona poštovej schránky v Paneli používa požiadavky.</p>
 <img src="images/workshop-email-images/daemon-in-deskbar.png" alt="daemon-in-deskbar.png" /> 
@@ -141,7 +147,7 @@ Toto nájde všetky príspevky zo zoznamu udalostí  Haiku za posledných 12 hod
 <ul>
 <li><p>Ak neuložíte požiadavku ako „<i>Požiadavka</i>“ ale ako „<i>šablóna Požiadavky</i>“, nezobrazí sa výsledné okno ale okno Nájsť... Takto môžte napríklad, jednoducho vymeniť hľadaný reťazec za predmet alebo odosielateľa alebo zmeniť časový limit „<i>2 dni</i>“ na „<i>3 dni</i>“.</p></li>
 <li><p> Aktivácia, „filtra počas písania“ v <a href="tracker.html#tracker-preferences">Predvoľbách Trackera </a> povoľuje veľmi rýchle filtrovanie výsledkov požiadaviek ešte viac. Často to stačí na žiadanie všetkých mailov za posledné 3 dni a ísť tam so zadávacím filtrovaním. Veľká výhoda je, že nemusíte vyberať, ktorý atribút prehľadávate, všetky zobrazené sú zahrnuté vo vyhľadávaní. </p></li>
-<li><p><a href="http://haikuware.com/directory/view-details/utilities/desktop-accessories/relatedmail">RelatedMail</a> je malá šikovná aplikácia, ktorá požiada o všetku poštu s rovnakým predmetom/odosielateľ/časovým rámcom atď. daných emailov. Niečo ako má robiť menu <span class="menu">Požiadavky</span> v aplikácii <span class="app">Pošta</span>.</p></li>
+<!-- <li _translation_id="4718"><p><a href="http://haikuware.com/directory/view-details/utilities/desktop-accessories/relatedmail">RelatedMail</a> is a nifty little application that will query for all mails with the same subject/sender/time-frame etc. of a dropped email. Kind of what the <span class="menu">Queries</span> menu in the <span class="app">Mail</span> app is supposed to do.</p></li> -->
 </ul>
 
 </div>

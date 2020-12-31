@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -110,6 +110,42 @@
  * United States government or any agency thereof requires an export license,
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
+ *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
  *
  *****************************************************************************/
 
@@ -275,10 +311,11 @@ AcpiExOpcode_2A_2T_1R (
 
         /* Quotient to ReturnDesc1, remainder to ReturnDesc2 */
 
-        Status = AcpiUtDivide (Operand[0]->Integer.Value,
-                               Operand[1]->Integer.Value,
-                               &ReturnDesc1->Integer.Value,
-                               &ReturnDesc2->Integer.Value);
+        Status = AcpiUtDivide (
+            Operand[0]->Integer.Value,
+            Operand[1]->Integer.Value,
+            &ReturnDesc1->Integer.Value,
+            &ReturnDesc2->Integer.Value);
         if (ACPI_FAILURE (Status))
         {
             goto Cleanup;
@@ -289,6 +326,7 @@ AcpiExOpcode_2A_2T_1R (
 
         ACPI_ERROR ((AE_INFO, "Unknown AML opcode 0x%X",
             WalkState->Opcode));
+
         Status = AE_AML_BAD_OPCODE;
         goto Cleanup;
     }
@@ -373,9 +411,10 @@ AcpiExOpcode_2A_1T_1R (
             goto Cleanup;
         }
 
-        ReturnDesc->Integer.Value = AcpiExDoMathOp (WalkState->Opcode,
-                                                Operand[0]->Integer.Value,
-                                                Operand[1]->Integer.Value);
+        ReturnDesc->Integer.Value = AcpiExDoMathOp (
+            WalkState->Opcode,
+            Operand[0]->Integer.Value,
+            Operand[1]->Integer.Value);
         goto StoreResultToTarget;
     }
 
@@ -392,16 +431,17 @@ AcpiExOpcode_2A_1T_1R (
 
         /* ReturnDesc will contain the remainder */
 
-        Status = AcpiUtDivide (Operand[0]->Integer.Value,
-                               Operand[1]->Integer.Value,
-                               NULL,
-                               &ReturnDesc->Integer.Value);
+        Status = AcpiUtDivide (
+            Operand[0]->Integer.Value,
+            Operand[1]->Integer.Value,
+            NULL,
+            &ReturnDesc->Integer.Value);
         break;
 
-    case AML_CONCAT_OP: /* Concatenate (Data1, Data2, Result) */
+    case AML_CONCATENATE_OP: /* Concatenate (Data1, Data2, Result) */
 
-        Status = AcpiExDoConcatenate (Operand[0], Operand[1],
-                    &ReturnDesc, WalkState);
+        Status = AcpiExDoConcatenate (
+            Operand[0], Operand[1], &ReturnDesc, WalkState);
         break;
 
     case AML_TO_STRING_OP: /* ToString (Buffer, Length, Result) (ACPI 2.0) */
@@ -420,9 +460,9 @@ AcpiExOpcode_2A_1T_1R (
          * NOTE: A length of zero is ok, and will create a zero-length, null
          *       terminated string.
          */
-        while ((Length < Operand[0]->Buffer.Length) &&
-               (Length < Operand[1]->Integer.Value) &&
-               (Operand[0]->Buffer.Pointer[Length]))
+        while ((Length < Operand[0]->Buffer.Length) &&  /* Length of input buffer */
+               (Length < Operand[1]->Integer.Value) &&  /* Length operand */
+               (Operand[0]->Buffer.Pointer[Length]))    /* Null terminator */
         {
             Length++;
         }
@@ -444,12 +484,12 @@ AcpiExOpcode_2A_1T_1R (
             Operand[0]->Buffer.Pointer, Length);
         break;
 
-    case AML_CONCAT_RES_OP:
+    case AML_CONCATENATE_TEMPLATE_OP:
 
         /* ConcatenateResTemplate (Buffer, Buffer, Result) (ACPI 2.0) */
 
-        Status = AcpiExConcatTemplate (Operand[0], Operand[1],
-                    &ReturnDesc, WalkState);
+        Status = AcpiExConcatTemplate (
+            Operand[0], Operand[1], &ReturnDesc, WalkState);
         break;
 
     case AML_INDEX_OP:              /* Index (Source Index Result) */
@@ -516,6 +556,8 @@ AcpiExOpcode_2A_1T_1R (
 
         default:
 
+            ACPI_ERROR ((AE_INFO,
+                "Invalid object type: %X", (Operand[0])->Common.Type));
             Status = AE_AML_INTERNAL;
             goto Cleanup;
         }
@@ -632,8 +674,8 @@ AcpiExOpcode_2A_0T_1R (
         /* LogicalOp  (Operand0, Operand1) */
 
         Status = AcpiExDoLogicalNumericOp (WalkState->Opcode,
-                        Operand[0]->Integer.Value, Operand[1]->Integer.Value,
-                        &LogicalResult);
+            Operand[0]->Integer.Value, Operand[1]->Integer.Value,
+            &LogicalResult);
         goto StoreLogicalResult;
     }
     else if (WalkState->OpInfo->Flags & AML_LOGICAL)
@@ -641,7 +683,7 @@ AcpiExOpcode_2A_0T_1R (
         /* LogicalOp  (Operand0, Operand1) */
 
         Status = AcpiExDoLogicalOp (WalkState->Opcode, Operand[0],
-                    Operand[1], &LogicalResult);
+            Operand[1], &LogicalResult);
         goto StoreLogicalResult;
     }
 
@@ -672,6 +714,7 @@ AcpiExOpcode_2A_0T_1R (
 
         ACPI_ERROR ((AE_INFO, "Unknown AML opcode 0x%X",
             WalkState->Opcode));
+
         Status = AE_AML_BAD_OPCODE;
         goto Cleanup;
     }

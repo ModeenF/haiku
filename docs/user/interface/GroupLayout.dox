@@ -13,7 +13,6 @@
 
 /*!
 	\file GroupLayout.h
-	\ingroup interface
 	\ingroup layout
 	\ingroup libbe
 	\brief Describes the BGroupLayout class.
@@ -22,7 +21,6 @@
 
 /*!
 	\class BGroupLayout
-	\ingroup interface
 	\ingroup layout
 	\ingroup libbe
 	\brief The BGroupLayout class is a simple BLayout subclass that
@@ -163,7 +161,7 @@
 		\a weight.
 
 	\since Haiku R1
-*/ 
+*/
 
 
 /*!
@@ -212,6 +210,14 @@
 		float weight)
 	\brief Adds \a item this layout at \a index with a weight of
 	       \a weight.
+
+	\since Haiku R1
+*/
+
+
+/*!
+	\fn static BArchivable* BGroupLayout::Instantiate(BMessage *from)
+	\brief Instantiate the layout from the message \a from.
 
 	\since Haiku R1
 */

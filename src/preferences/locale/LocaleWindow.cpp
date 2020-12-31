@@ -48,7 +48,6 @@ static const uint32 kMsgConventionsSelection = 'csel';
 static const uint32 kMsgDefaults = 'dflt';
 
 static const uint32 kMsgPreferredLanguagesChanged = 'lang';
-static const uint32 kMsgFilesystemTranslationChanged = 'fsys';
 
 
 static int
@@ -71,8 +70,7 @@ LocaleWindow::LocaleWindow()
 		B_QUIT_ON_WINDOW_CLOSE | B_ASYNCHRONOUS_CONTROLS
 			| B_AUTO_UPDATE_SIZE_LIMITS),
 	fInitialConventionsItem(NULL),
-	fDefaultConventionsItem(NULL),
-	fFilesystemTranslationCheckbox(NULL)
+	fDefaultConventionsItem(NULL)
 {
 	SetLayout(new BGroupLayout(B_HORIZONTAL));
 
@@ -111,11 +109,10 @@ LocaleWindow::LocaleWindow()
 			BLanguage currentLanguage(currentID.String());
 			currentLanguage.GetNativeName(name);
 
-			// TODO: the following block fails to detect a couple of language
-			// names as containing glyphs we can't render. Why's that?
-			bool hasGlyphs[name.CountChars()];
-			font.GetHasGlyphs(name.String(), name.CountChars(), hasGlyphs);
-			for (int32 i = 0; i < name.CountChars(); ++i) {
+			int nameLength = name.CountChars();
+			bool hasGlyphs[nameLength];
+			font.GetHasGlyphs(name.String(), nameLength, hasGlyphs);
+			for (int32 i = 0; i < nameLength; ++i) {
 				if (!hasGlyphs[i]) {
 					// replace by name translated to current language
 					currentLanguage.GetName(name);
@@ -131,10 +128,17 @@ LocaleWindow::LocaleWindow()
 				item = new LanguageListItem(name, currentID.String(),
 					currentLanguage.Code());
 			}
+
 			if (currentLanguage.IsCountrySpecific()
 				&& currentToplevelItem != NULL
 				&& currentToplevelItem->Code() == item->Code()) {
 				fLanguageListView->AddUnder(item, currentToplevelItem);
+			} else if (currentLanguage.ScriptCode() != NULL
+				&& currentToplevelItem != NULL
+				&& currentToplevelItem->Code() == item->Code()) {
+				// This is a script for some language, skip it and add the
+				// country-specific variants to the parent directly
+				delete item;
 			} else {
 				// This is a generic language, add it at top-level
 				fLanguageListView->AddItem(item);
@@ -179,8 +183,8 @@ LocaleWindow::LocaleWindow()
 		.SetInsets(B_USE_WINDOW_SPACING, B_USE_WINDOW_SPACING,
 			B_USE_WINDOW_SPACING, B_USE_DEFAULT_SPACING);
 
-	BView* countryTab = new BView(B_TRANSLATE("Formatting"), B_WILL_DRAW);
-	countryTab->SetLayout(new BGroupLayout(B_VERTICAL, 0));
+	BView* formattingTab = new BView(B_TRANSLATE("Formatting"), B_WILL_DRAW);
+	formattingTab->SetLayout(new BGroupLayout(B_VERTICAL, 0));
 
 	fConventionsListView = new LanguageListView("formatting",
 		B_SINGLE_SELECTION_LIST);
@@ -236,12 +240,12 @@ LocaleWindow::LocaleWindow()
 			fInitialConventionsItem));
 	}
 
-	fConventionsListView->SetExplicitMinSize(BSize(20 * be_plain_font->Size(),
+	fConventionsListView->SetExplicitMinSize(BSize(21 * be_plain_font->Size(),
 		B_SIZE_UNSET));
 
 	fFormatView = new FormatSettingsView();
 
-	countryTab->AddChild(BLayoutBuilder::Group<>(B_HORIZONTAL, spacing)
+	formattingTab->AddChild(BLayoutBuilder::Group<>(B_HORIZONTAL, spacing)
 		.AddGroup(B_VERTICAL, 3)
 			.Add(scrollView)
 			.End()
@@ -249,25 +253,8 @@ LocaleWindow::LocaleWindow()
 		.SetInsets(B_USE_WINDOW_SPACING, B_USE_WINDOW_SPACING,
 			B_USE_WINDOW_SPACING, B_USE_DEFAULT_SPACING));
 
-	BView* optionsTab = new BView(B_TRANSLATE("Options"), B_WILL_DRAW);
-	optionsTab->SetLayout(new BGroupLayout(B_VERTICAL, 0));
-
-	fFilesystemTranslationCheckbox = new BCheckBox("filesystemTranslation",
-		B_TRANSLATE("Translate application and folder names in Deskbar and Tracker."),
-		new BMessage(kMsgFilesystemTranslationChanged));
-
-	fFilesystemTranslationCheckbox->SetValue(
-		BLocaleRoster::Default()->IsFilesystemTranslationPreferred());
-
-	optionsTab->AddChild(BLayoutBuilder::Group<>(B_VERTICAL)
-		.Add(fFilesystemTranslationCheckbox)
-		.AddGlue()
-		.SetInsets(B_USE_WINDOW_SPACING, B_USE_WINDOW_SPACING,
-			B_USE_WINDOW_SPACING, B_USE_DEFAULT_SPACING));
-
 	tabView->AddTab(languageTab);
-	tabView->AddTab(countryTab);
-	tabView->AddTab(optionsTab);
+	tabView->AddTab(formattingTab);
 
 	BButton* button
 		= new BButton(B_TRANSLATE("Defaults"), new BMessage(kMsgDefaults));
@@ -344,15 +331,18 @@ LocaleWindow::MessageReceived(BMessage* message)
 			if (message->FindInt32("drop_index", &dropIndex) != B_OK)
 				dropIndex = fPreferredListView->CountItems();
 
-			int32 index = 0;
-			for (int32 i = 0; message->FindInt32("index", i, &index) == B_OK;
-					i++) {
+			int32 i = 0;
+			for (int32 index = 0;
+					message->FindInt32("index", i, &index) == B_OK; i++) {
 				LanguageListItem* item = static_cast<LanguageListItem*>(
 					fLanguageListView->ItemAt(index));
 				_InsertPreferredLanguage(item, dropIndex++);
 			}
+
+			fPreferredListView->Select(dropIndex - i, dropIndex - 1);
 			break;
 		}
+
 		case kMsgLanguageInvoked:
 		{
 			int32 index = 0;
@@ -375,8 +365,8 @@ LocaleWindow::MessageReceived(BMessage* message)
 			if (target == fPreferredListView) {
 				// change ordering
 				int32 dropIndex = message->FindInt32("drop_index");
-				int32 index = 0;
-				for (int32 i = 0;
+				int32 i = 0;
+				for (int32 index = 0;
 						message->FindInt32("index", i, &index) == B_OK;
 						i++, dropIndex++) {
 					if (dropIndex > index) {
@@ -387,6 +377,7 @@ LocaleWindow::MessageReceived(BMessage* message)
 					fPreferredListView->AddItem(item, dropIndex);
 				}
 
+				fPreferredListView->Select(dropIndex - i, dropIndex - 1);
 				_PreferredLanguagesChanged();
 				break;
 			}
@@ -445,8 +436,9 @@ LocaleWindow::MessageReceived(BMessage* message)
 
 		case kMsgFilesystemTranslationChanged:
 		{
+			int32 value = message->FindInt32("be:value");
 			MutableLocaleRoster::Default()->SetFilesystemTranslationPreferred(
-				fFilesystemTranslationCheckbox->Value());
+				value == B_CONTROL_ON);
 
 			BAlert* alert = new BAlert(B_TRANSLATE("Locale"),
 				B_TRANSLATE("Deskbar and Tracker need to be restarted for this "

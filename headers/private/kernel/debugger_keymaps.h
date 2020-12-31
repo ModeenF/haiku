@@ -10,9 +10,15 @@
 #ifndef DEBUGGER_KEYMAPS_H
 #define DEBUGGER_KEYMAPS_H
 
+#define KDL_KEYMAP_DV 1
+#define KDL_KEYMAP_FR 2
+#define KDL_KEYMAP_IT 3
+#define KDL_KEYMAP_SG 4
+#define KDL_KEYMAP_US 5
+
 #include "kernel_debugger_config.h"
 
-#if KDL_KEYMAP == 'dv'
+#if KDL_KEYMAP == KDL_KEYMAP_DV
 
 static const char kUnshiftedKeymap[128] = {
 	0, 27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '[', ']', 8, '\t',
@@ -47,7 +53,7 @@ static const char kAltedKeymap[128] = {
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
-#elif KDL_KEYMAP == 'fr'
+#elif KDL_KEYMAP == KDL_KEYMAP_FR
 
 static const char kUnshiftedKeymap[128] = {
 	0, 27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 0, '+', 8, '\t',
@@ -82,7 +88,7 @@ static const char kAltedKeymap[128] = {
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
-#elif KDL_KEYMAP == 'it'
+#elif KDL_KEYMAP == KDL_KEYMAP_IT
 
 static const char kUnshiftedKeymap[128] = {
 	0, 27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '\'', '^', 8, '\t',
@@ -117,7 +123,7 @@ static const char kAltedKeymap[128] = {
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
-#elif KDL_KEYMAP == 'sg'
+#elif KDL_KEYMAP == KDL_KEYMAP_SG
 
 static const char kUnshiftedKeymap[128] = {
 	0, 27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '\'', '^', 8, '\t',

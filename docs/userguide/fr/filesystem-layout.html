@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en-US" xml:lang="en-US">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="fr" xml:lang="fr">
 <head>
 <!-- 
  *
@@ -19,6 +19,7 @@
 	<meta http-equiv="Content-Style-Type" content="text/css" />
 	<meta name="robots" content="all" />
 	<title>Structure du système de fichiers</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<link rel="stylesheet" type="text/css" href="../Haiku-doc.css" />
 </head>
 <body>
@@ -30,23 +31,27 @@
 <div class="nav">
 <div class="inner">
 <ul class="lang-menu">
-<li class="now"><img src="../images/flags/fr.png" alt="" /> Français</li>
-<li><a href="../de/filesystem-layout.html"><img src="../images/flags/de.png" alt="" />Deutsch</a></li>
-<li><a href="../it/filesystem-layout.html"><img src="../images/flags/it.png" alt="" />Italiano</a></li>
-<li><a href="../ru/filesystem-layout.html"><img src="../images/flags/ru.png" alt="" />Русский</a></li>
-<li><a href="../es/filesystem-layout.html"><img src="../images/flags/es.png" alt="" />Español</a></li>
-<li><a href="../sv_SE/filesystem-layout.html"><img src="../images/flags/sv_SE.png" alt="" />Svenska</a></li>
-<li><a href="../jp/filesystem-layout.html"><img src="../images/flags/jp.png" alt="" />日本語</a></li>
-<li><a href="../uk/filesystem-layout.html"><img src="../images/flags/uk.png" alt="" />Українська</a></li>
-<li><a href="../zh_CN/filesystem-layout.html"><img src="../images/flags/zh_CN.png" alt="" /> 中文 ［中文］</a></li>
-<li><a href="../pt_PT/filesystem-layout.html"><img src="../images/flags/pt_PT.png" alt="" />Português</a></li>
-<li><a href="../fi/filesystem-layout.html"><img src="../images/flags/fi.png" alt="" />Suomi</a></li>
-<li><a href="../sk/filesystem-layout.html"><img src="../images/flags/sk.png" alt="" />Slovenčina</a></li>
-<li><a href="../hu/filesystem-layout.html"><img src="../images/flags/hu.png" alt="" />Magyar</a></li>
-<li><a href="../pt_BR/filesystem-layout.html"><img src="../images/flags/pt_BR.png" alt="" />Português (Brazil)</a></li>
-<li><a href="../ca/filesystem-layout.html"><img src="../images/flags/ca.png" alt="" />Català</a></li>
-<li><a href="../pl/filesystem-layout.html"><img src="../images/flags/pl.png" alt="" />Polski</a></li>
-<li><a href="../en/filesystem-layout.html"><img src="../images/flags/gb.png" alt="" />English</a></li>
+<li class="now">Français&nbsp;<span class="dropdown-caret">&#9660;</span></li>
+<li><a href="../id/filesystem-layout.html">Bahasa Indonesia</a></li>
+<li><a href="../ca/filesystem-layout.html">Català</a></li>
+<li><a href="../de/filesystem-layout.html">Deutsch</a></li>
+<li><a href="../en/filesystem-layout.html">English</a></li>
+<li><a href="../es/filesystem-layout.html">Español</a></li>
+<li><a href="../fur/filesystem-layout.html">Furlan</a></li>
+<li><a href="../it/filesystem-layout.html">Italiano</a></li>
+<li><a href="../hu/filesystem-layout.html">Magyar</a></li>
+<li><a href="../pl/filesystem-layout.html">Polski</a></li>
+<li><a href="../pt_PT/filesystem-layout.html">Português</a></li>
+<li><a href="../pt_BR/filesystem-layout.html">Português (Brazil)</a></li>
+<li><a href="../ro/filesystem-layout.html">Română</a></li>
+<li><a href="../sk/filesystem-layout.html">Slovenčina</a></li>
+<li><a href="../fi/filesystem-layout.html">Suomi</a></li>
+<li><a href="../sv_SE/filesystem-layout.html">Svenska</a></li>
+<li><a href="../tr/filesystem-layout.html">Türkçe</a></li>
+<li><a href="../zh_CN/filesystem-layout.html"> 中文 ［中文］</a></li>
+<li><a href="../ru/filesystem-layout.html">Русский</a></li>
+<li><a href="../uk/filesystem-layout.html">Українська</a></li>
+<li><a href="../jp/filesystem-layout.html">日本語</a></li>
 </ul>
 <span>
  «  <a href="bootloader.html">Chargeur de démarrage</a> 
@@ -83,7 +88,7 @@ Dans tous les cas, vous ne devriez pas altérer son contenu. Chaque mise à jour
 <tr><td><span class="path">/boot/system/settings/</span></td><td> </td><td>Contient les réglages du système.</td></tr>
 <tr><td><span class="path">/boot/system/var/</span></td><td> </td><td>Contient des journaux (logs) comme syslog (important pour la résolution de problèmes) et est l'emplacement par défaut pour changer un fichier.</td></tr>
 </table>
-<p><span class="box-info">Pour plus d'informations sur les dossiers <span class="path">packages</span> et <span class="path">non-packaged</span>, consultez le sujet <a href="applications.html">Installer des applications</a>.</span></p>
+<p><span class="box-info">Pour plus d'informations sur les dossiers <span class="path">packages</span> et <span class="path">non-packaged</span>, consultez le sujet <a href="applications.html">Applications</a>.</span></p>
 
 <h2><a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="home" name="home">Le dossier personnel - <span class="path">/boot/home/</span></a></h2>
@@ -114,7 +119,7 @@ Les fichiers que vous souhaiteriez partager avec les autres utilisateurs dans un
 <td>Ce dossier contient les paramètres de toutes les applications et quelques configurations pour le système. Certaines applications gèrent leurs paramètres dans leurs propres sous-dossiers, d'autres mettre simplement leur fichier de configuration ici.</td></tr>
 </table>
 
-<p><span class="box-info">Pour plus d'informations sur les dossiers <span class="path">packages</span> et <span class="path">non-packaged</span>, consultez le sujet <a href="applications.html">Installer des applications</a>.</span></p>
+<p><span class="box-info">Pour plus d'informations sur les dossiers <span class="path">packages</span> et <span class="path">non-packaged</span>, consultez le sujet <a href="applications.html">Applications</a>.</span></p>
 <p>Voici les sous dossiers les plus intéressants <span class="path">~/config/settings/</span>:</p>
 
 <table summary="layout" border="0" cellspacing="0" cellpadding="4">

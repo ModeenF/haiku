@@ -21,7 +21,6 @@
 #include <Locale.h>
 #include <MenuField.h>
 #include <MenuItem.h>
-#include <MessageFormat.h>
 #include <Mime.h>
 #include <NodeInfo.h>
 #include <Path.h>
@@ -31,6 +30,7 @@
 #include <Screen.h>
 #include <ScrollView.h>
 #include <StatusBar.h>
+#include <StringFormat.h>
 #include <StringView.h>
 #include <TextView.h>
 #include <Volume.h>
@@ -170,10 +170,6 @@ ApplicationTypesWindow::ApplicationTypesWindow(const BMessage& settings)
 	fTypeListView = new MimeTypeListView("listview", "application", true, true);
 	fTypeListView->SetSelectionMessage(new BMessage(kMsgTypeSelected));
 	fTypeListView->SetInvocationMessage(new BMessage(kMsgTypeInvoked));
-	// TODO: this isn't the perfect solution, but otherwise the window contents
-	// will jump chaotically
-	fTypeListView->SetExplicitMinSize(BSize(200, B_SIZE_UNSET));
-	fTypeListView->SetExplicitMaxSize(BSize(250, B_SIZE_UNSET));
 
 	BScrollView* scrollView = new BScrollView("scrollview", fTypeListView,
 		B_FRAME_EVENTS | B_WILL_DRAW, false, true);
@@ -193,6 +189,8 @@ ApplicationTypesWindow::ApplicationTypesWindow(const BMessage& settings)
 	fSignatureView = new StringView(B_TRANSLATE("Signature:"), NULL);
 	fSignatureView->TextView()->SetExplicitAlignment(labelAlignment);
 	fSignatureView->LabelView()->SetExplicitAlignment(labelAlignment);
+	fSignatureView->TextView()->SetExplicitMinSize(BSize(
+		fSignatureView->TextView()->StringWidth("M") * 42, B_SIZE_UNSET));
 	fPathView = new StringView(B_TRANSLATE("Path:"), NULL);
 	fPathView->TextView()->SetExplicitAlignment(labelAlignment);
 	fPathView->LabelView()->SetExplicitAlignment(labelAlignment);
@@ -346,7 +344,7 @@ ApplicationTypesWindow::_RemoveUninstalled()
 
 	progressWindow->PostMessage(B_QUIT_REQUESTED);
 
-	static BMessageFormat format(B_TRANSLATE("{0, plural, "
+	static BStringFormat format(B_TRANSLATE("{0, plural, "
 		"one{# Application type could be removed} "
 		"other{# Application types could be removed}}"));
 	BString message;

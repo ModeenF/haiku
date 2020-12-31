@@ -1,11 +1,12 @@
 /*
- * Copyright 2006-2015, Haiku, Inc. All Rights Reserved.
+ * Copyright 2006-2018, Haiku, Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
  *		Axel Dörfler, axeld@pinc-software.de
  *		Clemens Zeidler, haiku@Clemens-Zeidler.de
  *		Alexander von Gluck, kallisti5@unixzen.com
+ *		Kacper Kasper, kacperkasper@gmail.com
  */
 
 
@@ -21,19 +22,20 @@
 #include <Application.h>
 #include <Bitmap.h>
 #include <Catalog.h>
-#include <ControlLook.h>
 #include <DataIO.h>
 #include <Deskbar.h>
 #include <Dragger.h>
 #include <Drivers.h>
 #include <File.h>
 #include <FindDirectory.h>
+#include <GradientLinear.h>
 #include <MenuItem.h>
 #include <MessageRunner.h>
 #include <Notification.h>
 #include <Path.h>
 #include <PopUpMenu.h>
 #include <Resources.h>
+#include <Roster.h>
 #include <TextView.h>
 #include <TranslationUtils.h>
 
@@ -47,16 +49,14 @@
 #define B_TRANSLATION_CONTEXT "PowerStatus"
 
 
-extern "C" _EXPORT BView *instantiate_deskbar_item(void);
+extern "C" _EXPORT BView *instantiate_deskbar_item(float maxWidth,
+	float maxHeight);
 extern const char* kDeskbarItemName;
 
 const uint32 kMsgToggleLabel = 'tglb';
 const uint32 kMsgToggleTime = 'tgtm';
 const uint32 kMsgToggleStatusIcon = 'tgsi';
 const uint32 kMsgToggleExtInfo = 'texi';
-
-const uint32 kMinIconWidth = 16;
-const uint32 kMinIconHeight = 16;
 
 const int32 kLowBatteryPercentage = 15;
 const int32 kNoteBatteryPercentage = 30;
@@ -66,7 +66,7 @@ PowerStatusView::PowerStatusView(PowerStatusDriverInterface* interface,
 	BRect frame, int32 resizingMode,  int batteryID, bool inDeskbar)
 	:
 	BView(frame, kDeskbarItemName, resizingMode,
-		B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE),
+		B_WILL_DRAW | B_TRANSPARENT_BACKGROUND | B_FULL_UPDATE_ON_RESIZE),
 	fDriverInterface(interface),
 	fBatteryID(batteryID),
 	fInDeskbar(inDeskbar)
@@ -76,8 +76,14 @@ PowerStatusView::PowerStatusView(PowerStatusDriverInterface* interface,
 
 
 PowerStatusView::PowerStatusView(BMessage* archive)
-	: BView(archive)
+	:
+	BView(archive),
+	fInDeskbar(false)
 {
+	app_info info;
+	if (be_app->GetAppInfo(&info) == B_OK
+		&& !strcasecmp(info.signature, kDeskbarSignature))
+		fInDeskbar = true;
 	_Init();
 	FromMessage(archive);
 }
@@ -102,8 +108,6 @@ PowerStatusView::Archive(BMessage* archive, bool deep) const
 void
 PowerStatusView::_Init()
 {
-	SetViewColor(B_TRANSPARENT_COLOR);
-
 	fShowLabel = true;
 	fShowTime = false;
 	fShowStatusIcon = true;
@@ -118,15 +122,13 @@ void
 PowerStatusView::AttachedToWindow()
 {
 	BView::AttachedToWindow();
-	AdoptParentColors();
 
-	float tint = B_NO_TINT;
-	color_which which = ViewUIColor(&tint);
+	SetViewColor(B_TRANSPARENT_COLOR);
 
-	if (which == B_NO_COLOR)
-		SetLowUIColor(B_PANEL_BACKGROUND_COLOR);
+	if (ViewUIColor() != B_NO_COLOR)
+		SetLowUIColor(ViewUIColor());
 	else
-		SetLowUIColor(which, tint);
+		SetLowColor(ViewColor());
 
 	Update();
 }
@@ -148,13 +150,15 @@ PowerStatusView::MessageReceived(BMessage *message)
 
 		default:
 			BView::MessageReceived(message);
+			break;
 	}
 }
 
 
 void
-PowerStatusView::_DrawBattery(BRect rect)
+PowerStatusView::_DrawBattery(BView* view, BRect rect)
 {
+	BRect lightningRect = rect;
 	float quarter = floorf((rect.Height() + 1) / 4);
 	rect.top += quarter;
 	rect.bottom -= quarter;
@@ -163,31 +167,34 @@ PowerStatusView::_DrawBattery(BRect rect)
 
 	float left = rect.left;
 	rect.left += rect.Width() / 11;
+	lightningRect.left = rect.left;
+	lightningRect.InsetBy(0.0f, 5.0f * rect.Height() / 16);
 
-	if (LowColor().Brightness() > 100)
-		SetHighColor(0, 0, 0);
+	if (view->LowColor().Brightness() > 100)
+		view->SetHighColor(0, 0, 0);
 	else
-		SetHighColor(128, 128, 128);
+		view->SetHighColor(128, 128, 128);
 
 	float gap = 1;
 	if (rect.Height() > 8) {
 		gap = ceilf((rect.left - left) / 2);
 
 		// left
-		FillRect(BRect(rect.left, rect.top, rect.left + gap - 1, rect.bottom));
+		view->FillRect(BRect(rect.left, rect.top, rect.left + gap - 1,
+			rect.bottom));
 		// right
-		FillRect(BRect(rect.right - gap + 1, rect.top, rect.right,
+		view->FillRect(BRect(rect.right - gap + 1, rect.top, rect.right,
 			rect.bottom));
 		// top
-		FillRect(BRect(rect.left + gap, rect.top, rect.right - gap,
+		view->FillRect(BRect(rect.left + gap, rect.top, rect.right - gap,
 			rect.top + gap - 1));
 		// bottom
-		FillRect(BRect(rect.left + gap, rect.bottom + 1 - gap,
+		view->FillRect(BRect(rect.left + gap, rect.bottom + 1 - gap,
 			rect.right - gap, rect.bottom));
 	} else
-		StrokeRect(rect);
+		view->StrokeRect(rect);
 
-	FillRect(BRect(left, floorf(rect.top + rect.Height() / 4) + 1,
+	view->FillRect(BRect(left, floorf(rect.top + rect.Height() / 4) + 1,
 		rect.left - 1, floorf(rect.bottom - rect.Height() / 4)));
 
 	int32 percent = fPercent;
@@ -196,141 +203,151 @@ PowerStatusView::_DrawBattery(BRect rect)
 	else if (percent < 0 || !fHasBattery)
 		percent = 0;
 
-	if (percent > 0) {
-		rect.InsetBy(gap, gap);
-		rgb_color base = (rgb_color){84, 84, 84, 255};
-		if (LowColor().Brightness() < 128)
-			base = (rgb_color){172, 172, 172, 255};
+	rect.InsetBy(gap, gap);
 
-		if (be_control_look != NULL) {
-			BRect empty = rect;
-			if (fHasBattery && percent > 0)
-				empty.left += empty.Width() * percent / 100.0;
-
-			be_control_look->DrawButtonBackground(this, empty, empty, base,
-				fHasBattery
-					? BControlLook::B_ACTIVATED : BControlLook::B_DISABLED,
-				fHasBattery && percent > 0
-					? (BControlLook::B_ALL_BORDERS
-						& ~BControlLook::B_LEFT_BORDER)
-					: BControlLook::B_ALL_BORDERS);
+	if (fHasBattery) {
+		// draw unfilled area
+		rgb_color unfilledColor = make_color(0x4c, 0x4c, 0x4c);
+		if (view->LowColor().Brightness() < 128) {
+			unfilledColor.red = 256 - unfilledColor.red;
+			unfilledColor.green = 256 - unfilledColor.green;
+			unfilledColor.blue = 256 - unfilledColor.blue;
 		}
 
-		if (fHasBattery) {
+		BRect unfilled = rect;
+		if (percent > 0)
+			unfilled.left += unfilled.Width() * percent / 100.0;
+
+		view->SetHighColor(unfilledColor);
+		view->FillRect(unfilled);
+
+		if (percent > 0) {
+			// draw filled area
+			rgb_color fillColor;
 			if (percent <= kLowBatteryPercentage)
-				base.set_to(180, 0, 0);
+				fillColor.set_to(180, 0, 0);
 			else if (percent <= kNoteBatteryPercentage)
-				base.set_to(200, 140, 0);
+				fillColor.set_to(200, 140, 0);
 			else
-				base.set_to(20, 180, 0);
+				fillColor.set_to(20, 180, 0);
 
-			rect.right = rect.left + rect.Width() * percent / 100.0;
+			BRect fill = rect;
+			fill.right = fill.left + fill.Width() * percent / 100.0;
 
-			if (be_control_look != NULL) {
-				be_control_look->DrawButtonBackground(this, rect, rect, base,
-					fHasBattery ? 0 : BControlLook::B_DISABLED);
-			} else
-				FillRect(rect);
+			// draw bevel
+			rgb_color bevelLightColor  = tint_color(fillColor, 0.2);
+			rgb_color bevelShadowColor = tint_color(fillColor, 1.08);
+
+			view->BeginLineArray(4);
+			view->AddLine(BPoint(fill.left, fill.bottom),
+				BPoint(fill.left, fill.top), bevelLightColor);
+			view->AddLine(BPoint(fill.left, fill.top),
+				BPoint(fill.right, fill.top), bevelLightColor);
+			view->AddLine(BPoint(fill.right, fill.top),
+				BPoint(fill.right, fill.bottom), bevelShadowColor);
+			view->AddLine(BPoint(fill.left, fill.bottom),
+				BPoint(fill.right, fill.bottom), bevelShadowColor);
+			view->EndLineArray();
+
+			fill.InsetBy(1, 1);
+
+			// draw gradient
+			float topTint = 0.49;
+			float middleTint1 = 0.62;
+			float middleTint2 = 0.76;
+			float bottomTint = 0.90;
+
+			BGradientLinear gradient;
+			gradient.AddColor(tint_color(fillColor, topTint), 0);
+			gradient.AddColor(tint_color(fillColor, middleTint1), 132);
+			gradient.AddColor(tint_color(fillColor, middleTint2), 136);
+			gradient.AddColor(tint_color(fillColor, bottomTint), 255);
+			gradient.SetStart(fill.LeftTop());
+			gradient.SetEnd(fill.LeftBottom());
+
+			view->FillRect(fill, gradient);
 		}
 	}
 
 	if (fOnline) {
 		// When charging, draw a lightning symbol over the battery.
-		SetHighColor(255, 255, 0, 180);
-		SetDrawingMode(B_OP_ALPHA);
-		SetScale(std::min(Bounds().Width(), Bounds().Height()) / 16);
+		view->SetHighColor(255, 255, 0, 180);
+		view->SetDrawingMode(B_OP_ALPHA);
 
 		static const BPoint points[] = {
-			BPoint(2, 13),
-			BPoint(9, 5),
-			BPoint(9, 7),
-			BPoint(16, 2),
-			BPoint(8, 11),
-			BPoint(8, 9)
+			BPoint(3, 14),
+			BPoint(10, 6),
+			BPoint(10, 8),
+			BPoint(17, 3),
+			BPoint(9, 12),
+			BPoint(9, 10)
 		};
-		FillPolygon(points, 6);
+		view->FillPolygon(points, 6, lightningRect);
 
-		SetScale(1);
-		SetDrawingMode(B_OP_OVER);
+		view->SetDrawingMode(B_OP_OVER);
 	}
 
-	SetHighColor(0, 0, 0);
+	view->SetHighColor(0, 0, 0);
 }
 
 
 void
 PowerStatusView::Draw(BRect updateRect)
 {
-	bool drawBackground = Parent() == NULL
-		|| (Parent()->Flags() & B_DRAW_ON_CHILDREN) == 0;
-	if (drawBackground)
-		FillRect(updateRect, B_SOLID_LOW);
+	DrawTo(this, Bounds());
+}
 
-	float aspect = Bounds().Width() / Bounds().Height();
-	bool below = aspect <= 1.0f;
+void
+PowerStatusView::DrawTo(BView* view, BRect rect)
+{
+	bool inside = rect.Width() >= 40.0f && rect.Height() >= 40.0f;
 
 	font_height fontHeight;
-	GetFontHeight(&fontHeight);
+	view->GetFontHeight(&fontHeight);
 	float baseLine = ceilf(fontHeight.ascent);
 
 	char text[64];
 	_SetLabel(text, sizeof(text));
 
 	float textHeight = ceilf(fontHeight.descent + fontHeight.ascent);
-	float textWidth = StringWidth(text);
+	float textWidth = view->StringWidth(text);
 	bool showLabel = fShowLabel && text[0];
 
 	BRect iconRect;
 
 	if (fShowStatusIcon) {
-		iconRect = Bounds();
-		if (showLabel) {
-			if (below)
-				iconRect.bottom -= textHeight + 4;
-			else
-				iconRect.right -= textWidth + 4;
-		}
+		iconRect = rect;
+		if (showLabel && inside == false)
+			iconRect.right -= textWidth + 2;
 
-		// make a square
-		iconRect.bottom = min_c(iconRect.bottom, iconRect.right);
-		iconRect.right = iconRect.bottom;
-
-		if (iconRect.Width() + 1 >= kMinIconWidth
-			&& iconRect.Height() + 1 >= kMinIconHeight) {
-			_DrawBattery(iconRect);
-		} else {
-			// there is not enough space for the icon
-			iconRect.Set(0, 0, -1, -1);
-		}
+		_DrawBattery(view, iconRect);
 	}
 
 	if (showLabel) {
-		BPoint point(0, baseLine);
+		BPoint point(0, baseLine + rect.top);
 
 		if (iconRect.IsValid()) {
-			if (below) {
-				point.x = (iconRect.Width() - textWidth) / 2;
-				point.y += iconRect.Height() + 2;
+			if (inside == true) {
+				point.x = rect.left + (iconRect.Width() - textWidth) / 2 +
+					iconRect.Width() / 20;
+				point.y += (iconRect.Height() - textHeight) / 2;
 			} else {
-				point.x = iconRect.Width() + 2;
+				point.x = rect.left + iconRect.Width() + 2;
 				point.y += (iconRect.Height() - textHeight) / 2;
 			}
 		} else {
-			point.x = (Bounds().Width() - textWidth) / 2;
+			point.x = rect.left + (Bounds().Width() - textWidth) / 2;
 			point.y += (Bounds().Height() - textHeight) / 2;
 		}
 
-		if (drawBackground)
-			SetHighColor(ui_color(B_CONTROL_TEXT_COLOR));
-		else {
-			SetDrawingMode(B_OP_OVER);
-			if (LowColor().Brightness() > 100)
-				SetHighColor(0, 0, 0);
-			else
-				SetHighColor(255, 255, 255);
+		view->SetDrawingMode(B_OP_OVER);
+		if (fInDeskbar == false || inside == true) {
+			view->SetHighUIColor(B_CONTROL_BACKGROUND_COLOR);
+			view->DrawString(text, BPoint(point.x + 1, point.y + 1));
 		}
+		view->SetHighUIColor(B_CONTROL_TEXT_COLOR);
 
-		DrawString(text, point);
+		view->DrawString(text, point);
 	}
 }
 
@@ -357,7 +374,7 @@ PowerStatusView::_SetLabel(char* buffer, size_t bufferLength)
 		snprintf(buffer, bufferLength, "%s%" B_PRId32 "%%%s", open, fPercent,
 			close);
 	} else if (fShowTime && fTimeLeft >= 0) {
-		snprintf(buffer, bufferLength, "%s%" B_PRId32 ":%02" B_PRId32 "%s",
+		snprintf(buffer, bufferLength, "%s%" B_PRIdTIME ":%02" B_PRIdTIME "%s",
 			open, fTimeLeft / 3600, (fTimeLeft / 60) % 60, close);
 	}
 }
@@ -365,13 +382,12 @@ PowerStatusView::_SetLabel(char* buffer, size_t bufferLength)
 
 
 void
-PowerStatusView::Update(bool force)
+PowerStatusView::Update(bool force, bool notify)
 {
 	int32 previousPercent = fPercent;
 	time_t previousTimeLeft = fTimeLeft;
 	bool wasOnline = fOnline;
 	bool hadBattery = fHasBattery;
-
 	_GetBatteryInfo(fBatteryID, &fBatteryInfo);
 	fHasBattery = fBatteryInfo.full_capacity > 0;
 
@@ -395,15 +411,15 @@ PowerStatusView::Update(bool force)
 	}
 
 	if (fInDeskbar) {
-		// make sure the tray icon is large enough
-		float width = fShowStatusIcon ? kMinIconWidth + 2 : 0;
+		// make sure the tray icon is (just) large enough
+		float width = fShowStatusIcon ? Bounds().Height() : 0;
 
 		if (fShowLabel) {
 			char text[64];
 			_SetLabel(text, sizeof(text));
 
 			if (text[0])
-				width += ceilf(StringWidth(text)) + 4;
+				width += ceilf(StringWidth(text)) + 2;
 		} else {
 			char text[256];
 			const char* open = "";
@@ -417,7 +433,7 @@ PowerStatusView::Update(bool force)
 					"%%%s", open, fPercent, close);
 				if (fTimeLeft >= 0) {
 					length += snprintf(text + length, sizeof(text) - length,
-						"\n%" B_PRId32 ":%02" B_PRId32, fTimeLeft / 3600,
+						"\n%" B_PRIdTIME ":%02" B_PRIdTIME, fTimeLeft / 3600,
 						(fTimeLeft / 60) % 60);
 				}
 
@@ -435,13 +451,25 @@ PowerStatusView::Update(bool force)
 				strcpy(text, B_TRANSLATE("no battery"));
 			SetToolTip(text);
 		}
-		if (width == 0) {
+		if (width < 8) {
 			// make sure we're not going away completely
 			width = 8;
 		}
 
-		if (width != Bounds().Width())
+		if (width != Bounds().Width()) {
 			ResizeTo(width, Bounds().Height());
+
+			// inform Deskbar that it needs to realign its replicants
+			BWindow* window = Window();
+			if (window != NULL) {
+				BView* view = window->FindView("Status");
+				if (view != NULL) {
+					BMessenger target((BHandler*)view);
+					BMessage realignReplicants('Algn');
+					target.SendMessage(&realignReplicants);
+				}
+			}
+		}
 	}
 
 	if (force || wasOnline != fOnline
@@ -451,7 +479,7 @@ PowerStatusView::Update(bool force)
 	}
 
 	if (!fOnline && fHasBattery && previousPercent > kLowBatteryPercentage
-			&& fPercent <= kLowBatteryPercentage) {
+			&& fPercent <= kLowBatteryPercentage && notify) {
 		_NotifyLowBattery();
 	}
 }
@@ -567,7 +595,8 @@ PowerStatusView::_NotifyLowBattery()
 PowerStatusReplicant::PowerStatusReplicant(BRect frame, int32 resizingMode,
 	bool inDeskbar)
 	:
-	PowerStatusView(NULL, frame, resizingMode, -1, inDeskbar)
+	PowerStatusView(NULL, frame, resizingMode, -1, inDeskbar),
+	fReplicated(false)
 {
 	_Init();
 	_LoadSettings();
@@ -581,13 +610,14 @@ PowerStatusReplicant::PowerStatusReplicant(BRect frame, int32 resizingMode,
 			B_FOLLOW_RIGHT | B_FOLLOW_BOTTOM);
 		AddChild(dragger);
 	} else
-		Update();
+		Update(false,false);
 }
 
 
 PowerStatusReplicant::PowerStatusReplicant(BMessage* archive)
 	:
-	PowerStatusView(archive)
+	PowerStatusView(archive),
+	fReplicated(true)
 {
 	_Init();
 	_LoadSettings();
@@ -598,6 +628,11 @@ PowerStatusReplicant::~PowerStatusReplicant()
 {
 	if (fMessengerExist)
 		delete fExtWindowMessenger;
+
+	if (fExtendedWindow != NULL && fExtendedWindow->Lock()) {
+			fExtendedWindow->Quit();
+			fExtendedWindow = NULL;
+	}
 
 	fDriverInterface->StopWatching(this);
 	fDriverInterface->Disconnect();
@@ -671,6 +706,7 @@ PowerStatusReplicant::MessageReceived(BMessage *message)
 
 		default:
 			PowerStatusView::MessageReceived(message);
+			break;
 	}
 }
 
@@ -678,35 +714,41 @@ PowerStatusReplicant::MessageReceived(BMessage *message)
 void
 PowerStatusReplicant::MouseDown(BPoint point)
 {
-	BPopUpMenu *menu = new BPopUpMenu(B_EMPTY_STRING, false, false);
-	menu->SetFont(be_plain_font);
+	BMessage* msg = Window()->CurrentMessage();
+	int32 buttons = msg->GetInt32("buttons", 0);
+	if ((buttons & B_TERTIARY_MOUSE_BUTTON) != 0) {
+		BMessenger messenger(this);
+		messenger.SendMessage(kMsgToggleExtInfo);
+	} else {
+		BPopUpMenu* menu = new BPopUpMenu(B_EMPTY_STRING, false, false);
+		menu->SetFont(be_plain_font);
 
-	BMenuItem* item;
-	menu->AddItem(item = new BMenuItem(B_TRANSLATE("Show text label"),
-		new BMessage(kMsgToggleLabel)));
-	if (fShowLabel)
-		item->SetMarked(true);
-	menu->AddItem(item = new BMenuItem(B_TRANSLATE("Show status icon"),
-		new BMessage(kMsgToggleStatusIcon)));
-	if (fShowStatusIcon)
-		item->SetMarked(true);
-	menu->AddItem(new BMenuItem(!fShowTime ? B_TRANSLATE("Show time") :
-	B_TRANSLATE("Show percent"),
-		new BMessage(kMsgToggleTime)));
+		BMenuItem* item;
+		menu->AddItem(item = new BMenuItem(B_TRANSLATE("Show text label"),
+			new BMessage(kMsgToggleLabel)));
+		if (fShowLabel)
+			item->SetMarked(true);
+		menu->AddItem(item = new BMenuItem(B_TRANSLATE("Show status icon"),
+			new BMessage(kMsgToggleStatusIcon)));
+		if (fShowStatusIcon)
+			item->SetMarked(true);
+		menu->AddItem(new BMenuItem(!fShowTime ? B_TRANSLATE("Show time") :
+			B_TRANSLATE("Show percent"), new BMessage(kMsgToggleTime)));
 
-	menu->AddSeparatorItem();
-	menu->AddItem(new BMenuItem(B_TRANSLATE("Battery info" B_UTF8_ELLIPSIS),
-		new BMessage(kMsgToggleExtInfo)));
+		menu->AddSeparatorItem();
+		menu->AddItem(new BMenuItem(B_TRANSLATE("Battery info" B_UTF8_ELLIPSIS),
+			new BMessage(kMsgToggleExtInfo)));
 
-	menu->AddSeparatorItem();
-	menu->AddItem(new BMenuItem(B_TRANSLATE("About" B_UTF8_ELLIPSIS),
-		new BMessage(B_ABOUT_REQUESTED)));
-	menu->AddItem(new BMenuItem(B_TRANSLATE("Quit"),
-		new BMessage(B_QUIT_REQUESTED)));
-	menu->SetTargetForItems(this);
+		menu->AddSeparatorItem();
+		menu->AddItem(new BMenuItem(B_TRANSLATE("About" B_UTF8_ELLIPSIS),
+			new BMessage(B_ABOUT_REQUESTED)));
+		menu->AddItem(new BMenuItem(B_TRANSLATE("Quit"),
+			new BMessage(B_QUIT_REQUESTED)));
+		menu->SetTargetForItems(this);
 
-	ConvertToScreen(&point);
-	menu->Go(point, true, false, true);
+		ConvertToScreen(&point);
+		menu->Go(point, true, false, true);
+	}
 }
 
 
@@ -757,6 +799,12 @@ PowerStatusReplicant::_Quit()
 	if (fInDeskbar) {
 		BDeskbar deskbar;
 		deskbar.RemoveItem(kDeskbarItemName);
+	} else if (fReplicated) {
+		BDragger *dragger = dynamic_cast<BDragger*>(ChildAt(0));
+		if (dragger != NULL) {
+			BMessenger messenger(dragger);
+			messenger.SendMessage(new BMessage(B_TRASH_TARGET));
+		}
 	} else
 		be_app->PostMessage(B_QUIT_REQUESTED);
 }
@@ -838,7 +886,8 @@ PowerStatusReplicant::_OpenExtendedWindow()
 
 
 extern "C" _EXPORT BView*
-instantiate_deskbar_item(void)
+instantiate_deskbar_item(float maxWidth, float maxHeight)
 {
-	return new PowerStatusReplicant(BRect(0, 0, 15, 15), B_FOLLOW_NONE, true);
+	return new PowerStatusReplicant(BRect(0, 0, maxHeight - 1, maxHeight - 1),
+		B_FOLLOW_NONE, true);
 }

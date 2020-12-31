@@ -418,7 +418,7 @@ BrowserWindow::BrowserWindow(BRect frame, SettingsMessage* appSettings,
 	menu->AddItem(new BMenuItem(B_TRANSLATE("Downloads"),
 		new BMessage(SHOW_DOWNLOAD_WINDOW), 'D'));
 	menu->AddItem(new BMenuItem(B_TRANSLATE("Settings"),
-		new BMessage(SHOW_SETTINGS_WINDOW)));
+		new BMessage(SHOW_SETTINGS_WINDOW), ','));
 	menu->AddItem(new BMenuItem(B_TRANSLATE("Cookie manager"),
 		new BMessage(SHOW_COOKIE_WINDOW)));
 	menu->AddItem(new BMenuItem(B_TRANSLATE("Script console"),
@@ -502,12 +502,14 @@ BrowserWindow::BrowserWindow(BRect frame, SettingsMessage* appSettings,
 		BEntry bookmarkBar(&barDir, "Bookmark bar");
 		entry_ref bookmarkBarRef;
 		// TODO we could also check if the folder is empty here.
-		if (bookmarkBar.Exists() && bookmarkBar.GetRef(&bookmarkBarRef) == B_OK) {
+		if (bookmarkBar.Exists() && bookmarkBar.GetRef(&bookmarkBarRef)
+				== B_OK) {
 			fBookmarkBar = new BookmarkBar("Bookmarks", this, &bookmarkBarRef);
 			fBookmarkBarMenuItem->SetEnabled(true);
 		} else
 			fBookmarkBarMenuItem->SetEnabled(false);
-	}
+	} else
+		fBookmarkBarMenuItem->SetEnabled(false);
 
 	// Back, Forward, Stop & Home buttons
 	fBackButton = new BIconButton("Back", NULL, new BMessage(GO_BACK));
@@ -603,10 +605,10 @@ BrowserWindow::BrowserWindow(BRect frame, SettingsMessage* appSettings,
 		)
 	;
 
-	BitmapButton* toggleFullscreenButton = new BitmapButton(kWindowIconBits,
+	BBitmapButton* toggleFullscreenButton = new BBitmapButton(kWindowIconBits,
 		kWindowIconWidth, kWindowIconHeight, kWindowIconFormat,
 		new BMessage(TOGGLE_FULLSCREEN));
-	toggleFullscreenButton->SetBackgroundMode(BitmapButton::MENUBAR_BACKGROUND);
+	toggleFullscreenButton->SetBackgroundMode(BBitmapButton::MENUBAR_BACKGROUND);
 
 	BGroupLayout* menuBarGroup = BLayoutBuilder::Group<>(B_HORIZONTAL, 0.0)
 		.Add(mainMenu)
@@ -707,21 +709,7 @@ BrowserWindow::DispatchMessage(BMessage* message, BHandler* target)
 	if ((message->what == B_KEY_DOWN || message->what == B_UNMAPPED_KEY_DOWN)
 		&& message->FindString("bytes", &bytes) == B_OK
 		&& message->FindInt32("modifiers", &modifierKeys) == B_OK) {
-		modifierKeys = (int32)((uint32)modifierKeys & kModifiers);
-		BTextView* textView = dynamic_cast<BTextView*>(CurrentFocus());
-		if (bytes[0] == B_LEFT_ARROW && modifierKeys == B_COMMAND_KEY) {
-			if (textView != NULL)
-				textView->KeyDown(bytes, modifierKeys);
-			else
-				PostMessage(GO_BACK);
-			return;
-		} else if (bytes[0] == B_RIGHT_ARROW && modifierKeys == B_COMMAND_KEY) {
-			if (textView != NULL)
-				textView->KeyDown(bytes, modifierKeys);
-			else
-				PostMessage(GO_FORWARD);
-			return;
-		} else if (bytes[0] == B_FUNCTION_KEY) {
+		if (bytes[0] == B_FUNCTION_KEY) {
 			// Some function key Firefox compatibility
 			int32 key;
 			if (message->FindInt32("key", &key) == B_OK) {
@@ -729,9 +717,11 @@ BrowserWindow::DispatchMessage(BMessage* message, BHandler* target)
 					case B_F5_KEY:
 						PostMessage(RELOAD);
 						break;
+
 					case B_F11_KEY:
 						PostMessage(TOGGLE_FULLSCREEN);
 						break;
+
 					default:
 						break;
 				}
@@ -745,6 +735,10 @@ BrowserWindow::DispatchMessage(BMessage* message, BHandler* target)
 				// Do it in such a way that the user sees the Go-button go down.
 				_InvokeButtonVisibly(fURLInputGroup->GoButton());
 				return;
+			} else if (bytes[0] == B_ESCAPE) {
+				// Replace edited text with the current URL.
+				fURLInputGroup->LockURLInput(false);
+				fURLInputGroup->SetText(CurrentWebView()->MainFrameURL());
 			}
 		} else if (target == fFindTextControl->TextView()) {
 			// Handle B_RETURN when the find text control has focus.
@@ -854,8 +848,8 @@ BrowserWindow::MessageReceived(BMessage* message)
 			entry_ref ref;
 			BString name;
 
-			if (message->FindRef("directory", &ref) == B_OK &&
-				message->FindString("name", &name) == B_OK) {
+			if (message->FindRef("directory", &ref) == B_OK
+				&& message->FindString("name", &name) == B_OK) {
 				BDirectory dir(&ref);
 				BFile output(&dir, name,
 					B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
@@ -1318,6 +1312,10 @@ BrowserWindow::SetCurrentWebView(BWebView* webView)
 		} else
 			webView->MakeFocus(true);
 
+		bool state = fURLInputGroup->IsURLInputLocked();
+		fURLInputGroup->LockURLInput(false);
+			// Unlock it so the following code can update the URL
+
 		if (userData != NULL) {
 			fURLInputGroup->SetPageIcon(userData->PageIcon());
 			if (userData->URLInputContents().Length())
@@ -1333,6 +1331,9 @@ BrowserWindow::SetCurrentWebView(BWebView* webView)
 			fURLInputGroup->SetPageIcon(NULL);
 			fURLInputGroup->SetText(webView->MainFrameURL());
 		}
+
+		fURLInputGroup->LockURLInput(state);
+			// Restore the state
 
 		// Trigger update of the interface to the new page, by requesting
 		// to resend all notifications.
@@ -1478,8 +1479,15 @@ BrowserWindow::CloseWindowRequested(BWebView* view)
 void
 BrowserWindow::LoadNegotiating(const BString& url, BWebView* view)
 {
-	if (view != CurrentWebView())
-		return;
+	if (view != CurrentWebView()) {
+		// Update the userData contents instead so the user sees
+		// the correct URL when they switch back to that tab.
+		PageUserData* userData = static_cast<PageUserData*>(
+			view->GetUserData());
+		if (userData != NULL && userData->URLInputContents().Length() == 0) {
+			userData->SetURLInputContents(url);
+		}
+	}
 
 	fURLInputGroup->SetText(url.String());
 
@@ -1733,6 +1741,8 @@ void
 BrowserWindow::UpdateGlobalHistory(const BString& url)
 {
 	BrowsingHistory::DefaultInstance()->AddItem(BrowsingHistoryItem(url));
+
+	fURLInputGroup->SetText(CurrentWebView()->MainFrameURL());
 }
 
 
@@ -1788,7 +1798,20 @@ BrowserWindow::AuthenticationChallenge(BString message, BString& inOutUser,
 void
 BrowserWindow::_UpdateTitle(const BString& title)
 {
-	BString windowTitle = title;
+	BString windowTitle;
+
+	if (title.Length() > 0)
+		windowTitle = title;
+	else {
+		BWebView* webView = CurrentWebView();
+		if (webView != NULL) {
+			BString url = webView->MainFrameURL();
+			int32 leafPos = url.FindLast('/');
+			url.Remove(0, leafPos + 1);
+			windowTitle = url;
+		}
+	}
+
 	if (windowTitle.Length() > 0)
 		windowTitle << " - ";
 	windowTitle << kApplicationName;
@@ -2417,7 +2440,8 @@ BrowserWindow::_NewTabURL(bool isNewWindow) const
 			url = fStartPageURL;
 			break;
 		case OpenSearchPage:
-			url.SetToFormat(fSearchPageURL, "");
+			url.SetTo(fSearchPageURL);
+			url.ReplaceAll("%s", "");
 			break;
 		case CloneCurrentPage:
 			if (CurrentWebView() != NULL)
@@ -2444,7 +2468,7 @@ BrowserWindow::_EncodeURIComponent(const BString& search)
 	for (int32 i = 0; i < result.Length(); i++) {
 		if (escCharList.FindFirst(result[i]) != B_ERROR) {
 			sprintf(hexcode, "%02X", (unsigned int)result[i]);
-			result[i] = '%';
+			result.SetByteAt(i, '%');
 			result.Insert(hexcode, i + 1);
 			i += 2;
 		}
@@ -2457,7 +2481,7 @@ BrowserWindow::_EncodeURIComponent(const BString& search)
 void
 BrowserWindow::_VisitURL(const BString& url)
 {
-	//fURLInputGroup->TextView()->SetText(url);
+	// fURLInputGroup->TextView()->SetText(url);
 	CurrentWebView()->LoadURL(url.String());
 }
 
@@ -2465,9 +2489,24 @@ BrowserWindow::_VisitURL(const BString& url)
 void
 BrowserWindow::_VisitSearchEngine(const BString& search)
 {
-	BString engine = "";
-	engine.SetToFormat(fSearchPageURL, _EncodeURIComponent(search).String());
+	BString searchQuery = search;
 
+	BString searchPrefix;
+	search.CopyCharsInto(searchPrefix, 0, 2);
+	
+	// Default search URL
+	BString engine(fSearchPageURL);
+
+	// Check if the string starts with one of the search engine shortcuts
+	for (int i = 0; kSearchEngines[i].url != NULL; i++) {
+		if (kSearchEngines[i].shortcut == searchPrefix) {
+			engine = kSearchEngines[i].url;
+			searchQuery.Remove(0, 2);
+			break;
+		}
+	}
+	
+	engine.ReplaceAll("%s", _EncodeURIComponent(searchQuery));
 	_VisitURL(engine);
 }
 
@@ -2658,6 +2697,13 @@ BrowserWindow::_HandlePageSourceResult(const BMessage* message)
 void
 BrowserWindow::_ShowBookmarkBar(bool show)
 {
+	// It is not allowed to show the bookmark bar when it is empty
+	if (show && (fBookmarkBar == NULL || fBookmarkBar->CountItems() <= 1))
+	{
+		fBookmarkBarMenuItem->SetMarked(false);
+		return;
+	}
+
 	fBookmarkBarMenuItem->SetMarked(show);
 
 	if (fBookmarkBar == NULL || fBookmarkBar->IsHidden() != show)

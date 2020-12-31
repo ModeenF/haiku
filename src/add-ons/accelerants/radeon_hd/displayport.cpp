@@ -13,6 +13,7 @@
 #include <Debug.h>
 
 #include "accelerant_protos.h"
+#include "atombios-obsolete.h"
 #include "connector.h"
 #include "mode.h"
 #include "edid.h"
@@ -115,6 +116,7 @@ dp_aux_transaction(uint32 connectorIndex, dp_aux_msg* message)
 	switch(message->request & ~DP_AUX_I2C_MOT) {
 		case DP_AUX_NATIVE_WRITE:
 		case DP_AUX_I2C_WRITE:
+		case DP_AUX_I2C_WRITE_STATUS_UPDATE:
 			transactionSize += message->size;
 			break;
 	}
@@ -143,6 +145,7 @@ dp_aux_transaction(uint32 connectorIndex, dp_aux_msg* message)
 		switch(message->request & ~DP_AUX_I2C_MOT) {
 			case DP_AUX_NATIVE_WRITE:
 			case DP_AUX_I2C_WRITE:
+			case DP_AUX_I2C_WRITE_STATUS_UPDATE:
 				memcpy(auxMessage + 4, message->buffer, message->size);
 				result = dp_aux_speak(connectorIndex, auxMessage,
 					transactionSize, NULL, 0, delay, &ack);
@@ -326,11 +329,30 @@ dp_aux_set_i2c_byte(uint32 connectorIndex, uint16 address, uint8* data,
 
 
 uint32
+dp_get_encoder_config(uint32 connectorIndex)
+{
+	uint32 result = 0;
+
+	uint32 digEncoderID = encoder_pick_dig(connectorIndex);
+	if (digEncoderID)
+		result |= ATOM_DP_CONFIG_DIG2_ENCODER;
+	else
+		result |= ATOM_DP_CONFIG_DIG1_ENCODER;
+
+	bool linkB = gConnector[connectorIndex]->encoder.linkEnumeration
+		== GRAPH_OBJECT_ENUM_ID2 ? true : false;
+	if (linkB)
+		result |= ATOM_DP_CONFIG_LINK_B;
+	else
+		result |= ATOM_DP_CONFIG_LINK_A;
+
+	return result;
+}
+
+
+uint32
 dp_get_lane_count(uint32 connectorIndex, display_mode* mode)
 {
-	// Radeon specific
-	dp_info* dpInfo = &gConnector[connectorIndex]->dpInfo;
-
 	size_t pixelChunk;
 	size_t pixelsPerChunk;
 	status_t result = dp_get_pixel_size_for((color_space)mode->space,
@@ -343,8 +365,10 @@ dp_get_lane_count(uint32 connectorIndex, display_mode* mode)
 
 	uint32 bitsPerPixel = (pixelChunk / pixelsPerChunk) * 8;
 
-	uint32 dpMaxLinkRate = dp_get_link_rate_max(dpInfo);
-	uint32 dpMaxLaneCount = dp_get_lane_count_max(dpInfo);
+	uint32 dpMaxLinkRate
+		= dp_decode_link_rate(dpcd_reg_read(connectorIndex, DP_MAX_LINK_RATE));
+	uint32 dpMaxLaneCount = dpcd_reg_read(connectorIndex,
+			DP_MAX_LANE_COUNT) & DP_MAX_LANE_COUNT_MASK;
 
 	uint32 lane;
 	// don't go below 2 lanes or display is jittery
@@ -368,9 +392,6 @@ dp_get_link_rate(uint32 connectorIndex, display_mode* mode)
 	if (encoderID == ENCODER_OBJECT_ID_NUTMEG)
 		return 270000;
 
-	dp_info* dpInfo = &gConnector[connectorIndex]->dpInfo;
-	uint32 laneCount = dp_get_lane_count(connectorIndex, mode);
-
 	size_t pixelChunk;
 	size_t pixelsPerChunk;
 	status_t result = dp_get_pixel_size_for((color_space)mode->space,
@@ -382,6 +403,7 @@ dp_get_link_rate(uint32 connectorIndex, display_mode* mode)
 	}
 
 	uint32 bitsPerPixel = (pixelChunk / pixelsPerChunk) * 8;
+	uint32 laneCount = dp_get_lane_count(connectorIndex, mode);
 
 	uint32 maxPixelClock
 		= dp_get_pixel_clock_max(162000, laneCount, bitsPerPixel);
@@ -401,7 +423,34 @@ dp_get_link_rate(uint32 connectorIndex, display_mode* mode)
 	}
 	#endif
 
-	return dp_get_link_rate_max(dpInfo);
+	return dp_decode_link_rate(dpcd_reg_read(connectorIndex, DP_MAX_LINK_RATE));
+}
+
+
+static uint8
+dp_encoder_service(int action, int linkRate, uint8 lane, uint8 config)
+{
+	DP_ENCODER_SERVICE_PARAMETERS args;
+	int index = GetIndexIntoMasterTable(COMMAND, DPEncoderService);
+
+	memset(&args, 0, sizeof(args));
+	args.ucLinkClock = linkRate / 10;
+	args.ucConfig = config;
+	args.ucAction = action;
+	args.ucLaneNum = lane;
+	args.ucStatus = 0;
+
+	atom_execute_table(gAtomContext, index, (uint32*)&args);
+	return args.ucStatus;
+}
+
+
+uint8
+dp_get_sink_type(uint32 connectorIndex)
+{
+	dp_info* dpInfo = &gConnector[connectorIndex]->dpInfo;
+	return dp_encoder_service(ATOM_DP_ACTION_GET_SINK_TYPE, 0, 0,
+		dpInfo->auxPin);
 }
 
 
@@ -412,46 +461,18 @@ dp_setup_connectors()
 
 	for (uint32 index = 0; index < ATOM_MAX_SUPPORTED_DEVICE; index++) {
 		dp_info* dpInfo = &gConnector[index]->dpInfo;
-		dpInfo->valid = false;
+		// Validate connector is actually display port
 		if (gConnector[index]->valid == false
 			|| connector_is_dp(index) == false) {
-			dpInfo->config[0] = 0;
+			dpInfo->valid = false;
 			continue;
 		}
 
-		TRACE("%s: found dp connector on index %" B_PRIu32 "\n",
-			__func__, index);
+		// Configure communication pins.
 		uint32 i2cPinIndex = gConnector[index]->i2cPinIndex;
-
 		uint32 auxPin = gGPIOInfo[i2cPinIndex]->hwPin;
 		dpInfo->auxPin = auxPin;
-
-		dp_aux_msg message;
-		memset(&message, 0, sizeof(message));
-
-		message.address = DP_DPCD_REV;
-		message.request = DP_AUX_NATIVE_READ;
-			// TODO: validate
-		message.size = DP_DPCD_SIZE;
-		message.buffer = dpInfo->config;
-
-		status_t result = dp_aux_transaction(index, &message);
-
-		if (result == B_OK) {
-			dpInfo->valid = true;
-			TRACE("%s: connector(%" B_PRIu32 "): successful read of DPCD\n",
-				__func__, index);
-		} else {
-			TRACE("%s: connector(%" B_PRIu32 "): failed read of DPCD\n",
-				__func__, index);
-		}
-		/*
-		TRACE("%s: DPCD is ", __func__);
-		uint32 position;
-		for (position = 0; position < message.size; position++)
-			_sPrintf("%02x ", message.buffer + position);
-		_sPrintf("\n");
-		*/
+		dpInfo->valid = true;
 	}
 }
 
@@ -512,17 +533,21 @@ dp_clock_equalization_ok(dp_info* dp)
 	uint8 laneAlignment
 		= dp->linkStatus[DP_LANE_ALIGN - DP_LANE_STATUS_0_1];
 
-	if ((laneAlignment & DP_LANE_ALIGN_DONE) == 0)
+	if ((laneAlignment & DP_LANE_ALIGN_DONE) == 0) {
+		TRACE("%s: false. Lane alignment incomplete.\n", __func__);
 		return false;
+	}
 
 	int lane;
 	for (lane = 0; lane < dp->laneCount; lane++) {
 		uint8 laneStatus = dp_get_lane_status(dp, lane);
 		if ((laneStatus & DP_LANE_STATUS_EQUALIZED_A)
 			!= DP_LANE_STATUS_EQUALIZED_A) {
+			TRACE("%s: false. Lanes not yet equalized.\n", __func__);
 			return false;
 		}
 	}
+	TRACE("%s: true. Lanes equalized.\n", __func__);
 	return true;
 }
 
@@ -616,54 +641,17 @@ dp_get_adjust_train(dp_info* dp)
 }
 
 
-static uint8
-dp_encoder_service(uint32 connectorIndex, int action, int linkRate,
-	uint8 lane)
-{
-	DP_ENCODER_SERVICE_PARAMETERS args;
-	int index = GetIndexIntoMasterTable(COMMAND, DPEncoderService);
-
-	memset(&args, 0, sizeof(args));
-	args.ucLinkClock = linkRate;
-	args.ucAction = action;
-	args.ucLaneNum = lane;
-	args.ucConfig = 0;
-	args.ucStatus = 0;
-
-	// We really can't do ATOM_DP_ACTION_GET_SINK_TYPE with the
-	// way I designed this below. Not used though.
-
-	// Calculate encoder_id config
-	if (encoder_pick_dig(connectorIndex))
-		args.ucConfig |= ATOM_DP_CONFIG_DIG2_ENCODER;
-	else
-		args.ucConfig |= ATOM_DP_CONFIG_DIG1_ENCODER;
-
-	if (gConnector[connectorIndex]->encoder.linkEnumeration
-			== GRAPH_OBJECT_ENUM_ID2) {
-		args.ucConfig |= ATOM_DP_CONFIG_LINK_B;
-	} else
-		args.ucConfig |= ATOM_DP_CONFIG_LINK_A;
-
-	atom_execute_table(gAtomContext, index, (uint32*)&args);
-
-	return args.ucStatus;
-}
-
-
 static void
 dp_set_tp(uint32 connectorIndex, int trainingPattern)
 {
 	TRACE("%s\n", __func__);
-
 	radeon_shared_info &info = *gInfo->shared_info;
-	dp_info* dp = &gConnector[connectorIndex]->dpInfo;
+
 	pll_info* pll = &gConnector[connectorIndex]->encoder.pll;
 
 	int rawTrainingPattern = 0;
 
-	/* set training pattern on the source */
-	if (info.dceMajor >= 4 || !dp->trainingUseEncoder) {
+	if (info.dceMajor >= 4) {
 		TRACE("%s: Training with encoder...\n", __func__);
 		switch (trainingPattern) {
 			case DP_TRAIN_PATTERN_1:
@@ -678,7 +666,6 @@ dp_set_tp(uint32 connectorIndex, int trainingPattern)
 		}
 		encoder_dig_setup(connectorIndex, pll->pixelClock, rawTrainingPattern);
 	} else {
-		TRACE("%s: Training with encoder service...\n", __func__);
 		switch (trainingPattern) {
 			case DP_TRAIN_PATTERN_1:
 				rawTrainingPattern = 0;
@@ -687,8 +674,9 @@ dp_set_tp(uint32 connectorIndex, int trainingPattern)
 				rawTrainingPattern = 1;
 				break;
 		}
-		dp_encoder_service(connectorIndex, ATOM_DP_ACTION_TRAINING_PATTERN_SEL,
-			dp->linkRate, rawTrainingPattern);
+		uint32 encoderConfig = dp_get_encoder_config(connectorIndex);
+		dp_encoder_service(ATOM_DP_ACTION_TRAINING_PATTERN_SEL, pll->pixelClock,
+			rawTrainingPattern, encoderConfig);
 	}
 
 	// Enable training pattern on the sink
@@ -699,7 +687,7 @@ dp_set_tp(uint32 connectorIndex, int trainingPattern)
 status_t
 dp_link_train_cr(uint32 connectorIndex)
 {
-	TRACE("%s\n", __func__);
+	TRACE("%s: connector %" B_PRIu32 "\n", __func__, connectorIndex);
 
 	dp_info* dp = &gConnector[connectorIndex]->dpInfo;
 
@@ -771,7 +759,7 @@ dp_link_train_cr(uint32 connectorIndex)
 status_t
 dp_link_train_ce(uint32 connectorIndex, bool tp3Support)
 {
-	TRACE("%s\n", __func__);
+	TRACE("%s: connector %" B_PRIu32 "\n", __func__, connectorIndex);
 
 	dp_info* dp = &gConnector[connectorIndex]->dpInfo;
 
@@ -839,34 +827,7 @@ dp_link_train(uint8 crtcID)
 		return B_ERROR;
 	}
 
-	int index = GetIndexIntoMasterTable(COMMAND, DPEncoderService);
-	// Table version
-	uint8 tableMajor;
-	uint8 tableMinor;
-
-	dp->trainingUseEncoder = true;
-	if (atom_parse_cmd_header(gAtomContext, index, &tableMajor, &tableMinor)
-		== B_OK) {
-		if (tableMinor > 1) {
-			// The AtomBIOS DPEncoderService greater then 1.1 can't program the
-			// training pattern properly.
-			dp->trainingUseEncoder = false;
-		}
-	}
-
-	uint32 linkEnumeration
-		= gConnector[connectorIndex]->encoder.linkEnumeration;
-
-	uint32 dpEncoderID = 0;
-	if (encoder_pick_dig(connectorIndex) > 0)
-		dpEncoderID |= ATOM_DP_CONFIG_DIG2_ENCODER;
-	else
-		dpEncoderID |= ATOM_DP_CONFIG_DIG1_ENCODER;
-	if (linkEnumeration == GRAPH_OBJECT_ENUM_ID2)
-		dpEncoderID |= ATOM_DP_CONFIG_LINK_B;
-	else
-		dpEncoderID |= ATOM_DP_CONFIG_LINK_A;
-
+	dp->revision = dpcd_reg_read(connectorIndex, DP_DPCD_REV);
 	dp->trainingReadInterval
 		= dpcd_reg_read(connectorIndex, DP_TRAINING_AUX_RD_INTERVAL);
 
@@ -880,11 +841,11 @@ dp_link_train(uint8 crtcID)
 	// *** DisplayPort link training initialization
 
 	// Power up the DP sink
-	if (dp->config[0] >= DP_DPCD_REV_11)
+	if (dp->revision >= DP_DPCD_REV_11)
 		dpcd_reg_write(connectorIndex, DP_SET_POWER, DP_SET_POWER_D0);
 
 	// Possibly enable downspread on the sink
-	if ((dp->config[3] & 0x1) != 0) {
+	if ((dpcd_reg_read(connectorIndex, DP_MAX_DOWNSPREAD) & 0x1) != 0) {
 		dpcd_reg_write(connectorIndex, DP_DOWNSPREAD_CTRL,
 			DP_DOWNSPREAD_CTRL_AMP_EN);
 	} else
@@ -893,24 +854,28 @@ dp_link_train(uint8 crtcID)
 	encoder_dig_setup(connectorIndex, mode->timing.pixel_clock,
 		ATOM_ENCODER_CMD_SETUP_PANEL_MODE);
 
-	// TODO: Doesn't this overwrite important dpcd info?
-	sandbox = dp->laneCount;
-	if ((dp->config[0] >= DP_DPCD_REV_11)
-		&& (dp->config[2] & DP_ENHANCED_FRAME_CAP_EN))
+	// Enable enhanced frame if supported
+	sandbox = dpcd_reg_read(connectorIndex, DP_LANE_COUNT);
+	if (dp->revision >= DP_DPCD_REV_11
+		&& (dpcd_reg_read(connectorIndex, DP_MAX_LANE_COUNT)
+			& DP_ENHANCED_FRAME_CAP_EN)) {
 		sandbox |= DP_ENHANCED_FRAME_EN;
+	}
 	dpcd_reg_write(connectorIndex, DP_LANE_COUNT, sandbox);
 
 	// Set the link rate on the DP sink
 	sandbox = dp_encode_link_rate(dp->linkRate);
 	dpcd_reg_write(connectorIndex, DP_LINK_RATE, sandbox);
 
+	uint32 encoderConfig = dp_get_encoder_config(connectorIndex);
+
 	// Start link training on source
-	if (info.dceMajor >= 4 || !dp->trainingUseEncoder) {
+	if (info.dceMajor >= 4) {
 		encoder_dig_setup(connectorIndex, mode->timing.pixel_clock,
 			ATOM_ENCODER_CMD_DP_LINK_TRAINING_START);
 	} else {
-		dp_encoder_service(connectorIndex, ATOM_DP_ACTION_TRAINING_START,
-			dp->linkRate, 0);
+		dp_encoder_service(ATOM_DP_ACTION_TRAINING_START,
+			mode->timing.pixel_clock, 0, encoderConfig);
 	}
 
 	// Disable the training pattern on the sink
@@ -926,12 +891,12 @@ dp_link_train(uint8 crtcID)
 	dpcd_reg_write(connectorIndex, DP_TRAIN, DP_TRAIN_PATTERN_DISABLED);
 
 	// Disable the training pattern on the source
-	if (info.dceMajor >= 4 || !dp->trainingUseEncoder) {
+	if (info.dceMajor >= 4) {
 		encoder_dig_setup(connectorIndex, mode->timing.pixel_clock,
 			ATOM_ENCODER_CMD_DP_LINK_TRAINING_COMPLETE);
 	} else {
-        dp_encoder_service(connectorIndex, ATOM_DP_ACTION_TRAINING_COMPLETE,
-			dp->linkRate, 0);
+		dp_encoder_service(ATOM_DP_ACTION_TRAINING_COMPLETE,
+			mode->timing.pixel_clock, 0, encoderConfig);
 	}
 
 	return B_OK;
@@ -1019,6 +984,8 @@ dp_is_dp12_capable(uint32 connectorIndex)
 
 	uint32 capabilities = gConnector[connectorIndex]->encoder.capabilities;
 
+	// DP_DPCD_REV_12 as well?
+
 	if (info.dceMajor >= 5
 		&& gInfo->dpExternalClock >= 539000
 		&& (capabilities & ATOM_ENCODER_CAP_RECORD_HBR2) != 0) {
@@ -1043,20 +1010,18 @@ debug_dp_info()
 				continue;
 			ERROR(" + DP Config Data\n");
 			ERROR("   - max lane count:          %d\n",
-				dp->config[DP_MAX_LANE_COUNT] & DP_MAX_LANE_COUNT_MASK);
+				dpcd_reg_read(id, DP_MAX_LANE_COUNT) & DP_MAX_LANE_COUNT_MASK);
 			ERROR("   - max link rate:           %d\n",
-				dp->config[DP_MAX_LINK_RATE]);
+				dpcd_reg_read(id, DP_MAX_LINK_RATE));
 			ERROR("   - receiver port count:     %d\n",
-				dp->config[DP_NORP] & DP_NORP_MASK);
+				dpcd_reg_read(id, DP_NORP) & DP_NORP_MASK);
 			ERROR("   - downstream port present: %s\n",
-				(dp->config[DP_DOWNSTREAMPORT] & DP_DOWNSTREAMPORT_EN)
-				? "yes" : "no");
+				dpcd_reg_read(id, DP_DOWNSTREAMPORT) & DP_DOWNSTREAMPORT_EN
+					? "yes" : "no");
 			ERROR("   - downstream port count:   %d\n",
-				dp->config[DP_DOWNSTREAMPORT_COUNT]
-				& DP_DOWNSTREAMPORT_COUNT_MASK);
+				dpcd_reg_read(id, DP_DOWNSTREAMPORT_COUNT)
+					& DP_DOWNSTREAMPORT_COUNT_MASK);
 			ERROR(" + Training\n");
-			ERROR("   - use encoder:             %s\n",
-				dp->trainingUseEncoder ? "true" : "false");
 			ERROR("   - attempts:                %" B_PRIu8 "\n",
 				dp->trainingAttempts);
 			ERROR("   - delay:                   %d\n",

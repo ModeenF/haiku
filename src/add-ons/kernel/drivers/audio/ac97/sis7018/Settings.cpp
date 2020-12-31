@@ -48,7 +48,7 @@ void load_settings()
 	gAddTimeStamp = get_driver_boolean_parameter(handle, "add_timestamp",
 						gAddTimeStamp, true);
 	const char * logFilePath = get_driver_parameter(handle, "logfile",
-						NULL, "/var/log/"DRIVER_NAME".log");
+						NULL, "/var/log/" DRIVER_NAME ".log");
 	if (logFilePath != NULL) {
 		gLogFilePath = strdup(logFilePath);
 	}
@@ -87,7 +87,7 @@ void SiS7018_trace(bool force, const char* func, const char *fmt, ...)
 		bigtime_t time	= system_time();
 		uint32 msec		= time / 1000;
 		uint32 sec		= msec / 1000;
-		sprintf(buf_ptr, "%02ld.%02ld.%03ld:",
+		sprintf(buf_ptr, "%02" B_PRIu32 ".%02" B_PRIu32 ".%03" B_PRIu32 ":",
 				sec / 60, sec % 60, msec % 1000);
 		buf_ptr += strlen(buf_ptr);
 	}

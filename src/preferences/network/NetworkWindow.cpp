@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2015 Haiku Inc. All rights reserved.
+ * Copyright 2004-2019 Haiku Inc., All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  *	Authors:
@@ -25,6 +25,7 @@
 #include <Deskbar.h>
 #include <Directory.h>
 #include <LayoutBuilder.h>
+#include <NetworkDevice.h>
 #include <NetworkInterface.h>
 #include <NetworkNotifications.h>
 #include <NetworkRoster.h>
@@ -90,10 +91,12 @@ public:
 
 NetworkWindow::NetworkWindow()
 	:
-	BWindow(BRect(100, 100, 400, 400), B_TRANSLATE("Network"), B_TITLED_WINDOW,
-		B_ASYNCHRONOUS_CONTROLS | B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS),
+	BWindow(BRect(100, 100, 400, 400), B_TRANSLATE_SYSTEM_NAME("Network"),
+		B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS | B_NOT_ZOOMABLE
+			| B_AUTO_UPDATE_SIZE_LIMITS),
 	fServicesItem(NULL),
 	fDialUpItem(NULL),
+	fVPNItem(NULL),
 	fOtherItem(NULL)
 {
 	// Profiles section
@@ -336,7 +339,15 @@ NetworkWindow::_ScanInterfaces()
 		if ((interface.Flags() & IFF_LOOPBACK) != 0)
 			continue;
 
-		InterfaceListItem* item = new InterfaceListItem(interface.Name());
+		BNetworkDevice device(interface.Name());
+		BNetworkInterfaceType type = B_NETWORK_INTERFACE_TYPE_OTHER;
+
+		if (device.IsWireless())
+			type = B_NETWORK_INTERFACE_TYPE_WIFI;
+		else if (device.IsEthernet())
+			type = B_NETWORK_INTERFACE_TYPE_ETHERNET;
+
+		InterfaceListItem* item = new InterfaceListItem(interface.Name(), type);
 		item->SetExpanded(true);
 
 		fInterfaceItemMap.insert(std::pair<BString, InterfaceListItem*>(
@@ -439,7 +450,6 @@ NetworkWindow::_ScanAddOns()
 		}
 
 		_SortItemsUnder(fServicesItem);
-		_SortItemsUnder(fDialUpItem);
 		_SortItemsUnder(fOtherItem);
 	}
 
@@ -475,11 +485,6 @@ NetworkWindow::_ListItemFor(BNetworkSettingsType type)
 			if (fServicesItem == NULL)
 				fServicesItem = _CreateItem(B_TRANSLATE("Services"));
 			return fServicesItem;
-
-		case B_NETWORK_SETTINGS_TYPE_DIAL_UP:
-			if (fDialUpItem == NULL)
-				fDialUpItem = _CreateItem(B_TRANSLATE("Dial Up"));
-			return fDialUpItem;
 
 		case B_NETWORK_SETTINGS_TYPE_OTHER:
 			if (fOtherItem == NULL)
@@ -596,7 +601,7 @@ NetworkWindow::_ShowReplicant(bool show)
 				B_TRANSLATE("Installing NetworkStatus in Deskbar failed: %s"),
 				strerror(status));
 			BAlert* alert = new BAlert(B_TRANSLATE("launch error"),
-				errorMessage, B_TRANSLATE("Ok"));
+				errorMessage, B_TRANSLATE("OK"));
 			alert->Go(NULL);
 		}
 	} else {

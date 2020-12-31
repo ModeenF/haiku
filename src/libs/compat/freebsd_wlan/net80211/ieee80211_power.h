@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2002-2008 Sam Leffler, Errno Consulting
  * All rights reserved.
  *
@@ -22,10 +24,10 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/net80211/ieee80211_power.h 326272 2017-11-27 15:23:17Z pfg $
  */
-#ifndef _FBSD_COMPAT_NET80211_IEEE80211_POWER_H_
-#define _FBSD_COMPAT_NET80211_IEEE80211_POWER_H_
+#ifndef _NET80211_IEEE80211_POWER_H_
+#define _NET80211_IEEE80211_POWER_H_
 
 struct ieee80211com;
 struct ieee80211vap;
@@ -71,9 +73,17 @@ void	ieee80211_power_latevattach(struct ieee80211vap *);
 struct mbuf *ieee80211_node_psq_dequeue(struct ieee80211_node *ni, int *qlen);
 int	ieee80211_node_psq_drain(struct ieee80211_node *);
 int	ieee80211_node_psq_age(struct ieee80211_node *);
+
+/*
+ * Don't call these directly from the stack; they are vap methods
+ * that should be overridden.
+ */
 int	ieee80211_pwrsave(struct ieee80211_node *, struct mbuf *);
 void	ieee80211_node_pwrsave(struct ieee80211_node *, int enable);
 void	ieee80211_sta_pwrsave(struct ieee80211vap *, int enable);
+void	ieee80211_sta_tim_notify(struct ieee80211vap *vap, int set);
+void	ieee80211_sta_ps_timer_check(struct ieee80211vap *vap);
 
+/* XXX what's this? */
 void	ieee80211_power_poll(struct ieee80211com *);
-#endif /* _FBSD_COMPAT_NET80211_IEEE80211_POWER_H_ */
+#endif /* _NET80211_IEEE80211_POWER_H_ */

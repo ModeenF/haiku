@@ -20,6 +20,7 @@ typedef struct attr_info {
 extern "C" {
 #endif
 
+
 extern ssize_t	fs_read_attr(int fd, const char *attribute, uint32 type,
 					off_t pos, void *buffer, size_t readBytes);
 extern ssize_t	fs_write_attr(int fd, const char *attribute, uint32 type,
@@ -35,6 +36,7 @@ extern int		fs_fopen_attr(int fd, const char *attribute, uint32 type,
 extern int		fs_close_attr(int fd);
 
 extern DIR		*fs_open_attr_dir(const char *path);
+extern DIR		*fs_lopen_attr_dir(const char *path);
 extern DIR		*fs_fopen_attr_dir(int fd);
 extern int		fs_close_attr_dir(DIR *dir);
 extern struct dirent *fs_read_attr_dir(DIR *dir);

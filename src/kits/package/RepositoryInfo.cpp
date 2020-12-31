@@ -1,9 +1,10 @@
 /*
- * Copyright 2011, Haiku, Inc. All Rights Reserved.
+ * Copyright 2011-2020, Haiku, Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
  *		Oliver Tappe <zooey@hirschkaefer.de>
+ *		Andrew Lindesay <apl@lindesay.co.nz>
  */
 
 
@@ -18,6 +19,7 @@
 #include <Message.h>
 
 #include <AutoDeleter.h>
+#include <AutoDeleterDrivers.h>
 #include <package/PackageInfo.h>
 
 
@@ -28,6 +30,8 @@ const uint8 BRepositoryInfo::kDefaultPriority	= 50;
 
 const char* const BRepositoryInfo::kNameField			= "name";
 const char* const BRepositoryInfo::kURLField			= "url";
+const char* const BRepositoryInfo::kIdentifierField		= "identifier";
+const char* const BRepositoryInfo::kBaseURLField		= "baseUrl";
 const char* const BRepositoryInfo::kVendorField			= "vendor";
 const char* const BRepositoryInfo::kSummaryField		= "summary";
 const char* const BRepositoryInfo::kPriorityField		= "priority";
@@ -82,14 +86,21 @@ BRepositoryInfo::Archive(BMessage* data, bool deep) const
 	if (result != B_OK)
 		return result;
 
+	if (!fBaseURL.IsEmpty()) {
+		if ((result = data->AddString(kBaseURLField, fBaseURL)) != B_OK)
+			return result;
+	}
+
 	if ((result = data->AddString(kNameField, fName)) != B_OK)
 		return result;
-	if ((result = data->AddString(kURLField, fOriginalBaseURL)) != B_OK)
+	if ((result = data->AddString(kIdentifierField, fIdentifier)) != B_OK)
+		return result;
+	// "url" is an older, deprecated key for "identifier"
+	if ((result = data->AddString(kURLField, fIdentifier)) != B_OK)
 		return result;
 	if ((result = data->AddString(kVendorField, fVendor)) != B_OK)
 		return result;
-	result = data->AddString(kSummaryField, fSummary);
-	if (result != B_OK)
+	if ((result = data->AddString(kSummaryField, fSummary)) != B_OK)
 		return result;
 	if ((result = data->AddUInt8(kPriorityField, fPriority)) != B_OK)
 		return result;
@@ -139,9 +150,16 @@ BRepositoryInfo::Name() const
 
 
 const BString&
-BRepositoryInfo::OriginalBaseURL() const
+BRepositoryInfo::BaseURL() const
 {
-	return fOriginalBaseURL;
+	return fBaseURL;
+}
+
+
+const BString&
+BRepositoryInfo::Identifier() const
+{
+	return fIdentifier;
 }
 
 
@@ -195,9 +213,16 @@ BRepositoryInfo::SetName(const BString& name)
 
 
 void
-BRepositoryInfo::SetOriginalBaseURL(const BString& url)
+BRepositoryInfo::SetIdentifier(const BString& identifier)
 {
-	fOriginalBaseURL = url;
+	fIdentifier = identifier;
+}
+
+
+void
+BRepositoryInfo::SetBaseURL(const BString& url)
+{
+	fBaseURL = url;
 }
 
 
@@ -257,20 +282,42 @@ BRepositoryInfo::_SetTo(const BMessage* data)
 	status_t result;
 	if ((result = data->FindString(kNameField, &fName)) != B_OK)
 		return result;
-	if ((result = data->FindString(kURLField, &fOriginalBaseURL)) != B_OK)
+	result = data->FindString(kIdentifierField, &fIdentifier);
+	if (result == B_NAME_NOT_FOUND) {
+		result = data->FindString(kURLField, &fIdentifier);
+			// this is a legacy key for the identifier.
+	}
+	if (result != B_OK)
 		return result;
 	if ((result = data->FindString(kVendorField, &fVendor)) != B_OK)
 		return result;
-	result = data->FindString(kSummaryField, &fSummary);
-	if (result != B_OK)
+	if ((result = data->FindString(kSummaryField, &fSummary)) != B_OK)
 		return result;
 	if ((result = data->FindUInt8(kPriorityField, &fPriority)) != B_OK)
 		return result;
-	result = data->FindUInt8(kArchitectureField, (uint8*)&fArchitecture);
-	if (result != B_OK)
+	if ((result = data->FindUInt8(
+			kArchitectureField, (uint8*)&fArchitecture)) != B_OK) {
 		return result;
+	}
 	if (fArchitecture == B_PACKAGE_ARCHITECTURE_ANY)
 		return B_BAD_DATA;
+
+	// this field is optional because earlier versions did not support this
+	// field.
+	status_t baseUrlResult = data->FindString(kBaseURLField, &fBaseURL);
+	switch (baseUrlResult) {
+		case B_NAME_NOT_FOUND:
+			// This is a temporary measure because older versions of the file
+			// format would take the "url" (identifier) field for the "base-url"
+			// Once this transitional period is over this can be removed.
+			if (fIdentifier.StartsWith("http"))
+				fBaseURL = fIdentifier;
+			break;
+		case B_OK:
+			break;
+		default:
+			return baseUrlResult;
+	}
 
 	const char* licenseName;
 	const char* licenseText;
@@ -314,11 +361,14 @@ BRepositoryInfo::_SetTo(const BEntry& entry)
 	void* settingsHandle = parse_driver_settings_string(configString.String());
 	if (settingsHandle == NULL)
 		return B_BAD_DATA;
-	CObjectDeleter<void, status_t> settingsHandleDeleter(settingsHandle,
-		&unload_driver_settings);
+	DriverSettingsUnloader settingsHandleDeleter(settingsHandle);
 
 	const char* name = get_driver_parameter(settingsHandle, "name", NULL, NULL);
-	const char* url = get_driver_parameter(settingsHandle, "url", NULL, NULL);
+	const char* identifier = get_driver_parameter(settingsHandle, "identifier", NULL, NULL);
+	// Also handle the old name if the new one isn't found
+	if (identifier == NULL || *identifier == '\0')
+		identifier = get_driver_parameter(settingsHandle, "url", NULL, NULL);
+	const char* baseUrl = get_driver_parameter(settingsHandle, "baseurl", NULL, NULL);
 	const char* vendor
 		= get_driver_parameter(settingsHandle, "vendor", NULL, NULL);
 	const char* summary
@@ -328,7 +378,8 @@ BRepositoryInfo::_SetTo(const BEntry& entry)
 	const char* architectureString
 		= get_driver_parameter(settingsHandle, "architecture", NULL, NULL);
 
-	if (name == NULL || *name == '\0' || url == NULL || *url == '\0'
+	if (name == NULL || *name == '\0'
+		|| identifier == NULL || *identifier == '\0'
 		|| vendor == NULL || *vendor == '\0'
 		|| summary == NULL || *summary == '\0'
 		|| priorityString == NULL || *priorityString == '\0'
@@ -343,7 +394,8 @@ BRepositoryInfo::_SetTo(const BEntry& entry)
 	}
 
 	fName = name;
-	fOriginalBaseURL = url;
+	fBaseURL = baseUrl;
+	fIdentifier = identifier;
 	fVendor = vendor;
 	fSummary = summary;
 	fPriority = atoi(priorityString);

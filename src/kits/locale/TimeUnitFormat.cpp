@@ -23,6 +23,10 @@
 #include <Locale.h>
 #include <LocaleRoster.h>
 
+
+U_NAMESPACE_USE
+
+
 // maps our unit element to the corresponding ICU unit
 static const TimeUnit::UTimeUnitFields skUnitMap[] = {
 	TimeUnit::UTIMEUNIT_YEAR,
@@ -34,13 +38,26 @@ static const TimeUnit::UTimeUnitFields skUnitMap[] = {
 	TimeUnit::UTIMEUNIT_SECOND,
 };
 
+//maps our unit style to the corresponding ICU unit
+static const UTimeUnitFormatStyle kTimeUnitStyleToICU[] = {
+	UTMUTFMT_ABBREVIATED_STYLE,
+	UTMUTFMT_FULL_STYLE,
+};
 
-BTimeUnitFormat::BTimeUnitFormat()
+
+BTimeUnitFormat::BTimeUnitFormat(const time_unit_style style)
 	: Inherited()
 {
 	Locale icuLocale(fLanguage.Code());
 	UErrorCode icuStatus = U_ZERO_ERROR;
-	fFormatter = new TimeUnitFormat(icuLocale, icuStatus);
+	if (style != B_TIME_UNIT_ABBREVIATED && style != B_TIME_UNIT_FULL) {
+		fFormatter = NULL;
+		fInitStatus = B_BAD_VALUE;
+		return;
+	}
+
+	fFormatter = new TimeUnitFormat(icuLocale, kTimeUnitStyleToICU[style],
+		icuStatus);
 	if (fFormatter == NULL) {
 		fInitStatus = B_NO_MEMORY;
 		return;
@@ -52,12 +69,20 @@ BTimeUnitFormat::BTimeUnitFormat()
 
 
 BTimeUnitFormat::BTimeUnitFormat(const BLanguage& language,
-	const BFormattingConventions& conventions)
+	const BFormattingConventions& conventions,
+	const time_unit_style style)
 	: Inherited(language, conventions)
 {
 	Locale icuLocale(fLanguage.Code());
 	UErrorCode icuStatus = U_ZERO_ERROR;
-	fFormatter = new TimeUnitFormat(icuLocale, icuStatus);
+	if (style != B_TIME_UNIT_ABBREVIATED && style != B_TIME_UNIT_FULL) {
+		fFormatter = NULL;
+		fInitStatus = B_BAD_VALUE;
+		return;
+	}
+
+	fFormatter = new TimeUnitFormat(icuLocale, kTimeUnitStyleToICU[style],
+		icuStatus);
 	if (fFormatter == NULL) {
 		fInitStatus = B_NO_MEMORY;
 		return;
@@ -87,10 +112,9 @@ BTimeUnitFormat::~BTimeUnitFormat()
 
 status_t
 BTimeUnitFormat::Format(BString& buffer, const int32 value,
-	const time_unit_element unit, time_unit_style style) const
+	const time_unit_element unit) const
 {
-	if (unit < 0 || unit > B_TIME_UNIT_LAST
-		|| (style != B_TIME_UNIT_ABBREVIATED && style != B_TIME_UNIT_FULL))
+	if (unit < 0 || unit > B_TIME_UNIT_LAST)
 		return B_BAD_VALUE;
 
 	if (fFormatter == NULL)
@@ -101,8 +125,10 @@ BTimeUnitFormat::Format(BString& buffer, const int32 value,
 		= new TimeUnitAmount((double)value, skUnitMap[unit], icuStatus);
 	if (timeUnitAmount == NULL)
 		return B_NO_MEMORY;
-	if (!U_SUCCESS(icuStatus))
+	if (!U_SUCCESS(icuStatus)) {
+		delete timeUnitAmount;
 		return B_ERROR;
+	}
 
 	Formattable formattable;
 	formattable.adoptObject(timeUnitAmount);

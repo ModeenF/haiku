@@ -7,9 +7,10 @@
 
 
 #include_next <stdlib.h>
+#include <features.h>
 
 
-#ifdef _BSD_SOURCE
+#ifdef _DEFAULT_SOURCE
 
 
 #ifdef __cplusplus
@@ -19,6 +20,8 @@ extern "C" {
 int			daemon(int noChangeDir, int noClose);
 const char	*getprogname(void);
 void		setprogname(const char *programName);
+
+int			mkstemps(char *templat, int slen);
 
 #ifdef __cplusplus
 }

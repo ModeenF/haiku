@@ -8,15 +8,15 @@ SYSTEM_BIN += [ FFilterByBuildFeatures
 	clipboard CortexAddOnHost
 	dpms
 	FirstBootPrompt	fwcontrol@x86
-	installsound
-	mail2mbox mbox2mail mkdos mount_nfs
-	play playfile playsound playwav
-	screenshot setdecor spamdbm
+	<bin>i2c@x86,x86_64 installsound
+	mail mail2mbox mbox2mail media_client mkdos mount_nfs
+	play recover screenshot setcontrollook setdecor spamdbm
 	translate
 	WindowShade
 ] ;
 
 SYSTEM_APPS += [ FFilterByBuildFeatures
+	ActivityMonitor AutoRaise
 	CodyCam
 	GLInfo@mesa
 	HaikuDepot
@@ -24,31 +24,34 @@ SYSTEM_APPS += [ FFilterByBuildFeatures
 	Magnify Mail MediaConverter MediaPlayer MidiPlayer
 	People PoorMan PowerStatus
 	RemoteDesktop
-	Screenshot SerialConnect SoundRecorder
+	Screenshot SerialConnect SoftwareUpdater SoundRecorder
 	TV
-	WebWatch
 ] ;
 
 DESKBAR_APPLICATIONS +=
+	ActivityMonitor
 	CodyCam
 	HaikuDepot
 	Icon-O-Matic Installer
 	Magnify Mail MediaConverter MediaPlayer MidiPlayer
 	People PoorMan
-	SerialConnect SoundRecorder
+	SerialConnect SoftwareUpdater SoundRecorder
 	TV
 ;
 
 DESKBAR_DESKTOP_APPLETS +=
+	AutoRaise
 	LaunchBox
 	PowerStatus
 ;
 
 SYSTEM_PREFERENCES += [ FFilterByBuildFeatures
+	Bluetooth
 	DataTranslations
 	E-mail
 	Media
 	Printers
+	Repositories
 	ScreenSaver Sounds
 ] ;
 
@@ -69,7 +72,10 @@ rule HaikuImageGetSystemLibs
 		[ MultiArchDefaultGristFiles [ FFilterByBuildFeatures
 			libalm.so
 			libbe.so libbsd.so libbnetapi.so
-			libdebug.so libdevice.so
+			libbluetooth.so
+			libdebug.so
+			libdebugger.so@primary
+			libdevice.so
 			libgame.so libglut.so@mesa libgnu.so
 			libmail.so libmedia.so libmidi.so libmidi2.so
 			libnetwork.so
@@ -85,8 +91,6 @@ rule HaikuImageGetPrivateSystemLibs
 {
 	return [ MultiArchDefaultGristFiles [ FFilterByBuildFeatures
 		libalm.so
-		libfluidsynth.so
-		libilmimf.so
 		libpackage-add-on-libsolv.so
 		libroot-addon-icu.so
 	] ] ;
@@ -95,9 +99,15 @@ rule HaikuImageGetPrivateSystemLibs
 
 SYSTEM_SERVERS += [ FFilterByBuildFeatures
 	mail_daemon media_addon_server media_server midi_server
-	nfs4_idmapper_server
+	nfs4_idmapper_server bluetooth_server
 	print_server print_addon_server
 ] ;
+
+# Bluetooth stack + drivers
+SYSTEM_BT_STACK = hci btCoreData ;
+SYSTEM_ADD_ONS_DRIVERS_BT_H2 +=
+	h2generic
+;
 
 SYSTEM_ADD_ONS_ACCELERANTS += [ FFilterByBuildFeatures
 	x86,x86_64 @{
@@ -105,7 +115,7 @@ SYSTEM_ADD_ONS_ACCELERANTS += [ FFilterByBuildFeatures
 		matrox.accelerant
 		nvidia.accelerant
 		radeon.accelerant radeon_hd.accelerant
-		#via.accelerant
+		via.accelerant
 	}@ # x86,x86_64
 	x86 @{
 		3dfx.accelerant ati.accelerant neomagic.accelerant s3.accelerant
@@ -114,7 +124,7 @@ SYSTEM_ADD_ONS_ACCELERANTS += [ FFilterByBuildFeatures
 
 SYSTEM_ADD_ONS_TRANSLATORS += [ FFilterByBuildFeatures
 	BMPTranslator
-	EXRTranslator
+	EXRTranslator@openexr
 	GIFTranslator
 	HVIFTranslator
 	ICOTranslator ICNSTranslator@libicns
@@ -145,6 +155,7 @@ SYSTEM_ADD_ONS_MEDIA += [ FFilterByBuildFeatures
 SYSTEM_ADD_ONS_MEDIA_PLUGINS += [ FFilterByBuildFeatures
 	ape_reader@x86
 	ffmpeg@ffmpeg
+	http_streamer
 	raw_decoder
 ] ;
 
@@ -154,7 +165,6 @@ SYSTEM_ADD_ONS_PRINT += [ FFilterByBuildFeatures
 	Gutenprint@gutenprint
 	PCL5\ Compatible
 	PCL6\ Compatible
-	PDF\ Writer
 	PS\ Compatible
 	Preview
 ] ;
@@ -174,17 +184,17 @@ SYSTEM_ADD_ONS_SCREENSAVERS += [ FFilterByBuildFeatures
 	DebugNow
 	Flurry@mesa
 	GLife@mesa Gravity@mesa
-	$(HAIKU_INCLUDE_TRADEMARKS)Haiku
 	Icons IFS
 	Leaves
 	Message
 	Nebula
+	Shelf
 	Spider
 ] ;
 
 SYSTEM_ADD_ONS_DRIVERS_AUDIO +=
 	auich auvia
-	echo3g emuxki
+	echo3g emuxki es1370
 	hda
 	ice1712
 	sis7018
@@ -200,7 +210,7 @@ SYSTEM_ADD_ONS_DRIVERS_GRAPHICS += [ FFilterByBuildFeatures
 		matrox
 		nvidia
 		radeon radeon_hd
-		#via
+		via
 	}@ # x86,x86_64
 	x86 @{
 		3dfx
@@ -215,6 +225,19 @@ SYSTEM_ADD_ONS_DRIVERS_MIDI +=
 	ice1712
 	usb_midi
 ;
+
+SYSTEM_ADD_ONS_DRIVERS_NET += [ FFilterByBuildFeatures
+	# WLAN drivers
+	x86,x86_64 @{
+		aironetwifi atheroswifi
+		broadcom43xx
+		iprowifi2100 iprowifi2200 iprowifi3945 iprowifi4965
+		idualwifi7260
+		marvell88w8363 marvell88w8335
+		ralinkwifi realtekwifi
+		wavelanwifi
+	}@ # x86,x86_64
+] ;
 
 SYSTEM_ADD_ONS_DRIVERS_POWER += [ FFilterByBuildFeatures
 	acpi_battery@x86,x86_64
@@ -244,12 +267,9 @@ AddFilesToHaikuImage home config settings Tracker "Tracker New Templates"
 	"<tracker-new-templates>C++ header"
 	"<tracker-new-templates>C++ source"
 	"<tracker-new-templates>Makefile"
+	"<tracker-new-templates>Person"
 	"<tracker-new-templates>text file"
 ;
-
-# decorators
-#AddFilesToHaikuImage system non-packaged add-ons decorators
-#	: BeDecorator MacDecorator WinDecorator ;
 
 # printers
 AddDirectoryToHaikuImage home config settings printers Preview
@@ -257,16 +277,5 @@ AddDirectoryToHaikuImage home config settings printers Preview
 AddDirectoryToHaikuImage home config settings printers "Save as PDF"
 	: home-config-settings-printers-save-as-pdf.rdef ;
 
-# repository config and cache files
-local repository ;
-for repository in $(HAIKU_REPOSITORIES) {
-	local config = [ on $(repository) return $(HAIKU_REPOSITORY_CONFIG_FILE) ] ;
-	local cache = [ on $(repository) return $(HAIKU_REPOSITORY_CACHE_FILE) ] ;
-	if $(HAIKU_UPDATE_ALL_PACKAGES) {
-		HAIKU_INCLUDE_IN_IMAGE on $(config) $(cache) = 1 ;
-	}
-	AddFilesToHaikuImage system settings package-repositories
-		: $(config) : $(repository:G=) ;
-	AddFilesToHaikuImage system cache package-repositories
-		: $(cache) : $(repository:G=) ;
-}
+# padblocker
+AddDirectoryToHaikuImage home config settings touchpad ;

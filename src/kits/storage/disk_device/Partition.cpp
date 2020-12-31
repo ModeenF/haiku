@@ -572,7 +572,7 @@ BPartition::Mount(const char* mountPoint, uint32 mountFlags,
 	if (device >= 0)
 		return Device()->Update();
 
-	return B_ERROR;
+	return device;
 }
 
 
@@ -1149,8 +1149,7 @@ BPartition::Initialize(const char* diskSystem, const char* name,
 status_t
 BPartition::Uninitialize()
 {
-	// TODO: Implement!
-	return B_NOT_SUPPORTED;
+	return fDelegate->Uninitialize();
 }
 
 

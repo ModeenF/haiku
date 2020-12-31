@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -111,6 +111,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #include "acpi.h"
@@ -162,7 +198,7 @@ AcpiDsInitializeRegion (
 
     /* Namespace is NOT locked */
 
-    Status = AcpiEvInitializeRegion (ObjDesc, FALSE);
+    Status = AcpiEvInitializeRegion (ObjDesc);
     return (Status);
 }
 
@@ -317,10 +353,9 @@ AcpiDsInitBufferField (
         (8 * (UINT32) BufferDesc->Buffer.Length))
     {
         ACPI_ERROR ((AE_INFO,
-            "Field [%4.4s] at %u exceeds Buffer [%4.4s] size %u (bits)",
-            AcpiUtGetNodeName (ResultDesc),
-            BitOffset + BitCount,
-            AcpiUtGetNodeName (BufferDesc->Buffer.Node),
+            "Field [%4.4s] at bit offset/length %u/%u "
+            "exceeds size of target Buffer (%u bits)",
+            AcpiUtGetNodeName (ResultDesc), BitOffset, BitCount,
             8 * (UINT32) BufferDesc->Buffer.Length));
         Status = AE_AML_BUFFER_LIMIT;
         goto Cleanup;
@@ -331,8 +366,8 @@ AcpiDsInitBufferField (
      * For FieldFlags, use LOCK_RULE = 0 (NO_LOCK),
      * UPDATE_RULE = 0 (UPDATE_PRESERVE)
      */
-    Status = AcpiExPrepCommonFieldObject (ObjDesc, FieldFlags, 0,
-                                            BitOffset, BitCount);
+    Status = AcpiExPrepCommonFieldObject (
+        ObjDesc, FieldFlags, 0, BitOffset, BitCount);
     if (ACPI_FAILURE (Status))
     {
         goto Cleanup;
@@ -429,8 +464,8 @@ AcpiDsEvalBufferFieldOperands (
 
     /* Resolve the operands */
 
-    Status = AcpiExResolveOperands (Op->Common.AmlOpcode,
-                    ACPI_WALK_OPERANDS, WalkState);
+    Status = AcpiExResolveOperands (
+        Op->Common.AmlOpcode, ACPI_WALK_OPERANDS, WalkState);
     if (ACPI_FAILURE (Status))
     {
         ACPI_ERROR ((AE_INFO, "(%s) bad operand(s), status 0x%X",
@@ -446,16 +481,16 @@ AcpiDsEvalBufferFieldOperands (
         /* NOTE: Slightly different operands for this opcode */
 
         Status = AcpiDsInitBufferField (Op->Common.AmlOpcode, ObjDesc,
-                    WalkState->Operands[0], WalkState->Operands[1],
-                    WalkState->Operands[2], WalkState->Operands[3]);
+            WalkState->Operands[0], WalkState->Operands[1],
+            WalkState->Operands[2], WalkState->Operands[3]);
     }
     else
     {
         /* All other, CreateXxxField opcodes */
 
         Status = AcpiDsInitBufferField (Op->Common.AmlOpcode, ObjDesc,
-                    WalkState->Operands[0], WalkState->Operands[1],
-                                      NULL, WalkState->Operands[2]);
+            WalkState->Operands[0], WalkState->Operands[1],
+            NULL, WalkState->Operands[2]);
     }
 
     return_ACPI_STATUS (Status);
@@ -515,8 +550,8 @@ AcpiDsEvalRegionOperands (
 
     /* Resolve the length and address operands to numbers */
 
-    Status = AcpiExResolveOperands (Op->Common.AmlOpcode,
-                ACPI_WALK_OPERANDS, WalkState);
+    Status = AcpiExResolveOperands (
+        Op->Common.AmlOpcode, ACPI_WALK_OPERANDS, WalkState);
     if (ACPI_FAILURE (Status))
     {
         return_ACPI_STATUS (Status);
@@ -544,18 +579,19 @@ AcpiDsEvalRegionOperands (
     OperandDesc = WalkState->Operands[WalkState->NumOperands - 2];
 
     ObjDesc->Region.Address = (ACPI_PHYSICAL_ADDRESS)
-                                OperandDesc->Integer.Value;
+        OperandDesc->Integer.Value;
     AcpiUtRemoveReference (OperandDesc);
 
     ACPI_DEBUG_PRINT ((ACPI_DB_EXEC, "RgnObj %p Addr %8.8X%8.8X Len %X\n",
-        ObjDesc,
-        ACPI_FORMAT_UINT64 (ObjDesc->Region.Address),
+        ObjDesc, ACPI_FORMAT_UINT64 (ObjDesc->Region.Address),
         ObjDesc->Region.Length));
+
+    Status = AcpiUtAddAddressRange (ObjDesc->Region.SpaceId,
+        ObjDesc->Region.Address, ObjDesc->Region.Length, Node);
 
     /* Now the address and length are valid for this opregion */
 
     ObjDesc->Region.Flags |= AOPOBJ_DATA_VALID;
-
     return_ACPI_STATUS (Status);
 }
 
@@ -618,8 +654,8 @@ AcpiDsEvalTableRegionOperands (
      * Resolve the Signature string, OemId string,
      * and OemTableId string operands
      */
-    Status = AcpiExResolveOperands (Op->Common.AmlOpcode,
-                ACPI_WALK_OPERANDS, WalkState);
+    Status = AcpiExResolveOperands (
+        Op->Common.AmlOpcode, ACPI_WALK_OPERANDS, WalkState);
     if (ACPI_FAILURE (Status))
     {
         goto Cleanup;
@@ -628,9 +664,9 @@ AcpiDsEvalTableRegionOperands (
     /* Find the ACPI table */
 
     Status = AcpiTbFindTable (
-                Operand[0]->String.Pointer,
-                Operand[1]->String.Pointer,
-                Operand[2]->String.Pointer, &TableIndex);
+        Operand[0]->String.Pointer,
+        Operand[1]->String.Pointer,
+        Operand[2]->String.Pointer, &TableIndex);
     if (ACPI_FAILURE (Status))
     {
         if (Status == AE_NOT_FOUND)
@@ -714,6 +750,16 @@ AcpiDsEvalDataObjectOperands (
      */
     WalkState->OperandIndex = WalkState->NumOperands;
 
+    /* Ignore if child is not valid */
+
+    if (!Op->Common.Value.Arg)
+    {
+        ACPI_ERROR ((AE_INFO,
+            "Missing child while evaluating opcode %4.4X, Op %p",
+            Op->Common.AmlOpcode, Op));
+        return_ACPI_STATUS (AE_OK);
+    }
+
     Status = AcpiDsCreateOperand (WalkState, Op->Common.Value.Arg, 1);
     if (ACPI_FAILURE (Status))
     {
@@ -721,8 +767,8 @@ AcpiDsEvalDataObjectOperands (
     }
 
     Status = AcpiExResolveOperands (WalkState->Opcode,
-                    &(WalkState->Operands [WalkState->NumOperands -1]),
-                    WalkState);
+        &(WalkState->Operands [WalkState->NumOperands -1]),
+        WalkState);
     if (ACPI_FAILURE (Status))
     {
         return_ACPI_STATUS (Status);
@@ -750,13 +796,15 @@ AcpiDsEvalDataObjectOperands (
     {
     case AML_BUFFER_OP:
 
-        Status = AcpiDsBuildInternalBufferObj (WalkState, Op, Length, &ObjDesc);
+        Status = AcpiDsBuildInternalBufferObj (
+            WalkState, Op, Length, &ObjDesc);
         break;
 
     case AML_PACKAGE_OP:
-    case AML_VAR_PACKAGE_OP:
+    case AML_VARIABLE_PACKAGE_OP:
 
-        Status = AcpiDsBuildInternalPackageObj (WalkState, Op, Length, &ObjDesc);
+        Status = AcpiDsBuildInternalPackageObj (
+            WalkState, Op, Length, &ObjDesc);
         break;
 
     default:
@@ -773,7 +821,7 @@ AcpiDsEvalDataObjectOperands (
          */
         if ((!Op->Common.Parent) ||
             ((Op->Common.Parent->Common.AmlOpcode != AML_PACKAGE_OP) &&
-             (Op->Common.Parent->Common.AmlOpcode != AML_VAR_PACKAGE_OP) &&
+             (Op->Common.Parent->Common.AmlOpcode != AML_VARIABLE_PACKAGE_OP) &&
              (Op->Common.Parent->Common.AmlOpcode != AML_NAME_OP)))
         {
             WalkState->ResultObj = ObjDesc;

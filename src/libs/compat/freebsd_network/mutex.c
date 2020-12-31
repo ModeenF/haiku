@@ -10,8 +10,6 @@
 #include <compat/sys/mutex.h>
 
 
-// these methods are bit unfriendly, a bit too much panic() around
-
 struct mtx Giant;
 struct rw_lock ifnet_rwlock;
 struct mtx gIdStoreLock;
@@ -24,22 +22,38 @@ mtx_init(struct mtx *mutex, const char *name, const char *type,
 	if ((options & MTX_RECURSE) != 0) {
 		recursive_lock_init_etc(&mutex->u.recursive, name,
 			MUTEX_FLAG_CLONE_NAME);
+		mutex->type = MTX_RECURSE;
+	} else if ((options & MTX_SPIN) != 0) {
+		B_INITIALIZE_SPINLOCK(&mutex->u.spinlock.lock);
+		mutex->type = MTX_SPIN;
 	} else {
 		mutex_init_etc(&mutex->u.mutex.lock, name, MUTEX_FLAG_CLONE_NAME);
 		mutex->u.mutex.owner = -1;
+		mutex->type = MTX_DEF;
 	}
+}
 
-	mutex->type = options;
+
+void
+mtx_sysinit(void *arg)
+{
+	struct mtx_args *margs = arg;
+
+	mtx_init((struct mtx *)margs->ma_mtx, margs->ma_desc, NULL,
+	    margs->ma_opts);
 }
 
 
 void
 mtx_destroy(struct mtx *mutex)
 {
-	if ((mutex->type & MTX_RECURSE) != 0)
+	if ((mutex->type & MTX_RECURSE) != 0) {
 		recursive_lock_destroy(&mutex->u.recursive);
-	else
+	} else if ((mutex->type & MTX_SPIN) != 0) {
+		KASSERT(!B_SPINLOCK_IS_LOCKED(&mutex->u.spinlock.lock), ("spin mutex is locked"));
+	} else {
 		mutex_destroy(&mutex->u.mutex.lock);
+	}
 }
 
 

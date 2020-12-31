@@ -19,6 +19,7 @@
 #include <directories.h>
 #include <FindDirectory.h>
 #include <fs_info.h>
+#include <StackOrHeapArray.h>
 
 #include <errno.h>
 #include <pwd.h>
@@ -195,12 +196,15 @@ static const char *kUserDirectories[] = {
 static int
 create_path(const char *path, mode_t mode)
 {
-	char buffer[B_PATH_NAME_LENGTH + 1];
 	int pathLength;
 	int i = 0;
 
 	if (path == NULL || ((pathLength = strlen(path)) > B_PATH_NAME_LENGTH))
 		return EINVAL;
+
+	BStackOrHeapArray<char, 128> buffer(pathLength + 1);
+	if (!buffer.IsValid())
+		return B_NO_MEMORY;
 
 	while (++i < pathLength) {
 		char *slash = strchr(&path[i], '/');
@@ -518,7 +522,7 @@ DEFINE_LIBROOT_KERNEL_SYMBOL_VERSION("__find_directory_alpha4",
 	"find_directory@", "BASE");
 
 DEFINE_LIBROOT_KERNEL_SYMBOL_VERSION("__find_directory", "find_directory@@",
-    "1_ALPHA5");
+	"1_ALPHA5");
 #else // _LOADER_MODE
 status_t
 __find_directory(directory_which which, dev_t device, bool createIt,

@@ -15,12 +15,14 @@
 #define DESKTOP_H
 
 
+#include <AutoDeleter.h>
 #include <Autolock.h>
 #include <InterfaceDefs.h>
 #include <List.h>
 #include <Menu.h>
 #include <ObjectList.h>
 #include <Region.h>
+#include <String.h>
 #include <Window.h>
 
 #include <ServerProtocolStructs.h>
@@ -125,6 +127,8 @@ public:
 									BRect& frame);
 			void				RevertScreenModes(uint32 workspaces);
 
+			status_t			SetBrightness(int32 id, float brightness);
+
 			MultiLocker&		ScreenLocker() { return fScreenLock; }
 
 			status_t			LockDirectScreen(team_id team);
@@ -145,6 +149,7 @@ public:
 	// ScreenOwner implementation
 	virtual	void				ScreenRemoved(Screen* screen) {}
 	virtual	void				ScreenAdded(Screen* screen) {}
+	virtual	void				ScreenChanged(Screen* screen);
 	virtual	bool				ReleaseScreen(Screen* screen) { return false; }
 
 	// Workspace methods
@@ -323,7 +328,8 @@ private:
 			uid_t				fUserID;
 			char*				fTargetScreen;
 			::VirtualScreen		fVirtualScreen;
-			DesktopSettingsPrivate*	fSettings;
+			ObjectDeleter<DesktopSettingsPrivate>
+								fSettings;
 			port_id				fMessagePort;
 			::EventDispatcher	fEventDispatcher;
 			area_id				fSharedReadOnlyArea;

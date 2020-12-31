@@ -46,6 +46,7 @@ enum {
 	B_REG_GET_CLIPBOARD_MESSENGER			= 'rgcm',
 	B_REG_GET_DISK_DEVICE_MESSENGER			= 'rgdm',
 	B_REG_SHUT_DOWN							= 'rgsh',
+	B_REG_IS_SHUT_DOWN_IN_PROGRESS			= 'rgsi',
 
 	// roster requests
 	B_REG_ADD_APP							= 'rgaa',
@@ -96,7 +97,6 @@ enum {
 	B_REG_GET_MESSAGE_RUNNER_INFO			= 'rgri',
 
 	// internal registrar messages
-	B_REG_ROSTER_SANITY_EVENT				= 'rgir',
 	B_REG_SHUTDOWN_FINISHED					= 'rgsf',
 	B_REG_ROSTER_DEVICE_RESCAN				= 'rgrs',
 
@@ -180,9 +180,15 @@ enum {
 
 // a flat app_info -- to be found in B_REG_APP_INFO_TYPE message fields
 struct flat_app_info {
-	app_info	info;
+	thread_id	thread;
+	team_id		team;
+	port_id		port;
+	uint32		flags;
+	dev_t		ref_device;
+	ino_t		ref_directory;
+	char		signature[B_MIME_TYPE_LENGTH];
 	char		ref_name[B_FILE_NAME_LENGTH + 1];
-};
+} _PACKED;
 
 
 }	// namespace BPrivate

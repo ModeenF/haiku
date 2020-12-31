@@ -162,7 +162,7 @@ main(int argc, char **argv)
 
 		signal(SIGUSR1, handle_usr1);
 
-		printf("Delaying %s by %lu seconds...\n",
+		printf("Delaying %s by %" B_PRIu32 " seconds...\n",
 			gReboot ? "reboot" : "shutdown", gTimeToSleep);
 
 		left = sleep(gTimeToSleep);
@@ -183,9 +183,10 @@ main(int argc, char **argv)
 		BRoster roster;
 		BRoster::Private rosterPrivate(roster);
 		status_t error = rosterPrivate.ShutDown(gReboot, askUser, !async);
-		if (error != B_OK)
+		if (error != B_OK) {
 			fprintf(stderr, "Shutdown failed: %s\n", strerror(error));
-		return 2;
+			return 2;
+		}
 	}
 
 	return 0;

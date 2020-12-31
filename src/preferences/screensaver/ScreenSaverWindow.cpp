@@ -1,13 +1,14 @@
 /*
- * Copyright 2003-2014 Haiku, Inc. All rights reserved.
+ * Copyright 2003-2016 Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
  *		Axel Dörfler, axeld@pinc-software.de
  *		Jérôme Duval, jerome.duval@free.fr
+ *		Filip Maryjański, widelec@morphos.pl
+ *		Puck Meerburg, puck@puckipedia.nl
  *		Michael Phipps
  *		John Scipione, jscipione@gmail.com
- *		Puck Meerburg, puck@puckipedia.nl
  */
 
 
@@ -23,16 +24,18 @@
 #include <Catalog.h>
 #include <CheckBox.h>
 #include <ControlLook.h>
+#include <DefaultSettingsView.h>
 #include <Directory.h>
 #include <DurationFormat.h>
 #include <Entry.h>
 #include <File.h>
 #include <FindDirectory.h>
 #include <Font.h>
-#include <Layout.h>
+#include <GroupLayout.h>
 #include <LayoutBuilder.h>
 #include <ListItem.h>
 #include <ListView.h>
+#include <NodeMonitor.h>
 #include <Path.h>
 #include <Rect.h>
 #include <Roster.h>
@@ -48,8 +51,6 @@
 
 #include <algorithm>
 	// for std::max and std::min
-
-#include <BuildScreenSaverDefaultSettingsView.h>
 
 #include "PreviewView.h"
 #include "ScreenCornerSelector.h"
@@ -79,6 +80,10 @@ const int32 kMsgTurnOffSliderUpdate = 'TUup';
 
 const int32 kMsgFadeCornerChanged = 'fdcc';
 const int32 kMsgNeverFadeCornerChanged = 'nfcc';
+
+const float kWindowWidth = 446.0f;
+const float kWindowHeight = 325.0f;
+const float kDefaultItemSpacingAt12pt = 12.0f * 0.85;
 
 
 class TimeSlider : public BSlider {
@@ -168,6 +173,9 @@ private:
 
 			void				_CloseSaver();
 			void				_OpenSaver();
+			void				_AddNewScreenSaverToList(const char* name,
+								BPath* path);
+			void				_RemoveScreenSaverFromList(const char* name);
 
 private:
 		ScreenSaverSettings&	fSettings;
@@ -569,10 +577,16 @@ ModulesView::ModulesView(const char* name, ScreenSaverSettings& settings)
 
 	fScreenSaversListView->SetSelectionMessage(
 		new BMessage(kMsgSaverSelected));
+	fScreenSaversListView->SetInvocationMessage(
+		new BMessage(kMsgTestSaver));
 	BScrollView* saversListScrollView = new BScrollView("scroll_list",
 		fScreenSaversListView, 0, false, true);
 
 	fSettingsBox->SetLabel(B_TRANSLATE("Screensaver settings"));
+	fSettingsBox->SetExplicitMinSize(BSize(
+		floorf(be_control_look->DefaultItemSpacing()
+			* ((kWindowWidth - 157.0f) / kDefaultItemSpacingAt12pt)),
+		B_SIZE_UNSET));
 
 	BLayoutBuilder::Group<>(this, B_HORIZONTAL)
 		.SetInsets(B_USE_WINDOW_SPACING, B_USE_WINDOW_SPACING,
@@ -580,10 +594,7 @@ ModulesView::ModulesView(const char* name, ScreenSaverSettings& settings)
 		.AddGroup(B_VERTICAL)
 			.Add(fPreviewView)
 			.Add(saversListScrollView)
-			.AddGroup(B_HORIZONTAL)
-				.Add(fTestButton)
-				.AddGlue()
-				.End()
+			.Add(fTestButton)
 			.End()
 		.Add(fSettingsBox)
 		.End();
@@ -592,6 +603,8 @@ ModulesView::ModulesView(const char* name, ScreenSaverSettings& settings)
 
 ModulesView::~ModulesView()
 {
+	stop_watching(this);
+
 	delete fTestButton;
 	delete fSettingsBox;
 	delete fPreviewView;
@@ -620,7 +633,6 @@ void
 ModulesView::AllAttached()
 {
 	PopulateScreenSaverList();
-	fScreenSaversListView->Invoke();
 }
 
 
@@ -680,6 +692,46 @@ ModulesView::MessageReceived(BMessage* message)
 			if (entry.GetRef(&ref) == B_OK) {
 				be_roster->Launch(&ref, &message,
 					&fScreenSaverTestTeam);
+			}
+			break;
+		}
+
+		case B_NODE_MONITOR:
+		{
+			switch (message->GetInt32("opcode", 0)) {
+				case B_ENTRY_CREATED:
+				{
+					const char* name;
+					node_ref nodeRef;
+
+					message->FindString("name", &name);
+					message->FindInt32("device", &nodeRef.device);
+					message->FindInt64("directory", &nodeRef.node);
+
+					BDirectory dir(&nodeRef);
+
+					if (dir.InitCheck() == B_OK) {
+						BPath path(&dir);
+						_AddNewScreenSaverToList(name, &path);
+					}
+					break;
+				}
+
+
+				case B_ENTRY_MOVED:
+				case B_ENTRY_REMOVED:
+				{
+					const char* name;
+
+					message->FindString("name", &name);
+					_RemoveScreenSaverFromList(name);
+
+					break;
+				}
+
+				default:
+					// ignore any other operations
+					break;
 			}
 			break;
 		}
@@ -750,6 +802,11 @@ ModulesView::PopulateScreenSaverList()
 
 		BDirectory dir(basePath.Path());
 		BEntry entry;
+		node_ref nodeRef;
+
+		dir.GetNodeRef(&nodeRef);
+		watch_node(&nodeRef, B_WATCH_DIRECTORY, this);
+
 		while (dir.GetNextEntry(&entry, true) == B_OK) {
 			char name[B_FILE_NAME_LENGTH];
 			if (entry.GetName(name) != B_OK)
@@ -856,7 +913,7 @@ ModulesView::_OpenSaver()
 		} else
 			fPreviewView->ShowNoPreview();
 	} else {
-		// Failed to load OR this is the "Darkness" screensaver. Show a black
+		// Failed to load OR this is the "Blackness" screensaver. Show a black
 		// preview (this is what will happen in both cases when screen_blanker
 		// runs).
 		fPreviewView->HideNoPreview();
@@ -865,13 +922,66 @@ ModulesView::_OpenSaver()
 	if (fSettingsView->ChildAt(0) == NULL) {
 		// There are no settings at all, we add the module name here to
 		// let it look a bit better at least.
-		BPrivate::BuildScreenSaverDefaultSettingsView(fSettingsView,
+		BPrivate::BuildDefaultSettingsView(fSettingsView,
 			fSettings.ModuleName()[0] ? fSettings.ModuleName()
 				: B_TRANSLATE("Blackness"),
 				saver != NULL || !fSettings.ModuleName()[0]
 					? B_TRANSLATE("No options available")
 					: B_TRANSLATE("Could not load screen saver"));
 	}
+}
+
+
+void
+ModulesView::_AddNewScreenSaverToList(const char* name, BPath* path)
+{
+	int32 oldSelected = fScreenSaversListView->CurrentSelection();
+	ScreenSaverItem* selectedItem = (ScreenSaverItem*)fScreenSaversListView->ItemAt(
+		oldSelected);
+
+	path->Append(name);
+	fScreenSaversListView->AddItem(new ScreenSaverItem(name, path->Path()));
+	fScreenSaversListView->SortItems(_CompareScreenSaverItems);
+
+	if (selectedItem != NULL) {
+		fScreenSaversListView->Select(fScreenSaversListView->IndexOf(
+			selectedItem));
+		fScreenSaversListView->ScrollToSelection();
+	}
+}
+
+
+void
+ModulesView::_RemoveScreenSaverFromList(const char* name)
+{
+	int32 oldSelected = fScreenSaversListView->CurrentSelection();
+	ScreenSaverItem* selectedItem = (ScreenSaverItem*)fScreenSaversListView->ItemAt(
+		oldSelected);
+
+	if (strcasecmp(selectedItem->Text(), name) == 0) {
+		fScreenSaversListView->RemoveItem(selectedItem);
+		fScreenSaversListView->SortItems(_CompareScreenSaverItems);
+		fScreenSaversListView->Select(0);
+		fScreenSaversListView->ScrollToSelection();
+		return;
+	}
+
+	for (int i = 0, max = fScreenSaversListView->CountItems(); i < max; i++) {
+		ScreenSaverItem* item = (ScreenSaverItem*)fScreenSaversListView->ItemAt(
+			i);
+
+		if (strcasecmp(item->Text(), name) == 0) {
+			fScreenSaversListView->RemoveItem(item);
+			delete item;
+			break;
+		}
+	}
+
+	fScreenSaversListView->SortItems(_CompareScreenSaverItems);
+
+	oldSelected = fScreenSaversListView->IndexOf(selectedItem);
+	fScreenSaversListView->Select(oldSelected);
+	fScreenSaversListView->ScrollToSelection();
 }
 
 
@@ -892,7 +1002,10 @@ TabView::MouseDown(BPoint where)
 	BRect fadeTabFrame(TabFrame(0));
 	BTab* modulesTab = TabAt(1);
 	BRect modulesTabFrame(TabFrame(1));
-	ModulesView* modulesView = dynamic_cast<ModulesView*>(modulesTab->View());
+	ModulesView* modulesView = NULL;
+
+	if (modulesTab != NULL)
+		modulesView = dynamic_cast<ModulesView*>(modulesTab->View());
 
 	if (fadeTab != NULL && Selection() != 0 && fadeTabFrame.Contains(where)
 		&& modulesView != NULL) {
@@ -915,20 +1028,20 @@ TabView::MouseDown(BPoint where)
 
 ScreenSaverWindow::ScreenSaverWindow()
 	:
-	BWindow(BRect(50, 50, 496, 375),
+	BWindow(BRect(50.0f, 50.0f, 50.0f + kWindowWidth, 50.0f + kWindowHeight),
 		B_TRANSLATE_SYSTEM_NAME("ScreenSaver"), B_TITLED_WINDOW,
 		B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS)
 {
 	fSettings.Load();
 
-	fMinWidth = ceilf(std::max(446.0f,
-		be_control_look->DefaultItemSpacing() * 44.6f));
+	fMinWidth = floorf(be_control_look->DefaultItemSpacing()
+		* (kWindowWidth / kDefaultItemSpacingAt12pt));
 
 	font_height fontHeight;
 	be_plain_font->GetHeight(&fontHeight);
 	float textHeight = ceilf(fontHeight.ascent + fontHeight.descent);
 
-	fMinHeight = ceilf(std::max(325.0f, textHeight * 28));
+	fMinHeight = ceilf(std::max(kWindowHeight, textHeight * 28));
 
 	// Create the password editing window
 	fPasswordWindow = new PasswordWindow(fSettings);
@@ -969,6 +1082,8 @@ ScreenSaverWindow::ScreenSaverWindow()
 		ResizeTo(fSettings.WindowFrame().Width(),
 			fSettings.WindowFrame().Height());
 	}
+
+	CenterOnScreen();
 }
 
 

@@ -11,6 +11,7 @@
 
 #include "BitmapDrawingEngine.h"
 #include "DrawState.h"
+#include "ServerTokenSpace.h"
 
 #include <Bitmap.h>
 #include <utf8_functions.h>
@@ -18,11 +19,16 @@
 #include <new>
 
 
+#define TRACE(x...)				/*debug_printf("RemoteDrawingEngine: " x)*/
+#define TRACE_ALWAYS(x...)		debug_printf("RemoteDrawingEngine: " x)
+#define TRACE_ERROR(x...)		debug_printf("RemoteDrawingEngine: " x)
+
+
 RemoteDrawingEngine::RemoteDrawingEngine(RemoteHWInterface* interface)
 	:
 	DrawingEngine(interface),
 	fHWInterface(interface),
-	fToken((uint32)this), // TODO: need to redo that for 64 bit
+	fToken(gTokenSpace.NewToken(kRemoteDrawingEngineToken, this)),
 	fExtendWidth(0),
 	fCallbackAdded(false),
 	fResultNotify(-1),
@@ -42,8 +48,6 @@ RemoteDrawingEngine::~RemoteDrawingEngine()
 	message.Start(RP_DELETE_STATE);
 	message.Add(fToken);
 	message.Flush();
-
-	delete fBitmapDrawingEngine;
 
 	if (fCallbackAdded)
 		fHWInterface->RemoveCallback(fToken);
@@ -108,6 +112,7 @@ RemoteDrawingEngine::SetDrawState(const DrawState* state, int32 xOffset,
 	SetHighColor(state->HighColor());
 	SetLowColor(state->LowColor());
 	SetFont(state->Font());
+	SetTransform(state->CombinedTransform(), xOffset, yOffset);
 
 	RemoteMessage message(NULL, fHWInterface->SendBuffer());
 	message.Start(RP_SET_OFFSETS);
@@ -259,6 +264,24 @@ void
 RemoteDrawingEngine::SetFont(const DrawState* state)
 {
 	SetFont(state->Font());
+}
+
+
+void
+RemoteDrawingEngine::SetTransform(const BAffineTransform& transform,
+	int32 xOffset, int32 yOffset)
+{
+	// TODO: take offset into account
+
+	if (fState.Transform() == transform)
+		return;
+
+	fState.SetTransform(transform);
+
+	RemoteMessage message(NULL, fHWInterface->SendBuffer());
+	message.Start(RP_SET_TRANSFORM);
+	message.Add(fToken);
+	message.AddTransform(transform);
 }
 
 
@@ -745,9 +768,9 @@ RemoteDrawingEngine::FillShape(const BRect& bounds, int32 opCount,
 	message.AddList(opList, opCount);
 	message.Add(pointCount);
 	message.AddList(pointList, pointCount);
-	message.AddGradient(gradient);
 	message.Add(viewToScreenOffset);
 	message.Add(viewScale);
+	message.AddGradient(gradient);
 }
 
 
@@ -780,9 +803,7 @@ RemoteDrawingEngine::FillTriangle(BPoint* points, const BRect& bounds,
 	RemoteMessage message(NULL, fHWInterface->SendBuffer());
 	message.Start(RP_FILL_TRIANGLE_GRADIENT);
 	message.Add(fToken);
-	message.Add(points[0]);
-	message.Add(points[1]);
-	message.Add(points[2]);
+	message.AddList(points, 3);
 	message.Add(bounds);
 	message.AddGradient(gradient);
 }
@@ -888,7 +909,35 @@ float
 RemoteDrawingEngine::StringWidth(const char* string, int32 length,
 	escapement_delta* delta)
 {
-	// TODO: decide if really needed and use callback if so
+	// TODO: Decide if really needed.
+
+	while (true) {
+		if (_AddCallback() != B_OK)
+			break;
+
+		RemoteMessage message(NULL, fHWInterface->SendBuffer());
+
+		message.Start(RP_STRING_WIDTH);
+		message.Add(fToken);
+		message.AddString(string, length);
+			// TODO: Support escapement delta.
+
+		if (message.Flush() != B_OK)
+			break;
+
+		status_t result;
+		do {
+			result = acquire_sem_etc(fResultNotify, 1, B_RELATIVE_TIMEOUT,
+				1 * 1000 * 1000);
+		} while (result == B_INTERRUPTED);
+
+		if (result != B_OK)
+			break;
+
+		return fStringWidthResult;
+	}
+
+	// Fall back to local calculation.
 	return fState.Font().StringWidth(string, length, delta);
 }
 
@@ -915,7 +964,7 @@ RemoteDrawingEngine::ReadBitmap(ServerBitmap* bitmap, bool drawCursor,
 	status_t result;
 	do {
 		result = acquire_sem_etc(fResultNotify, 1, B_RELATIVE_TIMEOUT,
-			100 * 1000 * 1000);
+			10 * 1000 * 1000);
 	} while (result == B_INTERRUPTED);
 
 	if (result != B_OK)
@@ -961,19 +1010,40 @@ RemoteDrawingEngine::_DrawingEngineResult(void* cookie, RemoteMessage& message)
 
 	switch (message.Code()) {
 		case RP_DRAW_STRING_RESULT:
-			if (message.Read(engine->fDrawStringResult) != B_OK)
+		{
+			status_t result = message.Read(engine->fDrawStringResult);
+			if (result != B_OK) {
+				TRACE_ERROR("failed to read draw string result: %s\n",
+					strerror(result));
 				return false;
+			}
+
 			break;
+		}
 
 		case RP_STRING_WIDTH_RESULT:
-			if (message.Read(engine->fStringWidthResult) != B_OK)
+		{
+			status_t result = message.Read(engine->fStringWidthResult);
+			if (result != B_OK) {
+				TRACE_ERROR("failed to read string width result: %s\n",
+					strerror(result));
 				return false;
+			}
+
 			break;
+		}
 
 		case RP_READ_BITMAP_RESULT:
-			if (message.ReadBitmap(&engine->fReadBitmapResult) != B_OK)
+		{
+			status_t result = message.ReadBitmap(&engine->fReadBitmapResult);
+			if (result != B_OK) {
+				TRACE_ERROR("failed to read bitmap of read bitmap result: %s\n",
+					strerror(result));
 				return false;
+			}
+
 			break;
+		}
 
 		default:
 			return false;
@@ -1037,10 +1107,10 @@ RemoteDrawingEngine::_ExtractBitmapRegions(ServerBitmap& bitmap, uint32 options,
 				* (int32)(sourceRect.Height() + 1.5))) {
 			// the target bitmap is smaller than the source, scale it locally
 			// and send over the smaller version to avoid sending any extra data
-			if (fBitmapDrawingEngine == NULL) {
-				fBitmapDrawingEngine
-					= new(std::nothrow) BitmapDrawingEngine(B_RGBA32);
-				if (fBitmapDrawingEngine == NULL)
+			if (fBitmapDrawingEngine.Get() == NULL) {
+				fBitmapDrawingEngine.SetTo(
+					new(std::nothrow) BitmapDrawingEngine(B_RGBA32));
+				if (fBitmapDrawingEngine.Get() == NULL)
 					result = B_NO_MEMORY;
 			}
 

@@ -9,7 +9,7 @@ boot loader, kernel, the system libraries, servers, and applications."
 packager		"The Haiku build system"
 vendor			"Haiku Project"
 
-copyrights		"2001-2013 Haiku, Inc. et al"
+copyrights		"2001-2020 Haiku, Inc. et al"
 licenses {
 	MIT
 	"GNU LGPL v2.1"
@@ -19,13 +19,9 @@ flags			system_package
 provides {
 	haiku=%HAIKU_VERSION% compat>=R1~alpha1
 	cmd:arp
-	cmd:bc
 	cmd:chop
 	cmd:clear
-	cmd:compress
-	cmd:dc
 	cmd:df
-	cmd:ftp
 	cmd:ftpd
 	cmd:hd
 	cmd:hey
@@ -39,11 +35,9 @@ provides {
 	cmd:renice
 	cmd:resattr
 	cmd:su
-	cmd:tcpdump
 	cmd:telnet
 	cmd:telnetd
 	cmd:top
-	cmd:tput
 	cmd:traceroute
 	cmd:trash
 	cmd:unchop
@@ -63,22 +57,26 @@ requires {
 	cmd:unzip
 #endif
 	lib:libcurl
+#ifdef HAIKU_BUILD_FEATURE_X86_GCC2_LIBEDIT_ENABLED
+	lib:libedit
+#endif
+#ifdef HAIKU_BUILD_FEATURE_X86_GCC2_FONTCONFIG_ENABLED
+	lib:libfontconfig
+#endif
 	lib:libfreetype
-	lib:libicudata
-	lib:libicui18n
-	lib:libicuio
-	lib:libicule
-	lib:libiculx
-	lib:libicutest
-	lib:libicutu
-	lib:libicuuc
+	lib:libicudata >= 57
+	lib:libicui18n >= 57
+	lib:libicuio >= 57
+	lib:libicutest >= 57
+	lib:libicutu >= 57
+	lib:libicuuc >= 57
 	lib:libncurses >= 6.0
 #ifdef HAIKU_REGULAR_BUILD
 #ifdef HAIKU_BUILD_FEATURE_X86_GCC2_EXPAT_ENABLED
 	lib:libexpat
 #endif
 #ifdef HAIKU_BUILD_FEATURE_X86_GCC2_GUTENPRINT_ENABLED
-	lib:libgutenprint
+	lib:libgutenprint >= 8
 #endif
 #ifdef HAIKU_BUILD_FEATURE_X86_GCC2_LIBICNS_ENABLED
 	lib:libicns
@@ -90,22 +88,38 @@ requires {
 	lib:libjpeg
 #endif
 #ifdef HAIKU_BUILD_FEATURE_X86_GCC2_LIBPNG_ENABLED
-	lib:libpng >= 16.0
+	lib:libpng16
 #endif
-	lib:libqrencode
 #ifdef HAIKU_BUILD_FEATURE_X86_GCC2_TIFF_ENABLED
 	lib:libtiff >= 5.2
 #endif
 #ifdef HAIKU_BUILD_FEATURE_X86_GCC2_LIBWEBP_ENABLED
 	lib:libwebp
 #endif
+#ifdef HAIKU_BUILD_FEATURE_X86_GCC2_OPENEXR_ENABLED
+	lib:libilmimf
+	lib:libilmimfutil
+#endif
 #ifdef HAIKU_BUILD_FEATURE_X86_GCC2_OPENSSL_ENABLED
-	lib:libssl >= 1.0.0
-	lib:libcrypto >= 1.0.0
+	lib:libssl
+	lib:libcrypto
+#endif
+#ifdef HAIKU_BUILD_FEATURE_X86_GCC2_FFMPEG_ENABLED
+	lib:libavcodec >= 58
+	lib:libavfilter >= 7
+	lib:libavformat >= 58
+	lib:libavutil >= 56
+	lib:libswresample >= 3
+#endif
+#ifdef HAIKU_BUILD_FEATURE_X86_GCC2_ZSTD_ENABLED
+	lib:libzstd >= 1
 #endif
 #endif
 	lib:libsolv
 	lib:libsolvext
 	lib:libz
-	vl_gothic
+	noto >= 2.7
+#ifdef HAIKU_REGULAR_BUILD
+	noto_sans_cjk_jp
+#endif
 }

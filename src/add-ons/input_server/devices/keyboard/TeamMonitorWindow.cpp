@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2008, Haiku.
+ * Copyright 2004-2020, Haiku.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -18,6 +18,7 @@
 #include <Catalog.h>
 #include <GroupLayoutBuilder.h>
 #include <IconView.h>
+#include <LayoutBuilder.h>
 #include <LocaleRoster.h>
 #include <Message.h>
 #include <MessageRunner.h>
@@ -26,8 +27,8 @@
 #include <Screen.h>
 #include <SpaceLayoutItem.h>
 #include <String.h>
+#include <StringFormat.h>
 #include <StringView.h>
-#include <TextView.h>
 
 #include <syscalls.h>
 #include <tracker_private.h>
@@ -107,15 +108,6 @@ FilterKeyDown(BMessage* message, BHandler** target,
 }
 
 
-class AllShowingTextView : public BTextView {
-public:
-							AllShowingTextView(const char* name);
-	virtual	bool			HasHeightForWidth();
-	virtual	void			GetHeightForWidth(float width, float* min,
-								float* max, float* preferred);
-};
-
-
 class TeamDescriptionView : public BView {
 public:
 							TeamDescriptionView();
@@ -133,9 +125,8 @@ private:
 			int32			fSeconds;
 			BMessageRunner*	fRebootRunner;
 			IconView*		fIconView;
-	const	char*			fInfoString;
 			BCardLayout*	fLayout;
-			AllShowingTextView*		fInfoTextView;
+			BStringView*	fInfoTextView;
 
 			BStringView*	fTeamName;
 			BStringView*	fSysComponent;
@@ -196,23 +187,29 @@ TeamMonitorWindow::TeamMonitorWindow()
 	fRestartButton = new BButton("restart", B_TRANSLATE("Restart the desktop"),
 		new BMessage(TM_RESTART_DESKTOP));
 
+	BButton* openTerminal = new BButton("terminal",
+		B_TRANSLATE("Open Terminal"), new BMessage(kMsgLaunchTerminal));
+
 	fCancelButton = new BButton("cancel", B_TRANSLATE("Cancel"),
 		new BMessage(TM_CANCEL));
 	SetDefaultButton(fCancelButton);
 
 	BGroupLayoutBuilder(layout)
-		.Add(scrollView)
+		.Add(scrollView, 10)
 		.AddGroup(B_HORIZONTAL)
+			.SetInsets(0, 0, 0, 0)
 			.Add(fKillButton)
 			.Add(fQuitButton)
 			.AddGlue()
 			.End()
 		.Add(fDescriptionView)
 		.AddGroup(B_HORIZONTAL)
+			.SetInsets(0, 0, 0, 0)
 			.Add(forceReboot)
 			.AddGlue()
 			.Add(fRestartButton)
 			.AddGlue(inset)
+			.Add(openTerminal)
 			.Add(fCancelButton);
 
 	CenterOnScreen();
@@ -279,6 +276,7 @@ TeamMonitorWindow::MessageReceived(BMessage* msg)
 
 		case kMsgLaunchTerminal:
 			be_roster->Launch("application/x-vnd.Haiku-Terminal");
+			PostMessage(B_QUIT_REQUESTED);
 			break;
 
 		case TM_FORCE_REBOOT:
@@ -582,24 +580,18 @@ TeamDescriptionView::TeamDescriptionView()
 	fSeconds(4),
 	fRebootRunner(NULL)
 {
-	fInfoString = B_TRANSLATE(
-		"Select an application from the list above and click one of "
-		"the buttons 'Kill application' and 'Quit application' "
-		"in order to close it.\n\n"
-		"Hold CONTROL+ALT+DELETE for %ld seconds to reboot.");
-
 	fTeamName = new BStringView("team name", "team name");
+	fTeamName->SetTruncation(B_TRUNCATE_BEGINNING);
+	fTeamName->SetExplicitSize(BSize(StringWidth("x") * 60, B_SIZE_UNSET));
 	fSysComponent = new BStringView("system component", B_TRANSLATE(
 		"(This team is a system component)"));
 	fQuitOverdue = new BStringView("quit overdue", B_TRANSLATE(
 		"If the application will not quit you may have to kill it."));
 	fQuitOverdue->SetFont(be_bold_font);
 
-	fInfoTextView = new AllShowingTextView("info text");
-	BGroupView* group = new BGroupView(B_VERTICAL);
-	BGroupLayoutBuilder(group)
-		.Add(fInfoTextView)
-		.AddGlue();
+	fInfoTextView = new BStringView("info text", "");
+	fInfoTextView->SetLowUIColor(B_PANEL_BACKGROUND_COLOR);
+	fInfoTextView->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 
 	fIconView = new IconView();
 	fIconView->SetExplicitAlignment(
@@ -607,20 +599,24 @@ TeamDescriptionView::TeamDescriptionView()
 
 	BView* teamPropertiesView = new BView("team properties", B_WILL_DRAW);
 	teamPropertiesView->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-	BGroupLayout* layout = new BGroupLayout(B_HORIZONTAL);
+	BGridLayout* layout = new BGridLayout();
 	teamPropertiesView->SetLayout(layout);
-	BGroupLayoutBuilder(layout)
-		.Add(fIconView)
-		.AddGroup(B_VERTICAL)
-			.Add(fTeamName)
-			.Add(fSysComponent)
-			.Add(fQuitOverdue)
-		.End()
-		.AddGlue();
+
+	BLayoutBuilder::Grid<>(layout)
+		.SetInsets(0)
+		.SetSpacing(B_USE_ITEM_SPACING, 0)
+		.AddGlue(0, 0)
+		.Add(fIconView, 0, 1, 1, 3)
+		.AddGlue(1, 0)
+		.Add(fTeamName, 1, 2)
+		.Add(fSysComponent, 1, 3)
+		.Add(fQuitOverdue, 1, 4)
+		.AddGlue(0, 5)
+		.AddGlue(2, 1);
 
 	fLayout = new BCardLayout();
 	SetLayout(fLayout);
-	fLayout->AddView(group);
+	fLayout->AddView(fInfoTextView);
 	fLayout->AddView(teamPropertiesView);
 
 	SetItem(NULL);
@@ -677,23 +673,22 @@ TeamDescriptionView::SetItem(TeamListItem* item)
 	fItem = item;
 
 	if (item == NULL) {
-		int32 styleStart = 0;
-		int32 styleEnd = 0;
-		BString text;
-
-		text.SetToFormat(fInfoString, fSeconds);
-		fInfoTextView->SetText(text);
-		if (fRebootRunner != NULL && fSeconds < 4) {
-			styleStart = text.FindLast('\n');
-			styleEnd = text.Length();
-		}
-
-		if (styleStart != styleEnd && fInfoTextView != NULL) {
+		if (fInfoTextView != NULL) {
 			BFont font;
 			fInfoTextView->GetFont(&font);
-			font.SetFace(B_BOLD_FACE);
-			fInfoTextView->SetStylable(true);
-			fInfoTextView->SetFontAndColor(styleStart, styleEnd, &font);
+			font.SetFace(B_REGULAR_FACE);
+
+			if (fRebootRunner != NULL && fSeconds < 4)
+				font.SetFace(B_BOLD_FACE);
+
+			fInfoTextView->SetFont(&font);
+
+			static BStringFormat format(B_TRANSLATE("{0, plural,"
+				"one{Hold CONTROL+ALT+DELETE for # second to reboot.}"
+				"other{Hold CONTROL+ALT+DELETE for # seconds to reboot.}}"));
+			BString text;
+			format.Format(text, fSeconds);
+			fInfoTextView->SetText(text);
 		}
 	} else {
 		fTeamName->SetText(item->Path()->Path());
@@ -729,32 +724,3 @@ TeamDescriptionView::SetItem(TeamListItem* item)
 }
 
 
-//	#pragma mark -
-
-
-AllShowingTextView::AllShowingTextView(const char* name)
-	:
-	BTextView(name, B_WILL_DRAW)
-{
-	MakeEditable(false);
-	MakeSelectable(false);
-	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-}
-
-
-bool
-AllShowingTextView::HasHeightForWidth()
-{
-	return true;
-}
-
-
-void
-AllShowingTextView::GetHeightForWidth(float width, float* min, float* max,
-	float* preferred)
-{
-	BTextView::GetHeightForWidth(width, min, max, preferred);
-	float minHeight = TextHeight(0, CountLines() - 1);
-	if (min)
-		*min = minHeight;
-}

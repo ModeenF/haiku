@@ -113,9 +113,7 @@ class TMagnify : public BView {
 		bool			ShowGrid();
 
 		void			StartSave();
-		void			SaveImage(entry_ref* ref, char* name, bool selectionOnly=false);
-		void 			SaveBits(BFile* file, const BBitmap *bitmap,
-							const char* name) const;
+		void			SaveImage(entry_ref* ref, char* name);
 		void			EndSave();
 
 	private:
@@ -203,6 +201,11 @@ class TWindow : public BWindow {
 		virtual void	MessageReceived(BMessage* message);
 		virtual bool	QuitRequested();
 
+		status_t		GetSupportedSuites(BMessage* msg);
+		BHandler*		ResolveSpecifier(BMessage* msg, int32 index,
+							BMessage* specifier, int32 what,
+							const char* property);
+
 		void			GetPrefs(int32 pixelCount = -1);
 		void			SetPrefs();
 
@@ -223,6 +226,7 @@ class TWindow : public BWindow {
 
 		void			ShowInfo(bool);
 		bool			InfoIsShowing();
+		bool			InfoBarIsVisible();
 		void			UpdateInfo();
 		void			UpdateInfoBarOnResize();
 
@@ -237,6 +241,7 @@ class TWindow : public BWindow {
 		int32			PixelSize();
 
 		bool			IsActive();
+		bool			IsSticked();
 
 	private:
 		float			fInfoHeight;

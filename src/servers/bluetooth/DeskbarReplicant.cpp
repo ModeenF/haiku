@@ -12,6 +12,7 @@
 #include <Alert.h>
 #include <Application.h>
 #include <Bitmap.h>
+#include <Catalog.h>
 #include <Deskbar.h>
 #include <IconUtils.h>
 #include <MenuItem.h>
@@ -26,12 +27,16 @@
 extern "C" _EXPORT BView *instantiate_deskbar_item(void);
 status_t our_image(image_info& image);
 
-const uint32 kMsgShowBluetoothServerConsole = 'sbtc';
 const uint32 kMsgOpenBluetoothPreferences = 'obtp';
 const uint32 kMsgQuitBluetoothServer = 'qbts';
 
 const char* kDeskbarItemName = "BluetoothServerReplicant";
 const char* kClassName = "DeskbarReplicant";
+
+
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "BluetoothReplicant"
+
 
 //	#pragma mark -
 
@@ -70,14 +75,12 @@ DeskbarReplicant::_Init()
 		return;
 
 	BResources resources(&file);
-#ifdef HAIKU_TARGET_PLATFORM_HAIKU
 	if (resources.InitCheck() < B_OK)
 		return;
-#endif
 
 	size_t size;
 	const void* data = resources.LoadResource(B_VECTOR_ICON_TYPE,
-		"BEOS:ICON", &size);
+		"tray_icon", &size);
 	if (data != NULL) {
 		BBitmap* icon = new BBitmap(Bounds(), B_RGBA32);
 		if (icon->InitCheck() == B_OK
@@ -144,12 +147,8 @@ void
 DeskbarReplicant::MessageReceived(BMessage* msg)
 {
 	switch (msg->what) {
-		case kMsgShowBluetoothServerConsole:
-			_ShowBluetoothServerConsole();
-			break;
-
 		case kMsgOpenBluetoothPreferences:
-			_OpenBluetoothPreferences();
+			be_roster->Launch(BLUETOOTH_APP_SIGNATURE);
 			break;
 
 		case kMsgQuitBluetoothServer:
@@ -174,49 +173,19 @@ DeskbarReplicant::MouseDown(BPoint where)
 
 	BPopUpMenu* menu = new BPopUpMenu(B_EMPTY_STRING, false, false);
 
-	menu->AddItem(new BMenuItem("Settings" B_UTF8_ELLIPSIS,
+	menu->AddItem(new BMenuItem(B_TRANSLATE("Settings" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgOpenBluetoothPreferences)));
 
 	// TODO show list of known/paired devices
 
-	/* The code below is for development purposes only, but doesn't
-	 * hurt to be enabled as long as in alpha state.
-	 */
-	menu->AddSeparatorItem();
-
-	menu->AddItem(new BMenuItem("Show server console" B_UTF8_ELLIPSIS,
-		new BMessage(kMsgShowBluetoothServerConsole)));
-
-	menu->AddItem(new BMenuItem("Stop server",
+	menu->AddItem(new BMenuItem(B_TRANSLATE("Quit"),
 		new BMessage(kMsgQuitBluetoothServer)));
 
 	menu->SetTargetForItems(this);
 	ConvertToScreen(&point);
 	menu->Go(point, true, true, true);
-}
 
-
-void
-DeskbarReplicant::_OpenBluetoothPreferences()
-{
-	status_t status = be_roster->Launch(BLUETOOTH_APP_SIGNATURE);
-	if (status < B_OK) {
-		_ShowErrorAlert("Launching the Bluetooth preflet failed.", status);
-	}
-}
-
-
-void
-DeskbarReplicant::_ShowBluetoothServerConsole()
-{
-	if (!be_roster->IsRunning(BLUETOOTH_SIGNATURE)) {
-		return;
-	}
-	status_t status = BMessenger(BLUETOOTH_SIGNATURE).SendMessage(
-		BT_MSG_SERVER_SHOW_CONSOLE);
-	if (status < B_OK) {
-		_ShowErrorAlert("Showing the Bluetooth server console failed.", status);
-	}
+	delete menu;
 }
 
 
@@ -224,12 +193,17 @@ void
 DeskbarReplicant::_QuitBluetoothServer()
 {
 	if (!be_roster->IsRunning(BLUETOOTH_SIGNATURE)) {
+		// The server isn't running, so remove ourself
+		BDeskbar deskbar;
+		deskbar.RemoveItem(kDeskbarItemName);
+
 		return;
 	}
 	status_t status = BMessenger(BLUETOOTH_SIGNATURE).SendMessage(
 		B_QUIT_REQUESTED);
 	if (status < B_OK) {
-		_ShowErrorAlert("Stopping the Bluetooth server failed.", status);
+		_ShowErrorAlert(B_TRANSLATE("Stopping the Bluetooth server failed."),
+			status);
 	}
 }
 
@@ -237,8 +211,11 @@ DeskbarReplicant::_QuitBluetoothServer()
 void
 DeskbarReplicant::_ShowErrorAlert(BString msg, status_t status)
 {
-	msg << "\n\nError: " << strerror(status);
-	BAlert* alert = new BAlert("Bluetooth error", msg.String(), "OK");
+	BString error = B_TRANSLATE("Error: %status%");
+	error.ReplaceFirst("%status%", strerror(status));
+	msg << "\n\n" << error;
+	BAlert* alert = new BAlert(B_TRANSLATE("Bluetooth error"), msg.String(),
+		B_TRANSLATE("OK"));
 	alert->SetFlags(alert->Flags() | B_CLOSE_ON_ESCAPE);
 	alert->Go(NULL);
 }

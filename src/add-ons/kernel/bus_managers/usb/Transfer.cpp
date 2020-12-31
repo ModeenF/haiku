@@ -7,11 +7,11 @@
  *		Niels S. Reedijk
  */
 
+
 #include "usb_private.h"
 
-#ifdef HAIKU_TARGET_PLATFORM_HAIKU
- #include <kernel.h>
-#endif
+#include <kernel.h>
+
 
 Transfer::Transfer(Pipe *pipe)
 	:	fPipe(pipe),
@@ -274,7 +274,7 @@ Transfer::_CalculateBandwidth()
 			break;
 		}
 
-		case USB_SPEED_SUPER:
+		case USB_SPEED_SUPERSPEED:
 		{
 			// TODO it should only be useful for isochronous type
 			bandwidthNS = 0;

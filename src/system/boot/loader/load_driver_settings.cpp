@@ -37,8 +37,10 @@ load_driver_settings_file(Directory* directory, const char* name)
 	if (buffer == NULL)
 		return B_NO_MEMORY;
 
-	if (read(fd, buffer, stat.st_size) != stat.st_size)
+	if (read(fd, buffer, stat.st_size) != stat.st_size) {
+		kernel_args_free(buffer);
 		return B_IO_ERROR;
+	}
 
 	driver_settings_file* file = (driver_settings_file*)kernel_args_malloc(
 		sizeof(driver_settings_file));
@@ -101,7 +103,7 @@ load_driver_settings(stage2_args* /*args*/, Directory* volume)
 
 			status_t status = load_driver_settings_file(settings, name);
 			if (status != B_OK)
-				dprintf("Could not load \"%s\" error %ld\n", name, status);
+				dprintf("Could not load \"%s\" error %" B_PRIx32 "\n", name, status);
 		}
 
 		settings->Close(cookie);
@@ -117,7 +119,7 @@ add_stage2_driver_settings(stage2_args* args)
 	// TODO: split more intelligently
 	for (const char** arg = args->arguments;
 			arg != NULL && args->arguments_count-- && arg[0] != NULL; arg++) {
-		dprintf("adding args: '%s'\n", arg[0]);
+		//dprintf("adding args: '%s'\n", arg[0]);
 		add_safe_mode_settings((char*)arg[0]);
 	}
 	return B_OK;

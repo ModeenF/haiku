@@ -1,6 +1,6 @@
 /*
  * Copyright 2012-2013 Tri-Edge AI <triedgeai@gmail.com>
- * Copyright 2014 Haiku, Inc. All rights reserved.
+ * Copyright 2014-2016 Haiku, Inc. All rights reserved.
  *
  * Distributed under the terms of the MIT license.
  *
@@ -19,7 +19,9 @@
 #include <StringView.h>
 #include <View.h>
 
+#include "ColorItem.h"
 #include "Gravity.h"
+#include "RainbowItem.h"
 
 
 static const int32 kMsgSize = 'size';
@@ -39,20 +41,16 @@ ConfigView::ConfigView(BRect frame, Gravity* parent)
 	fShadeList(new BListView(B_EMPTY_STRING, B_SINGLE_SELECTION_LIST,
 		B_WILL_DRAW | B_NAVIGABLE))
 {
-	SetLayout(new BGroupLayout(B_HORIZONTAL));
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 
 	fShadeList->SetSelectionMessage(new BMessage(kMsgShade));
-
-	fShadeList->AddItem(new BStringItem("Red"));
-	fShadeList->AddItem(new BStringItem("Green"));
-	fShadeList->AddItem(new BStringItem("Blue"));
-	fShadeList->AddItem(new BStringItem("Orange"));
-	fShadeList->AddItem(new BStringItem("Purple"));
-	fShadeList->AddItem(new BStringItem("White"));
-	fShadeList->AddItem(new BStringItem("Rainbow"));
-
-	fShadeList->Select(parent->Config.ShadeID);
+	fShadeList->AddItem(new ColorItem("Red", (rgb_color){ 255, 65, 54 }));
+	fShadeList->AddItem(new ColorItem("Green", (rgb_color){ 46, 204, 64 }));
+	fShadeList->AddItem(new ColorItem("Blue", (rgb_color){ 0, 116, 217 }));
+	fShadeList->AddItem(new ColorItem("Orange", (rgb_color){ 255, 133, 27 }));
+	fShadeList->AddItem(new ColorItem("Purple", (rgb_color){ 177, 13, 201 }));
+	fShadeList->AddItem(new ColorItem("White", (rgb_color){ 255, 255, 255 }));
+	fShadeList->AddItem(new RainbowItem("Rainbow"));
 
 	fShadeScroll = new BScrollView(B_EMPTY_STRING, fShadeList,
 		B_WILL_DRAW | B_FRAME_EVENTS, false, true);
@@ -63,7 +61,7 @@ ConfigView::ConfigView(BRect frame, Gravity* parent)
 	fCountSlider->SetModificationMessage(new BMessage(kMsgSize));
 	fCountSlider->SetValue(parent->Config.ParticleCount);
 
-	AddChild(BLayoutBuilder::Group<>(B_VERTICAL, B_USE_DEFAULT_SPACING)
+	BLayoutBuilder::Group<>(this, B_VERTICAL, B_USE_DEFAULT_SPACING)
 		.AddGroup(B_VERTICAL, 0)
 			.Add(fTitleString)
 			.Add(fAuthorString)
@@ -71,7 +69,21 @@ ConfigView::ConfigView(BRect frame, Gravity* parent)
 		.Add(fShadeString)
 		.Add(fShadeScroll)
 		.Add(fCountSlider)
-		.SetInsets(B_USE_DEFAULT_SPACING));
+		.SetInsets(B_USE_DEFAULT_SPACING)
+		.End();
+}
+
+
+void
+ConfigView::AllAttached()
+{
+	// fixup scroll bar range
+	fShadeScroll->ScrollBar(B_VERTICAL)->SetRange(0.0f,
+		fShadeList->ItemFrame(fShadeList->CountItems()).bottom
+			- fShadeList->ItemFrame((int32)0).top);
+
+	// select the shade
+	fShadeList->Select(fParent->Config.ShadeID);
 }
 
 

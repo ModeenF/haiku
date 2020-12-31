@@ -7,15 +7,15 @@
  *		Niels S. Reedijk
  */
 
+
 #include <module.h>
 #include <unistd.h>
 #include <util/kernel_cpp.h>
 #include "usb_private.h"
 #include "PhysicalMemoryAllocator.h"
 
-#ifdef HAIKU_TARGET_PLATFORM_HAIKU
 #include <fs/devfs.h>
-#endif
+
 
 Stack::Stack()
 	:	fExploreThread(-1),
@@ -154,7 +154,7 @@ usb_id
 Stack::GetUSBID(Object *object)
 {
 	if (!Lock())
-		return 0;
+		return fObjectMaxCount;
 
 	uint32 id = fObjectIndex;
 	uint32 tries = fObjectMaxCount;
@@ -169,20 +169,26 @@ Stack::GetUSBID(Object *object)
 		id = (id + 1) % fObjectMaxCount;
 	}
 
-	TRACE_ERROR("the stack did run out of usb_ids\n");
+	TRACE_ERROR("the stack has run out of usb_ids\n");
 	Unlock();
 	return 0;
 }
 
 
 void
-Stack::PutUSBID(usb_id id)
+Stack::PutUSBID(Object *object)
 {
 	if (!Lock())
 		return;
 
+	usb_id id = object->USBID();
 	if (id >= fObjectMaxCount) {
 		TRACE_ERROR("tried to put an invalid usb_id\n");
+		Unlock();
+		return;
+	}
+	if (fObjectArray[id] != object) {
+		TRACE_ERROR("tried to put an object with incorrect usb_id\n");
 		Unlock();
 		return;
 	}
@@ -389,15 +395,8 @@ Stack::RescanDrivers(rescan_item *rescanItem)
 		// scan for supported devices or its publish_devices hook will be
 		// called to expose changed devices.
 
-#ifndef HAIKU_TARGET_PLATFORM_HAIKU
-		// the R5 way to republish a device in devfs
-		int devFS = open("/dev", O_WRONLY);
-		write(devFS, rescanItem->name, strlen(rescanItem->name));
-		close(devFS);
-#else
-		// use the private devfs API under Haiku
+		// use the private devfs API to republish a device
 		devfs_rescan_driver(rescanItem->name);
-#endif
 
 		rescan_item *next = rescanItem->link;
 		delete rescanItem;

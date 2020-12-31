@@ -12,6 +12,7 @@
 
 #include <Alert.h>
 #include <Bitmap.h>
+#include <BitmapStream.h>
 #include <Catalog.h>
 #include <Clipboard.h>
 #include <Debug.h>
@@ -21,12 +22,16 @@
 #include <Locale.h>
 #include <MenuItem.h>
 #include <MenuField.h>
-#include <MessageFormat.h>
+#include <NodeInfo.h>
 #include <Path.h>
 #include <PopUpMenu.h>
+#include <PropertyInfo.h>
 #include <Screen.h>
 #include <ScrollView.h>
+#include <StringFormat.h>
 #include <TextView.h>
+#include <TranslationUtils.h>
+#include <TranslatorRoster.h>
 #include <WindowScreen.h>
 
 #include <stdio.h>
@@ -49,6 +54,11 @@ const int32 msg_grow = 'grow';
 const int32 msg_make_square = 'sqar';
 const int32 msg_shrink_pixel = 'pshk';
 const int32 msg_grow_pixel = 'pgrw';
+
+const int32 msg_mouse_left = 'mslf';
+const int32 msg_mouse_right = 'msrt';
+const int32 msg_mouse_up = 'msup';
+const int32 msg_mouse_down = 'msdn';
 
 const int32 msg_new_color = 'colr';
 const int32 msg_toggle_ruler = 'rulr';
@@ -92,6 +102,40 @@ const int32 kDefaultPixelSize = 8;
 // top-bottom: 5 fontheight 5 fontheight 5
 // left-right: 10 minwindowwidth 10
 const int32 kBorderSize = 10;
+
+
+static property_info sProperties[] = {
+	{ "Info", { B_GET_PROPERTY, B_SET_PROPERTY, 0 },
+		{ B_DIRECT_SPECIFIER, 0 },
+		"Show/hide info.", 0,
+		{ B_BOOL_TYPE }
+	},
+	{ "Grid", { B_GET_PROPERTY, B_SET_PROPERTY, 0 },
+		{ B_DIRECT_SPECIFIER, 0 },
+		"Show/hide grid.", 0,
+		{ B_BOOL_TYPE }
+	},
+	{ "MakeSquare", { B_EXECUTE_PROPERTY, 0 },
+		{ B_DIRECT_SPECIFIER, 0 },
+		"Make the view square.", 0,
+	},
+	{ "Zoom", { B_GET_PROPERTY, B_SET_PROPERTY, 0 },
+		{ B_DIRECT_SPECIFIER, 0 },
+		"Gets/sets the zoom factor (1-16).", 0,
+		{ B_INT32_TYPE }
+	},
+	{ "Stick", { B_GET_PROPERTY, B_SET_PROPERTY, 0 },
+		{ B_DIRECT_SPECIFIER, 0 },
+		"Stick/unstick coordinates.", 0,
+		{ B_BOOL_TYPE }
+	},
+	{ "CopyImage", { B_EXECUTE_PROPERTY, 0 },
+		{ B_DIRECT_SPECIFIER, 0 },
+		"Copy image to clipboard.", 0,
+	},
+
+	{ 0 }
+};
 
 
 static float
@@ -142,7 +186,7 @@ BuildInfoMenu(BMenu *menu)
 	menu->AddItem(menuItem);
 	menu->AddSeparatorItem();
 
-	menuItem = new BMenuItem(B_TRANSLATE("Hide/Show info"),
+	menuItem = new BMenuItem(B_TRANSLATE("Show info"),
 		new BMessage(msg_show_info), 'T');
 	menu->AddItem(menuItem);
 	menuItem = new BMenuItem(B_TRANSLATE("Add a crosshair"),
@@ -151,12 +195,12 @@ BuildInfoMenu(BMenu *menu)
 	menuItem = new BMenuItem(B_TRANSLATE("Remove a crosshair"),
 		new BMessage(msg_remove_cross_hair), 'H', B_SHIFT_KEY);
 	menu->AddItem(menuItem);
-	menuItem = new BMenuItem(B_TRANSLATE("Hide/Show grid"),
+	menuItem = new BMenuItem(B_TRANSLATE("Show grid"),
 		new BMessage(msg_toggle_grid), 'G');
 	menu->AddItem(menuItem);
 	menu->AddSeparatorItem();
 
-	menuItem = new BMenuItem(B_TRANSLATE("Freeze/Unfreeze image"),
+	menuItem = new BMenuItem(B_TRANSLATE("Freeze image"),
 		new BMessage(msg_freeze), 'F');
 	menu->AddItem(menuItem);
 	menuItem = new BMenuItem(B_TRANSLATE("Stick coordinates"),
@@ -181,6 +225,59 @@ BuildInfoMenu(BMenu *menu)
 	menu->AddItem(menuItem);
 }
 
+static void
+UpdateInfoMenu(BMenu *menu, TWindow *window)
+{
+	bool state = true;
+	bool showGrid = true;
+	bool infoBarIsVisible = true;
+	bool stickCordinates = true;
+	if (window) {
+		state = window->IsActive();
+		showGrid = window->ShowGrid();
+		infoBarIsVisible = window->InfoBarIsVisible();
+		stickCordinates = window->IsSticked();
+	}
+	BMenuItem* menuItem = menu->FindItem(B_TRANSLATE("Show info"));
+	if (menuItem) {
+		menuItem->SetEnabled(state);
+		menuItem->SetMarked(infoBarIsVisible);
+	}
+	menuItem = menu->FindItem(B_TRANSLATE("Add a crosshair"));
+	if (menuItem)
+		menuItem->SetEnabled(state);
+	menuItem = menu->FindItem(B_TRANSLATE("Remove a crosshair"));
+	if (menuItem)
+		menuItem->SetEnabled(state);
+	menuItem = menu->FindItem(B_TRANSLATE("Show grid"));
+	if (menuItem) {
+		menuItem->SetEnabled(state);
+		menuItem->SetMarked(showGrid);
+	}
+	menuItem = menu->FindItem(B_TRANSLATE("Freeze image"));
+	if (menuItem) {
+		menuItem->SetMarked(!state);
+	}
+	menuItem = menu->FindItem(B_TRANSLATE("Stick coordinates"));
+	if (menuItem) {
+		menuItem->SetMarked(stickCordinates);
+	}
+	menuItem = menu->FindItem(B_TRANSLATE("Make square"));
+	if (menuItem)
+		menuItem->SetEnabled(state);
+	menuItem = menu->FindItem(B_TRANSLATE("Decrease window size"));
+	if (menuItem)
+		menuItem->SetEnabled(state);
+	menuItem = menu->FindItem(B_TRANSLATE("Increase window size"));
+	if (menuItem)
+		menuItem->SetEnabled(state);
+	menuItem = menu->FindItem(B_TRANSLATE("Decrease pixel size"));
+	if (menuItem)
+		menuItem->SetEnabled(state);
+	menuItem = menu->FindItem(B_TRANSLATE("Increase pixel size"));
+	if (menuItem)
+		menuItem->SetEnabled(state);
+}
 
 //	#pragma mark -
 
@@ -239,11 +336,39 @@ TWindow::TWindow(int32 pixelCount)
 	AddShortcut('/', B_COMMAND_KEY, new BMessage(msg_make_square));
 	AddShortcut(',', B_COMMAND_KEY, new BMessage(msg_shrink_pixel));
 	AddShortcut('.', B_COMMAND_KEY, new BMessage(msg_grow_pixel));
+	AddShortcut(B_LEFT_ARROW, B_COMMAND_KEY, new BMessage(msg_mouse_left));
+	AddShortcut(B_RIGHT_ARROW, B_COMMAND_KEY, new BMessage(msg_mouse_right));
+	AddShortcut(B_UP_ARROW, B_COMMAND_KEY, new BMessage(msg_mouse_up));
+	AddShortcut(B_DOWN_ARROW, B_COMMAND_KEY, new BMessage(msg_mouse_down));
 }
 
 
 TWindow::~TWindow()
 {
+}
+
+
+status_t
+TWindow::GetSupportedSuites(BMessage* msg)
+{
+	msg->AddString("suites", "suite/x-vnd.Haiku-Magnify");
+
+	BPropertyInfo propertyInfo(sProperties);
+	msg->AddFlat("messages", &propertyInfo);
+
+	return BWindow::GetSupportedSuites(msg);
+}
+
+
+BHandler*
+TWindow::ResolveSpecifier(BMessage* msg, int32 index, BMessage* specifier,
+	int32 what, const char* property)
+{
+	BPropertyInfo propertyInfo(sProperties);
+	if (propertyInfo.FindMatch(msg, index, specifier, what, property) >= 0)
+		return this;
+
+	return BWindow::ResolveSpecifier(msg, index, specifier, what, property);
 }
 
 
@@ -253,6 +378,96 @@ TWindow::MessageReceived(BMessage* m)
 	bool active = fFatBits->Active();
 
 	switch (m->what) {
+		case B_EXECUTE_PROPERTY:
+		case B_GET_PROPERTY:
+		case B_SET_PROPERTY:
+		{
+			int32 index;
+			BMessage specifier;
+			int32 what;
+			const char* property;
+			if (m->GetCurrentSpecifier(&index, &specifier, &what, &property)
+				!= B_OK)
+				return BWindow::MessageReceived(m);
+
+			status_t result = B_OK;
+			BMessage reply(B_REPLY);
+
+			BPropertyInfo propertyInfo(sProperties);
+			switch (propertyInfo.FindMatch(m, index, &specifier, what,
+						property)) {
+				case 0:
+					if (m->what == B_GET_PROPERTY)
+						result = reply.AddBool("result", fInfoBarState);
+					else if (m->what == B_SET_PROPERTY) {
+						bool showInfo;
+						result = m->FindBool("data", &showInfo);
+						if (result == B_OK) {
+							fInfoBarState = showInfo;
+							ShowInfo(fInfoBarState);
+						}
+					}
+					break;
+
+				case 1:
+					if (m->what == B_GET_PROPERTY)
+						result = reply.AddBool("result", fShowGrid);
+					else if (m->what == B_SET_PROPERTY) {
+						bool showGrid;
+						result = m->FindBool("data", &showGrid);
+						if (result == B_OK)
+							SetGrid(showGrid);
+					}
+					break;
+
+				case 2:
+					if (fHPixelCount != fVPixelCount) {
+						int32 big = fHPixelCount > fVPixelCount ? fHPixelCount
+										: fVPixelCount;
+						ResizeWindow(big, big);
+					}
+					break;
+
+				case 3:
+					if (m->what == B_GET_PROPERTY)
+						result = reply.AddInt32("result", fPixelSize);
+					else if (m->what == B_SET_PROPERTY) {
+						int32 zoom;
+						result = m->FindInt32("data", &zoom);
+						if (result == B_OK)
+							SetPixelSize(zoom);
+					}
+					break;
+
+				case 4:
+					if (m->what == B_GET_PROPERTY)
+						result = reply.AddBool("result", fFatBits->Sticked());
+					else if (m->what == B_SET_PROPERTY) {
+						bool stick;
+						result = m->FindBool("data", &stick);
+						if (result == B_OK)
+							fFatBits->MakeSticked(stick);
+					}
+					break;
+
+				case 5:
+					fFatBits->CopyImage();
+					break;
+
+				default:
+					return BWindow::MessageReceived(m);
+			}
+
+			if (result != B_OK) {
+				reply.what = B_MESSAGE_NOT_UNDERSTOOD;
+				reply.AddString("message", strerror(result));
+				reply.AddInt32("error", result);
+			}
+
+			m->SendReply(&reply);
+			break;
+		}
+
 		case msg_show_info:
 			if (active) {
 				fInfoBarState = !fInfoBarState;
@@ -291,6 +506,23 @@ TWindow::MessageReceived(BMessage* m)
 				SetPixelSize(true);
 			break;
 
+		case msg_mouse_left:
+			if (active)
+				fFatBits->NudgeMouse(-1, 0);
+			break;
+		case msg_mouse_right:
+			if (active)
+				fFatBits->NudgeMouse(1, 0);
+			break;
+		case msg_mouse_up:
+			if (active)
+				fFatBits->NudgeMouse(0, -1);
+			break;
+		case msg_mouse_down:
+			if (active)
+				fFatBits->NudgeMouse(0, 1);
+			break;
+
 		case msg_add_cross_hair:
 			if (active && fShowInfo)
 				AddCrossHair();
@@ -321,7 +553,7 @@ TWindow::MessageReceived(BMessage* m)
 			BMessage message(msg_dump);
 			fSavePanel = new BFilePanel(B_SAVE_PANEL, &messenger, 0, 0, false,
 				&message);
-			fSavePanel->SetSaveText("Bitmaps.h");
+			fSavePanel->SetSaveText("Bitmaps.png");
 			fSavePanel->Show();
 		}	break;
 		case msg_dump:
@@ -651,6 +883,13 @@ TWindow::InfoIsShowing()
 }
 
 
+bool
+TWindow::InfoBarIsVisible()
+{
+	return fInfoBarState;
+}
+
+
 void
 TWindow::UpdateInfo()
 {
@@ -668,7 +907,7 @@ TWindow::UpdateInfoBarOnResize()
 		|| infoHeight > Bounds().Height()) {
 		ShowInfo(false);
 	} else {
-		ShowInfo(true);
+		ShowInfo(fInfoBarState);
 	}
 }
 
@@ -719,6 +958,11 @@ TWindow::PixelCount(int32* h, int32 *v)
 void
 TWindow::SetPixelSize(int32 s)
 {
+	if (s > 100)
+		s = 100;
+	else if (s < 1)
+		s = 1;
+
 	if (s == fPixelSize)
 		return;
 
@@ -726,24 +970,6 @@ TWindow::SetPixelSize(int32 s)
 	// resize window
 	// tell info that size has changed
 	// tell mag that size has changed
-
-	CalcViewablePixels();
-	ResizeWindow(fHPixelCount, fVPixelCount);
-}
-
-
-void
-TWindow::SetPixelSize(bool d)
-{
-	if (d) {		// grow
-		fPixelSize++;
-		if (fPixelSize > 16)
-			fPixelSize = 16;
-	} else {
-		fPixelSize--;
-		if (fPixelSize < 1)
-			fPixelSize = 1;
-	}
 
 	float w = Bounds().Width();
 	float h = Bounds().Height();
@@ -754,6 +980,31 @@ TWindow::SetPixelSize(bool d)
 	//	in that case force the buffers to the new dimension
 	if (w == Bounds().Width() && h == Bounds().Height())
 		fFatBits->InitBuffers(fHPixelCount, fVPixelCount, fPixelSize, ShowGrid());
+}
+
+
+void
+TWindow::SetPixelSize(bool plus)
+{
+	int32 pixelSize;
+
+	if (plus) {
+		if (fPixelSize >= 16)
+			return;
+
+		pixelSize = fPixelSize + 1;
+	} else {
+		pixelSize = fPixelSize / 2;
+
+		if (pixelSize < 16) {
+			if (fPixelSize > 16)
+				pixelSize = (fPixelSize + 16) / 2;
+			else
+				pixelSize = fPixelSize - 1;
+		}
+	}
+
+	SetPixelSize(pixelSize);
 }
 
 
@@ -772,6 +1023,13 @@ bool
 TWindow::IsActive()
 {
 	return fFatBits->Active();
+}
+
+
+bool
+TWindow::IsSticked()
+{
+	return fFatBits->Sticked();
 }
 
 
@@ -830,7 +1088,7 @@ TInfoView::Draw(BRect updateRect)
 
 	MovePenTo(15 + fPopUp->Bounds().Width(), fFontHeight + 5);
 
-	static BMessageFormat format(B_TRANSLATE("%width x %height  @ {0, plural, "
+	static BStringFormat format(B_TRANSLATE("%width x %height  @ {0, plural, "
 		"one{# pixel/pixel} other{# pixels/pixel}}"));
 
 	BString dimensionsInfo;
@@ -961,37 +1219,7 @@ TMenu::~TMenu()
 void
 TMenu::AttachedToWindow()
 {
-	bool state = true;
-	if (fMainWindow)
-		state = fMainWindow->IsActive();
-
-	BMenuItem* menuItem = FindItem(B_TRANSLATE("Hide/Show info"));
-	if (menuItem)
-		menuItem->SetEnabled(state);
-	menuItem = FindItem(B_TRANSLATE("Add a crosshair"));
-	if (menuItem)
-		menuItem->SetEnabled(state);
-	menuItem = FindItem(B_TRANSLATE("Remove a crosshair"));
-	if (menuItem)
-		menuItem->SetEnabled(state);
-	menuItem = FindItem(B_TRANSLATE("Hide/Show grid"));
-	if (menuItem)
-		menuItem->SetEnabled(state);
-	menuItem = FindItem(B_TRANSLATE("Make square"));
-	if (menuItem)
-		menuItem->SetEnabled(state);
-	menuItem = FindItem(B_TRANSLATE("Decrease window size"));
-	if (menuItem)
-		menuItem->SetEnabled(state);
-	menuItem = FindItem(B_TRANSLATE("Increase window size"));
-	if (menuItem)
-		menuItem->SetEnabled(state);
-	menuItem = FindItem(B_TRANSLATE("Decrease pixel size"));
-	if (menuItem)
-		menuItem->SetEnabled(state);
-	menuItem = FindItem(B_TRANSLATE("Increase pixel size"));
-	if (menuItem)
-		menuItem->SetEnabled(state);
+	UpdateInfoMenu(this, fMainWindow);
 
 	BMenu::AttachedToWindow();
 }
@@ -1120,8 +1348,6 @@ TMagnify::KeyDown(const char *key, int32 numBytes)
 	if (!fShowSelection)
 		BView::KeyDown(key, numBytes);
 
-	uint32 mods = modifiers();
-
 	switch (key[0]) {
 		case B_TAB:
 			if (fShowCrossHair1) {
@@ -1140,28 +1366,16 @@ TMagnify::KeyDown(const char *key, int32 numBytes)
 			break;
 
 		case B_LEFT_ARROW:
-			if (mods & B_OPTION_KEY)
-				NudgeMouse(-1,0);
-			else
-				MoveSelection(-1,0);
+			MoveSelection(-1,0);
 			break;
 		case B_RIGHT_ARROW:
-			if (mods & B_OPTION_KEY)
-				NudgeMouse(1, 0);
-			else
-				MoveSelection(1,0);
+			MoveSelection(1,0);
 			break;
 		case B_UP_ARROW:
-			if (mods & B_OPTION_KEY)
-				NudgeMouse(0, -1);
-			else
-				MoveSelection(0,-1);
+			MoveSelection(0,-1);
 			break;
 		case B_DOWN_ARROW:
-			if (mods & B_OPTION_KEY)
-				NudgeMouse(0, 1);
-			else
-				MoveSelection(0,1);
+			MoveSelection(0,1);
 			break;
 
 		default:
@@ -1224,10 +1438,10 @@ TMagnify::MouseDown(BPoint where)
 		if ((buttons & B_SECONDARY_MOUSE_BUTTON) || (modifiers & B_CONTROL_KEY)) {
 			// secondary button was clicked or control key was down, show menu and return
 
-			BPopUpMenu *menu = new BPopUpMenu(B_TRANSLATE("Info"));
+			BPopUpMenu *menu = new BPopUpMenu(B_TRANSLATE("Info"), false, false);
 			menu->SetFont(be_plain_font);
 			BuildInfoMenu(menu);
-
+			UpdateInfoMenu(menu, dynamic_cast<TWindow*>(Window()));
 			BMenuItem *selected = menu->Go(ConvertToScreen(where));
 			if (selected)
 				Window()->PostMessage(selected->Message()->what);
@@ -1504,7 +1718,7 @@ TMagnify::CopyImage()
 
 	BMessage *message = be_clipboard->Data();
 	if (!message) {
-		printf(B_TRANSLATE_CONTEXT("no clip msg\n",
+		puts(B_TRANSLATE_CONTEXT("no clip msg",
 			"In console, when clipboard is empty after clicking Copy image"));
 		return;
 	}
@@ -1640,116 +1854,26 @@ TMagnify::EndSave()
 
 
 void
-TMagnify::SaveImage(entry_ref* ref, char* name, bool selectionOnly)
+TMagnify::SaveImage(entry_ref* ref, char* name)
 {
 	// create a new file
 	BFile file;
 	BDirectory parentDir(ref);
 	parentDir.CreateFile(name, &file);
 
-	// write off the bitmaps bits to the file
-	SaveBits(&file, fImageView->Bitmap(), "Data");
+	// Write the screenshot bitmap to the file
+	BBitmapStream stream(fImageView->Bitmap());
+	BTranslatorRoster* roster = BTranslatorRoster::Default();
+	roster->Translate(&stream, NULL, NULL, &file, B_PNG_FORMAT,
+		B_TRANSLATOR_BITMAP);
+
+	BBitmap* bitmap;
+	stream.DetachBitmap(&bitmap);
+		// The stream takes over ownership of the bitmap
 
 	// unfreeze the image, image was frozen before invoke of FilePanel
 	EndSave();
 }
-
-
-void
-TMagnify::SaveBits(BFile* file, const BBitmap *bitmap, const char* name) const
-{
-	int32 bytesPerPixel;
-	const char *kColorSpaceName;
-
-	switch (bitmap->ColorSpace()) {
-		case B_GRAY8:
-			bytesPerPixel = 1;
-			kColorSpaceName = "B_GRAY8";
-			break;
-
-		case B_CMAP8:
-			bytesPerPixel = 1;
-			kColorSpaceName = "B_CMAP8";
-			break;
-
-		case B_RGB15:
-		case B_RGBA15:
-		case B_RGB15_BIG:
-		case B_RGBA15_BIG:
-			bytesPerPixel = 2;
-			kColorSpaceName = "B_RGB15";
-			break;
-
-		case B_RGB16:
-		case B_RGB16_BIG:
-			bytesPerPixel = 2;
-			kColorSpaceName = "B_RGB16";
-			break;
-
-		case B_RGB32:
-		case B_RGBA32:
-		case B_RGBA32_BIG:
-		case B_BIG_RGB_32_BIT:
-			bytesPerPixel = 3;
-			kColorSpaceName = "B_RGB32";
-			break;
-
-		default:
-			printf("dump: usupported ColorSpace\n");
-			return;
-	}
-
-	char str[1024];
-	// stream out the width, height and ColorSpace
-	sprintf(str, "const int32 k%sWidth = %" B_PRIi32 ";\n", name,
-		(int32)bitmap->Bounds().Width()+1);
-	file->Write(str, strlen(str));
-	sprintf(str, "const int32 k%sHeight = %" B_PRIi32 ";\n", name,
-		(int32)bitmap->Bounds().Height()+1);
-	file->Write(str, strlen(str));
-	sprintf(str, "const color_space k%sColorSpace = %s;\n\n", name,
-		kColorSpaceName);
-	file->Write(str, strlen(str));
-
-	// stream out the constant name for this array
-	sprintf(str, "const unsigned char k%sBits [] = {", name);
-	file->Write(str, strlen(str));
-
-	const unsigned char *bits = (const unsigned char *)bitmap->Bits();
-	const int32 kMaxColumnWidth = 16;
-	int32 bytesPerRow = bitmap->BytesPerRow();
-	int32 columnWidth = (bytesPerRow < kMaxColumnWidth) ? bytesPerRow : kMaxColumnWidth;
-
-	for (int32 remaining = bitmap->BitsLength(); remaining; ) {
-		sprintf(str, "\n\t");
-		file->Write(str, strlen(str));
-
-		//	stream out each row, based on the number of bytes required per row
-		//	padding is in the bitmap and will be streamed as 0xff
-		for (int32 column = 0; column < columnWidth; column++) {
-			// stream out individual pixel components
-			for (int32 count = 0; count < bytesPerPixel; count++) {
-				--remaining;
-				sprintf(str, "0x%02x", *bits++);
-				file->Write(str, strlen(str));
-
-				if (remaining) {
-					sprintf(str, ",");
-					file->Write(str, strlen(str));
-				} else
-					break;
-			}
-
-			//	make sure we don't walk off the end of the bits array
-			if (!remaining)
-				break;
-		}
-	}
-
-	sprintf(str, "\n};\n\n");
-	file->Write(str, strlen(str));
-}
-
 
 //	#pragma mark -
 
@@ -1879,7 +2003,7 @@ TOSMagnify::CreateImage(BPoint mouseLoc, bool force)
 		}
 		Window()->Unlock();
 	} else
-		printf("window problem\n");
+		puts("window problem");
 
 	return created;
 }
@@ -2044,8 +2168,8 @@ main(int argc, char* argv[])
 	int32 pixelCount = -1;
 
 	if (argc > 2) {
-		printf(B_TRANSLATE_CONTEXT(
-			"usage: magnify [size] (magnify size * size pixels)\n",
+		puts(B_TRANSLATE_CONTEXT(
+			"usage: magnify [size] (magnify size * size pixels)",
 			"Console"));
 		exit(1);
 	} else {
@@ -2053,18 +2177,18 @@ main(int argc, char* argv[])
 			pixelCount = abs(atoi(argv[1]));
 
 			if ((pixelCount > 100) || (pixelCount < 4)) {
-				printf(B_TRANSLATE_CONTEXT(
-					"usage: magnify [size] (magnify size * size pixels)\n",
+				puts(B_TRANSLATE_CONTEXT(
+					"usage: magnify [size] (magnify size * size pixels)",
 					"Console"));
-				printf(B_TRANSLATE_CONTEXT(
-					"  size must be > 4 and a multiple of 4\n",
+				puts(B_TRANSLATE_CONTEXT(
+					"  size must be > 4 and a multiple of 4",
 					"Console"));
 				exit(1);
 			}
 
 			if (pixelCount % 4) {
-				printf(B_TRANSLATE_CONTEXT(
-					"magnify: size must be a multiple of 4\n",
+				puts(B_TRANSLATE_CONTEXT(
+					"magnify: size must be a multiple of 4",
 					"Console"));
 				exit(1);
 			}

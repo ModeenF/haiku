@@ -51,8 +51,9 @@ private:
 private:
 			class StreamCookie;
 
-			AVFormatContext*	fContext;
-			bool				fHeaderWritten;
+			AVFormatContext*	fFormatContext;
+			bool				fCodecOpened;
+			int					fHeaderError;
 
 			AVIOContext*		fIOContext;
 

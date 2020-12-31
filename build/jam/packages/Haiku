@@ -30,14 +30,10 @@ for driver in $(SYSTEM_ADD_ONS_DRIVERS_NET) {
 AddFilesToPackage add-ons kernel bus_managers : $(SYSTEM_ADD_ONS_BUS_MANAGERS) ;
 AddFilesToPackage add-ons kernel busses agp_gart : <agp_gart>intel@x86,x86_64 ;
 
-if $(HAIKU_ATA_STACK) = 1 {
-	AddFilesToPackage add-ons kernel busses ata
-		: generic_ide_pci it8211 legacy_sata silicon_image_3112 ide_isa@x86 ;
-} else {
-	AddFilesToPackage add-ons kernel busses ide
-		: generic_ide_pci it8211 legacy_sata silicon_image_3112 ide_isa@x86 ;
-}
+AddFilesToPackage add-ons kernel busses ata
+	: generic_ide_pci it8211 legacy_sata silicon_image_3112 highpoint_ide_pci ide_isa@x86 ;
 
+AddFilesToPackage add-ons kernel busses i2c : pch_i2c@x86,x86_64 ;
 AddFilesToPackage add-ons kernel busses random : virtio_rng ;
 AddFilesToPackage add-ons kernel busses scsi : ahci virtio_scsi ;
 AddFilesToPackage add-ons kernel busses usb : <usb>uhci <usb>ohci <usb>ehci
@@ -45,15 +41,15 @@ AddFilesToPackage add-ons kernel busses usb : <usb>uhci <usb>ohci <usb>ehci
 AddFilesToPackage add-ons kernel busses virtio : virtio_pci ;
 AddFilesToPackage add-ons kernel console : vga_text ;
 AddFilesToPackage add-ons kernel debugger
-	: <kdebug>demangle <kdebug>disasm@x86 <kdebug>hangman
+	: <kdebug>demangle <kdebug>disasm@x86,x86_64 <kdebug>hangman
 	  <kdebug>invalidate_on_exit <kdebug>usb_keyboard <kdebug>qrencode@libqrencode
 	  <kdebug>run_on_exit ;
 AddFilesToPackage add-ons kernel file_systems : $(SYSTEM_ADD_ONS_FILE_SYSTEMS) ;
 AddFilesToPackage add-ons kernel generic
-	: ata_adapter@ata bios@x86,x86_64 dpc ide_adapter@ide
-		locked_pool mpu401 scsi_periph <module>tty ;
+	: ata_adapter bios@x86,x86_64 dpc
+		locked_pool mpu401 scsi_periph smbios@x86,x86_64 <module>tty ;
 AddFilesToPackage add-ons kernel partitioning_systems
-	: amiga_rdb@m68k apple@ppc efi_gpt intel session ;
+	: amiga_rdb@m68k apple@ppc sun@sparc efi_gpt intel session ;
 AddFilesToPackage add-ons kernel interrupt_controllers : openpic@ppc ;
 AddFilesToPackage add-ons kernel power cpufreq : intel_pstates@x86,x86_64 ;
 AddFilesToPackage add-ons kernel power cpuidle : intel_cstates@x86,x86_64 ;
@@ -63,21 +59,24 @@ if $(TARGET_ARCH) = x86 || $(TARGET_ARCH) = x86_64 {
 }
 
 # drivers
+AddNewDriversToPackage 				: wmi@x86,x86_64 ;
+AddNewDriversToPackage disk			: nvme_disk@x86,x86_64 ;
 AddNewDriversToPackage disk scsi	: scsi_cd scsi_disk ;
-AddNewDriversToPackage disk virtual : virtio_block ;
+AddNewDriversToPackage disk virtual : virtio_block ram_disk ;
 AddNewDriversToPackage power		: $(SYSTEM_ADD_ONS_DRIVERS_POWER) ;
+AddNewDriversToPackage sensor		: $(SYSTEM_ADD_ONS_DRIVERS_SENSOR) ;
+AddNewDriversToPackage network		: virtio_net ;
 #AddNewDriversToPackage display		: display_adapter@x86 ;
 
 # legacy drivers
 AddDriversToPackage					: console dprintf null <driver>tty usb_modeswitch zero ;
 AddDriversToPackage audio hmulti	: $(SYSTEM_ADD_ONS_DRIVERS_AUDIO) ;
 AddDriversToPackage audio old		: $(SYSTEM_ADD_ONS_DRIVERS_AUDIO_OLD) ;
+AddDriversToPackage bluetooth h2	: $(SYSTEM_ADD_ONS_DRIVERS_BT_H2) ;
 AddDriversToPackage midi			: $(SYSTEM_ADD_ONS_DRIVERS_MIDI) ;
 AddDriversToPackage bus				: usb_raw fw_raw@x86 ;
 AddDriversToPackage disk floppy		: pc_floppy@x86 ;
 AddDriversToPackage disk usb		: usb_disk ;
-AddDriversToPackage disk usb		: usb_floppy ;
-AddDriversToPackage printer usb		: usb_printer ;
 AddDriversToPackage disk virtual	: nbd ;
 AddDriversToPackage dvb				: cx23882 ;
 AddDriversToPackage graphics		: $(SYSTEM_ADD_ONS_DRIVERS_GRAPHICS) ;
@@ -94,7 +93,7 @@ AddLibrariesToPackage lib
 	: [ HaikuImageGetSystemLibs ] [ HaikuImageGetPrivateSystemLibs ] ;
 
 # libnetwork.so replaces quite a few libraries
-if $(HAIKU_GCC_VERSION_$(architecture)[1]) = 2 {
+if $(HAIKU_CC_IS_LEGACY_GCC_$(architecture)) = 1 {
 	local libNetworkAliases = libsocket.so libbind.so libnet.so ;
 	local lib ;
 	for lib in $(libNetworkAliases) {
@@ -104,9 +103,6 @@ if $(HAIKU_GCC_VERSION_$(architecture)[1]) = 2 {
 	AddSymlinkToPackage lib : libbnetapi.so : libnetapi.so ;
 }
 
-
-# TODO: Remove when the packages have been rebuilt!
-AddSymlinkToPackage lib : libbe.so : liblocale.so ;
 
 # servers
 AddFilesToPackage servers : $(SYSTEM_SERVERS) ;
@@ -125,8 +121,7 @@ AddSymlinkToPackage bin : trash : untrash ;
 AddSymlinkToPackage bin : less : more ;
 
 # scripts and data files
-local bootScripts = PostInstallScript SetupEnvironment
-	InstallerInitScript InstallerFinishScript ;
+local bootScripts = PostInstallScript SetupEnvironment ;
 SEARCH on $(bootScripts) = [ FDirName $(HAIKU_TOP) data system boot ] ;
 AddFilesToPackage boot : $(bootScripts) ;
 
@@ -171,10 +166,7 @@ AddFilesToPackage data fortunes : $(fortuneFiles) ;
 
 local fontDir = [ FDirName $(HAIKU_TOP) data system data fonts ] ;
 local psFonts = [ Glob $(fontDir)/psfonts : *.afm *.pfb ] ;
-local ttFonts = [ Glob $(fontDir)/ttfonts : *.ttf ] ;
 AddFilesToPackage data fonts psfonts : $(psFonts) ;
-AddFilesToPackage data fonts ttfonts : $(ttFonts) ;
-
 
 # keymaps
 AddFilesToPackage data Keymaps : $(HAIKU_KEYMAP_FILES) ;
@@ -183,7 +175,6 @@ for keymapAlias in $(HAIKU_KEYMAP_ALIASES) {
 	local aliasedTo = [ on $(keymapAlias) return $(HAIKU_KEYMAP_FILE) ] ;
 	AddSymlinkToPackage data Keymaps : $(aliasedTo:BSM) : $(keymapAlias:BSM) ;
 }
-
 
 # keyboard layouts
 AddFilesToPackage data KeyboardLayouts
@@ -195,17 +186,18 @@ AddFilesToPackage data KeyboardLayouts ThinkPad
 
 # boot module links
 AddBootModuleSymlinksToPackage
-	acpi@x86,x86_64 ahci ata@ata ata_adapter@ata
+	acpi@x86,x86_64 ahci ata ata_adapter
 	bfs
 	config_manager
 	dpc
 	efi_gpt
 	generic_ide_pci
-	ide@ide ide_adapter@ide ide_isa@x86 isa@x86,x86_64 intel it8211
+	ide_isa@x86 isa@x86,x86_64 intel it8211
 	legacy_sata locked_pool
+	nvme_disk@x86,x86_64
 	openpic@ppc
 	packagefs pci
-	scsi scsi_cd scsi_disk scsi_periph silicon_image_3112
+	scsi scsi_cd scsi_disk scsi_periph silicon_image_3112 highpoint_ide_pci
 	usb usb_disk <usb>ehci <usb>ohci <usb>uhci <usb>xhci
 	virtio virtio_block virtio_pci virtio_scsi
 ;
@@ -226,7 +218,7 @@ AddFilesToPackage add-ons media : $(SYSTEM_ADD_ONS_MEDIA) ;
 AddFilesToPackage add-ons media plugins : $(SYSTEM_ADD_ONS_MEDIA_PLUGINS) ;
 
 AddFilesToPackage add-ons Network\ Settings
-	: IPv4Interface IPv6Interface DNSClientService FTPService SSHService
+	: IPv4Interface IPv6Interface DNSClientService Hostname FTPService SSHService
 		TelnetService ;
 
 AddFilesToPackage add-ons Tracker
@@ -242,7 +234,7 @@ AddSymlinkToPackage add-ons Tracker
 AddFilesToPackage add-ons input_server devices
 	: <input>keyboard <input>mouse <input>tablet <input>wacom ;
 AddFilesToPackage add-ons input_server filters
-	: screen_saver shortcut_catcher switch_workspace ;
+	: padblocker screen_saver shortcut_catcher switch_workspace ;
 AddDirectoryToPackage add-ons input_server methods ;
 
 AddFilesToPackage add-ons kernel network : <net>notifications stack ;
@@ -263,10 +255,19 @@ AddFilesToPackage add-ons disk_systems
 	: <disk_system>fat <disk_system>intel <disk_system>gpt <disk_system>bfs
 		<disk_system>ntfs ;
 
+# Kernel bluetooth stack
+AddFilesToPackage add-ons kernel bluetooth : $(SYSTEM_BT_STACK) ;
+
+# decorators
+AddFilesToPackage add-ons decorators : BeDecorator ;
+	# MacDecorator WinDecorator
 
 # the MIME DB
 CopyDirectoryToPackage data : <mimedb>mime_db : : : isTarget ;
 
+# directory attributes
+AddDirectoryToPackage apps : system-apps.rdef ;
+AddDirectoryToPackage preferences : system-preferences.rdef ;
 
 # Deskbar menu symlinks
 
@@ -302,12 +303,6 @@ for linkTarget in $(SYSTEM_DEMOS) {
 # Deskbar menu entries file
 AddFilesToPackage data deskbar : <deskbar>menu_entries ;
 
-
-# PDF Writer enconding files
-CopyDirectoryToPackage data
-	: [ FDirName $(HAIKU_TOP) src add-ons print drivers pdf encoding ]
-	: "PDF Writer" : -x Jamfile ;
-
 # licenses
 CopyDirectoryToPackage data
 	: [ FDirName $(HAIKU_TOP) data system data licenses ]
@@ -322,15 +317,6 @@ CopyDirectoryToPackage data
 CopyDirectoryToPackage documentation
 	: [ FDirName $(HAIKU_TOP) docs apps diskusage ]
 	: diskusage ;
-
-# Copy documentation and sample programs as per PDFlib Lite's license
-# requirement.
-CopyDirectoryToPackage documentation
-	: [ FDirName $(HAIKU_TOP) src libs pdflib doc ]
-	: pdflib ;
-CopyDirectoryToPackage develop sample-code
-	: [ FDirName $(HAIKU_TOP) src libs pdflib bind pdflib ]
-	: pdflib ;
 
 
 # empty directory

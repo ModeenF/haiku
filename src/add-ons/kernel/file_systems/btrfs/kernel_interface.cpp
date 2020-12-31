@@ -1,27 +1,32 @@
 /*
+ * Copyright 2019, Bharathi Ramana Joshi, joshibharathiramana@gmail.com
+ * Copyright 2019, Les De Ridder, les@lesderid.net
+ * Copyright 2017, Chế Vũ Gia Hy, cvghy116@gmail.com.
  * Copyright 2011, Jérôme Duval, korli@users.berlios.de.
  * Copyright 2008, Axel Dörfler, axeld@pinc-software.de.
+ *
  * This file may be used under the terms of the MIT License.
  */
 
 
-#include <dirent.h>
-#include <util/kernel_cpp.h>
-#include <string.h>
-
-#include <AutoDeleter.h>
-#include <fs_cache.h>
-#include <fs_info.h>
-#include <io_requests.h>
-#include <NodeMonitor.h>
-#include <util/AutoLock.h>
-
 #include "Attribute.h"
 #include "AttributeIterator.h"
 #include "btrfs.h"
+#include "btrfs_disk_system.h"
 #include "DirectoryIterator.h"
 #include "Inode.h"
+#include "system_dependencies.h"
 #include "Utility.h"
+
+
+#ifdef FS_SHELL
+#define ERROR(x...) TRACE(x)
+#define INFORM(x...) TRACE(x)
+#define init_debugging()
+#define exit_debugging()
+#else
+#include <DebugSupport.h>
+#endif
 
 
 //#define TRACE_BTRFS
@@ -30,8 +35,6 @@
 #else
 #	define TRACE(x...) ;
 #endif
-#define ERROR(x...) dprintf("\33[34mbtrfs:\33[0m " x)
-
 
 #define BTRFS_IO_SIZE	65536
 
@@ -68,14 +71,14 @@ iterative_io_finished_hook(void* cookie, io_request* request, status_t status,
 
 
 static float
-btrfs_identify_partition(int fd, partition_data *partition, void **_cookie)
+btrfs_identify_partition(int fd, partition_data* partition, void** _cookie)
 {
 	btrfs_super_block superBlock;
 	status_t status = Volume::Identify(fd, &superBlock);
 	if (status != B_OK)
 		return -1;
 
-	identify_cookie *cookie = new identify_cookie;
+	identify_cookie* cookie = new identify_cookie;
 	memcpy(&cookie->super_block, &superBlock, sizeof(btrfs_super_block));
 
 	*_cookie = cookie;
@@ -84,9 +87,9 @@ btrfs_identify_partition(int fd, partition_data *partition, void **_cookie)
 
 
 static status_t
-btrfs_scan_partition(int fd, partition_data *partition, void *_cookie)
+btrfs_scan_partition(int fd, partition_data* partition, void* _cookie)
 {
-	identify_cookie *cookie = (identify_cookie *)_cookie;
+	identify_cookie* cookie = (identify_cookie*)_cookie;
 
 	partition->status = B_PARTITION_VALID;
 	partition->flags |= B_PARTITION_FILE_SYSTEM;
@@ -138,9 +141,9 @@ btrfs_mount(fs_volume* _volume, const char* device, uint32 flags,
 
 
 static status_t
-btrfs_unmount(fs_volume *_volume)
+btrfs_unmount(fs_volume* _volume)
 {
-	Volume* volume = (Volume *)_volume->private_volume;
+	Volume* volume = (Volume*)_volume->private_volume;
 
 	status_t status = volume->Unmount();
 	delete volume;
@@ -172,6 +175,33 @@ btrfs_read_fs_info(fs_volume* _volume, struct fs_info* info)
 }
 
 
+static status_t
+btrfs_write_fs_info(fs_volume* _volume, const struct fs_info* info, uint32 mask)
+{
+	Volume* volume = (Volume*)_volume->private_volume;
+	if (volume->IsReadOnly())
+		return B_READ_ONLY_DEVICE;
+
+	if (mask & ~FS_WRITE_FSINFO_NAME != 0)
+		return B_NOT_SUPPORTED;
+
+	MutexLocker locker(volume->GetLock());
+	status_t status = B_BAD_VALUE;
+
+	if (mask & FS_WRITE_FSINFO_NAME) {
+		btrfs_super_block& superBlock = volume->SuperBlock();
+
+		strncpy(superBlock.label, info->volume_name,
+			sizeof(superBlock.label) - 1);
+		superBlock.label[sizeof(superBlock.label) - 1] = '\0';
+
+		status = volume->WriteSuperBlock();
+	}
+
+	return status;
+}
+
+
 //	#pragma mark -
 
 
@@ -186,18 +216,18 @@ btrfs_get_vnode(fs_volume* _volume, ino_t id, fs_vnode* _node, int* _type,
 		return B_NO_MEMORY;
 
 	status_t status = inode->InitCheck();
-	if (status != B_OK)
+	if (status != B_OK) {
 		delete inode;
-
-	if (status == B_OK) {
-		_node->private_node = inode;
-		_node->ops = &gBtrfsVnodeOps;
-		*_type = inode->Mode();
-		*_flags = 0;
-	} else
 		ERROR("get_vnode: InitCheck() failed. Error: %s\n", strerror(status));
+		return status;
+	}
 
-	return status;
+	_node->private_node = inode;
+	_node->ops = &gBtrfsVnodeOps;
+	*_type = inode->Mode();
+	*_flags = 0;
+
+	return B_OK;
 }
 
 
@@ -261,12 +291,13 @@ btrfs_read_pages(fs_volume* _volume, fs_vnode* _node, void* _cookie,
 
 
 static status_t
-btrfs_io(fs_volume* _volume, fs_vnode* _node, void* _cookie, io_request* request)
+btrfs_io(fs_volume* _volume, fs_vnode* _node, void* _cookie,
+	io_request* request)
 {
 	Volume* volume = (Volume*)_volume->private_volume;
 	Inode* inode = (Inode*)_node->private_node;
 
-#ifndef BTRFS_SHELL
+#ifndef FS_SHELL
 	if (io_request_is_write(request) && volume->IsReadOnly()) {
 		notify_io_request(request, B_READ_ONLY_DEVICE);
 		return B_READ_ONLY_DEVICE;
@@ -274,7 +305,7 @@ btrfs_io(fs_volume* _volume, fs_vnode* _node, void* _cookie, io_request* request
 #endif
 
 	if (inode->FileCache() == NULL) {
-#ifndef BTRFS_SHELL
+#ifndef FS_SHELL
 		notify_io_request(request, B_BAD_VALUE);
 #endif
 		return B_BAD_VALUE;
@@ -353,7 +384,7 @@ btrfs_lookup(fs_volume* _volume, fs_vnode* _directory, const char* name,
 	status = DirectoryIterator(directory).Lookup(name, strlen(name), _vnodeID);
 	if (status != B_OK)
 		return status;
-	
+
 	return get_vnode(volume->FSVolume(), *_vnodeID, NULL);
 }
 
@@ -373,7 +404,7 @@ static status_t
 btrfs_read_stat(fs_volume* _volume, fs_vnode* _node, struct stat* stat)
 {
 	Inode* inode = (Inode*)_node->private_node;
-	
+
 	stat->st_dev = inode->GetVolume()->ID();
 	stat->st_ino = inode->ID();
 	stat->st_nlink = 1;
@@ -393,6 +424,99 @@ btrfs_read_stat(fs_volume* _volume, fs_vnode* _node, struct stat* stat)
 	stat->st_blocks = (inode->Size() + 511) / 512;
 
 	return B_OK;
+}
+
+
+static status_t
+btrfs_write_stat(fs_volume* _volume, fs_vnode* _node, const struct stat* stat,
+	uint32 mask)
+{
+	FUNCTION();
+
+	Volume* volume = (Volume*)_volume->private_volume;
+	Inode* inode = (Inode*)_node->private_node;
+
+	if (volume->IsReadOnly())
+		return B_READ_ONLY_DEVICE;
+
+	btrfs_inode& node = inode->Node();
+	bool updateTime = false;
+	uid_t uid = geteuid();
+
+	bool isOwnerOrRoot = uid == 0 || uid == (uid_t)node.UserID();
+	bool hasWriteAccess = inode->CheckPermissions(W_OK) == B_OK;
+
+	Transaction transaction(volume);
+
+	if ((mask & B_STAT_SIZE) != 0 && inode->Size() != stat->st_size) {
+		if (inode->IsDirectory())
+			return B_IS_A_DIRECTORY;
+		if (!inode->IsFile())
+			return B_BAD_VALUE;
+		if (!hasWriteAccess)
+			RETURN_ERROR(B_NOT_ALLOWED);
+
+		//TODO: implement file shrinking/growing
+		return B_NOT_SUPPORTED;
+	}
+
+	if ((mask & B_STAT_UID) != 0) {
+		if (uid != 0)
+			RETURN_ERROR(B_NOT_ALLOWED);
+		node.uid = B_HOST_TO_LENDIAN_INT32(stat->st_uid);
+		updateTime = true;
+	}
+
+	if ((mask & B_STAT_GID) != 0) {
+		if (!isOwnerOrRoot)
+			RETURN_ERROR(B_NOT_ALLOWED);
+		node.gid = B_HOST_TO_LENDIAN_INT32(stat->st_gid);
+		updateTime = true;
+	}
+
+	if ((mask & B_STAT_MODE) != 0) {
+		if (!isOwnerOrRoot)
+			RETURN_ERROR(B_NOT_ALLOWED);
+		PRINT(("original mode = %ld, stat->st_mode = %d\n", node.Mode(),
+			stat->st_mode));
+		node.mode = B_HOST_TO_LENDIAN_INT32((node.Mode() & ~S_IUMSK)
+			| (stat->st_mode & S_IUMSK));
+		updateTime = true;
+	}
+
+	if ((mask & B_STAT_CREATION_TIME) != 0) {
+		if (!isOwnerOrRoot && !hasWriteAccess)
+			RETURN_ERROR(B_NOT_ALLOWED);
+		btrfs_inode::SetTime(node.change_time, stat->st_crtim);
+	}
+
+	if ((mask & B_STAT_MODIFICATION_TIME) != 0) {
+		if (!isOwnerOrRoot && !hasWriteAccess)
+			RETURN_ERROR(B_NOT_ALLOWED);
+		btrfs_inode::SetTime(node.change_time, stat->st_mtim);
+	}
+
+	if ((mask & B_STAT_CHANGE_TIME) != 0 || updateTime) {
+		if (!isOwnerOrRoot && !hasWriteAccess)
+			RETURN_ERROR(B_NOT_ALLOWED);
+		if ((mask & B_STAT_CHANGE_TIME) == 0) {
+			uint64_t microseconds = real_time_clock_usecs();
+			struct timespec t;
+			t.tv_sec = microseconds / 1000000;
+			t.tv_nsec = microseconds % 1000000;
+			btrfs_inode::SetTime(node.change_time, t);
+		} else
+			btrfs_inode::SetTime(node.change_time, stat->st_ctim);
+	}
+
+	status_t status = transaction.Done();
+	if (status == B_OK) {
+		ino_t pid;
+		inode->FindParent(&pid);
+		notify_stat_changed(volume->ID(), pid, inode->ID(), mask);
+	}
+
+	return status;
 }
 
 
@@ -436,6 +560,26 @@ btrfs_open(fs_volume* /*_volume*/, fs_vnode* _node, int openMode,
 }
 
 
+status_t
+btrfs_write(fs_volume* _volume, fs_vnode* _node, void* _cookie, off_t pos,
+		const void* buffer, size_t* _length)
+{
+	Volume* volume = (Volume*)_volume->private_volume;
+	Inode* inode = (Inode*)_node->private_node;
+
+	if (volume->IsReadOnly())
+		return B_READ_ONLY_DEVICE;
+
+	if (pos < 0)
+		return B_BAD_VALUE;
+
+	if (!inode->IsFile())
+		return B_BAD_VALUE;
+
+	return B_NOT_SUPPORTED;
+}
+
+
 static status_t
 btrfs_read(fs_volume* _volume, fs_vnode* _node, void* _cookie, off_t pos,
 	void* buffer, size_t* _length)
@@ -452,7 +596,7 @@ btrfs_read(fs_volume* _volume, fs_vnode* _node, void* _cookie, off_t pos,
 
 
 static status_t
-btrfs_close(fs_volume *_volume, fs_vnode *_node, void *_cookie)
+btrfs_close(fs_volume* _volume, fs_vnode* _node, void* _cookie)
 {
 	return B_OK;
 }
@@ -466,7 +610,7 @@ btrfs_free_cookie(fs_volume* _volume, fs_vnode* _node, void* _cookie)
 	Inode* inode = (Inode*)_node->private_node;
 
 	if (inode->Size() != cookie->last_size)
-		notify_stat_changed(volume->ID(), inode->ID(), B_STAT_SIZE);
+		notify_stat_changed(volume->ID(), -1, inode->ID(), B_STAT_SIZE);
 
 	delete cookie;
 	return B_OK;
@@ -482,15 +626,158 @@ btrfs_access(fs_volume* _volume, fs_vnode* _node, int accessMode)
 
 
 static status_t
-btrfs_read_link(fs_volume *_volume, fs_vnode *_node, char *buffer,
-	size_t *_bufferSize)
+btrfs_read_link(fs_volume* _volume, fs_vnode* _node, char* buffer,
+	size_t* _bufferSize)
 {
 	Inode* inode = (Inode*)_node->private_node;
-	return inode->ReadAt(0, (uint8*)buffer, _bufferSize);
+
+	if (!inode->IsSymLink())
+		return B_BAD_VALUE;
+
+	status_t result = inode->ReadAt(0, reinterpret_cast<uint8*>(buffer),
+		_bufferSize);
+	if (result != B_OK)
+		return result;
+
+	*_bufferSize = inode->Size();
+	return B_OK;
+}
+
+
+status_t
+btrfs_unlink(fs_volume* _volume, fs_vnode* _directory, const char* name)
+{
+	if (!strcmp(name, "..") || !strcmp(name, "."))
+		return B_NOT_ALLOWED;
+
+	Volume* volume = (Volume*)_volume->private_volume;
+	Inode* directory = (Inode*)_directory->private_node;
+
+	status_t status = directory->CheckPermissions(W_OK);
+	if (status < B_OK)
+		return status;
+
+	Transaction transaction(volume);
+	BTree::Path path(volume->FSTree());
+
+	ino_t id;
+	status = DirectoryIterator(directory).Lookup(name, strlen(name), &id);
+	if (status != B_OK)
+		return status;
+
+	Inode inode(volume, id);
+	status = inode.InitCheck();
+	if (status != B_OK)
+		return status;
+
+	status = inode.Remove(transaction, &path);
+	if (status != B_OK)
+		return status;
+	status = inode.Dereference(transaction, &path, directory->ID(), name);
+	if (status != B_OK)
+		return status;
+
+	entry_cache_remove(volume->ID(), directory->ID(), name);
+
+	status = transaction.Done();
+	if (status == B_OK)
+		notify_entry_removed(volume->ID(), directory->ID(), name, id);
+	else
+		entry_cache_add(volume->ID(), directory->ID(), name, id);
+
+	return status;
 }
 
 
 //	#pragma mark - Directory functions
+
+
+static status_t
+btrfs_create_dir(fs_volume* _volume, fs_vnode* _directory, const char* name,
+	int mode)
+{
+	Volume* volume = (Volume*)_volume->private_volume;
+	Inode* directory = (Inode*)_directory->private_node;
+	BTree::Path path(volume->FSTree());
+
+	if (volume->IsReadOnly())
+		return B_READ_ONLY_DEVICE;
+
+	if (!directory->IsDirectory())
+		return B_NOT_A_DIRECTORY;
+
+	status_t status = directory->CheckPermissions(W_OK);
+	if (status < B_OK)
+		return status;
+
+	Transaction transaction(volume);
+	ino_t id = volume->GetNextInodeID();
+	mode = S_DIRECTORY | (mode & S_IUMSK);
+	Inode* inode = Inode::Create(transaction, id, directory, mode);
+	if (inode == NULL)
+		return B_NO_MEMORY;
+
+	status = inode->Insert(transaction, &path);
+	if (status != B_OK)
+		return status;
+
+	status = inode->MakeReference(transaction, &path, directory, name, mode);
+	if (status != B_OK)
+		return status;
+
+	put_vnode(volume->FSVolume(), inode->ID());
+	entry_cache_add(volume->ID(), directory->ID(), name, inode->ID());
+
+	status = transaction.Done();
+	if (status == B_OK)
+		notify_entry_created(volume->ID(), directory->ID(), name, inode->ID());
+	else
+		entry_cache_remove(volume->ID(), directory->ID(), name);
+
+	return status;
+}
+
+
+static status_t
+btrfs_remove_dir(fs_volume* _volume, fs_vnode* _directory, const char* name)
+{
+	Volume* volume = (Volume*)_volume->private_volume;
+	Inode* directory = (Inode*)_directory->private_node;
+
+	Transaction transaction(volume);
+	BTree::Path path(volume->FSTree());
+
+	ino_t id;
+	status_t status = DirectoryIterator(directory).Lookup(name, strlen(name),
+		&id);
+	if (status != B_OK)
+		return status;
+
+	Inode inode(volume, id);
+	status = inode.InitCheck();
+	if (status != B_OK)
+		return status;
+
+	status = inode.Remove(transaction, &path);
+	if (status != B_OK)
+		return status;
+	status = inode.Dereference(transaction, &path, directory->ID(), name);
+	if (status != B_OK)
+		return status;
+
+	entry_cache_remove(volume->ID(), directory->ID(), name);
+	entry_cache_remove(volume->ID(), id, "..");
+
+	status = transaction.Done();
+	if (status == B_OK)
+		notify_entry_removed(volume->ID(), directory->ID(), name, id);
+	else {
+		entry_cache_add(volume->ID(), directory->ID(), name, id);
+		entry_cache_add(volume->ID(), id, "..", id);
+	}
+
+	return status;
+}
 
 
 static status_t
@@ -516,8 +803,8 @@ btrfs_open_dir(fs_volume* /*_volume*/, fs_vnode* _node, void** _cookie)
 
 
 static status_t
-btrfs_read_dir(fs_volume *_volume, fs_vnode *_node, void *_cookie,
-	struct dirent *dirent, size_t bufferSize, uint32 *_num)
+btrfs_read_dir(fs_volume* _volume, fs_vnode* _node, void* _cookie,
+	struct dirent* dirent, size_t bufferSize, uint32* _num)
 {
 	DirectoryIterator* iterator = (DirectoryIterator*)_cookie;
 	Volume* volume = (Volume*)_volume->private_volume;
@@ -560,7 +847,7 @@ btrfs_read_dir(fs_volume *_volume, fs_vnode *_node, void *_cookie,
 
 
 static status_t
-btrfs_rewind_dir(fs_volume * /*_volume*/, fs_vnode * /*node*/, void *_cookie)
+btrfs_rewind_dir(fs_volume* /*_volume*/, fs_vnode* /*node*/, void* _cookie)
 {
 	DirectoryIterator* iterator = (DirectoryIterator*)_cookie;
 
@@ -569,14 +856,15 @@ btrfs_rewind_dir(fs_volume * /*_volume*/, fs_vnode * /*node*/, void *_cookie)
 
 
 static status_t
-btrfs_close_dir(fs_volume * /*_volume*/, fs_vnode * /*node*/, void * /*_cookie*/)
+btrfs_close_dir(fs_volume * /*_volume*/, fs_vnode * /*node*/,
+	   	void * /*_cookie*/)
 {
 	return B_OK;
 }
 
 
 static status_t
-btrfs_free_dir_cookie(fs_volume *_volume, fs_vnode *_node, void *_cookie)
+btrfs_free_dir_cookie(fs_volume* _volume, fs_vnode* _node, void* _cookie)
 {
 	delete (DirectoryIterator*)_cookie;
 	return B_OK;
@@ -584,7 +872,7 @@ btrfs_free_dir_cookie(fs_volume *_volume, fs_vnode *_node, void *_cookie)
 
 
 static status_t
-btrfs_open_attr_dir(fs_volume *_volume, fs_vnode *_node, void **_cookie)
+btrfs_open_attr_dir(fs_volume* _volume, fs_vnode* _node, void** _cookie)
 {
 	Inode* inode = (Inode*)_node->private_node;
 	TRACE("%s()\n", __FUNCTION__);
@@ -623,8 +911,7 @@ btrfs_free_attr_dir_cookie(fs_volume* _volume, fs_vnode* _node, void* _cookie)
 
 static status_t
 btrfs_read_attr_dir(fs_volume* _volume, fs_vnode* _node,
-				void* _cookie, struct dirent* dirent, size_t bufferSize,
-				uint32* _num)
+	void* _cookie, struct dirent* dirent, size_t bufferSize, uint32* _num)
 {
 	TRACE("%s()\n", __FUNCTION__);
 	AttributeIterator* iterator = (AttributeIterator*)_cookie;
@@ -634,7 +921,9 @@ btrfs_read_attr_dir(fs_volume* _volume, fs_vnode* _node,
 	if (status == B_ENTRY_NOT_FOUND) {
 		*_num = 0;
 		return B_OK;
-	} else if (status != B_OK)
+	}
+
+	if (status != B_OK)
 		return status;
 
 	Volume* volume = (Volume*)_volume->private_volume;
@@ -716,7 +1005,6 @@ btrfs_write_attr(fs_volume* _volume, fs_vnode* _node, void* cookie,
 }
 
 
-
 static status_t
 btrfs_read_attr_stat(fs_volume* _volume, fs_vnode* _node,
 	void* _cookie, struct stat* stat)
@@ -753,11 +1041,112 @@ btrfs_remove_attr(fs_volume* _volume, fs_vnode* vnode,
 	return EROFS;
 }
 
+static uint32
+btrfs_get_supported_operations(partition_data* partition, uint32 mask)
+{
+	// TODO: We should at least check the partition size.
+	return B_DISK_SYSTEM_SUPPORTS_INITIALIZING
+		| B_DISK_SYSTEM_SUPPORTS_CONTENT_NAME
+//		| B_DISK_SYSTEM_SUPPORTS_WRITING
+		;
+}
+
+
+static status_t
+btrfs_initialize(int fd, partition_id partitionID, const char* name,
+	const char* parameterString, off_t partitionSize, disk_job_id job)
+{
+	// check name
+	status_t status = check_volume_name(name);
+	if (status != B_OK)
+		return status;
+
+	// parse parameters
+	initialize_parameters parameters;
+	status = parse_initialize_parameters(parameterString, parameters);
+	if (status != B_OK)
+		return status;
+
+	update_disk_device_job_progress(job, 0);
+
+	// initialize the volume
+	Volume volume(NULL);
+	status = volume.Initialize(fd, name, parameters.blockSize,
+		parameters.sectorSize);
+	if (status < B_OK) {
+		INFORM("Initializing volume failed: %s\n", strerror(status));
+		return status;
+	}
+
+	// rescan partition
+	status = scan_partition(partitionID);
+	if (status != B_OK)
+		return status;
+
+	update_disk_device_job_progress(job, 1);
+
+	// print some info, if desired
+	if (parameters.verbose) {
+		btrfs_super_block super = volume.SuperBlock();
+
+		INFORM("Disk was initialized successfully.\n");
+		INFORM("\tlabel: \"%s\"\n", super.label);
+		INFORM("\tblock size: %u bytes\n", (unsigned)super.BlockSize());
+		INFORM("\tsector size: %u bytes\n", (unsigned)super.SectorSize());
+	}
+
+	return B_OK;
+}
+
+
+static status_t
+btrfs_uninitialize(int fd, partition_id partitionID, off_t partitionSize,
+	uint32 blockSize, disk_job_id job)
+{
+	if (blockSize == 0)
+		return B_BAD_VALUE;
+
+	update_disk_device_job_progress(job, 0.0);
+
+	// just overwrite the superblock
+	btrfs_super_block superBlock;
+	memset(&superBlock, 0, sizeof(superBlock));
+
+	if (write_pos(fd, BTRFS_SUPER_BLOCK_OFFSET, &superBlock,
+			sizeof(superBlock)) < 0)
+		return errno;
+
+	update_disk_device_job_progress(job, 1.0);
+
+	return B_OK;
+}
+
+//	#pragma mark -
+
+
+static status_t
+btrfs_std_ops(int32 op, ...)
+{
+	switch (op) {
+		case B_MODULE_INIT:
+			init_debugging();
+
+			return B_OK;
+		case B_MODULE_UNINIT:
+			exit_debugging();
+
+			return B_OK;
+
+		default:
+			return B_ERROR;
+	}
+}
+
 
 fs_volume_ops gBtrfsVolumeOps = {
 	&btrfs_unmount,
 	&btrfs_read_fs_info,
-	NULL,	// write_fs_info()
+	&btrfs_write_fs_info,
 	NULL,	// fs_sync,
 	&btrfs_get_vnode,
 };
@@ -766,7 +1155,8 @@ fs_volume_ops gBtrfsVolumeOps = {
 fs_vnode_ops gBtrfsVnodeOps = {
 	/* vnode operations */
 	&btrfs_lookup,
-	NULL,
+	NULL, // btrfs_get_vnode_name - optional, and we can't do better than the
+		// fallback implementation, so leave as NULL.
 	&btrfs_put_vnode,
 	NULL,	// btrfs_remove_vnode,
 
@@ -790,12 +1180,12 @@ fs_vnode_ops gBtrfsVnodeOps = {
 	NULL,	// fs_create_symlink,
 
 	NULL,	// fs_link,
-	NULL,	// fs_unlink,
+	&btrfs_unlink,
 	NULL,	// fs_rename,
 
 	&btrfs_access,
 	&btrfs_read_stat,
-	NULL,	// fs_write_stat,
+	&btrfs_write_stat,
 	NULL,	// fs_preallocate
 
 	/* file operations */
@@ -804,11 +1194,11 @@ fs_vnode_ops gBtrfsVnodeOps = {
 	&btrfs_close,
 	&btrfs_free_cookie,
 	&btrfs_read,
-	NULL,	//	fs_write,
+	&btrfs_write,
 
 	/* directory operations */
-	NULL, 	// fs_create_dir,
-	NULL, 	// fs_remove_dir,
+	&btrfs_create_dir,
+	&btrfs_remove_dir,
 	&btrfs_open_dir,
 	&btrfs_close_dir,
 	&btrfs_free_dir_cookie,
@@ -840,12 +1230,18 @@ static file_system_module_info sBtrfsFileSystem = {
 	{
 		"file_systems/btrfs" B_CURRENT_FS_API_VERSION,
 		0,
-		NULL,
+		btrfs_std_ops,
 	},
 
 	"btrfs",						// short_name
-	"btrfs File System",			// pretty_name
-	0,								// DDM flags
+	"Btrfs File System",			// pretty_name
+
+	// DDM flags
+	0
+	| B_DISK_SYSTEM_SUPPORTS_INITIALIZING
+	| B_DISK_SYSTEM_SUPPORTS_CONTENT_NAME
+//	| B_DISK_SYSTEM_SUPPORTS_WRITING
+	,
 
 	// scanning
 	btrfs_identify_partition,
@@ -855,11 +1251,32 @@ static file_system_module_info sBtrfsFileSystem = {
 
 	&btrfs_mount,
 
-	NULL,
+
+	/* capability querying operations */
+	&btrfs_get_supported_operations,
+
+	NULL,	// validate_resize
+	NULL,	// validate_move
+	NULL,	// validate_set_content_name
+	NULL,	// validate_set_content_parameters
+	NULL,	// validate_initialize,
+
+	/* shadow partition modification */
+	NULL,	// shadow_changed
+
+	/* writing */
+	NULL,	// defragment
+	NULL,	// repair
+	NULL,	// resize
+	NULL,	// move
+	NULL,	// set_content_name
+	NULL,	// set_content_parameters
+	btrfs_initialize,
+	btrfs_uninitialize
 };
 
 
-module_info *modules[] = {
-	(module_info *)&sBtrfsFileSystem,
+module_info* modules[] = {
+	(module_info*)&sBtrfsFileSystem,
 	NULL,
 };

@@ -15,6 +15,13 @@
 
 #include <Errors.h>
 
+#if defined(_KERNEL_MODE) && !defined(_BOOT_MODE)
+// for user_memcpy() and IS_USER_ADDRESS()
+#include <KernelExport.h>
+
+#include <kernel.h>
+#endif
+
 
 BDataIO::BDataIO()
 {
@@ -366,6 +373,12 @@ BMemoryIO::WriteAt(off_t pos, const void* buffer, size_t size)
 	ssize_t sizeWritten = 0;
 	if (pos < (off_t)fBufferSize) {
 		sizeWritten = min_c((off_t)size, (off_t)fBufferSize - pos);
+#if defined(_KERNEL_MODE) && !defined(_BOOT_MODE)
+		if (IS_USER_ADDRESS(fBuffer)) {
+			if (user_memcpy(fBuffer + pos, buffer, sizeWritten) != B_OK)
+				return B_BAD_ADDRESS;
+		} else
+#endif
 		memcpy(fBuffer + pos, buffer, sizeWritten);
 	}
 
@@ -601,4 +614,3 @@ BMallocIO::operator=(const BMallocIO &)
 // FBC
 void BMallocIO::_ReservedMallocIO1() {}
 void BMallocIO::_ReservedMallocIO2() {}
-

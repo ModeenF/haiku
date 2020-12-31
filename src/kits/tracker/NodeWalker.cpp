@@ -49,7 +49,7 @@ TWalker::~TWalker()
 }
 
 
-// all the following calls are pure viruals, should not get called
+// all the following calls are pure virtuals, should not get called
 status_t
 TWalker::GetNextEntry(BEntry*, bool )
 {
@@ -391,6 +391,9 @@ static int32
 build_dirent(const BEntry* source, struct dirent* ent,
 	size_t size, int32 count)
 {
+	if (source == NULL)
+		return 0;
+
 	entry_ref ref;
 	source->GetRef(&ref);
 

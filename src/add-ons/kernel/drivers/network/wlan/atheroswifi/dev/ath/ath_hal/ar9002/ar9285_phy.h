@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2008-2010 Atheros Communications Inc.
  * Copyright (c) 2010-2011 Adrian Chadd, Xenion Pty Ltd.
  *
@@ -23,7 +25,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/dev/ath/ath_hal/ar9002/ar9285_phy.h 326255 2017-11-27 14:52:40Z pfg $
  */
 #ifndef	__AR9285_PHY_H__
 #define	__AR9285_PHY_H__
@@ -31,16 +33,11 @@
 /*
  * Manipulate AR9285 antenna diversity configuration
  */
-struct ar9285_antcomb_conf {
-	uint8_t main_lna_conf;
-	uint8_t alt_lna_conf;
-	uint8_t fast_div_bias;
-};
 
 extern	void ar9285_antdiv_comb_conf_set(struct ath_hal *ah,
-		struct ar9285_antcomb_conf *antconf);
+		HAL_ANT_COMB_CONFIG *antconf);
 extern	void ar9285_antdiv_comb_conf_get(struct ath_hal *ah,
-		struct ar9285_antcomb_conf *antconf);
+		HAL_ANT_COMB_CONFIG *antconf);
 extern	HAL_BOOL ar9285_check_div_comb(struct ath_hal *ah);
 
 #endif

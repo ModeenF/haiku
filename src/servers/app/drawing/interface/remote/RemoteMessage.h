@@ -15,6 +15,7 @@
 
 #include "StreamingRingBuffer.h"
 
+#include <AffineTransform.h>
 #include <GraphicsDefs.h>
 #include <Region.h>
 
@@ -32,12 +33,14 @@ class RemotePainter;
 class ServerBitmap;
 class ServerCursor;
 class ServerFont;
-class ViewLineArrayInfo;
+struct ViewLineArrayInfo;
 
 enum {
 	RP_INIT_CONNECTION = 1,
 	RP_UPDATE_DISPLAY_MODE,
 	RP_CLOSE_CONNECTION,
+	RP_GET_SYSTEM_PALETTE,
+	RP_GET_SYSTEM_PALETTE_RESULT,
 
 	RP_CREATE_STATE = 20,
 	RP_DELETE_STATE,
@@ -55,6 +58,7 @@ enum {
 	RP_SET_PATTERN,
 	RP_SET_DRAWING_MODE,
 	RP_SET_FONT,
+	RP_SET_TRANSFORM,
 
 	RP_CONSTRAIN_CLIPPING_REGION = 60,
 	RP_COPY_RECT_NO_CLIPPING,
@@ -145,6 +149,7 @@ public:
 		void					AddString(const char* string, size_t length);
 		void					AddRegion(const BRegion& region);
 		void					AddGradient(const BGradient& gradient);
+		void					AddTransform(const BAffineTransform& transform);
 
 #ifndef CLIENT_COMPILE
 		void					AddBitmap(const ServerBitmap& bitmap,
@@ -176,6 +181,7 @@ public:
 									color_space colorSpace = B_RGB32,
 									uint32 flags = 0);
 		status_t				ReadGradient(BGradient** _gradient);
+		status_t				ReadTransform(BAffineTransform& transform);
 		status_t				ReadArrayLine(BPoint& startPoint,
 									BPoint& endPoint, rgb_color& color);
 
@@ -235,7 +241,7 @@ RemoteMessage::Start(uint16 code)
 inline status_t
 RemoteMessage::Flush()
 {
-	if (fWriteIndex == 0)
+	if (fWriteIndex == 0 || fTarget == NULL)
 		return B_NO_INIT;
 
 	uint32 length = fWriteIndex;
@@ -263,7 +269,7 @@ RemoteMessage::Add(const T& value)
 inline void
 RemoteMessage::AddString(const char* string, size_t length)
 {
-	Add(length);
+	Add((uint32)length);
 	if (length > fAvailable && !_MakeSpace(length))
 		return;
 
@@ -299,6 +305,9 @@ RemoteMessage::Read(T& value)
 {
 	if (fDataLeft < sizeof(T))
 		return B_ERROR;
+
+	if (fSource == NULL)
+		return B_NO_INIT;
 
 	int32 readSize = fSource->Read(&value, sizeof(T));
 	if (readSize < 0)

@@ -16,6 +16,7 @@
 namespace BPrivate {
 	namespace media {
 		class MediaExtractor;
+		class MediaStreamer;
 		class MediaWriter;
 	}
 	class _AddonManager;
@@ -26,6 +27,7 @@ namespace BPrivate {
 class BMediaTrack;
 class BMessage;
 class BParameterWeb;
+class BUrl;
 class BView;
 
 
@@ -69,10 +71,21 @@ public:
 								   	int32 flags = 0);
 									// set file later using SetTo()
 
+	// Additional constructors used to stream data from protocols
+	// supported by the Streamer API
+								BMediaFile(const BUrl& url);
+								BMediaFile(const BUrl& url, int32 flags);
+	// Read-Write streaming constructor
+								BMediaFile(const BUrl& destination,
+								   const media_file_format* mfi,
+								   int32 flags = 0);
+
 	virtual						~BMediaFile();
 
 			status_t			SetTo(const entry_ref* ref);
 			status_t			SetTo(BDataIO* destination);
+	// The streaming equivalent of SetTo
+			status_t			SetTo(const BUrl& url);
 
 			status_t			InitCheck() const;
 
@@ -160,6 +173,8 @@ private:
 			int32				fWriterID;
 			media_file_format	fMFI;
 
+			BPrivate::media::MediaStreamer* fStreamer;
+
 			bool				fFileClosed;
 			bool				fDeleteSource;
 			bool				_reserved_was_fUnused[2];
@@ -167,10 +182,15 @@ private:
 
 			void				_Init();
 			void				_UnInit();
-			void				_InitReader(BDataIO* source, int32 flags = 0);
+			void				_InitReader(BDataIO* source,
+									const BUrl* url = NULL,
+									int32 flags = 0);
 			void				_InitWriter(BDataIO* target,
+									const BUrl* url,
 									const media_file_format* fileFormat,
 									int32 flags);
+			void				_InitStreamer(const BUrl& url,
+									BDataIO** adapter);
 
 								BMediaFile();
 								BMediaFile(const BMediaFile&);
@@ -178,10 +198,9 @@ private:
 
 			BDataIO*			fSource;
 
-
 	// FBC data and virtuals
 
-			uint32				_reserved_BMediaFile_[32];
+			uint32				_reserved_BMediaFile_[31];
 
 	virtual	status_t			_Reserved_BMediaFile_0(int32 arg, ...);
 	virtual	status_t			_Reserved_BMediaFile_1(int32 arg, ...);

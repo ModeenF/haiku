@@ -28,6 +28,11 @@ enum {
 	// add_system_beep_event()
 	MEDIA_SERVER_ADD_SYSTEM_BEEP_EVENT,
 
+	// sent by the rescan thread
+	MEDIA_SERVER_RESCAN_COMPLETED,
+	// sent to rosters when rescan is completed
+	MEDIA_SERVER_ALIVE,
+
 	// media add-on server
 	MEDIA_ADD_ON_SERVER_PLAY_MEDIA = '_TRU'
 };
@@ -35,7 +40,10 @@ enum {
 enum {
 	// local media services status notification service
 	MEDIA_ROSTER_REQUEST_NOTIFICATIONS = 2000,
-	MEDIA_ROSTER_CANCEL_NOTIFICATIONS
+	MEDIA_ROSTER_CANCEL_NOTIFICATIONS,
+
+	// used to sync with media services startup
+	MEDIA_ROSTER_REGISTER_SYNC
 };
 
 // Raw port based communication
@@ -236,10 +244,13 @@ public:
 	{
 		device = ref.device;
 		directory = ref.directory;
-		if (ref.name)
-			strcpy(name, ref.name);
-		else
+		if (ref.name == NULL)
 			name[0] = 0;
+		else if (strlen(ref.name) > B_FILE_NAME_LENGTH) {
+			debugger("File name too long!");
+			name[0] = 0;
+		} else 
+			strcpy(name, ref.name);
 
 		return *this;
 	}

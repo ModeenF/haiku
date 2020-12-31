@@ -155,7 +155,7 @@ struct X86PagingMethodPAE::ToPAESwitcher {
 		// enable PAE on all CPUs
 		call_all_cpus_sync(&_EnablePAE, (void*)(addr_t)physicalPDPT);
 
-		// if availalbe enable NX-bit (No eXecute)
+		// if available enable NX-bit (No eXecute)
 		if (x86_check_feature(IA32_FEATURE_AMD_EXT_NX, FEATURE_EXT_AMD))
 			call_all_cpus_sync(&_EnableExecutionDisable, NULL);
 
@@ -792,10 +792,10 @@ X86PagingMethodPAE::IsKernelPageAccessible(addr_t virtualAddress,
 X86PagingMethodPAE::PutPageTableInPageDir(pae_page_directory_entry* entry,
 	phys_addr_t physicalTable, uint32 attributes)
 {
-	*entry = (physicalTable & X86_PAE_PDE_ADDRESS_MASK)
+	SetTableEntry(entry, (physicalTable & X86_PAE_PDE_ADDRESS_MASK)
 		| X86_PAE_PDE_PRESENT
 		| X86_PAE_PDE_WRITABLE
-		| X86_PAE_PDE_USER;
+		| X86_PAE_PDE_USER);
 		// TODO: We ignore the attributes of the page table -- for compatibility
 		// with BeOS we allow having user accessible areas in the kernel address
 		// space. This is currently being used by some drivers, mainly for the
@@ -830,7 +830,7 @@ X86PagingMethodPAE::PutPageTableEntryInTable(pae_page_table_entry* entry,
 		page |= X86_PAE_PTE_WRITABLE;
 
 	// put it in the page table
-	*(volatile pae_page_table_entry*)entry = page;
+	SetTableEntry(entry, page);
 }
 
 

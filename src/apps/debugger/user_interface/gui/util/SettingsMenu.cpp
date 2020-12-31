@@ -13,7 +13,7 @@
 
 #include <AutoDeleter.h>
 
-#include "MessageCodes.h"
+#include "AppMessageCodes.h"
 #include "SettingsDescription.h"
 
 
@@ -183,7 +183,7 @@ public:
 				optionItem->PrepareToShow(parentLooper, targetHandler,
 					settings, dynamic_cast<OptionsSetting*>(GetSetting()));
 
-				optionItem->SetMarked(optionItem->Option() == selectedOption);
+			optionItem->SetMarked(optionItem->Option() == selectedOption);
 		}
 	}
 

@@ -1,5 +1,6 @@
 /*
  * Copyright 2001-2010 pinc Software. All Rights Reserved.
+ * Released under the terms of the MIT license.
  */
 
 
@@ -11,10 +12,15 @@
 #include "Inode.h"
 #include "dump.h"
 
+#include <StringForSize.h>
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
+
+
+using namespace BPrivate;
 
 
 void
@@ -156,6 +162,40 @@ dump_double_indirect_stream(Disk& disk, bfs_inode* node, bool showOffsets)
 }
 
 
+void
+list_bplustree(Disk& disk, Directory* directory, off_t size)
+{
+	directory->Rewind();
+
+	char name[B_FILE_NAME_LENGTH];
+	char buffer[512];
+	uint64 count = 0;
+	block_run run;
+	while (directory->GetNextEntry(name, &run) == B_OK) {
+		snprintf(buffer, sizeof(buffer), " %s", name);
+		dump_block_run("", run, buffer);
+		count++;
+	}
+
+	printf("--\n%" B_PRId64 " items.\n", count);
+}
+
+
+void
+count_bplustree(Disk& disk, Directory* directory, off_t size)
+{
+	directory->Rewind();
+
+	char name[B_FILE_NAME_LENGTH];
+	uint64 count = 0;
+	block_run run;
+	while (directory->GetNextEntry(name, &run) == B_OK)
+		count++;
+
+	printf("%" B_PRId64 " items.\n", count);
+}
+
+
 block_run
 parseBlockRun(Disk &disk, char *first, char *last)
 {
@@ -175,8 +215,6 @@ parseBlockRun(Disk &disk, char *first, char *last)
 int
 main(int argc, char **argv)
 {
-	puts("Copyright (c) 2001-2010 pinc Software.");
-
 	if (argc < 2 || !strcmp(argv[1], "--help")) {
 		char *filename = strrchr(argv[0],'/');
 		fprintf(stderr,"usage: %s [-srib] <device> [allocation_group start]\n"
@@ -186,6 +224,8 @@ main(int argc, char **argv)
 					"parameters:\n"
 				"\t-i\tdump inode\n"
 				"\t-b\tdump b+tree\n"
+				"\t-c\tlist b+tree leaves\n"
+				"\t-c\tcount b+tree leaves\n"
 				"\t-v\tvalidate b+tree\n"
 				"\t-h\thexdump\n"
 				"\t-o\tshow disk offsets\n",
@@ -197,6 +237,8 @@ main(int argc, char **argv)
 	bool dumpInode = false;
 	bool dumpSuperBlock = false;
 	bool dumpBTree = false;
+	bool listBTree = false;
+	bool countBTree = false;
 	bool validateBTree = false;
 	bool dumpHex = false;
 	bool showOffsets = false;
@@ -217,6 +259,12 @@ main(int argc, char **argv)
 						break;
 					case 'b':
 						dumpBTree = true;
+						break;
+					case 'l':
+						listBTree = true;
+						break;
+					case 'c':
+						countBTree = true;
 						break;
 					case 'v':
 						validateBTree = true;
@@ -242,33 +290,37 @@ main(int argc, char **argv)
 	putchar('\n');
 
 	if (!dumpSuperBlock && !dumpRootNode && !dumpInode && !dumpBTree
-		&& !dumpHex) {
+		&& !dumpHex && !listBTree && !countBTree) {
+		char buffer[16];
 		printf("  Name:\t\t\t\"%s\"\n", disk.SuperBlock()->name);
-		printf("    (disk is %s)\n\n",
-			disk.ValidateSuperBlock() == B_OK ? "valid" : "invalid!!");
-		printf("  Block Size:\t\t%" B_PRIu32 " bytes\n", disk.BlockSize());
-		printf("  Number of Blocks:\t%12" B_PRIdOFF "\t%10g MB\n",
-			disk.NumBlocks(), disk.NumBlocks() * disk.BlockSize()
-				/ (1024.0*1024));
+		printf("  SuperBlock:\t\t%s\n\n",
+			disk.ValidateSuperBlock() == B_OK ? "valid" : "invalid!");
+		printf("  Block Size:%*" B_PRIu32 " bytes\n", 23, disk.BlockSize());
+		string_for_size(disk.NumBlocks() * disk.BlockSize(), buffer,
+			sizeof(buffer));
+		printf("  Number of Blocks:%*" B_PRIdOFF "\t%*s\n", 17, disk.NumBlocks(),
+			16, buffer);
 		if (disk.BlockBitmap() != NULL) {
-			printf("  Used Blocks:\t\t%12" B_PRIdOFF "\t%10g MB\n",
-				disk.BlockBitmap()->UsedBlocks(),
-				disk.BlockBitmap()->UsedBlocks() * disk.BlockSize()
-					/ (1024.0*1024));
-			printf("  Free Blocks:\t\t%12" B_PRIdOFF "\t%10g MB\n",
-				disk.BlockBitmap()->FreeBlocks(),
-				disk.BlockBitmap()->FreeBlocks() * disk.BlockSize()
-					/ (1024.0*1024));
+			string_for_size(disk.BlockBitmap()->UsedBlocks() * disk.BlockSize(),
+				buffer, sizeof(buffer));
+			printf("  Used Blocks:%*" B_PRIdOFF "\t%*s\n", 22,
+				disk.BlockBitmap()->UsedBlocks(), 16, buffer);
+
+			string_for_size(disk.BlockBitmap()->FreeBlocks() * disk.BlockSize(),
+				buffer, sizeof(buffer));
+			printf("  Free Blocks:%*" B_PRIdOFF "\t%*s\n", 22,
+				disk.BlockBitmap()->FreeBlocks(), 16, buffer);
 		}
 		int32 size
 			= (disk.AllocationGroups() * disk.SuperBlock()->blocks_per_ag);
-		printf("  Bitmap Size:\t\t%" B_PRIu32 " bytes (%" B_PRId32 " blocks, %"
-			B_PRId32 " per allocation group)\n", disk.BlockSize() * size, size,
+		string_for_size(disk.BlockSize() * size, buffer, sizeof(buffer));
+		printf("  Bitmap Blocks:%*" B_PRId32 "\t%*s\n", 20, size, 16, buffer);
+		printf("  Allocation Group Size:%*" B_PRId32 " blocks\n", 12,
 			disk.SuperBlock()->blocks_per_ag);
-		printf("  Allocation Groups:\t%" B_PRIu32 "\n\n",
+		printf("  Allocation Groups:%*" B_PRIu32 "\n\n", 16,
 			disk.AllocationGroups());
 		dump_block_run("  Log:\t\t\t", disk.Log());
-		printf("    (was %s)\n\n", disk.SuperBlock()->flags == SUPER_BLOCK_CLEAN
+		printf("\t\t\t%s\n\n", disk.SuperBlock()->flags == SUPER_BLOCK_CLEAN
 			? "cleanly unmounted" : "not unmounted cleanly!");
 		dump_block_run("  Root Directory:\t", disk.Root());
 		putchar('\n');
@@ -301,7 +353,8 @@ main(int argc, char **argv)
 	block_run run;
 	Inode *inode = NULL;
 
-	if (dumpInode || dumpBTree || dumpHex || validateBTree) {
+	if (dumpInode || dumpBTree || dumpHex || validateBTree || listBTree
+		|| countBTree) {
 		// Set the block_run to the right value (as specified on the command
 		// line)
 		if (!argv[1]) {
@@ -338,7 +391,25 @@ main(int argc, char **argv)
 		printf("B+Tree at block %" B_PRIdOFF ":\n-----------------------------"
 			"------------\n", disk.ToBlock(run));
 		if (inode->IsDirectory() || inode->IsAttributeDirectory()) {
-			dump_bplustree(disk, (Directory *)inode, inode->Size(), dumpHex);
+			dump_bplustree(disk, (Directory*)inode, inode->Size(), dumpHex);
+			putchar('\n');
+		} else
+			fprintf(stderr, "Inode is not a directory!\n");
+	}
+
+	if (listBTree && inode != NULL) {
+		printf("Directory contents: ------------------------------------------\n");
+		if (inode->IsDirectory() || inode->IsAttributeDirectory()) {
+			list_bplustree(disk, (Directory*)inode, inode->Size());
+			putchar('\n');
+		} else
+			fprintf(stderr, "Inode is not a directory!\n");
+	}
+
+	if (countBTree && inode != NULL) {
+		printf("Count contents: ------------------------------------------\n");
+		if (inode->IsDirectory() || inode->IsAttributeDirectory()) {
+			count_bplustree(disk, (Directory*)inode, inode->Size());
 			putchar('\n');
 		} else
 			fprintf(stderr, "Inode is not a directory!\n");

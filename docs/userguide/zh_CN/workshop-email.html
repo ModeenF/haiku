@@ -1,23 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en-US" xml:lang="en-US">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="zh-CN" xml:lang="zh-CN">
 <head>
 <!-- 
  *
- * Copyright 2011, Haiku, Inc. All rights reserved.
+ * Copyright 2011-2015, Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
  *		Humdinger <humdingerb@gmail.com>
  * Translators:
- *		Pengphei Han
  *		dgy18787
+ *		Humdinger
+ *		Pengphei Han
  *
 -->
 	<meta http-equiv="content-type" content="text/html; charset=utf-8" />
 	<meta http-equiv="Content-Style-Type" content="text/css" />
 	<meta name="robots" content="all" />
 	<title>操作练习：邮件管理</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<link rel="stylesheet" type="text/css" href="../Haiku-doc.css" />
 </head>
 <body>
@@ -29,23 +31,27 @@
 <div class="nav">
 <div class="inner">
 <ul class="lang-menu">
-<li class="now"><img src="../images/flags/zh_CN.png" alt="" />  中文 ［中文］</li>
-<li><a href="../fr/workshop-email.html"><img src="../images/flags/fr.png" alt="" />Français</a></li>
-<li><a href="../de/workshop-email.html"><img src="../images/flags/de.png" alt="" />Deutsch</a></li>
-<li><a href="../it/workshop-email.html"><img src="../images/flags/it.png" alt="" />Italiano</a></li>
-<li><a href="../ru/workshop-email.html"><img src="../images/flags/ru.png" alt="" />Русский</a></li>
-<li><a href="../es/workshop-email.html"><img src="../images/flags/es.png" alt="" />Español</a></li>
-<li><a href="../sv_SE/workshop-email.html"><img src="../images/flags/sv_SE.png" alt="" />Svenska</a></li>
-<li><a href="../jp/workshop-email.html"><img src="../images/flags/jp.png" alt="" />日本語</a></li>
-<li><a href="../uk/workshop-email.html"><img src="../images/flags/uk.png" alt="" />Українська</a></li>
-<li><a href="../pt_PT/workshop-email.html"><img src="../images/flags/pt_PT.png" alt="" />Português</a></li>
-<li><a href="../fi/workshop-email.html"><img src="../images/flags/fi.png" alt="" />Suomi</a></li>
-<li><a href="../sk/workshop-email.html"><img src="../images/flags/sk.png" alt="" />Slovenčina</a></li>
-<li><a href="../hu/workshop-email.html"><img src="../images/flags/hu.png" alt="" />Magyar</a></li>
-<li><a href="../pt_BR/workshop-email.html"><img src="../images/flags/pt_BR.png" alt="" />Português (Brazil)</a></li>
-<li><a href="../ca/workshop-email.html"><img src="../images/flags/ca.png" alt="" />Català</a></li>
-<li><a href="../pl/workshop-email.html"><img src="../images/flags/pl.png" alt="" />Polski</a></li>
-<li><a href="../en/workshop-email.html"><img src="../images/flags/gb.png" alt="" />English</a></li>
+<li class="now"> 中文 ［中文］&nbsp;<span class="dropdown-caret">&#9660;</span></li>
+<li><a href="../id/workshop-email.html">Bahasa Indonesia</a></li>
+<li><a href="../ca/workshop-email.html">Català</a></li>
+<li><a href="../de/workshop-email.html">Deutsch</a></li>
+<li><a href="../en/workshop-email.html">English</a></li>
+<li><a href="../es/workshop-email.html">Español</a></li>
+<li><a href="../fr/workshop-email.html">Français</a></li>
+<li><a href="../fur/workshop-email.html">Furlan</a></li>
+<li><a href="../it/workshop-email.html">Italiano</a></li>
+<li><a href="../hu/workshop-email.html">Magyar</a></li>
+<li><a href="../pl/workshop-email.html">Polski</a></li>
+<li><a href="../pt_PT/workshop-email.html">Português</a></li>
+<li><a href="../pt_BR/workshop-email.html">Português (Brazil)</a></li>
+<li><a href="../ro/workshop-email.html">Română</a></li>
+<li><a href="../sk/workshop-email.html">Slovenčina</a></li>
+<li><a href="../fi/workshop-email.html">Suomi</a></li>
+<li><a href="../sv_SE/workshop-email.html">Svenska</a></li>
+<li><a href="../tr/workshop-email.html">Türkçe</a></li>
+<li><a href="../ru/workshop-email.html">Русский</a></li>
+<li><a href="../uk/workshop-email.html">Українська</a></li>
+<li><a href="../jp/workshop-email.html">日本語</a></li>
 </ul>
 
 <span>
@@ -110,7 +116,7 @@
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="queries" name="queries">使用查询</a></h2>
 <p>当然，您指定目录储存邮件，您打开这个目录，里面就是您所有的邮件。时间久了，这个目录难免会变得拥挤不堪，由于有上千个文件，并且它们属性需要解析和分类，其中全部内容的显示需要很长的时间。并且，通常您并不关心两年前有关尼日利亚和它们遗留问题的古老邮件...</p>
-<div class="box-info">在获取目录时，大部分时间都花费在从磁盘读入文件，正确排序之后显示在窗口。如果您确实需要打开具有大量文件的目录，您可以将文件浏览器窗口隐藏来缩短等待时间，例如，将其最小化，或者切换到其他工作空间。您可以查看 <a href="applications/processcontroller.html">进程管理器</a> 获取其对处理器的占用情况。</div>
+<div class="box-info">在获取目录时，大部分时间都花费在从磁盘读入文件，正确排序之后显示在窗口。如果您确实需要打开具有大量文件的目录，您可以将文件浏览器窗口隐藏来缩短等待时间，例如，将其最小化，或者切换到其他工作空间。您可以查看 <a href="desktop-applets/processcontroller.html">进程管理器</a> 获取其对处理器的占用情况。</div>
 <p><a href="queries.html">查询</a>，大救星！</p>
 <p>使用查询，您可以浏览查看邮件。实际上，桌面栏上的电子邮箱图标就是用了查询。</p>
 <img src="images/workshop-email-images/daemon-in-deskbar.png" alt="daemon-in-deskbar.png" /> 
@@ -145,7 +151,7 @@
 <li><p>如果您没有将查询保存为 "<i>Query</i>" 而是 "<i>Query template</i>"，那么使用它并不会显示结果窗口，而是 查询... 窗口。 通过这种方式，你可以轻松地修改搜索邮件的主题和发送者的字符。比如将时间 "<i>2 天</i>" 限制在 "<i>3 天</i>"。</p></li>
 <li><p>在 <a href="tracker.html#tracker-preferences">文件浏览器首选项</a> 中激活 “实时过滤” 将允许您进一步的筛选查询结果。通常情况下，在使用实施过滤的情况下查询最近三天的邮件就已经足够了。
 这种方式最大的优点在于，您不需要准确的指定所要搜索的属性，因为在过滤时已经将所有显示属性包括在内。</p></li>
-<li><p><a href="http://haikuware.com/directory/view-details/utilities/desktop-accessories/relatedmail">RelatedMail</a> 是一个非常精巧的程序，可以用来查询与目标邮件具有相同主题/发送者/时间等的邮件。其与 <span class="app">电子邮箱</span> 程序中 <span class="menu">查询</span> 菜单所提供的功能相类似。</p></li>
+<!-- <li _translation_id="4718"><p><a href="http://haikuware.com/directory/view-details/utilities/desktop-accessories/relatedmail">RelatedMail</a> is a nifty little application that will query for all mails with the same subject/sender/time-frame etc. of a dropped email. Kind of what the <span class="menu">Queries</span> menu in the <span class="app">Mail</span> app is supposed to do.</p></li> -->
 </ul>
 
 </div>

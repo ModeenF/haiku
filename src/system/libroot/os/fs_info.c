@@ -1,6 +1,6 @@
 /*
 ** Copyright 2004, Axel Dörfler, axeld@pinc-software.de. All rights reserved.
-** Distributed under the terms of the Haiku License.
+** Distributed under the terms of the MIT License.
 */
 
 
@@ -12,16 +12,7 @@
 
 #include <errno_private.h>
 #include <syscalls.h>
-
-
-#define RETURN_AND_SET_ERRNO(status) \
-	{ \
-		if (status < 0) { \
-			__set_errno(status); \
-			return -1; \
-		} \
-		return status; \
-	}
+#include <syscall_utils.h>
 
 
 dev_t

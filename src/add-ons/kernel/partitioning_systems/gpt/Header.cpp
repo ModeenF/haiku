@@ -20,6 +20,11 @@
 #	include <new>
 #endif
 
+#ifndef _BOOT_MODE
+#include "PartitionMap.h"
+#include "PartitionMapWriter.h"
+#endif
+
 #if !defined(_BOOT_MODE) && !defined(_USER_MODE)
 #include "uuid.h"
 #endif
@@ -46,14 +51,15 @@ Header::Header(int fd, uint64 lastBlock, uint32 blockSize)
 	:
 	fBlockSize(blockSize),
 	fStatus(B_NO_INIT),
-	fEntries(NULL)
+	fEntries(NULL),
+	fDirty(false)
 {
 	// TODO: check the correctness of the protective MBR and warn if invalid
 
 	// Read and check the partition table header
 
 	fStatus = _Read(fd, (uint64)EFI_HEADER_LOCATION * blockSize,
-		&fHeader, sizeof(efi_table_header));
+		&fHeader, sizeof(gpt_table_header));
 	if (fStatus == B_OK) {
 		if (!_IsHeaderValid(fHeader, EFI_HEADER_LOCATION))
 			fStatus = B_BAD_DATA;
@@ -67,7 +73,7 @@ Header::Header(int fd, uint64 lastBlock, uint32 blockSize)
 
 	// Read backup header, too
 	status_t status = _Read(fd, lastBlock * blockSize, &fBackupHeader,
-		sizeof(efi_table_header));
+		sizeof(gpt_table_header));
 	if (status == B_OK) {
 		if (!_IsHeaderValid(fBackupHeader, lastBlock))
 			status = B_BAD_DATA;
@@ -83,6 +89,7 @@ Header::Header(int fd, uint64 lastBlock, uint32 blockSize)
 		fHeader.SetAbsoluteBlock(EFI_HEADER_LOCATION);
 		fHeader.SetEntriesBlock(EFI_PARTITION_ENTRIES_BLOCK);
 		fHeader.SetAlternateBlock(lastBlock);
+		fDirty = true;
 	} else if (status != B_OK) {
 		// Recreate backup header from primary
 		_SetBackupHeaderFromPrimary(lastBlock);
@@ -130,7 +137,8 @@ Header::Header(uint64 lastBlock, uint32 blockSize)
 	:
 	fBlockSize(blockSize),
 	fStatus(B_NO_INIT),
-	fEntries(NULL)
+	fEntries(NULL),
+	fDirty(true)
 {
 	TRACE(("EFI::Header: Initialize GPT, block size %" B_PRIu32 "\n",
 		blockSize));
@@ -189,6 +197,13 @@ Header::InitCheck() const
 }
 
 
+bool
+Header::IsDirty() const
+{
+	return fDirty;
+}
+
+
 #ifndef _BOOT_MODE
 status_t
 Header::WriteEntry(int fd, uint32 entryIndex)
@@ -209,6 +224,8 @@ Header::WriteEntry(int fd, uint32 entryIndex)
 		fBackupHeader.EntriesBlock() * fBlockSize + entryOffset,
 		fEntries + entryOffset, fHeader.EntrySize());
 
+	if (status == B_OK && backupStatus == B_OK)
+		fDirty = false;
 	return status == B_OK ? backupStatus : status;
 }
 
@@ -216,6 +233,22 @@ Header::WriteEntry(int fd, uint32 entryIndex)
 status_t
 Header::Write(int fd)
 {
+	// Try to write the protective MBR
+	PartitionMap partitionMap;
+	PrimaryPartition *partition = NULL;
+	uint32 index = 0;
+	while ((partition = partitionMap.PrimaryPartitionAt(index)) != NULL) {
+		if (index == 0) {
+			uint64 deviceSize = fHeader.AlternateBlock() * fBlockSize;
+			partition->SetTo(fBlockSize, deviceSize, 0xEE, false, fBlockSize);
+		} else
+			partition->Unset();
+		++index;
+	}
+	PartitionMapWriter writer(fd, fBlockSize);
+	writer.WriteMBR(&partitionMap, true);
+		// We also write the bootcode, so we can boot GPT disks from BIOS
+
 	status_t status = _Write(fd, fHeader.EntriesBlock() * fBlockSize, fEntries,
 		_EntryArraySize());
 	if (status != B_OK)
@@ -225,10 +258,13 @@ Header::Write(int fd)
 	// data set
 	status = _WriteHeader(fd);
 
+
 	// Write backup entries
 	status_t backupStatus = _Write(fd,
 		fBackupHeader.EntriesBlock() * fBlockSize, fEntries, _EntryArraySize());
 
+	if (status == B_OK && backupStatus == B_OK)
+		fDirty = false;
 	return status == B_OK ? backupStatus : status;
 }
 
@@ -239,12 +275,12 @@ Header::_WriteHeader(int fd)
 	_UpdateCRC();
 
 	status_t status = _Write(fd, fHeader.AbsoluteBlock() * fBlockSize,
-		&fHeader, sizeof(efi_table_header));
+		&fHeader, sizeof(gpt_table_header));
 	if (status != B_OK)
 		return status;
 
 	return _Write(fd, fBackupHeader.AbsoluteBlock() * fBlockSize,
-		&fBackupHeader, sizeof(efi_table_header));
+		&fBackupHeader, sizeof(gpt_table_header));
 }
 
 
@@ -270,11 +306,11 @@ Header::_UpdateCRC()
 
 
 void
-Header::_UpdateCRC(efi_table_header& header)
+Header::_UpdateCRC(gpt_table_header& header)
 {
 	header.SetEntriesCRC(crc32(fEntries, _EntryArraySize()));
 	header.SetHeaderCRC(0);
-	header.SetHeaderCRC(crc32((uint8*)&header, sizeof(efi_table_header)));
+	header.SetHeaderCRC(crc32((uint8*)&header, sizeof(gpt_table_header)));
 }
 #endif // !_BOOT_MODE
 
@@ -293,7 +329,7 @@ Header::_Read(int fd, off_t offset, void* data, size_t size) const
 
 
 bool
-Header::_IsHeaderValid(efi_table_header& header, uint64 block)
+Header::_IsHeaderValid(gpt_table_header& header, uint64 block)
 {
 	return !memcmp(header.header, EFI_PARTITION_HEADER, sizeof(header.header))
 		&& _ValidateHeaderCRC(header)
@@ -302,13 +338,13 @@ Header::_IsHeaderValid(efi_table_header& header, uint64 block)
 
 
 bool
-Header::_ValidateHeaderCRC(efi_table_header& header)
+Header::_ValidateHeaderCRC(gpt_table_header& header)
 {
 	uint32 originalCRC = header.HeaderCRC();
 	header.SetHeaderCRC(0);
 
 	bool matches = originalCRC == crc32((const uint8*)&header,
-		sizeof(efi_table_header));
+		sizeof(gpt_table_header));
 
 	header.SetHeaderCRC(originalCRC);
 	return matches;
@@ -349,7 +385,7 @@ Header::_PrintGUID(const guid_t &id)
 
 
 void
-Header::_Dump(const efi_table_header& header)
+Header::_Dump(const gpt_table_header& header)
 {
 	dprintf("EFI header: %.8s\n", header.header);
 	dprintf("EFI revision: %" B_PRIx32 "\n", header.Revision());
@@ -371,7 +407,7 @@ void
 Header::_DumpPartitions()
 {
 	for (uint32 i = 0; i < EntryCount(); i++) {
-		const efi_partition_entry &entry = EntryAt(i);
+		const gpt_partition_entry &entry = EntryAt(i);
 
 		if (entry.partition_type == kEmptyGUID)
 			continue;

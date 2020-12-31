@@ -110,6 +110,86 @@ print_queue(ehci_qh *queueHead)
 //
 
 
+status_t
+EHCI::AddTo(Stack *stack)
+{
+	if (!sPCIModule) {
+		status_t status = get_module(B_PCI_MODULE_NAME,
+			(module_info **)&sPCIModule);
+		if (status != B_OK) {
+			TRACE_MODULE_ERROR("getting pci module failed! 0x%08" B_PRIx32
+				"\n", status);
+			return status;
+		}
+	}
+
+	TRACE_MODULE("searching devices\n");
+	bool found = false;
+	pci_info *item = new(std::nothrow) pci_info;
+	if (!item) {
+		sPCIModule = NULL;
+		put_module(B_PCI_MODULE_NAME);
+		return B_NO_MEMORY;
+	}
+
+	// Try to get the PCI x86 module as well so we can enable possible MSIs.
+	if (sPCIx86Module == NULL && get_module(B_PCI_X86_MODULE_NAME,
+			(module_info **)&sPCIx86Module) != B_OK) {
+		// If it isn't there, that's not critical though.
+		TRACE_MODULE_ERROR("failed to get pci x86 module\n");
+		sPCIx86Module = NULL;
+	}
+
+	for (int32 i = 0; sPCIModule->get_nth_pci_info(i, item) >= B_OK; i++) {
+		if (item->class_base == PCI_serial_bus && item->class_sub == PCI_usb
+			&& item->class_api == PCI_usb_ehci) {
+			TRACE_MODULE("found device at PCI:%d:%d:%d\n",
+				item->bus, item->device, item->function);
+			EHCI *bus = new(std::nothrow) EHCI(item, stack);
+			if (bus == NULL) {
+				delete item;
+				put_module(B_PCI_MODULE_NAME);
+				if (sPCIx86Module != NULL)
+					put_module(B_PCI_X86_MODULE_NAME);
+				return B_NO_MEMORY;
+			}
+
+			// The bus will put the PCI modules when it is destroyed, so get
+			// them again to increase their reference count.
+			get_module(B_PCI_MODULE_NAME, (module_info **)&sPCIModule);
+			if (sPCIx86Module != NULL)
+				get_module(B_PCI_X86_MODULE_NAME, (module_info **)&sPCIx86Module);
+
+			if (bus->InitCheck() != B_OK) {
+				TRACE_MODULE_ERROR("bus failed init check\n");
+				delete bus;
+				continue;
+			}
+
+			// the bus took it away
+			item = new(std::nothrow) pci_info;
+
+			if (bus->Start() != B_OK) {
+				delete bus;
+				continue;
+			}
+			found = true;
+		}
+	}
+
+	// The modules will have been gotten again if we successfully
+	// initialized a bus, so we should put them here.
+	put_module(B_PCI_MODULE_NAME);
+	if (sPCIx86Module != NULL)
+		put_module(B_PCI_X86_MODULE_NAME);
+
+	if (!found)
+		TRACE_MODULE_ERROR("no devices found\n");
+	delete item;
+	return found ? B_OK : ENODEV;
+}
+
+
 EHCI::EHCI(pci_info *info, Stack *stack)
 	:	BusManager(stack),
 		fCapabilityRegisters(NULL),
@@ -153,7 +233,7 @@ EHCI::EHCI(pci_info *info, Stack *stack)
 	// Create a lock for the isochronous transfer list
 	mutex_init(&fIsochronousLock, "EHCI isochronous lock");
 
-	if (BusManager::InitCheck() < B_OK) {
+	if (BusManager::InitCheck() != B_OK) {
 		TRACE_ERROR("bus manager failed to init\n");
 		return;
 	}
@@ -173,7 +253,7 @@ EHCI::EHCI(pci_info *info, Stack *stack)
 			// only apply on certain chipsets, determined by SMBus revision
 			pci_info smbus;
 			int32 index = 0;
-			while (sPCIModule->get_nth_pci_info(index++, &smbus) >= B_OK) {
+			while (sPCIModule->get_nth_pci_info(index++, &smbus) == B_OK) {
 				if (smbus.vendor_id == AMD_SBX00_VENDOR
 					&& smbus.device_id == AMD_SBX00_SMBUS_CONTROLLER) {
 
@@ -225,10 +305,10 @@ EHCI::EHCI(pci_info *info, Stack *stack)
 
 	fRegisterArea = map_physical_memory("EHCI memory mapped registers",
 		physicalAddress, mapSize, B_ANY_KERNEL_BLOCK_ADDRESS,
-		B_KERNEL_READ_AREA | B_KERNEL_WRITE_AREA | B_READ_AREA | B_WRITE_AREA,
+		B_KERNEL_READ_AREA | B_KERNEL_WRITE_AREA,
 		(void **)&fCapabilityRegisters);
-	if (fRegisterArea < B_OK) {
-		TRACE("failed to map register memory\n");
+	if (fRegisterArea < 0) {
+		TRACE_ERROR("failed to map register memory\n");
 		return;
 	}
 
@@ -306,7 +386,7 @@ EHCI::EHCI(pci_info *info, Stack *stack)
 	WriteOpReg(EHCI_USBINTR, 0);
 
 	// reset the host controller
-	if (ControllerReset() < B_OK) {
+	if (ControllerReset() != B_OK) {
 		TRACE_ERROR("host controller failed to reset\n");
 		return;
 	}
@@ -318,8 +398,7 @@ EHCI::EHCI(pci_info *info, Stack *stack)
 	fAsyncAdvanceSem = create_sem(0, "EHCI Async Advance");
 	fFinishTransfersSem = create_sem(0, "EHCI Finish Transfers");
 	fCleanupSem = create_sem(0, "EHCI Cleanup");
-	if (fFinishTransfersSem < B_OK || fAsyncAdvanceSem < B_OK
-		|| fCleanupSem < B_OK) {
+	if (fFinishTransfersSem < 0 || fAsyncAdvanceSem < 0 || fCleanupSem < 0) {
 		TRACE_ERROR("failed to create semaphores\n");
 		return;
 	}
@@ -332,7 +411,7 @@ EHCI::EHCI(pci_info *info, Stack *stack)
 	// Create semaphore the isochronous finisher thread will wait for
 	fFinishIsochronousTransfersSem = create_sem(0,
 		"EHCI Isochronous Finish Transfers");
-	if (fFinishIsochronousTransfersSem < B_OK) {
+	if (fFinishIsochronousTransfersSem < 0) {
 		TRACE_ERROR("failed to create isochronous finisher semaphore\n");
 		return;
 	}
@@ -379,6 +458,12 @@ EHCI::EHCI(pci_info *info, Stack *stack)
 			}
 		}
 
+		if (fIRQ == 0 || fIRQ == 0xFF) {
+			TRACE_MODULE_ERROR("device PCI:%d:%d:%d was assigned an invalid IRQ\n",
+				fPCIInfo->bus, fPCIInfo->device, fPCIInfo->function);
+			return;
+		}
+
 		// install the interrupt handler and enable interrupts
 		install_io_interrupt_handler(fIRQ, InterruptHandler,
 			(void *)this, 0);
@@ -412,7 +497,7 @@ EHCI::EHCI(pci_info *info, Stack *stack)
 	// allocate the periodic frame list
 	fPeriodicFrameListArea = fStack->AllocateArea((void **)&fPeriodicFrameList,
 		&physicalAddress, frameListSize, "USB EHCI Periodic Framelist");
-	if (fPeriodicFrameListArea < B_OK) {
+	if (fPeriodicFrameListArea < 0) {
 		TRACE_ERROR("unable to allocate periodic framelist\n");
 		return;
 	}
@@ -435,7 +520,7 @@ EHCI::EHCI(pci_info *info, Stack *stack)
 	for (int32 i = 0; i < EHCI_INTERRUPT_ENTRIES_COUNT; i++) {
 		ehci_qh *queueHead = &fInterruptEntries[i].queue_head;
 		queueHead->this_phy = physicalBase | EHCI_ITEM_TYPE_QH;
-		queueHead->current_qtd_phy = EHCI_ITEM_TERMINATE;
+		queueHead->current_qtd_phy = 0;
 		queueHead->overlay.next_phy = EHCI_ITEM_TERMINATE;
 		queueHead->overlay.alt_next_phy = EHCI_ITEM_TERMINATE;
 		queueHead->overlay.token = EHCI_QTD_STATUS_HALTED;
@@ -448,7 +533,7 @@ EHCI::EHCI(pci_info *info, Stack *stack)
 			| (0xff << EHCI_QH_CAPS_ISM_SHIFT);
 
 		physicalBase += sizeof(interrupt_entry);
-		if ((physicalBase & 0x10) != 0) {
+		if ((physicalBase & 0x1f) != 0) {
 			panic("physical base for interrupt entry %" B_PRId32
 				" not aligned on 32, interrupt entry structure size %lu\n",
 					i, sizeof(interrupt_entry));
@@ -550,7 +635,6 @@ EHCI::EHCI(pci_info *info, Stack *stack)
 	fAsyncQueueHead->endpoint_chars = EHCI_QH_CHARS_EPS_HIGH
 		| EHCI_QH_CHARS_RECHEAD;
 	fAsyncQueueHead->endpoint_caps = 1 << EHCI_QH_CAPS_MULT_SHIFT;
-	fAsyncQueueHead->current_qtd_phy = EHCI_ITEM_TERMINATE;
 	fAsyncQueueHead->overlay.next_phy = EHCI_ITEM_TERMINATE;
 
 	WriteOpReg(EHCI_ASYNCLISTADDR, (uint32)fAsyncQueueHead->this_phy);
@@ -575,6 +659,7 @@ EHCI::~EHCI()
 	delete_sem(fAsyncAdvanceSem);
 	delete_sem(fFinishTransfersSem);
 	delete_sem(fFinishIsochronousTransfersSem);
+	delete_sem(fCleanupSem);
 	wait_for_thread(fFinishThread, &result);
 	wait_for_thread(fCleanupThread, &result);
 	wait_for_thread(fFinishIsochronousThread, &result);
@@ -606,12 +691,10 @@ EHCI::~EHCI()
 		sPCIx86Module->unconfigure_msi(fPCIInfo->bus,
 			fPCIInfo->device, fPCIInfo->function);
 	}
-	put_module(B_PCI_MODULE_NAME);
 
-	if (sPCIx86Module != NULL) {
-		sPCIx86Module = NULL;
+	put_module(B_PCI_MODULE_NAME);
+	if (sPCIx86Module != NULL)
 		put_module(B_PCI_X86_MODULE_NAME);
-	}
 }
 
 
@@ -680,7 +763,7 @@ EHCI::Start()
 		return B_NO_MEMORY;
 	}
 
-	if (fRootHub->InitCheck() < B_OK) {
+	if (fRootHub->InitCheck() != B_OK) {
 		TRACE_ERROR("root hub failed init check\n");
 		return fRootHub->InitCheck();
 	}
@@ -710,10 +793,10 @@ EHCI::StartDebugTransfer(Transfer *transfer)
 
 	if ((pipe->Type() & USB_OBJECT_CONTROL_PIPE) != 0) {
 		result = FillQueueWithRequest(transfer, transferData.queue_head,
-			&transferData.data_descriptor, &transferData.incoming);
+			&transferData.data_descriptor, &transferData.incoming, false);
 	} else {
 		result = FillQueueWithData(transfer, transferData.queue_head,
-			&transferData.data_descriptor, &transferData.incoming);
+			&transferData.data_descriptor, &transferData.incoming, false);
 	}
 
 	if (result != B_OK) {
@@ -888,14 +971,18 @@ EHCI::SubmitTransfer(Transfer *transfer)
 	if ((pipe->Type() & USB_OBJECT_ISO_PIPE) != 0)
 		return SubmitIsochronous(transfer);
 
+	status_t result = transfer->InitKernelAccess();
+	if (result != B_OK)
+		return result;
+
 	ehci_qh *queueHead = CreateQueueHead();
 	if (!queueHead) {
 		TRACE_ERROR("failed to allocate queue head\n");
 		return B_NO_MEMORY;
 	}
 
-	status_t result = InitQueueHead(queueHead, pipe);
-	if (result < B_OK) {
+	result = InitQueueHead(queueHead, pipe);
+	if (result != B_OK) {
 		TRACE_ERROR("failed to init queue head\n");
 		FreeQueueHead(queueHead);
 		return result;
@@ -905,13 +992,13 @@ EHCI::SubmitTransfer(Transfer *transfer)
 	ehci_qtd *dataDescriptor;
 	if ((pipe->Type() & USB_OBJECT_CONTROL_PIPE) != 0) {
 		result = FillQueueWithRequest(transfer, queueHead, &dataDescriptor,
-			&directionIn);
+			&directionIn, true);
 	} else {
 		result = FillQueueWithData(transfer, queueHead, &dataDescriptor,
-			&directionIn);
+			&directionIn, true);
 	}
 
-	if (result < B_OK) {
+	if (result != B_OK) {
 		TRACE_ERROR("failed to fill transfer queue with data\n");
 		FreeQueueHead(queueHead);
 		return result;
@@ -919,7 +1006,7 @@ EHCI::SubmitTransfer(Transfer *transfer)
 
 	result = AddPendingTransfer(transfer, queueHead, dataDescriptor,
 		directionIn);
-	if (result < B_OK) {
+	if (result != B_OK) {
 		TRACE_ERROR("failed to add pending transfer\n");
 		FreeQueueHead(queueHead);
 		return result;
@@ -935,7 +1022,7 @@ EHCI::SubmitTransfer(Transfer *transfer)
 	else
 		result = LinkQueueHead(queueHead);
 
-	if (result < B_OK) {
+	if (result != B_OK) {
 		TRACE_ERROR("failed to link queue head\n");
 		FreeQueueHead(queueHead);
 		return result;
@@ -963,6 +1050,10 @@ EHCI::SubmitIsochronous(Transfer *transfer)
 			"isochronous packetSize is bigger than pipe MaxPacketSize\n");
 		return B_BAD_VALUE;
 	}
+
+	status_t result = transfer->InitKernelAccess();
+	if (result != B_OK)
+		return result;
 
 	// Ignore the fact that the last descriptor might need less bandwidth.
 	// The overhead is not worthy.
@@ -1023,7 +1114,7 @@ EHCI::SubmitIsochronous(Transfer *transfer)
 	size_t dataLength = transfer->DataLength();
 	void* bufferLog;
 	phys_addr_t bufferPhy;
-	if (fStack->AllocateChunk(&bufferLog, &bufferPhy, dataLength) < B_OK) {
+	if (fStack->AllocateChunk(&bufferLog, &bufferPhy, dataLength) != B_OK) {
 		TRACE_ERROR("unable to allocate itd buffer\n");
 		delete[] isoRequest;
 		return B_NO_MEMORY;
@@ -1089,10 +1180,10 @@ EHCI::SubmitIsochronous(Transfer *transfer)
 	TRACE("isochronous filled itds count %d\n", itdIndex);
 
 	// Add transfer to the list
-	status_t result = AddPendingIsochronousTransfer(transfer, isoRequest,
+	result = AddPendingIsochronousTransfer(transfer, isoRequest,
 		itdIndex - 1, directionIn, bufferPhy, bufferLog,
 		transfer->DataLength());
-	if (result < B_OK) {
+	if (result != B_OK) {
 		TRACE_ERROR("failed to add pending isochronous transfer\n");
 		for (uint32 i = 0; i < itdIndex; i++)
 			FreeDescriptor(isoRequest[i]);
@@ -1148,98 +1239,6 @@ EHCI::NotifyPipeChange(Pipe *pipe, usb_change change)
 		}
 	}
 
-	return B_OK;
-}
-
-
-status_t
-EHCI::AddTo(Stack *stack)
-{
-#ifdef TRACE_USB
-	set_dprintf_enabled(true);
-#ifndef HAIKU_TARGET_PLATFORM_HAIKU
-	load_driver_symbols("ehci");
-#endif
-#endif
-
-	if (!sPCIModule) {
-		status_t status = get_module(B_PCI_MODULE_NAME,
-			(module_info **)&sPCIModule);
-		if (status < B_OK) {
-			TRACE_MODULE_ERROR("getting pci module failed! 0x%08" B_PRIx32
-				"\n", status);
-			return status;
-		}
-	}
-
-	TRACE_MODULE("searching devices\n");
-	bool found = false;
-	pci_info *item = new(std::nothrow) pci_info;
-	if (!item) {
-		sPCIModule = NULL;
-		put_module(B_PCI_MODULE_NAME);
-		return B_NO_MEMORY;
-	}
-
-	// Try to get the PCI x86 module as well so we can enable possible MSIs.
-	if (sPCIx86Module == NULL && get_module(B_PCI_X86_MODULE_NAME,
-			(module_info **)&sPCIx86Module) != B_OK) {
-		// If it isn't there, that's not critical though.
-		TRACE_MODULE_ERROR("failed to get pci x86 module\n");
-		sPCIx86Module = NULL;
-	}
-
-	for (int32 i = 0; sPCIModule->get_nth_pci_info(i, item) >= B_OK; i++) {
-		if (item->class_base == PCI_serial_bus && item->class_sub == PCI_usb
-			&& item->class_api == PCI_usb_ehci) {
-			if (item->u.h0.interrupt_line == 0
-				|| item->u.h0.interrupt_line == 0xFF) {
-				TRACE_MODULE_ERROR("found device with invalid IRQ - "
-					"check IRQ assignement\n");
-				continue;
-			}
-
-			TRACE_MODULE("found device at IRQ %u\n", item->u.h0.interrupt_line);
-			EHCI *bus = new(std::nothrow) EHCI(item, stack);
-			if (!bus) {
-				delete item;
-				sPCIModule = NULL;
-				put_module(B_PCI_MODULE_NAME);
-				if (sPCIx86Module != NULL) {
-					sPCIx86Module = NULL;
-					put_module(B_PCI_X86_MODULE_NAME);
-				}
-				return B_NO_MEMORY;
-			}
-
-			if (bus->InitCheck() < B_OK) {
-				TRACE_MODULE_ERROR("bus failed init check\n");
-				delete bus;
-				continue;
-			}
-
-			// the bus took it away
-			item = new(std::nothrow) pci_info;
-
-			bus->Start();
-			stack->AddBusManager(bus);
-			found = true;
-		}
-	}
-
-	if (!found) {
-		TRACE_MODULE_ERROR("no devices found\n");
-		delete item;
-		sPCIModule = NULL;
-		put_module(B_PCI_MODULE_NAME);
-		if (sPCIx86Module != NULL) {
-			sPCIx86Module = NULL;
-			put_module(B_PCI_X86_MODULE_NAME);
-		}
-		return ENODEV;
-	}
-
-	delete item;
 	return B_OK;
 }
 
@@ -1536,12 +1535,6 @@ EHCI::AddPendingTransfer(Transfer *transfer, ehci_qh *queueHead,
 	if (!data)
 		return B_NO_MEMORY;
 
-	status_t result = transfer->InitKernelAccess();
-	if (result < B_OK) {
-		delete data;
-		return result;
-	}
-
 	data->transfer = transfer;
 	data->queue_head = queueHead;
 	data->data_descriptor = dataDescriptor;
@@ -1578,12 +1571,6 @@ EHCI::AddPendingIsochronousTransfer(Transfer *transfer, ehci_itd **isoRequest,
 		= new(std::nothrow) isochronous_transfer_data;
 	if (!data)
 		return B_NO_MEMORY;
-
-	status_t result = transfer->InitKernelAccess();
-	if (result < B_OK) {
-		delete data;
-		return result;
-	}
 
 	data->transfer = transfer;
 	data->descriptors = isoRequest;
@@ -1734,7 +1721,7 @@ void
 EHCI::FinishTransfers()
 {
 	while (!fStopThreads) {
-		if (acquire_sem(fFinishTransfersSem) < B_OK)
+		if (acquire_sem(fFinishTransfersSem) != B_OK)
 			continue;
 
 		// eat up sems that have been released by multiple interrupts
@@ -1904,11 +1891,10 @@ EHCI::FinishTransfers()
 						transfer->transfer->AdvanceByFragment(actualLength);
 						if (transfer->transfer->VectorLength() > 0) {
 							FreeDescriptorChain(transfer->data_descriptor);
-							transfer->transfer->PrepareKernelAccess();
 							status_t result = FillQueueWithData(
 								transfer->transfer,
 								transfer->queue_head,
-								&transfer->data_descriptor, NULL);
+								&transfer->data_descriptor, NULL, true);
 
 							if (result == B_OK && Lock()) {
 								// reappend the transfer
@@ -1960,7 +1946,7 @@ EHCI::Cleanup()
 	ehci_qh *lastFreeListHead = NULL;
 
 	while (!fStopThreads) {
-		if (acquire_sem(fCleanupSem) < B_OK)
+		if (acquire_sem(fCleanupSem) != B_OK)
 			continue;
 
 		ehci_qh *freeListHead = fFreeListHead;
@@ -1969,7 +1955,7 @@ EHCI::Cleanup()
 
 		// set the doorbell and wait for the host controller to notify us
 		WriteOpReg(EHCI_USBCMD, ReadOpReg(EHCI_USBCMD) | EHCI_USBCMD_INTONAAD);
-		if (acquire_sem(fAsyncAdvanceSem) < B_OK)
+		if (acquire_sem(fAsyncAdvanceSem) != B_OK)
 			continue;
 
 		ehci_qh *current = freeListHead;
@@ -2000,8 +1986,8 @@ EHCI::FinishIsochronousTransfers()
 	* of a transfer, it processes the entire transfer.
 	*/
 	while (!fStopThreads) {
-		// Go to sleep if there are not isochronous transfer to process
-		if (acquire_sem(fFinishIsochronousTransfersSem) < B_OK)
+		// Go to sleep if there are no isochronous transfers to process
+		if (acquire_sem(fFinishIsochronousTransfersSem) != B_OK)
 			return;
 
 		bool transferDone = false;
@@ -2119,7 +2105,7 @@ EHCI::CreateQueueHead()
 	ehci_qh *result;
 	phys_addr_t physicalAddress;
 	if (fStack->AllocateChunk((void **)&result, &physicalAddress,
-		sizeof(ehci_qh)) < B_OK) {
+			sizeof(ehci_qh)) != B_OK) {
 		TRACE_ERROR("failed to allocate queue head\n");
 		return NULL;
 	}
@@ -2139,7 +2125,7 @@ EHCI::CreateQueueHead()
 	descriptor->token &= ~EHCI_QTD_STATUS_ACTIVE;
 	result->stray_log = descriptor;
 	result->element_log = descriptor;
-	result->current_qtd_phy = EHCI_ITEM_TERMINATE;
+	result->current_qtd_phy = 0;
 	result->overlay.next_phy = descriptor->this_phy;
 	result->overlay.alt_next_phy = EHCI_ITEM_TERMINATE;
 	result->overlay.token = 0;
@@ -2230,11 +2216,16 @@ EHCI::LinkInterruptQueueHead(ehci_qh *queueHead, Pipe *pipe)
 		queueHead->endpoint_caps |= (0xff << EHCI_QH_CAPS_ISM_SHIFT);
 	} else {
 		// As we do not yet support FSTNs to correctly reference low/full
-		// speed interrupt transfers, we simply put them into the 1 interval
+		// speed interrupt transfers, we simply put them into the 1 or 8 interval
 		// queue. This way we ensure that we reach them on every micro frame
 		// and can do the corresponding start/complete split transactions.
 		// ToDo: use FSTNs to correctly link non high speed interrupt transfers
-		interval = 1;
+		if (pipe->Speed() == USB_SPEED_LOWSPEED) {
+			// Low speed devices can't be polled faster than 8ms, so just use
+			// that.
+			interval = 4;
+		} else
+			interval = 1;
 
 		// For now we also force start splits to be in micro frame 0 and
 		// complete splits to be in micro frame 2, 3 and 4.
@@ -2298,7 +2289,7 @@ EHCI::UnlinkQueueHead(ehci_qh *queueHead, ehci_qh **freeListHead)
 
 status_t
 EHCI::FillQueueWithRequest(Transfer *transfer, ehci_qh *queueHead,
-	ehci_qtd **_dataDescriptor, bool *_directionIn)
+	ehci_qtd **_dataDescriptor, bool *_directionIn, bool prepareKernelAccess)
 {
 	Pipe *pipe = transfer->TransferPipe();
 	usb_request_data *requestData = transfer->RequestData();
@@ -2331,13 +2322,15 @@ EHCI::FillQueueWithRequest(Transfer *transfer, ehci_qh *queueHead,
 			&lastDescriptor, statusDescriptor, transfer->VectorLength(),
 			directionIn ? EHCI_QTD_PID_IN : EHCI_QTD_PID_OUT);
 
-		if (result < B_OK) {
+		if (result != B_OK) {
 			FreeDescriptor(setupDescriptor);
 			FreeDescriptor(statusDescriptor);
 			return result;
 		}
 
 		if (!directionIn) {
+			if (prepareKernelAccess)
+				transfer->PrepareKernelAccess();
 			WriteDescriptorChain(dataDescriptor, transfer->Vector(),
 				transfer->VectorCount());
 		}
@@ -2361,7 +2354,7 @@ EHCI::FillQueueWithRequest(Transfer *transfer, ehci_qh *queueHead,
 
 status_t
 EHCI::FillQueueWithData(Transfer *transfer, ehci_qh *queueHead,
-	ehci_qtd **_dataDescriptor, bool *_directionIn)
+	ehci_qtd **_dataDescriptor, bool *_directionIn, bool prepareKernelAccess)
 {
 	Pipe *pipe = transfer->TransferPipe();
 	bool directionIn = (pipe->Direction() == Pipe::In);
@@ -2373,11 +2366,13 @@ EHCI::FillQueueWithData(Transfer *transfer, ehci_qh *queueHead,
 		&lastDescriptor, strayDescriptor, transfer->VectorLength(),
 		directionIn ? EHCI_QTD_PID_IN : EHCI_QTD_PID_OUT);
 
-	if (result < B_OK)
+	if (result != B_OK)
 		return result;
 
 	lastDescriptor->token |= EHCI_QTD_IOC;
 	if (!directionIn) {
+		if (prepareKernelAccess)
+			transfer->PrepareKernelAccess();
 		WriteDescriptorChain(firstDescriptor, transfer->Vector(),
 			transfer->VectorCount());
 	}
@@ -2399,7 +2394,7 @@ EHCI::CreateDescriptor(size_t bufferSize, uint8 pid)
 	ehci_qtd *result;
 	phys_addr_t physicalAddress;
 	if (fStack->AllocateChunk((void **)&result, &physicalAddress,
-		sizeof(ehci_qtd)) < B_OK) {
+			sizeof(ehci_qtd)) != B_OK) {
 		TRACE_ERROR("failed to allocate a qtd\n");
 		return NULL;
 	}
@@ -2425,7 +2420,7 @@ EHCI::CreateDescriptor(size_t bufferSize, uint8 pid)
 	}
 
 	if (fStack->AllocateChunk(&result->buffer_log, &physicalAddress,
-		bufferSize) < B_OK) {
+			bufferSize) != B_OK) {
 		TRACE_ERROR("unable to allocate qtd buffer\n");
 		fStack->FreeChunk(result, (phys_addr_t)result->this_phy,
 			sizeof(ehci_qtd));
@@ -2519,7 +2514,7 @@ EHCI::CreateItdDescriptor()
 	ehci_itd *result;
 	phys_addr_t physicalAddress;
 	if (fStack->AllocateChunk((void **)&result, &physicalAddress,
-		sizeof(ehci_itd)) < B_OK) {
+			sizeof(ehci_itd)) != B_OK) {
 		TRACE_ERROR("failed to allocate a itd\n");
 		return NULL;
 	}
@@ -2538,7 +2533,7 @@ EHCI::CreateSitdDescriptor()
 	ehci_sitd *result;
 	phys_addr_t physicalAddress;
 	if (fStack->AllocateChunk((void **)&result, &physicalAddress,
-		sizeof(ehci_sitd)) < B_OK) {
+			sizeof(ehci_sitd)) != B_OK) {
 		TRACE_ERROR("failed to allocate a sitd\n");
 		return NULL;
 	}

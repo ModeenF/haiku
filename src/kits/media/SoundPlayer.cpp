@@ -21,7 +21,7 @@
 
 #include "SoundPlayNode.h"
 
-#include "debug.h"
+#include "MediaDebug.h"
 
 
 // Flags used internally in BSoundPlayer
@@ -123,7 +123,7 @@ BSoundPlayer::~BSoundPlayer()
 		err = roster->Disconnect(fMediaOutput, fMediaInput);
 		if (err != B_OK) {
 			TRACE("BSoundPlayer::~BSoundPlayer: Error disconnecting nodes: "
-				"%ld (%s)\n", err, strerror(err));
+				"%" B_PRId32 " (%s)\n", err, strerror(err));
 		}
 	}
 
@@ -133,7 +133,7 @@ BSoundPlayer::~BSoundPlayer()
 		err = roster->ReleaseNode(fMediaInput.node);
 		if (err != B_OK) {
 			TRACE("BSoundPlayer::~BSoundPlayer: Error releasing input node: "
-				"%ld (%s)\n", err, strerror(err));
+				"%" B_PRId32 " (%s)\n", err, strerror(err));
 		}
 	}
 
@@ -143,8 +143,17 @@ cleanup:
 	// We do not call BMediaRoster::ReleaseNode(), since
 	// the player was created by using "new". We could
 	// call BMediaRoster::UnregisterNode(), but this is
-	// supposed to be done by BMediaNode destructor automatically
-	delete fPlayerNode;
+	// supposed to be done by BMediaNode destructor automatically.
+
+	// The node is deleted by the Release() when ref count reach 0.
+	// Since we are the sole owners, and no one acquired it
+	// this should be the case. The Quit() synchronization
+	// is handled by the DeleteHook inheritance.
+	// NOTE: this might be crucial when using a BMediaEventLooper.
+	if (fPlayerNode != NULL && fPlayerNode->Release() != NULL) {
+		TRACE("BSoundPlayer::~BSoundPlayer: Error the producer node "
+			"appears to be acquired by someone else than us!");
+	}
 
 	// do not delete fVolumeSlider, it belongs to the parameter web
 	delete fParameterWeb;
@@ -201,7 +210,7 @@ BSoundPlayer::Start()
 	status_t err = roster->StartNode(fPlayerNode->Node(),
 		fPlayerNode->TimeSource()->Now() + Latency() + 5000);
 	if (err != B_OK) {
-		TRACE("BSoundPlayer::Start: StartNode failed, %ld", err);
+		TRACE("BSoundPlayer::Start: StartNode failed, %" B_PRId32, err);
 		return err;
 	}
 
@@ -276,12 +285,12 @@ BSoundPlayer::Latency()
 	bigtime_t latency;
 	status_t err = roster->GetLatencyFor(fMediaOutput.node, &latency);
 	if (err != B_OK) {
-		TRACE("BSoundPlayer::Latency: GetLatencyFor failed %ld (%s)\n", err,
-			strerror(err));
+		TRACE("BSoundPlayer::Latency: GetLatencyFor failed %" B_PRId32
+			" (%s)\n", err, strerror(err));
 		return 0;
 	}
 
-	TRACE("BSoundPlayer::Latency: latency is %Ld\n", latency);
+	TRACE("BSoundPlayer::Latency: latency is %" B_PRId64 "\n", latency);
 
 	return latency;
 }
@@ -418,8 +427,8 @@ BSoundPlayer::Preroll()
 
 	status_t err = roster->PrerollNode(fMediaOutput.node);
 	if (err != B_OK) {
-		TRACE("BSoundPlayer::Preroll: Error while PrerollNode:  %ld (%s)\n",
-			err, strerror(err));
+		TRACE("BSoundPlayer::Preroll: Error while PrerollNode: %"
+			B_PRId32 " (%s)\n", err, strerror(err));
 		return err;
 	}
 
@@ -858,7 +867,7 @@ BSoundPlayer::_Init(const media_node* node,
 
 	_GetVolumeSlider();
 
-	TRACE("BSoundPlayer node %ld has timesource %ld\n",
+	TRACE("BSoundPlayer node %" B_PRId32 " has timesource %" B_PRId32 "\n",
 		fPlayerNode->Node().node, fPlayerNode->TimeSource()->Node().node);
 }
 

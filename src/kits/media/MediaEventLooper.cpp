@@ -33,7 +33,7 @@
 #include <scheduler.h>
 #include <Buffer.h>
 #include <ServerInterface.h>
-#include "debug.h"
+#include "MediaDebug.h"
 
 /*************************************************************
  * protected BMediaEventLooper
@@ -213,7 +213,7 @@ BMediaEventLooper::ControlLoop()
 {
 	CALLED();
 
-	status_t err;
+	status_t err = B_OK;
 	bigtime_t waitUntil = B_INFINITE_TIMEOUT;
 	bool hasRealtime = false;
 	bool hasEvent = false;
@@ -223,11 +223,7 @@ BMediaEventLooper::ControlLoop()
 	// we need to handle the next event
 
 	fSchedulingLatency = estimate_max_scheduling_latency(fControlThread);
-	while (true) {
-		if (RunState() == B_QUITTING)
-			return;
-
-		err = WaitForMessage(waitUntil);
+	while (RunState() != B_QUITTING) {
 		if (err == B_TIMED_OUT
 				|| err == B_WOULD_BLOCK) {
 			// NOTE: The reference for doing the lateness calculus this way can
@@ -241,13 +237,12 @@ BMediaEventLooper::ControlLoop()
 				err = fRealTimeQueue.RemoveFirstEvent(&event);
 
 			if (err == B_OK) {
-				// We are going to do this calculus in performance time
-				// because otherwise we could get erroneous values.
-				// This calculus allow us to detect both early and late
-				// buffers, this is the meaning of the lateness concept.
-				bigtime_t lateness = event.event_time - fEventLatency
-					- fSchedulingLatency - TimeSource()->Now();
-				DispatchEvent(&event, -lateness, hasRealtime);
+				// The general idea of lateness is to allow
+				// the client code to detect when the buffer
+				// is handled late or early.
+				bigtime_t lateness = TimeSource()->RealTime() - waitUntil;
+
+				DispatchEvent(&event, lateness, hasRealtime);
 			}
 		} else if (err != B_OK)
 			return;
@@ -263,10 +258,8 @@ BMediaEventLooper::ControlLoop()
 			waitUntil = TimeSource()->RealTimeFor(
 				fEventQueue.FirstEventTime(),
 				fEventLatency + fSchedulingLatency);
-		} else if (!hasRealtime) {
+		} else if (!hasRealtime)
 			waitUntil = B_INFINITE_TIMEOUT;
-			continue;
-		}
 
 		if (hasRealtime) {
 			bigtime_t realtimeWait = fRealTimeQueue.FirstEventTime()
@@ -278,6 +271,12 @@ BMediaEventLooper::ControlLoop()
 			} else
 				hasRealtime = false;
 		}
+
+		if (waitUntil != B_INFINITE_TIMEOUT
+				&& TimeSource()->RealTime() >= waitUntil) {
+			err = WaitForMessage(0);
+		} else
+			err = WaitForMessage(waitUntil);
 	}
 }
 
@@ -407,6 +406,10 @@ void
 BMediaEventLooper::SetBufferDuration(bigtime_t duration)
 {
 	CALLED();
+
+	if (duration < 0)
+		duration = 0;
+
 	fBufferDuration = duration;
 }
 

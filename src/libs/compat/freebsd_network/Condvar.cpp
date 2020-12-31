@@ -38,7 +38,7 @@ int
 conditionTimedWait(struct cv* variable, const int timeout)
 {
 	status_t status = variable->condition.Wait(B_RELATIVE_TIMEOUT,
-		ticks_to_usecs(timeout));
+		TICKS_2_USEC(timeout));
 
 	if (status != B_OK)
 		status = EWOULDBLOCK;
@@ -64,9 +64,14 @@ int
 publishedConditionTimedWait(const void* waitChannel, const int timeout)
 {
 	ConditionVariableEntry variableEntry;
+	bigtime_t usecs = TICKS_2_USEC(timeout);
 
+	// FreeBSD has a condition-variable scheduling system with different
+	// scheduling semantics than ours does. As a result, it seems there are
+	// some scenarios which work fine under FreeBSD but race into a deadlock
+	// on Haiku. To avoid this, turn unlimited timeouts into 1sec ones.
 	status_t status = variableEntry.Wait(waitChannel, B_RELATIVE_TIMEOUT,
-		ticks_to_usecs(timeout));
+		usecs > 0 ? usecs : 1000 * 1000);
 
 	if (status != B_OK)
 		status = EWOULDBLOCK;
@@ -78,4 +83,11 @@ void
 publishedConditionNotifyAll(const void* waitChannel)
 {
 	ConditionVariable::NotifyAll(waitChannel, B_OK);
+}
+
+
+void
+publishedConditionNotifyOne(const void* waitChannel)
+{
+	ConditionVariable::NotifyOne(waitChannel, B_OK);
 }

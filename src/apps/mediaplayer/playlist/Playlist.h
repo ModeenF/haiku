@@ -5,28 +5,18 @@
  * Copyright (C) 2007-2009 Stephan Aßmus <superstippi@gmx.de> (MIT ok)
  * Copyright (C) 2008-2009 Fredrik Modéen <[FirstName]@[LastName].se> (MIT ok)
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- *
+ * Released under the terms of the MIT license.
  */
 #ifndef __PLAYLIST_H
 #define __PLAYLIST_H
 
 #include <List.h>
 #include <Locker.h>
+#include <Url.h>
 
 #include "FilePlaylistItem.h"
 #include "PlaylistItem.h"
+#include "UrlPlaylistItem.h"
 
 class BDataIO;
 class BMessage;
@@ -103,34 +93,46 @@ public:
 			void				RemoveListener(Listener* listener);
 
 			// support functions
-			void				AppendRefs(const BMessage* refsReceivedMessage,
+			void				AppendItems(const BMessage* refsReceivedMessage,
 									int32 appendIndex
-										= APPEND_INDEX_REPLACE_PLAYLIST);
+										= APPEND_INDEX_REPLACE_PLAYLIST,
+									bool sortItems = false);
+
 	static	void				AppendToPlaylistRecursive(const entry_ref& ref,
 									Playlist* playlist);
 	static	void				AppendPlaylistToPlaylist(const entry_ref& ref,
+									Playlist* playlist);
+	static	void				AppendM3uToPlaylist(const entry_ref& ref,
 									Playlist* playlist);
 	static	void				AppendQueryToPlaylist(const entry_ref& ref,
 									Playlist* playlist);
 
 			void				NotifyImportFailed();
 
-	static	bool				ExtraMediaExists(Playlist* playlist, const entry_ref& ref);
+	static	bool				ExtraMediaExists(Playlist* playlist,
+									PlaylistItem* item);
 
 private:
 								Playlist(const Playlist& other);
 			Playlist&			operator=(const Playlist& other);
 									// unimplemented
 
+	static	bool				_ExtraMediaExists(Playlist* playlist,
+									const entry_ref& ref);
+	static	bool				_ExtraMediaExists(Playlist* playlist,
+									BUrl url);
 	static	bool 				_IsImageFile(const BString& mimeString);
 	static	bool 				_IsMediaFile(const BString& mimeString);
 	static	bool				_IsTextPlaylist(const BString& mimeString);
 	static	bool				_IsBinaryPlaylist(const BString& mimeString);
 	static	bool				_IsPlaylist(const BString& mimeString);
+	static	bool				_IsM3u(const entry_ref& ref);
 	static	bool				_IsQuery(const BString& mimeString);
 	static	BString				_MIMEString(const entry_ref* ref);
 	static	void				_BindExtraMedia(PlaylistItem* item);
-	static	void				_BindExtraMedia(FilePlaylistItem* fileItem, const BEntry& entry);
+	static	void				_BindExtraMedia(FilePlaylistItem* fileItem,
+									const BEntry& entry);
+
 	static	BString				_GetExceptExtension(const BString& path);
 
 			void				_NotifyItemAdded(PlaylistItem*,

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2009 Sam Leffler, Errno Consulting
  * All rights reserved.
  *
@@ -22,10 +24,10 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/net80211/ieee80211_action.h 326272 2017-11-27 15:23:17Z pfg $
  */
-#ifndef _FBSD_COMPAT_NET80211_IEEE80211_ACTION_H_
-#define _FBSD_COMPAT_NET80211_IEEE80211_ACTION_H_
+#ifndef _NET80211_IEEE80211_ACTION_H_
+#define _NET80211_IEEE80211_ACTION_H_
 
 /*
  * 802.11 send/recv action frame support.
@@ -49,4 +51,4 @@ void	ieee80211_recv_action_unregister(int cat, int act);
 int	ieee80211_recv_action(struct ieee80211_node *,
 		const struct ieee80211_frame *,
 		const uint8_t *, const uint8_t *);
-#endif /* _FBSD_COMPAT_NET80211_IEEE80211_ACTION_H_ */
+#endif /* _NET80211_IEEE80211_ACTION_H_ */

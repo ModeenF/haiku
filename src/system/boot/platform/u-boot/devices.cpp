@@ -9,6 +9,7 @@
 #include <boot/disk_identifier.h>
 #include <boot/vfs.h>
 #include <boot/platform.h>
+#include <boot/partitions.h>
 #include <boot/stage2.h>
 #include <boot/stdio.h>
 
@@ -89,4 +90,10 @@ platform_register_boot_device(Node *device)
 		&disk_ident, sizeof(disk_ident));
 
 	return B_OK;
+}
+
+
+void
+platform_cleanup_devices()
+{
 }

@@ -43,15 +43,15 @@ GenerateFlagString(uint32 flags)
 	BString string;
 
 	if ((flags & IMAP::kSeen) != 0)
-		PutFlag(string, "\\Seen ");
+		PutFlag(string, "\\Seen");
 	if ((flags & IMAP::kAnswered) != 0)
-		PutFlag(string, "\\Answered ");
+		PutFlag(string, "\\Answered");
 	if ((flags & IMAP::kFlagged) != 0)
-		PutFlag(string, "\\Flagged ");
+		PutFlag(string, "\\Flagged");
 	if ((flags & IMAP::kDeleted) != 0)
-		PutFlag(string, "\\Deleted ");
+		PutFlag(string, "\\Deleted");
 	if ((flags & IMAP::kDraft) != 0)
-		PutFlag(string, "\\Draft ");
+		PutFlag(string, "\\Draft");
 
 	return string;
 }
@@ -686,6 +686,14 @@ ListCommand::HandleUntagged(Response& response)
 	if (response.IsCommand(_Command()) && response.IsStringAt(2)
 		&& response.IsStringAt(3)) {
 		fSeparator = response.StringAt(2);
+
+		if (response.IsListAt(1)) {
+			// We're not supposed to select \Noselect mailboxes,
+			// so we'll just hide them
+			ArgumentList& attributes = response.ListAt(1);
+			if (attributes.Contains("\\Noselect"))
+				return true;
+		}
 
 		BString folder = response.StringAt(3);
 		if (folder == "")

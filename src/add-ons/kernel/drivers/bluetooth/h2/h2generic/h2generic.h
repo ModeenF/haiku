@@ -4,20 +4,15 @@
  * All rights reserved. Distributed under the terms of the MIT License.
  *
  */
-
 #ifndef _H2GENERIC_H_
 #define _H2GENERIC_H_
+
 
 #include <net_buffer.h>
 #include <net_device.h>
 
 #include <OS.h>
-#ifdef HAIKU_TARGET_PLATFORM_HAIKU
 #include <USB3.h>
-#else
-#include <USB_spec.h>
-#include <USB.h>
-#endif
 
 #include <util/list.h>
 #include <bluetooth/HCI/btHCI.h>
@@ -26,6 +21,7 @@
 #include <btCoreData.h>
 
 #include "snet_buffer.h"
+
 
 // USB definitions for the generic device move to h2cfg
 #define UDCLASS_WIRELESS	0xe0
@@ -39,6 +35,7 @@
 #define USB_TYPE_CLASS			(0x01 << 5)  /// Check if it is in some other header
 #define USB_TYPE_VENDOR			(0x02 << 5)
 
+#define TOUCH(x) ((void)(x))
 
 // Expecting nobody is gonna have 16 USB-BT dongles connected in their system
 #define MAX_BT_GENERIC_USB_DEVICES	16
@@ -59,11 +56,7 @@ extern struct bluetooth_core_data_module_info* btCoreData;
 typedef struct bt_usb_dev bt_usb_dev;
 
 struct bt_usb_dev {
-#ifdef HAIKU_TARGET_PLATFORM_HAIKU
 	usb_device		dev;          /* opaque handle */
-#else
-	usb_device*		dev;          /* opaque handle */
-#endif
 	hci_id					hdev; /* HCI device id*/
 	bluetooth_device*		ndev;
 
@@ -117,5 +110,24 @@ struct bt_usb_dev {
 };
 
 bt_usb_dev* fetch_device(bt_usb_dev* dev, hci_id hid);
+
+
+static inline uint32
+TEST_AND_SET(uint32 *byte, uint32 bit_mask)
+{
+	uint32 val = (*byte&bit_mask)!=0;
+	*byte |= bit_mask;
+	return val;
+}
+
+
+static inline uint32
+TEST_AND_CLEAR(uint32* byte, uint32 bit_mask)
+{
+	uint32 val = (*byte&bit_mask)!=0;
+	*byte &= ~bit_mask;
+	return val;
+}
+
 
 #endif

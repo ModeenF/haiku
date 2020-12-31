@@ -1,6 +1,6 @@
 /* 
 ** Copyright 2004, Marcus Overhagen. All rights reserved.
-** Distributed under the terms of the OpenBeOS License.
+** Distributed under the terms of the MIT License.
 */
 
 
@@ -8,6 +8,8 @@
 
 
 MediaPlugin::MediaPlugin()
+	:
+	fRefCount(0)
 {
 }
 

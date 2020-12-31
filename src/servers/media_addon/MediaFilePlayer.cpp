@@ -72,7 +72,7 @@ MediaFilePlayer::MediaFilePlayer(const char* media_type,
 	if (fInitCheck != B_OK)
 		return;
 
-	memset(&fPlayFormat, 0, sizeof(fPlayFormat));
+	fPlayFormat.Clear();
 
 	for (int i=0; i < fPlayFile->CountTracks(); i++) {
 		BMediaTrack* track = fPlayFile->TrackAt(i);
@@ -100,7 +100,6 @@ MediaFilePlayer::MediaFilePlayer(const char* media_type,
 	if (fInitCheck != B_OK)
 		return;
 
-	fSoundPlayer->SetVolume(1.0f);
 	fSoundPlayer->SetHasData(true);
 	fSoundPlayer->Start();
 }

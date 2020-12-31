@@ -1,23 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en-US" xml:lang="en-US">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="sk" xml:lang="sk">
 <head>
 <!-- 
  *
- * Copyright 2008-2012, Haiku. All rights reserved.
+ * Copyright 2008-2017, Haiku. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
  *		Humdinger <humdingerb@gmail.com>
  * Translators:
- *		helix84
  *		Bachoru
+ *		helix84
  *
 -->
 	<meta http-equiv="content-type" content="text/html; charset=utf-8" />
 	<meta http-equiv="Content-Style-Type" content="text/css" />
 	<meta name="robots" content="all" />
 	<title>Používateľské rozhranie Haiku</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<link rel="stylesheet" type="text/css" href="../Haiku-doc.css" />
 </head>
 <body>
@@ -29,23 +30,27 @@
 <div class="nav">
 <div class="inner">
 <ul class="lang-menu">
-<li class="now"><img src="../images/flags/sk.png" alt="" /> Slovenčina</li>
-<li><a href="../fr/gui.html"><img src="../images/flags/fr.png" alt="" />Français</a></li>
-<li><a href="../de/gui.html"><img src="../images/flags/de.png" alt="" />Deutsch</a></li>
-<li><a href="../it/gui.html"><img src="../images/flags/it.png" alt="" />Italiano</a></li>
-<li><a href="../ru/gui.html"><img src="../images/flags/ru.png" alt="" />Русский</a></li>
-<li><a href="../es/gui.html"><img src="../images/flags/es.png" alt="" />Español</a></li>
-<li><a href="../sv_SE/gui.html"><img src="../images/flags/sv_SE.png" alt="" />Svenska</a></li>
-<li><a href="../jp/gui.html"><img src="../images/flags/jp.png" alt="" />日本語</a></li>
-<li><a href="../uk/gui.html"><img src="../images/flags/uk.png" alt="" />Українська</a></li>
-<li><a href="../zh_CN/gui.html"><img src="../images/flags/zh_CN.png" alt="" /> 中文 ［中文］</a></li>
-<li><a href="../pt_PT/gui.html"><img src="../images/flags/pt_PT.png" alt="" />Português</a></li>
-<li><a href="../fi/gui.html"><img src="../images/flags/fi.png" alt="" />Suomi</a></li>
-<li><a href="../hu/gui.html"><img src="../images/flags/hu.png" alt="" />Magyar</a></li>
-<li><a href="../pt_BR/gui.html"><img src="../images/flags/pt_BR.png" alt="" />Português (Brazil)</a></li>
-<li><a href="../ca/gui.html"><img src="../images/flags/ca.png" alt="" />Català</a></li>
-<li><a href="../pl/gui.html"><img src="../images/flags/pl.png" alt="" />Polski</a></li>
-<li><a href="../en/gui.html"><img src="../images/flags/gb.png" alt="" />English</a></li>
+<li class="now">Slovenčina&nbsp;<span class="dropdown-caret">&#9660;</span></li>
+<li><a href="../id/gui.html">Bahasa Indonesia</a></li>
+<li><a href="../ca/gui.html">Català</a></li>
+<li><a href="../de/gui.html">Deutsch</a></li>
+<li><a href="../en/gui.html">English</a></li>
+<li><a href="../es/gui.html">Español</a></li>
+<li><a href="../fr/gui.html">Français</a></li>
+<li><a href="../fur/gui.html">Furlan</a></li>
+<li><a href="../it/gui.html">Italiano</a></li>
+<li><a href="../hu/gui.html">Magyar</a></li>
+<li><a href="../pl/gui.html">Polski</a></li>
+<li><a href="../pt_PT/gui.html">Português</a></li>
+<li><a href="../pt_BR/gui.html">Português (Brazil)</a></li>
+<li><a href="../ro/gui.html">Română</a></li>
+<li><a href="../fi/gui.html">Suomi</a></li>
+<li><a href="../sv_SE/gui.html">Svenska</a></li>
+<li><a href="../tr/gui.html">Türkçe</a></li>
+<li><a href="../zh_CN/gui.html"> 中文 ［中文］</a></li>
+<li><a href="../ru/gui.html">Русский</a></li>
+<li><a href="../uk/gui.html">Українська</a></li>
+<li><a href="../jp/gui.html">日本語</a></li>
 </ul>
 <span>
  «  <a href="filesystem-layout.html">Rozloženie súborového systému Haiku</a> 
@@ -69,7 +74,7 @@
 
 <h1>Používateľské rozhranie Haiku</h1>
 
-<p>Grafické používateľské rozhranie Haiku je integrálnou súčasťou systému. Na rozdiel od unixových operačných systémov neexistuje samostatný správca okien a zavedenie systému iba do shellu s príkazovým riadkom nie je možné. Haiku sa zameriava na používateľa pracovného prostredia a toto sa jednoducho nepovažuje za potrebné.</p>
+<p>Haiku's graphical user interface is an integral part of the system. Unlike other Unix-like operating systems, there is no separate window manager and booting just into a command-line shell is not possible. Haiku's focus being on the desktop user, this is just not considered necessary.</p>
 <p>Pretože už pravdepodobne máte skúsenosti s inými grafickými prostrediami, preskočme štandardné veci ako menu, kontextové ponuky pri kliknutím pravým tlačidlom, Ťahaj&amp;pusť atď. Pozrime sa namiesto toho na niekoľko jedinečných aspektov grafického používateľského prostredia Haiku.</p>
 <img src="images/gui-images/gui.png" alt="gui.png" />
 <p>V grafickom rozhraní Haiku je len niekoľko vecí, ktoré nie sú zjavné a zaslúžia si vysvetlenie.</p>
@@ -80,15 +85,16 @@
 <li>Okno môžete minimalizovať dvojklikom na jeho kartu (alebo pomocou <span class="key">CTRL</span> <span class="key">ALT</span> <span class="key">M</span>). K takto skrytému oknu sa dostanete cez jeho položku v <a href="deskbar.html">Paneli</a> alebo <a href="twitcher.html">Twitcheri</a>.</li>
 <li>Okno môžete dať preč z popredia pravým kliknutím na jeho kartu (alebo okraj).</li></ul></li>
 <li><p>Tlačidlo Zavrieť.</p></li>
-<li><p>Tlačidlo „zväčšenia“ (alebo <span class="key">CTRL</span> <span class="key">ALT</span> <span class="key">Z</span>). Vo väčšina aplikácií sa okno maximalizuje. Sú ale aj výnimky. Napríklad okná Trackera, ktoré svoju veľkosť zmenia tak, aby sa čo najlepšie prispôsobili obsahu.</p></li>
-<li><p>The window border. Left-dragging moves the window, right-dragging resizes.</p></li>
-<li><p>The resize corner.</p></li>
+<li><p>The "zoom" button (or <span class="key">CTRL</span> <span class="key">ALT</span> <span class="key">Z</span>). In most applications, this will expand a window to maximum size without obscuring the Deskbar (hold <span class="key">SHIFT</span> to cover the Deskbar as well). It doesn't have to, however. Tracker windows, for example, will resize to best fit the contents.</p></li>
+<li><p>Okraj okna. Ťahaním myšou presúvate okno. Ťahaním pravým tlačidlom myši meníte veľkosť okna.</p></li>
+<li><p>Roh na zmenu veľkosti.</p></li>
 </ol>
 
 <h2>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="move-resize" name="move-resize">Rýchly spôsob presúvania a zmeny veľkosti okien</a></h2>
-<p>Moving and resizing windows is a large part of interacting with several concurrently running applications. Instead of aiming at the small yellow title tab or the even tinier window border, there's a more convenient way to move a window. Also, additionally to its small size, the resize corner has another limitation: It only allows resizing at and in the direction of the lower right corner. <br />Right-dragging a border for resizing works, but again you'll have to aim carefully.</p>
+<p>Pohybovanie a menenie veľkosti tvorí veľkú časť interakcie s viacerými súčasne bežiacimi aplikáciami. Namiesto triafania malej žltej karty alebo ešte menšieho okraja, existuje aj pohodlnejší spôsob ako okno presunúť. Okrem toho, že je roh okna malý, má aj ďalšie obmedzenie: Dovoľuje vám meniť veľkosť iba v smere dolného pravého rohu.<br />
+Ťahanie okraja okna pravým tlačidlom funguje, ale znova, museli by ste presne mieriť.</p>
 <p>Ako elegantné riešenie tohoto problému ponúka Haiku klávesovú skratku <span class="key">CTRL</span> <span class="key">ALT</span> s použitím myši. Pozrite aj sekciu <a href="keyboard-shortcuts.html#general">Skratky a klávesové kombinácie</a>, kde nájdete ďalšie informácie o skratkách na správu okien.</p>
 <img src="images/gui-images/resizing.png" alt="resizing.png" />
 <p>Držanie <span class="key">CTRL</span> <span class="key">ALT</span> zvýrazní okraje najbližšie pri kurzore. Presúvaním myši môžete meniť zvýraznené okraje. Držaním  <i>pravého tlačidla myši</i> ťahaním meníte veľkosť okna pozdĺž vyznačených okrajov.</p>
@@ -109,8 +115,8 @@ V príklade dolu je okno Trackera so záložkami pridláždené k ľavej strane 
 Počas držania klávesu <span class="key">OPT</span> karty menia farbu, keď sa prekrývajú; pustením okna dosiahnete skladanie.</p></td></tr></table>
 <table summary="layout" border="0" cellspacing="0" cellpadding="2" vspace="10">
 <tr><td><img src="images/gui-images/gui-tiling.png" alt="gui-tilinging.png" /></td><td></td>
-<td><p>"<i>Tiling</i>" means gluing windows horizontally or vertically together.<br />
-Again, while holding <span class="key">OPT</span>, the borders that'll fuse together when you drop the window change color when brought near each other.</p></td></tr></table>
+<td><p>„<i>Dláždenie</i>“ znamená lepenie okien dohromady vo vodorovnom alebo zvislom smere.<br />
+Znova, ak podržíte <span class="key">OPT</span>, okraje, ktoré spolu splývajú pri pustení okna zmenia farbu ak ich k sebe priblížite.</p></td></tr></table>
 <p>Oddeľovanie prebieha rovnako - podržaním klávesu <span class="key">OPT</span> a odtiahnutím okna za jeho kartu zo skupiny.</p>
 
 <h2>
@@ -134,6 +140,7 @@ Z rozbaľovacieho menu hore môžete vybrať nadradený priečinok.</p>
 <tr><td><span class="key">ALT</span> <span class="key">D</span></td><td></td><td>Vráti vás na plochu.</td></tr>
 <tr><td><span class="key">ALT</span> <span class="key">H</span></td><td></td><td>Vráti vás do domovského priečinka.</td></tr>
 </table>
+<p>Klávesové skratky v Haiku vo všeobecnosti popisuje <a href="keyboard-shortcuts.html">Klávesové skratky a kombinácie</a>.</p>
 
 <h3>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>

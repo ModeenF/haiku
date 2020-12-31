@@ -8,6 +8,7 @@
  */
 
 
+#include <algorithm>
 #include <ctype.h>
 
 #ifndef FS_SHELL
@@ -33,13 +34,13 @@
 #	include <fs_volume.h>
 
 #	include <util/kernel_cpp.h>
+
+// TODO: temporary solution as long as there is no public I/O requests API
+#	include <io_requests.h>
 #endif
 
 #include "iso9660.h"
 #include "iso9660_identify.h"
-
-// TODO: temporary solution as long as there is no public I/O requests API
-#include <io_requests.h>
 
 
 //#define TRACE_ISO9660
@@ -456,13 +457,17 @@ fs_io(fs_volume* _volume, fs_vnode* _node, void* _cookie, io_request* request)
 	iso9660_volume* volume = (iso9660_volume*)_volume->private_volume;
 	iso9660_inode* node = (iso9660_inode*)_node->private_node;
 
+#ifndef FS_SHELL
 	if (io_request_is_write(request)) {
 		notify_io_request(request, B_READ_ONLY_DEVICE);
 		return B_READ_ONLY_DEVICE;
 	}
+#endif
 
 	if ((node->flags & ISO_IS_DIR) != 0) {
+#ifndef FS_SHELL
 		notify_io_request(request, B_IS_A_DIRECTORY);
+#endif
 		return B_IS_A_DIRECTORY;
 	}
 
@@ -524,16 +529,6 @@ fs_read(fs_volume* _volume, fs_vnode* _node, void* cookie, off_t pos,
 	if ((node->flags & ISO_IS_DIR) != 0)
 		return EISDIR;
 
-	uint32 fileSize = node->dataLen[FS_DATA_FORMAT];
-
-	// set/check boundaries for pos/length
-	if (pos < 0)
-		return B_BAD_VALUE;
-	if (pos >= fileSize) {
-		*_length = 0;
-		return B_OK;
-	}
-
 	return file_cache_read(node->cache, NULL, pos, buffer, _length);
 }
 
@@ -569,13 +564,12 @@ fs_read_link(fs_volume* _volume, fs_vnode* _node, char* buffer,
 		return B_BAD_VALUE;
 
 	size_t length = strlen(node->attr.slName);
-	if (length > *_bufferSize)
-		memcpy(buffer, node->attr.slName, *_bufferSize);
-	else {
-		memcpy(buffer, node->attr.slName, length);
-		*_bufferSize = length;
-	}
 
+	size_t bytesToCopy = std::min(length, *_bufferSize);
+
+	*_bufferSize = length;
+
+	memcpy(buffer, node->attr.slName, bytesToCopy);
 	return B_OK;
 }
 

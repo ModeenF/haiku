@@ -21,6 +21,7 @@
 class BBox;
 class BPopUpMenu;
 class BMenuField;
+class BSlider;
 class BSpinner;
 class BStringView;
 
@@ -67,7 +68,7 @@ private:
 			bool			fIsVesa;
 			bool			fBootWorkspaceApplied;
 
-			BStringView*	fMonitorInfo;
+			BBox*			fScreenBox;
 			BStringView*	fDeviceInfo;
 			MonitorView*	fMonitorView;
 			BMenuItem*		fAllWorkspacesItem;
@@ -95,11 +96,11 @@ private:
 			BPopUpMenu*		fTVStandardMenu;
 			BMenuField*		fTVStandardField;
 
+			BSlider*		fBrightnessSlider;
+
 			BButton*		fDefaultsButton;
 			BButton*		fApplyButton;
 			BButton*		fRevertButton;
-
-			BButton*		fBackgroundsButton;
 
 			ScreenMode		fScreenMode;
 			ScreenMode		fUndoScreenMode;
@@ -110,6 +111,7 @@ private:
 
 			uint32			fOriginalWorkspacesColumns;
 			uint32			fOriginalWorkspacesRows;
+			float			fOriginalBrightness;
 			bool			fModified;
 };
 

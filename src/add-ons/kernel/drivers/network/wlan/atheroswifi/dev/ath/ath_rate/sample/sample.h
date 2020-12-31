@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2005 John Bicket
  * All rights reserved.
  *
@@ -33,7 +35,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGES.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/dev/ath/ath_rate/sample/sample.h 326255 2017-11-27 14:52:40Z pfg $
  */
 
 /*
@@ -51,15 +53,17 @@ struct sample_softc {
 	int	max_successive_failures;
 	int	stale_failure_timeout;	/* how long to honor max_successive_failures */
 	int	min_switch;		/* min time between rate changes */
+	int	min_good_pct;		/* min good percentage for a rate to be considered */
 };
 #define	ATH_SOFTC_SAMPLE(sc)	((struct sample_softc *)sc->sc_rc)
 
 struct rate_stats {	
 	unsigned average_tx_time;
 	int successive_failures;
-	int tries;
-	int total_packets;
-	int packets_acked;
+	uint64_t tries;
+	uint64_t total_packets;	/* pkts total since assoc */
+	uint64_t packets_acked;	/* pkts acked since assoc */
+	int ewma_pct;	/* EWMA percentage */
 	unsigned perfect_tx_time; /* transmit time for 0 retries */
 	int last_tx;
 };
@@ -77,12 +81,22 @@ struct txschedule {
  */
 #define NUM_PACKET_SIZE_BINS 2
 
+static const int packet_size_bins[NUM_PACKET_SIZE_BINS]  = { 250, 1600 };
+
+static inline int
+bin_to_size(int index)
+{
+	return packet_size_bins[index];
+}
+
 /* per-node state */
 struct sample_node {
 	int static_rix;			/* rate index of fixed tx rate */
-#define	SAMPLE_MAXRATES	32		/* NB: corresponds to hal info[32] */
-	uint32_t ratemask;		/* bit mask of valid rate indices */
+#define	SAMPLE_MAXRATES	64		/* NB: corresponds to hal info[32] */
+	uint64_t ratemask;		/* bit mask of valid rate indices */
 	const struct txschedule *sched;	/* tx schedule table */
+
+	const HAL_RATE_TABLE *currates;
 
 	struct rate_stats stats[NUM_PACKET_SIZE_BINS][SAMPLE_MAXRATES];
 	int last_sample_rix[NUM_PACKET_SIZE_BINS];
@@ -97,8 +111,11 @@ struct sample_node {
 	int packets_since_sample[NUM_PACKET_SIZE_BINS];
 	unsigned sample_tt[NUM_PACKET_SIZE_BINS];
 };
+
+#ifdef	_KERNEL
+
 #define	ATH_NODE_SAMPLE(an)	((struct sample_node *)&(an)[1])
-#define	IS_RATE_DEFINED(sn, rix)	(((sn)->ratemask & (1<<(rix))) != 0)
+#define	IS_RATE_DEFINED(sn, rix)	(((uint64_t) (sn)->ratemask & (1ULL<<((uint64_t) rix))) != 0)
 
 #ifndef MIN
 #define	MIN(a,b)	((a) < (b) ? (a) : (b))
@@ -119,8 +136,7 @@ static unsigned calc_usecs_unicast_packet(struct ath_softc *sc,
 				int long_retries, int is_ht40)
 {
 	const HAL_RATE_TABLE *rt = sc->sc_currates;
-	struct ifnet *ifp = sc->sc_ifp;
-	struct ieee80211com *ic = ifp->if_l2com;
+	struct ieee80211com *ic = &sc->sc_ic;
 	int rts, cts;
 	
 	unsigned t_slot = 20;
@@ -198,9 +214,9 @@ static unsigned calc_usecs_unicast_packet(struct ath_softc *sc,
 		if (rts)		/* SIFS + CTS */
 			ctsduration += rt->info[cix].spAckDuration;
 
-		/* XXX assumes short preamble */
+		/* XXX assumes short preamble, include SIFS */
 		ctsduration += ath_hal_pkt_txtime(sc->sc_ah, rt, length, rix,
-		    is_ht40, 0);
+		    is_ht40, 0, 1);
 
 		if (cts)	/* SIFS + ACK */
 			ctsduration += rt->info[cix].spAckDuration;
@@ -209,9 +225,9 @@ static unsigned calc_usecs_unicast_packet(struct ath_softc *sc,
 	}
 	tt += t_difs;
 
-	/* XXX assumes short preamble */
+	/* XXX assumes short preamble, include SIFS */
 	tt += (long_retries+1)*ath_hal_pkt_txtime(sc->sc_ah, rt, length, rix,
-	    is_ht40, 0);
+	    is_ht40, 0, 1);
 
 	tt += (long_retries+1)*(t_sifs + rt->info[rix].spAckDuration);
 
@@ -221,4 +237,7 @@ static unsigned calc_usecs_unicast_packet(struct ath_softc *sc,
 	}
 	return tt;
 }
+
+#endif	/* _KERNEL */
+
 #endif /* _DEV_ATH_RATE_SAMPLE_H */

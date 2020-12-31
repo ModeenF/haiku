@@ -23,6 +23,7 @@
 #include <Alert.h>
 #include <Application.h>
 #include <AppFileInfo.h>
+#include <AutoLocker.h>
 #include <Beep.h>
 #include <Bitmap.h>
 #include <Catalog.h>
@@ -33,7 +34,6 @@
 #include <MenuItem.h>
 #include <Message.h>
 #include <MessageRunner.h>
-#include <PlaySound.h>
 #include <Point.h>
 #include <PopUpMenu.h>
 #include <Region.h>
@@ -78,22 +78,86 @@ static const float kMinimumHeightScientific	= 200.0f;
 static const float kMaximumHeightScientific	= 400.0f;
 
 // basic mode keypad layout (default)
-const char *kKeypadDescriptionBasic =
-	"7   8   9   (   )  \n"
-	"4   5   6   *   /  \n"
-	"1   2   3   +   -  \n"
-	"0   .   BS  =   C  \n";
+const char *kKeypadDescriptionBasic[] = {
+	B_TRANSLATE_MARK("7"),
+	B_TRANSLATE_MARK("8"),
+	B_TRANSLATE_MARK("9"),
+	B_TRANSLATE_MARK("("),
+	B_TRANSLATE_MARK(")"),
+	"\n",
+	B_TRANSLATE_MARK("4"),
+	B_TRANSLATE_MARK("5"),
+	B_TRANSLATE_MARK("6"),
+	B_TRANSLATE_MARK("*"),
+	B_TRANSLATE_MARK("/"),
+	"\n",
+	B_TRANSLATE_MARK("1"),
+	B_TRANSLATE_MARK("2"),
+	B_TRANSLATE_MARK("3"),
+	B_TRANSLATE_MARK("+"),
+	B_TRANSLATE_MARK("-"),
+	"\n",
+	B_TRANSLATE_MARK("0"),
+	B_TRANSLATE_MARK("."),
+	B_TRANSLATE_MARK("BS"),
+	B_TRANSLATE_MARK("="),
+	B_TRANSLATE_MARK("C"),
+	"\n",
+	NULL
+};
 
 // scientific mode keypad layout
-const char *kKeypadDescriptionScientific =
-    "ln    sin   cos   tan   π    \n"
-    "log   asin  acos  atan  sqrt \n"
-    "exp   sinh  cosh  tanh  cbrt \n"
-    "!     ceil  floor E     ^    \n"
-    "7     8     9     (     )    \n"
-    "4     5     6     *     /    \n"
-    "1     2     3     +     -    \n"
-    "0     .     BS    =     C    \n";
+const char *kKeypadDescriptionScientific[] = {
+	B_TRANSLATE_MARK("ln"),
+	B_TRANSLATE_MARK("sin"),
+	B_TRANSLATE_MARK("cos"),
+	B_TRANSLATE_MARK("tan"),
+	B_TRANSLATE_MARK("π"),
+	"\n",
+	B_TRANSLATE_MARK("log"),
+	B_TRANSLATE_MARK("asin"),
+	B_TRANSLATE_MARK("acos"),
+	B_TRANSLATE_MARK("atan"),
+	B_TRANSLATE_MARK("sqrt"),
+	"\n",
+	B_TRANSLATE_MARK("exp"),
+	B_TRANSLATE_MARK("sinh"),
+	B_TRANSLATE_MARK("cosh"),
+	B_TRANSLATE_MARK("tanh"),
+	B_TRANSLATE_MARK("cbrt"),
+	"\n",
+	B_TRANSLATE_MARK("!"),
+	B_TRANSLATE_MARK("ceil"),
+	B_TRANSLATE_MARK("floor"),
+	B_TRANSLATE_MARK("E"),
+	B_TRANSLATE_MARK("^"),
+	"\n",
+	B_TRANSLATE_MARK("7"),
+	B_TRANSLATE_MARK("8"),
+	B_TRANSLATE_MARK("9"),
+	B_TRANSLATE_MARK("("),
+	B_TRANSLATE_MARK(")"),
+	"\n",
+	B_TRANSLATE_MARK("4"),
+	B_TRANSLATE_MARK("5"),
+	B_TRANSLATE_MARK("6"),
+	B_TRANSLATE_MARK("*"),
+	B_TRANSLATE_MARK("/"),
+	"\n",
+	B_TRANSLATE_MARK("1"),
+	B_TRANSLATE_MARK("2"),
+	B_TRANSLATE_MARK("3"),
+	B_TRANSLATE_MARK("+"),
+	B_TRANSLATE_MARK("-"),
+	"\n",
+	B_TRANSLATE_MARK("0"),
+	B_TRANSLATE_MARK("."),
+	B_TRANSLATE_MARK("BS"),
+	B_TRANSLATE_MARK("="),
+	B_TRANSLATE_MARK("C"),
+	"\n",
+	NULL
+};
 
 
 enum {
@@ -109,6 +173,9 @@ struct CalcView::CalcKey {
 	uint32		flags;
 //	float		width;
 };
+
+
+typedef AutoLocker<BClipboard> ClipboardLocker;
 
 
 CalcView*
@@ -130,21 +197,18 @@ CalcView::CalcView(BRect frame, rgb_color rgbBaseColor, BMessage* settings)
 	fBaseColor(rgbBaseColor),
 	fExpressionBGColor((rgb_color){ 0, 0, 0, 255 }),
 
+	fHasCustomBaseColor(rgbBaseColor != ui_color(B_PANEL_BACKGROUND_COLOR)),
+
 	fWidth(1),
 	fHeight(1),
 
-	fKeypadDescription(strdup(kKeypadDescriptionBasic)),
+	fKeypadDescription(kKeypadDescriptionBasic),
 	fKeypad(NULL),
 
-#ifdef __HAIKU__
 	fCalcIcon(new BBitmap(BRect(0, 0, 15, 15), 0, B_RGBA32)),
-#else
-	fCalcIcon(new BBitmap(BRect(0, 0, 15, 15), 0, B_CMAP8)),
-#endif
 
 	fPopUpMenu(NULL),
 	fAutoNumlockItem(NULL),
-	fAudioFeedbackItem(NULL),
 	fOptions(new CalcOptions()),
 	fEvaluateThread(-1),
 	fEvaluateMessageRunner(NULL),
@@ -164,24 +228,21 @@ CalcView::CalcView(BMessage* archive)
 	fColumns(5),
 	fRows(4),
 
-	fBaseColor((rgb_color){ 128, 128, 128, 255 }),
+	fBaseColor(ui_color(B_PANEL_BACKGROUND_COLOR)),
 	fExpressionBGColor((rgb_color){ 0, 0, 0, 255 }),
+
+	fHasCustomBaseColor(false),
 
 	fWidth(1),
 	fHeight(1),
 
-	fKeypadDescription(strdup(kKeypadDescriptionBasic)),
+	fKeypadDescription(kKeypadDescriptionBasic),
 	fKeypad(NULL),
 
-#ifdef __HAIKU__
 	fCalcIcon(new BBitmap(BRect(0, 0, 15, 15), 0, B_RGBA32)),
-#else
-	fCalcIcon(new BBitmap(BRect(0, 0, 15, 15), 0, B_CMAP8)),
-#endif
 
 	fPopUpMenu(NULL),
 	fAutoNumlockItem(NULL),
-	fAudioFeedbackItem(NULL),
 	fOptions(new CalcOptions()),
 	fEvaluateThread(-1),
 	fEvaluateMessageRunner(NULL),
@@ -197,9 +258,8 @@ CalcView::CalcView(BMessage* archive)
 
 CalcView::~CalcView()
 {
-	delete fKeypad;
+	delete[] fKeypad;
 	delete fOptions;
-	free(fKeypadDescription);
 	delete fEvaluateMessageRunner;
 	delete_sem(fEvaluateSemaphore);
 }
@@ -231,9 +291,13 @@ CalcView::AttachedToWindow()
 void
 CalcView::MessageReceived(BMessage* message)
 {
-	if (message->what == B_COLORS_UPDATED
-		&& message->HasColor(ui_color_name(B_PANEL_BACKGROUND_COLOR))) {
-		_Colorize();
+	if (message->what == B_COLORS_UPDATED && !fHasCustomBaseColor) {
+		const char* panelBgColorName = ui_color_name(B_PANEL_BACKGROUND_COLOR);
+		if (message->HasColor(panelBgColorName)) {
+			fBaseColor = message->GetColor(panelBgColorName, fBaseColor);
+			_Colorize();
+		}
+
 		return;
 	}
 
@@ -243,10 +307,6 @@ CalcView::MessageReceived(BMessage* message)
 		switch (message->what) {
 			case MSG_OPTIONS_AUTO_NUM_LOCK:
 				ToggleAutoNumlock();
-				return;
-
-			case MSG_OPTIONS_AUDIO_FEEDBACK:
-				ToggleAudioFeedback();
 				return;
 
 			case MSG_OPTIONS_ANGLE_MODE_RADIAN:
@@ -280,14 +340,16 @@ CalcView::MessageReceived(BMessage* message)
 
 			// handle paste
 			case B_PASTE:
+			{
 				// access system clipboard
-				if (be_clipboard->Lock()) {
+				ClipboardLocker locker(be_clipboard);
+				if (locker.IsLocked()) {
 					BMessage* clipper = be_clipboard->Data();
-					//clipper->PrintToStream();
-					Paste(clipper);
-					be_clipboard->Unlock();
+					if (clipper)
+						Paste(clipper);
 				}
 				break;
+			}
 
 			// (replicant) about box requested
 			case B_ABOUT_REQUESTED:
@@ -329,7 +391,8 @@ CalcView::MessageReceived(BMessage* message)
 			{
 				int32 end = fExpressionTextView->TextLength();
 				int32 start = end - 3;
-				if (fEnabled || strcmp(fExpressionTextView->Text() + start, "...") != 0) {
+				if (fEnabled || strcmp(fExpressionTextView->Text() + start,
+						"...") != 0) {
 					// stop the message runner
 					delete fEvaluateMessageRunner;
 					fEvaluateMessageRunner = NULL;
@@ -341,9 +404,10 @@ CalcView::MessageReceived(BMessage* message)
 					rgb_color fontColor = fExpressionTextView->HighColor();
 					rgb_color backColor = fExpressionTextView->LowColor();
 					fExpressionTextView->SetStylable(true);
-					fExpressionTextView->SetFontAndColor(start, end, NULL, 0, &backColor);
-					fExpressionTextView->SetFontAndColor(start + dot - 1, start + dot, NULL,
-						0, &fontColor);
+					fExpressionTextView->SetFontAndColor(start, end, NULL, 0,
+						&backColor);
+					fExpressionTextView->SetFontAndColor(start + dot - 1,
+						start + dot, NULL, 0, &fontColor);
 					fExpressionTextView->SetStylable(false);
 				}
 
@@ -424,12 +488,8 @@ CalcView::Draw(BRect updateRect)
 				FillRect(updateRect & expressionRect);
 			}
 
-			if (fCalcIcon->ColorSpace() == B_RGBA32) {
-				SetDrawingMode(B_OP_ALPHA);
-				SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
-			} else {
-				SetDrawingMode(B_OP_OVER);
-			}
+			SetDrawingMode(B_OP_ALPHA);
+			SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
 
 			BPoint iconPos;
 			iconPos.x = expressionRect.right - (expressionRect.Width()
@@ -691,8 +751,6 @@ CalcView::FrameResized(float width, float height)
 	fExpressionTextView->SetFontAndColor(&font, B_FONT_ALL, &fontColor);
 
 	expressionRect.OffsetTo(B_ORIGIN);
-	float inset = (expressionRect.Height() - fExpressionTextView->LineHeight(0)) / 2;
-	expressionRect.InsetBy(0, inset);
 	fExpressionTextView->SetTextRect(expressionRect);
 	Invalidate();
 }
@@ -736,17 +794,22 @@ void
 CalcView::Copy()
 {
 	// access system clipboard
-	if (be_clipboard->Lock()) {
-		be_clipboard->Clear();
-		BMessage* clipper = be_clipboard->Data();
+	ClipboardLocker locker(be_clipboard);
+	if (!locker.IsLocked())
+		return;
+
+	if (be_clipboard->Clear() != B_OK)
+		return;
+
+	BMessage* clipper = be_clipboard->Data();
+	if (clipper == NULL)
+		return;
+
+	BString expression = fExpressionTextView->Text();
+	if (clipper->AddData("text/plain", B_MIME_TYPE,
+		expression.String(), expression.Length()) == B_OK) {
 		clipper->what = B_MIME_DATA;
-		// TODO: should check return for errors!
-		BString expression = fExpressionTextView->Text();
-		clipper->AddData("text/plain", B_MIME_TYPE,
-			expression.String(), expression.Length());
-		//clipper->PrintToStream();
 		be_clipboard->Commit();
-		be_clipboard->Unlock();
 	}
 }
 
@@ -754,7 +817,33 @@ CalcView::Copy()
 void
 CalcView::Paste(BMessage* message)
 {
-	// handle color drops first
+	// handle files first
+	int32 count;
+	if (message->GetInfo("refs", NULL, &count) == B_OK) {
+		entry_ref ref;
+		ssize_t read;
+		BFile file;
+		char buffer[256];
+		memset(buffer, 0, sizeof(buffer));
+		for (int32 i = 0; i < count; i++) {
+			if (message->FindRef("refs", i, &ref) == B_OK) {
+				if (file.SetTo(&ref, B_READ_ONLY) == B_OK) {
+					read = file.Read(buffer, sizeof(buffer) - 1);
+					if (read <= 0)
+						continue;
+					BString expression(buffer);
+					int32 j = expression.Length();
+					while (j > 0 && expression[j - 1] == '\n')
+						j--;
+					expression.Truncate(j);
+					if (expression.Length() > 0)
+						fExpressionTextView->Insert(expression.String());
+				}
+			}
+		}
+		return;
+	}
+	// handle color drops
 	// read incoming color
 	const rgb_color* dropColor = NULL;
 	ssize_t dataSize;
@@ -770,8 +859,10 @@ CalcView::Paste(BMessage* message)
 		BRect keypadRect(0.0, sizeDisp, fWidth, fHeight);
 
 		// check location of color drop
-		if (keypadRect.Contains(dropPoint) && dropColor) {
+		if (keypadRect.Contains(dropPoint) && dropColor != NULL) {
 			fBaseColor = *dropColor;
+			fHasCustomBaseColor =
+				fBaseColor != ui_color(B_PANEL_BACKGROUND_COLOR);
 			_Colorize();
 			// redraw
 			Invalidate();
@@ -799,16 +890,20 @@ CalcView::SaveSettings(BMessage* archive) const
 	// record grid dimensions
 	if (ret == B_OK)
 		ret = archive->AddInt16("cols", fColumns);
+
 	if (ret == B_OK)
 		ret = archive->AddInt16("rows", fRows);
 
 	// record color scheme
-	if (ret == B_OK)
+	if (ret == B_OK) {
 		ret = archive->AddData("rgbBaseColor", B_RGB_COLOR_TYPE,
 			&fBaseColor, sizeof(rgb_color));
-	if (ret == B_OK)
+	}
+
+	if (ret == B_OK) {
 		ret = archive->AddData("rgbDisplay", B_RGB_COLOR_TYPE,
 			&fExpressionBGColor, sizeof(rgb_color));
+	}
 
 	// record current options
 	if (ret == B_OK)
@@ -824,7 +919,9 @@ CalcView::SaveSettings(BMessage* archive) const
 
 	// record calculator description
 	if (ret == B_OK)
-		ret = archive->AddString("calcDesc", fKeypadDescription);
+		ret = archive->AddString("calcDesc",
+			fKeypadDescription == kKeypadDescriptionBasic
+			? "basic" : "scientific");
 
 	return ret;
 }
@@ -846,7 +943,6 @@ CalcView::Evaluate()
 		return;
 	}
 
-	_AudioFeedback(false);
 	_SetEnabled(false);
 		// Disable input while we evaluate
 
@@ -885,14 +981,6 @@ CalcView::ToggleAutoNumlock(void)
 {
 	fOptions->auto_num_lock = !fOptions->auto_num_lock;
 	fAutoNumlockItem->SetMarked(fOptions->auto_num_lock);
-}
-
-
-void
-CalcView::ToggleAudioFeedback(void)
-{
-	fOptions->audio_feedback = !fOptions->audio_feedback;
-	fAudioFeedbackItem->SetMarked(fOptions->audio_feedback);
 }
 
 
@@ -940,8 +1028,7 @@ CalcView::SetKeypadMode(uint8 mode)
 
 		case KEYPAD_MODE_SCIENTIFIC:
 		{
-			free(fKeypadDescription);
-			fKeypadDescription = strdup(kKeypadDescriptionScientific);
+			fKeypadDescription = kKeypadDescriptionScientific;
 			fRows = 8;
 			_ParseCalcDesc(fKeypadDescription);
 
@@ -970,8 +1057,7 @@ CalcView::SetKeypadMode(uint8 mode)
 		case KEYPAD_MODE_BASIC:
 		default:
 		{
-			free(fKeypadDescription);
-			fKeypadDescription = strdup(kKeypadDescriptionBasic);
+			fKeypadDescription = kKeypadDescriptionBasic;
 			fRows = 4;
 			_ParseCalcDesc(fKeypadDescription);
 
@@ -1019,7 +1105,7 @@ CalcView::_EvaluateThread(void* data)
 		BString expression(calcView->fExpressionTextView->Text());
 		try {
 			result = parser.Evaluate(expression.String());
-		} catch (ParseException e) {
+		} catch (ParseException& e) {
 			result << e.message.String() << " at " << (e.position + 1);
 			status = B_ERROR;
 		}
@@ -1059,13 +1145,12 @@ CalcView::_LoadSettings(BMessage* archive)
 		return B_BAD_VALUE;
 
 	// record calculator description
-	const char* calcDesc;
-	if (archive->FindString("calcDesc", &calcDesc) < B_OK)
-		calcDesc = kKeypadDescriptionBasic;
-
-	// save calculator description for reference
-	free(fKeypadDescription);
-	fKeypadDescription = strdup(calcDesc);
+	BString calcDesc;
+	archive->FindString("calcDesc", &calcDesc);
+	if (calcDesc == "scientific" || calcDesc.StartsWith("ln"))
+		fKeypadDescription = kKeypadDescriptionScientific;
+	else
+		fKeypadDescription = kKeypadDescriptionBasic;
 
 	// read grid dimensions
 	if (archive->FindInt16("cols", &fColumns) < B_OK)
@@ -1081,9 +1166,8 @@ CalcView::_LoadSettings(BMessage* archive)
 		|| size != sizeof(rgb_color)) {
 		fBaseColor = ui_color(B_PANEL_BACKGROUND_COLOR);
 		puts("Missing rgbBaseColor from CalcView archive!\n");
-	} else {
+	} else
 		fBaseColor = *color;
-	}
 
 	if (archive->FindData("rgbDisplay", B_RGB_COLOR_TYPE,
 			(const void**)&color, &size) < B_OK
@@ -1093,6 +1177,8 @@ CalcView::_LoadSettings(BMessage* archive)
 	} else {
 		fExpressionBGColor = *color;
 	}
+
+	fHasCustomBaseColor = fBaseColor != ui_color(B_PANEL_BACKGROUND_COLOR);
 
 	// load options
 	fOptions->LoadSettings(archive);
@@ -1120,21 +1206,20 @@ CalcView::_LoadSettings(BMessage* archive)
 
 
 void
-CalcView::_ParseCalcDesc(const char* keypadDescription)
+CalcView::_ParseCalcDesc(const char** keypadDescription)
 {
 	// TODO: should calculate dimensions from desc here!
 	fKeypad = new CalcKey[fRows * fColumns];
 
 	// scan through calculator description and assemble keypad
 	CalcKey* key = fKeypad;
-	const char* p = keypadDescription;
+	for (int i = 0; const char* p = keypadDescription[i]; i++) {
+		// Move to next row as needed
+		if (strcmp(p, "\n") == 0)
+			continue;
 
-	while (*p != 0) {
 		// copy label
-		char* l = key->label;
-		while (!isspace(*p))
-			*l++ = *p++;
-		*l = '\0';
+		strlcpy(key->label, B_TRANSLATE_NOCOLLECT(p), sizeof(key->label));
 
 		// set code
 		if (strcmp(key->label, "=") == 0)
@@ -1155,8 +1240,6 @@ CalcView::_ParseCalcDesc(const char* keypadDescription)
 		fExpressionTextView->AddKeypadLabel(key->label);
 
 		// advance
-		while (isspace(*p))
-			++p;
 		key++;
 	}
 }
@@ -1171,28 +1254,30 @@ CalcView::_PressKey(int key)
 	assert(key < (fRows * fColumns));
 	assert(key >= 0);
 
-	if (strcmp(fKeypad[key].label, "BS") == 0) {
+	if (strcmp(fKeypad[key].label, B_TRANSLATE_COMMENT("BS",
+		"Key label, 'BS' means backspace")) == 0) {
 		// BS means backspace
 		fExpressionTextView->BackSpace();
-	} else if (strcmp(fKeypad[key].label, "C") == 0) {
+	} else if (strcmp(fKeypad[key].label, B_TRANSLATE_COMMENT("C",
+		"Key label, 'C' means clear")) == 0) {
 		// C means clear
 		fExpressionTextView->Clear();
-	} else if (strcmp(fKeypad[key].label, "acos") == 0
-		|| strcmp(fKeypad[key].label, "asin") == 0
-		|| strcmp(fKeypad[key].label, "atan") == 0
-		|| strcmp(fKeypad[key].label, "cbrt") == 0
-		|| strcmp(fKeypad[key].label, "ceil") == 0
-		|| strcmp(fKeypad[key].label, "cos") == 0
-		|| strcmp(fKeypad[key].label, "cosh") == 0
-		|| strcmp(fKeypad[key].label, "exp") == 0
-		|| strcmp(fKeypad[key].label, "floor") == 0
-		|| strcmp(fKeypad[key].label, "log") == 0
-		|| strcmp(fKeypad[key].label, "ln") == 0
-		|| strcmp(fKeypad[key].label, "sin") == 0
-		|| strcmp(fKeypad[key].label, "sinh") == 0
-		|| strcmp(fKeypad[key].label, "sqrt") == 0
-		|| strcmp(fKeypad[key].label, "tan") == 0
-		|| strcmp(fKeypad[key].label, "tanh") == 0) {
+	} else if (strcmp(fKeypad[key].label, B_TRANSLATE("acos")) == 0
+		|| strcmp(fKeypad[key].label, B_TRANSLATE("asin")) == 0
+		|| strcmp(fKeypad[key].label, B_TRANSLATE("atan")) == 0
+		|| strcmp(fKeypad[key].label, B_TRANSLATE("cbrt")) == 0
+		|| strcmp(fKeypad[key].label, B_TRANSLATE("ceil")) == 0
+		|| strcmp(fKeypad[key].label, B_TRANSLATE("cos")) == 0
+		|| strcmp(fKeypad[key].label, B_TRANSLATE("cosh")) == 0
+		|| strcmp(fKeypad[key].label, B_TRANSLATE("exp")) == 0
+		|| strcmp(fKeypad[key].label, B_TRANSLATE("floor")) == 0
+		|| strcmp(fKeypad[key].label, B_TRANSLATE("log")) == 0
+		|| strcmp(fKeypad[key].label, B_TRANSLATE("ln")) == 0
+		|| strcmp(fKeypad[key].label, B_TRANSLATE("sin")) == 0
+		|| strcmp(fKeypad[key].label, B_TRANSLATE("sinh")) == 0
+		|| strcmp(fKeypad[key].label, B_TRANSLATE("sqrt")) == 0
+		|| strcmp(fKeypad[key].label, B_TRANSLATE("tan")) == 0
+		|| strcmp(fKeypad[key].label, B_TRANSLATE("tanh")) == 0) {
 		int32 labelLen = strlen(fKeypad[key].label);
 		int32 startSelection = 0;
 		int32 endSelection = 0;
@@ -1227,8 +1312,6 @@ CalcView::_PressKey(int key)
 			fExpressionTextView->Insert(fKeypad[key].code);
 		}
 	}
-
-	_AudioFeedback(true);
 }
 
 
@@ -1276,26 +1359,8 @@ CalcView::_FlashKey(int32 key, uint32 flashFlags)
 
 
 void
-CalcView::_AudioFeedback(bool inBackGround)
-{
-	// TODO: Use beep events... This interface is not implemented on Haiku
-	// anyways...
-#if 0
-	if (fOptions->audio_feedback) {
-		BEntry zimp("key.AIFF");
-		entry_ref zimp_ref;
-		zimp.GetRef(&zimp_ref);
-		play_sound(&zimp_ref, true, false, inBackGround);
-	}
-#endif
-}
-
-
-void
 CalcView::_Colorize()
 {
-	fBaseColor = ui_color(B_PANEL_BACKGROUND_COLOR);
-
 	// calculate light and dark color from base color
 	fLightColor.red		= (uint8)(fBaseColor.red * 1.25);
 	fLightColor.green	= (uint8)(fBaseColor.green * 1.25);
@@ -1327,8 +1392,6 @@ CalcView::_CreatePopUpMenu(bool addKeypadModeMenuItems)
 	// construct items
 	fAutoNumlockItem = new BMenuItem(B_TRANSLATE("Enable Num Lock on startup"),
 		new BMessage(MSG_OPTIONS_AUTO_NUM_LOCK));
-	fAudioFeedbackItem = new BMenuItem(B_TRANSLATE("Audio Feedback"),
-		new BMessage(MSG_OPTIONS_AUDIO_FEEDBACK));
 	fAngleModeRadianItem = new BMenuItem(B_TRANSLATE("Radians"),
 		new BMessage(MSG_OPTIONS_ANGLE_MODE_RADIAN));
 	fAngleModeDegreeItem = new BMenuItem(B_TRANSLATE("Degrees"),
@@ -1344,7 +1407,6 @@ CalcView::_CreatePopUpMenu(bool addKeypadModeMenuItems)
 
 	// apply current settings
 	fAutoNumlockItem->SetMarked(fOptions->auto_num_lock);
-	fAudioFeedbackItem->SetMarked(fOptions->audio_feedback);
 	fAngleModeRadianItem->SetMarked(!fOptions->degree_mode);
 	fAngleModeDegreeItem->SetMarked(fOptions->degree_mode);
 
@@ -1352,9 +1414,6 @@ CalcView::_CreatePopUpMenu(bool addKeypadModeMenuItems)
 	fPopUpMenu = new BPopUpMenu("pop-up", false, false);
 
 	fPopUpMenu->AddItem(fAutoNumlockItem);
-	// TODO: Enable this when we use beep events which can be configured
-	// in the Sounds preflet.
-	//fPopUpMenu->AddItem(fAudioFeedbackItem);
 	fPopUpMenu->AddSeparatorItem();
 	fPopUpMenu->AddItem(fAngleModeRadianItem);
 	fPopUpMenu->AddItem(fAngleModeDegreeItem);

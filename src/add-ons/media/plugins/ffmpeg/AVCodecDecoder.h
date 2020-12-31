@@ -19,8 +19,13 @@
 
 extern "C" {
 	#include "avcodec.h"
+	#include "avfilter.h"
+	#include "buffersink.h"
+	#include "buffersrc.h"
+	#include "imgutils.h"
 	#include "swresample.h"
 	#include "swscale.h"
+	#include "timestamp.h"
 }
 
 
@@ -31,7 +36,7 @@ extern "C" {
 #include "gfx_util.h"
 
 
-#ifdef __x86_64
+#if 1
 #define USE_SWS_FOR_COLOR_SPACE_CONVERSION 1
 #else
 #define USE_SWS_FOR_COLOR_SPACE_CONVERSION 0
@@ -95,6 +100,12 @@ private:
 			void		_UpdateMediaHeaderForVideoFrame();
 			status_t	_DeinterlaceAndColorConvertVideoFrame();
 
+			// video deinterlace filter graph
+			status_t	_InitFilterGraph(enum AVPixelFormat pixfmt,
+							int32 width, int32 height);
+			status_t	_ProcessFilterGraph(AVFrame *dst,
+							const AVFrame *src, enum AVPixelFormat pixfmt,
+							int32 width, int32 height);
 
 			media_header		fHeader;
 									// Contains the properties of the current
@@ -107,7 +118,7 @@ private:
 
 			// FFmpeg related members
 			AVCodec*			fCodec;
-			AVCodecContext*		fContext;
+			AVCodecContext*		fCodecContext;
 			SwrContext*			fResampleContext;
 			uint8_t*			fDecodedData;
 			size_t				fDecodedDataSizeInBytes;
@@ -131,6 +142,9 @@ private:
 			float				fOutputFrameRate;
 			int					fOutputFrameSize;
 									// sample size * channel count
+			int					fInputFrameSize;
+									// sample size * channel count
+									// or just sample size for planar formats
 
 			uint8_t*			fChunkBuffer;
 			size_t				fChunkBufferSize;
@@ -141,6 +155,15 @@ private:
 			int32				fDecodedDataBufferSize;
 
 			AVPacket			fTempPacket;
+
+			// video deinterlace feature
+			AVFilterContext*	fBufferSinkContext;
+			AVFilterContext*	fBufferSourceContext;
+			AVFilterGraph*		fFilterGraph;
+			AVFrame*			fFilterFrame;
+			int32				fLastWidth;
+			int32				fLastHeight;
+			enum AVPixelFormat	fLastPixfmt;
 };
 
 #endif // AVCODEC_DECODER_H

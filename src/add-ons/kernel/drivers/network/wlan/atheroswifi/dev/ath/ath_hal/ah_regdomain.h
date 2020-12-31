@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: ISC
+ *
  * Copyright (c) 2002-2009 Sam Leffler, Errno Consulting
  * Copyright (c) 2005-2006 Atheros Communications, Inc.
  * All rights reserved.
@@ -15,7 +17,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/dev/ath/ath_hal/ah_regdomain.h 326695 2017-12-08 15:57:29Z pfg $
  */
 #ifndef	__AH_REGDOMAIN_H__
 #define	__AH_REGDOMAIN_H__
@@ -157,7 +159,8 @@ typedef struct regDomain {
 } REG_DOMAIN;
 
 struct cmode {
-	u_int	mode;
-	u_int	flags;
+	u_int		mode;
+	u_int		flags;
+	REG_DMN_FREQ_BAND *freqs;
 };
 #endif

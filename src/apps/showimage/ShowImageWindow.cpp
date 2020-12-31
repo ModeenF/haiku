@@ -94,6 +94,7 @@ enum {
 	MSG_SHOW_CAPTION			= 'mSCP',
 	MSG_PAGE_SETUP				= 'mPSU',
 	MSG_PREPARE_PRINT			= 'mPPT',
+	MSG_GET_INFO				= 'mGFI',
 	MSG_SET_RATING				= 'mSRT',
 	kMsgFitToWindow				= 'mFtW',
 	kMsgOriginalSize			= 'mOSZ',
@@ -392,6 +393,8 @@ ShowImageWindow::_AddMenus(BMenuBar* bar)
 	menu->AddItem(menuSaveAs);
 	_AddItemMenu(menu, B_TRANSLATE("Close"), B_QUIT_REQUESTED, 'W', 0, this);
 	_AddItemMenu(menu, B_TRANSLATE("Move to Trash"), kMsgDeleteCurrentFile, 'T', 0, this);
+	_AddItemMenu(menu, B_TRANSLATE("Get info" B_UTF8_ELLIPSIS),
+		MSG_GET_INFO, 'I', 0, this);
 	menu->AddSeparatorItem();
 	_AddItemMenu(menu, B_TRANSLATE("Page setup" B_UTF8_ELLIPSIS),
 		MSG_PAGE_SETUP, 0, 0, this);
@@ -843,8 +846,13 @@ ShowImageWindow::MessageReceived(BMessage* message)
 
 		case MSG_FILE_NEXT:
 		case kMsgNextSlide:
-			if (_ClosePrompt() && fNavigator.NextFile())
+			if (_ClosePrompt()) {
+				if (!fNavigator.NextFile()) {
+					// Wrap back around
+					fNavigator.FirstFile();
+				}
 				_LoadImage();
+			}
 			break;
 
 		case kMsgDeleteCurrentFile:
@@ -870,6 +878,10 @@ ShowImageWindow::MessageReceived(BMessage* message)
 
 		case MSG_FLIP_TOP_TO_BOTTOM:
 			fImageView->Flip(false);
+			break;
+
+		case MSG_GET_INFO:
+			_GetFileInfo(fNavigator.CurrentRef());
 			break;
 
 		case MSG_SLIDE_SHOW:
@@ -1062,6 +1074,16 @@ ShowImageWindow::MessageReceived(BMessage* message)
 
 
 void
+ShowImageWindow::_GetFileInfo(const entry_ref& ref)
+{
+	BMessage message('Tinf');
+	BMessenger tracker("application/x-vnd.Be-TRAK");
+	message.AddRef("refs", &ref);
+	tracker.SendMessage(&message);
+}
+
+
+void
 ShowImageWindow::_UpdateStatusText(const BMessage* message)
 {
 	BString frameText;
@@ -1229,6 +1251,10 @@ ShowImageWindow::_ClosePrompt()
 status_t
 ShowImageWindow::_LoadImage(bool forward)
 {
+	// If the user triggered a _LoadImage while in a slide show,
+	// make sure the new image is shown for the set delay:
+	_ResetSlideShowDelay();
+
 	BMessenger us(this);
 	status_t status = my_app->DefaultCache().RetrieveImage(
 		fNavigator.CurrentRef(), fNavigator.CurrentPage(), &us);
@@ -1488,6 +1514,14 @@ ShowImageWindow::_StopSlideShow()
 		delete fSlideShowRunner;
 		fSlideShowRunner = NULL;
 	}
+}
+
+
+void
+ShowImageWindow::_ResetSlideShowDelay()
+{
+	if (fSlideShowRunner != NULL)
+		fSlideShowRunner->SetInterval(fSlideShowDelay);
 }
 
 

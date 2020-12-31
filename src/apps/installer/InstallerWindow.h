@@ -18,6 +18,7 @@ using namespace BPrivate;
 
 class BButton;
 class BLayoutItem;
+class BGroupView;
 class BMenu;
 class BMenuField;
 class BMenuItem;
@@ -42,7 +43,6 @@ public:
 
 	virtual	void				MessageReceived(BMessage* message);
 	virtual	bool				QuitRequested();
-
 private:
 			void				_ShowOptionalPackages();
 			void				_LaunchDriveSetup();
@@ -60,6 +60,7 @@ private:
 	static	int					_ComparePackages(const void* firstArg,
 									const void* secondArg);
 
+			BGroupView*			fLogoGroup;
 			BTextView*			fStatusView;
 			BMenu*				fSrcMenu;
 			BMenu*				fDestMenu;

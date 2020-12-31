@@ -1,10 +1,25 @@
-1	hungarian	x-vnd.Haiku-Mandelbrot	3766380907
-File	Mandelbrot		Fájl
-Palette 3	Mandelbrot		3. paletta
-Quit	Mandelbrot		Kilépés
-Palette 2	Mandelbrot		2. paletta
-Palette 4	Mandelbrot		4. paletta
-Palette	Mandelbrot		Paletta
+1	hungarian	x-vnd.Haiku-Mandelbrot	3875916167
+Burning Ship	MandelbrotWindow		Égő hajó
+Grassland	MandelbrotWindow		Legelő
+Lightning	MandelbrotWindow		Villám
+About	MandelbrotWindow		Névjegy
+Palette	MandelbrotWindow		Paletta
+Set	MandelbrotWindow		Beállítás
+Tricorn	MandelbrotWindow		Tricorn
+Royal	MandelbrotWindow		Királyi
+Orbit Trap	MandelbrotWindow		Körkörös csapda
+Deepfrost	MandelbrotWindow		Mély fagy
+Subsampling	MandelbrotWindow		Színfelbontás
+1 (none)	MandelbrotWindow		1 (nincs)
+Quit	MandelbrotWindow		Kilépés
+File	MandelbrotWindow		Fájl
+Julia	MandelbrotWindow		Júlia
+Frost	MandelbrotWindow		Zúzmara
+Fire	MandelbrotWindow		Tűz
 Mandelbrot	System name		Mandelbrot
-Palette 1	Mandelbrot		1. paletta
-Iterations	Mandelbrot		Iterációk
+Iterations	MandelbrotWindow		Iterációk
+High contrast	MandelbrotWindow		Magas kontraszt
+Multibrot	MandelbrotWindow		Multibrot
+Spring	MandelbrotWindow		Tavasz
+Midnight	MandelbrotWindow		Éjfél
+Mandelbrot	MandelbrotWindow		Mandelbrot

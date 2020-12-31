@@ -12,7 +12,7 @@
 #include <termios.h>
 #include <unistd.h>
 
-#include <AutoDeleter.h>
+#include <AutoDeleterPosix.h>
 
 #include <user_group.h>
 
@@ -30,14 +30,15 @@ read_password(const char* prompt, char* password, size_t bufferSize,
 // TODO: Open tty with O_NOCTTY!
 		tty = fopen("/dev/tty", "w+");
 		if (tty == NULL) {
-			fprintf(stderr, "Error: Failed to open tty: %s\n", strerror(errno));
+			fprintf(stderr, "Error: Failed to open tty: %s\n",
+				strerror(errno));
 			return errno;
 		}
 
 		in = tty;
 		out = tty;
 	}
-	CObjectDeleter<FILE, int> ttyCloser(tty, fclose);
+	FileCloser ttyCloser(tty);
 
 	// disable echo
 	int inFD = fileno(in);
@@ -60,11 +61,12 @@ read_password(const char* prompt, char* password, size_t bufferSize,
 	status_t error = B_OK;
 
 	// prompt and read pwd
-	fprintf(out, prompt);
+	fputs(prompt, out);
 	fflush(out);
 
 	if (fgets(password, bufferSize, in) == NULL) {
-		fprintf(out, "\nError: Failed to read from tty: %s\n", strerror(errno));
+		fprintf(out, "\nError: Failed to read from tty: %s\n",
+			strerror(errno));
 		error = errno != 0 ? errno : B_ERROR;
 	} else
 		fputc('\n', out);
@@ -140,7 +142,7 @@ authenticate_user(const char* prompt, passwd* passwd, spwd* spwd, int maxTries,
 
 		// check it
 		bool ok = verify_password(passwd, spwd, plainPassword);
-		memset(plainPassword, 0, sizeof(plainPassword));
+		explicit_bzero(plainPassword, sizeof(plainPassword));
 		if (ok)
 			return B_OK;
 
@@ -168,4 +170,50 @@ authenticate_user(const char* prompt, const char* user, passwd** _passwd,
 	}
 
 	return error;
+}
+
+
+status_t
+setup_environment(struct passwd* passwd, bool preserveEnvironment, bool chngdir)
+{
+	const char* term = getenv("TERM");
+	if (!preserveEnvironment) {
+		static char *empty[1];
+		environ = empty;
+	}
+
+	// always preserve $TERM
+	if (term != NULL)
+		setenv("TERM", term, false);
+	if (passwd->pw_shell)
+		setenv("SHELL", passwd->pw_shell, true);
+	if (passwd->pw_dir)
+		setenv("HOME", passwd->pw_dir, true);
+
+	setenv("USER", passwd->pw_name, true);
+
+	pid_t pid = getpid();
+	// If stdin is not open, don't bother trying to TIOCSPGRP. (This is the
+	// case when there is no PTY, e.g. for a noninteractive SSH session.)
+	if (fcntl(STDIN_FILENO, F_GETFD) != -1) {
+		if (ioctl(STDIN_FILENO, TIOCSPGRP, &pid) != 0)
+			return errno;
+	}
+
+	if (passwd->pw_gid && setgid(passwd->pw_gid) != 0)
+		return errno;
+
+	if (passwd->pw_uid && setuid(passwd->pw_uid) != 0)
+		return errno;
+
+	if (chngdir) {
+		const char* home = getenv("HOME");
+		if (home == NULL)
+			return B_ENTRY_NOT_FOUND;
+
+		if (chdir(home) != 0)
+			return errno;
+	}
+
+	return B_OK;
 }

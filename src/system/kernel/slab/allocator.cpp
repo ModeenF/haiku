@@ -23,7 +23,6 @@
 #include "MemoryManager.h"
 
 
-#define DEBUG_ALLOCATOR
 //#define TEST_ALL_CACHES_DURING_BOOT
 
 static const size_t kBlockSizes[] = {
@@ -217,6 +216,16 @@ void *
 memalign_etc(size_t alignment, size_t size, uint32 flags)
 {
 	return block_alloc(size, alignment, flags & CACHE_ALLOC_FLAGS);
+}
+
+
+int
+posix_memalign(void** _pointer, size_t alignment, size_t size)
+{
+	if ((alignment & (sizeof(void*) - 1)) != 0 || _pointer == NULL)
+		return B_BAD_VALUE;
+	*_pointer = block_alloc(size, alignment, 0);
+	return 0;
 }
 
 

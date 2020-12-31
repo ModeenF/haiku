@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -111,6 +111,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #include "acpi.h"
@@ -173,7 +209,6 @@ AcpiDsClearImplicitReturn (
 }
 
 
-#ifndef ACPI_NO_METHOD_EXECUTION
 /*******************************************************************************
  *
  * FUNCTION:    AcpiDsDoImplicitReturn
@@ -212,9 +247,9 @@ AcpiDsDoImplicitReturn (
     }
 
     ACPI_DEBUG_PRINT ((ACPI_DB_DISPATCH,
-            "Result %p will be implicitly returned; Prev=%p\n",
-            ReturnDesc,
-            WalkState->ImplicitReturnObj));
+        "Result %p will be implicitly returned; Prev=%p\n",
+        ReturnDesc,
+        WalkState->ImplicitReturnObj));
 
     /*
      * Delete any "stale" implicit return value first. However, in
@@ -338,7 +373,8 @@ AcpiDsIsResultUsed (
              * If we are executing the predicate AND this is the predicate op,
              * we will use the return value
              */
-            if ((WalkState->ControlState->Common.State == ACPI_CONTROL_PREDICATE_EXECUTING) &&
+            if ((WalkState->ControlState->Common.State ==
+                    ACPI_CONTROL_PREDICATE_EXECUTING) &&
                 (WalkState->ControlState->Control.PredicateOp == Op))
             {
                 goto ResultUsed;
@@ -368,8 +404,8 @@ AcpiDsIsResultUsed (
         if ((Op->Common.Parent->Common.AmlOpcode == AML_REGION_OP)       ||
             (Op->Common.Parent->Common.AmlOpcode == AML_DATA_REGION_OP)  ||
             (Op->Common.Parent->Common.AmlOpcode == AML_PACKAGE_OP)      ||
-            (Op->Common.Parent->Common.AmlOpcode == AML_VAR_PACKAGE_OP)  ||
             (Op->Common.Parent->Common.AmlOpcode == AML_BUFFER_OP)       ||
+            (Op->Common.Parent->Common.AmlOpcode == AML_VARIABLE_PACKAGE_OP) ||
             (Op->Common.Parent->Common.AmlOpcode == AML_INT_EVAL_SUBTREE_OP) ||
             (Op->Common.Parent->Common.AmlOpcode == AML_BANK_FIELD_OP))
         {
@@ -546,7 +582,6 @@ AcpiDsClearOperands (
     WalkState->NumOperands = 0;
     return_VOID;
 }
-#endif
 
 
 /*******************************************************************************
@@ -595,8 +630,8 @@ AcpiDsCreateOperand (
 
         /* Get the entire name string from the AML stream */
 
-        Status = AcpiExGetNameString (ACPI_TYPE_ANY, Arg->Common.Value.Buffer,
-                        &NameString, &NameLength);
+        Status = AcpiExGetNameString (ACPI_TYPE_ANY,
+            Arg->Common.Value.Buffer, &NameString, &NameLength);
 
         if (ACPI_FAILURE (Status))
         {
@@ -616,10 +651,11 @@ AcpiDsCreateOperand (
          */
         if ((WalkState->DeferredNode) &&
             (WalkState->DeferredNode->Type == ACPI_TYPE_BUFFER_FIELD) &&
-            (ArgIndex == (UINT32) ((WalkState->Opcode == AML_CREATE_FIELD_OP) ? 3 : 2)))
+            (ArgIndex == (UINT32)
+                ((WalkState->Opcode == AML_CREATE_FIELD_OP) ? 3 : 2)))
         {
             ObjDesc = ACPI_CAST_PTR (
-                        ACPI_OPERAND_OBJECT, WalkState->DeferredNode);
+                ACPI_OPERAND_OBJECT, WalkState->DeferredNode);
             Status = AE_OK;
         }
         else    /* All other opcodes */
@@ -632,6 +668,7 @@ AcpiDsCreateOperand (
              */
             ParentOp = Arg->Common.Parent;
             OpInfo = AcpiPsGetOpcodeInfo (ParentOp->Common.AmlOpcode);
+
             if ((OpInfo->Flags & AML_NSNODE) &&
                 (ParentOp->Common.AmlOpcode != AML_INT_METHODCALL_OP) &&
                 (ParentOp->Common.AmlOpcode != AML_REGION_OP) &&
@@ -649,17 +686,16 @@ AcpiDsCreateOperand (
             }
 
             Status = AcpiNsLookup (WalkState->ScopeInfo, NameString,
-                        ACPI_TYPE_ANY, InterpreterMode,
-                        ACPI_NS_SEARCH_PARENT | ACPI_NS_DONT_OPEN_SCOPE,
-                        WalkState,
-                        ACPI_CAST_INDIRECT_PTR (ACPI_NAMESPACE_NODE, &ObjDesc));
+                ACPI_TYPE_ANY, InterpreterMode,
+                ACPI_NS_SEARCH_PARENT | ACPI_NS_DONT_OPEN_SCOPE, WalkState,
+                ACPI_CAST_INDIRECT_PTR (ACPI_NAMESPACE_NODE, &ObjDesc));
             /*
              * The only case where we pass through (ignore) a NOT_FOUND
              * error is for the CondRefOf opcode.
              */
             if (Status == AE_NOT_FOUND)
             {
-                if (ParentOp->Common.AmlOpcode == AML_COND_REF_OF_OP)
+                if (ParentOp->Common.AmlOpcode == AML_CONDITIONAL_REF_OF_OP)
                 {
                     /*
                      * For the Conditional Reference op, it's OK if
@@ -668,17 +704,19 @@ AcpiDsCreateOperand (
                      * object to the root
                      */
                     ObjDesc = ACPI_CAST_PTR (
-                                ACPI_OPERAND_OBJECT, AcpiGbl_RootNode);
+                        ACPI_OPERAND_OBJECT, AcpiGbl_RootNode);
                     Status = AE_OK;
                 }
                 else if (ParentOp->Common.AmlOpcode == AML_EXTERNAL_OP)
                 {
-                    /* TBD: May only be temporary */
-
-                    ObjDesc = AcpiUtCreateStringObject ((ACPI_SIZE) NameLength);
-
-                    strncpy (ObjDesc->String.Pointer, NameString, NameLength);
-                    Status = AE_OK;
+                    /*
+                     * This opcode should never appear here. It is used only
+                     * by AML disassemblers and is surrounded by an If(0)
+                     * by the ASL compiler.
+                     *
+                     * Therefore, if we see it here, it is a serious error.
+                     */
+                    Status = AE_AML_BAD_OPCODE;
                 }
                 else
                 {
@@ -692,7 +730,8 @@ AcpiDsCreateOperand (
 
             if (ACPI_FAILURE (Status))
             {
-                ACPI_ERROR_NAMESPACE (NameString, Status);
+                ACPI_ERROR_NAMESPACE (WalkState->ScopeInfo,
+                    NameString, Status);
             }
         }
 
@@ -714,7 +753,8 @@ AcpiDsCreateOperand (
         {
             return_ACPI_STATUS (Status);
         }
-        ACPI_DEBUGGER_EXEC (AcpiDbDisplayArgumentObject (ObjDesc, WalkState));
+
+        AcpiDbDisplayArgumentObject (ObjDesc, WalkState);
     }
     else
     {
@@ -747,14 +787,9 @@ AcpiDsCreateOperand (
             return_ACPI_STATUS (AE_NOT_IMPLEMENTED);
         }
 
-        if ((OpInfo->Flags & AML_HAS_RETVAL) || (Arg->Common.Flags & ACPI_PARSEOP_IN_STACK))
+        if ((OpInfo->Flags & AML_HAS_RETVAL) ||
+            (Arg->Common.Flags & ACPI_PARSEOP_IN_STACK))
         {
-            ACPI_DEBUG_PRINT ((ACPI_DB_DISPATCH,
-                "Argument previously created, already stacked\n"));
-
-            ACPI_DEBUGGER_EXEC (AcpiDbDisplayArgumentObject (
-                WalkState->Operands [WalkState->NumOperands - 1], WalkState));
-
             /*
              * Use value that was already previously returned
              * by the evaluation of this argument
@@ -784,7 +819,7 @@ AcpiDsCreateOperand (
             /* Initialize the new object */
 
             Status = AcpiDsInitObjectFromOp (
-                        WalkState, Arg, Opcode, &ObjDesc);
+                WalkState, Arg, Opcode, &ObjDesc);
             if (ACPI_FAILURE (Status))
             {
                 AcpiUtDeleteObjectDesc (ObjDesc);
@@ -800,7 +835,7 @@ AcpiDsCreateOperand (
             return_ACPI_STATUS (Status);
         }
 
-        ACPI_DEBUGGER_EXEC (AcpiDbDisplayArgumentObject (ObjDesc, WalkState));
+        AcpiDbDisplayArgumentObject (ObjDesc, WalkState);
     }
 
     return_ACPI_STATUS (AE_OK);
@@ -936,7 +971,7 @@ AcpiDsEvaluateNamePath (
     }
 
     if ((Op->Common.Parent->Common.AmlOpcode == AML_PACKAGE_OP) ||
-        (Op->Common.Parent->Common.AmlOpcode == AML_VAR_PACKAGE_OP) ||
+        (Op->Common.Parent->Common.AmlOpcode == AML_VARIABLE_PACKAGE_OP) ||
         (Op->Common.Parent->Common.AmlOpcode == AML_REF_OF_OP))
     {
         /* TBD: Should we specify this feature as a bit of OpInfo->Flags of these opcodes? */
@@ -970,7 +1005,8 @@ AcpiDsEvaluateNamePath (
 
         AcpiUtRemoveReference (*Operand);
 
-        Status = AcpiUtCopyIobjectToIobject (*Operand, &NewObjDesc, WalkState);
+        Status = AcpiUtCopyIobjectToIobject (
+            *Operand, &NewObjDesc, WalkState);
         if (ACPI_FAILURE (Status))
         {
             goto Exit;

@@ -31,7 +31,7 @@ int32 get_rounded_cpu_speed(void);
 #endif
 
 
-#if defined(__INTEL__) || defined(__x86_64__)
+#if defined(__i386__) || defined(__x86_64__)
 /*!	Tries to parse an Intel CPU ID string to match our usual naming scheme.
 	Note, this function is not thread safe, and must only be called once
 	at a time.
@@ -173,7 +173,7 @@ get_cpu_vendor_string(enum cpu_vendor cpuVendor)
 	// Should match vendors in OS.h
 	static const char* vendorStrings[] = {
 		NULL, "AMD", "Cyrix", "IDT", "Intel", "National Semiconductor", "Rise",
-		"Transmeta", "VIA", "IBM", "Motorola", "NEC"
+		"Transmeta", "VIA", "IBM", "Motorola", "NEC", "Hygon"
 	};
 
 	if ((size_t)cpuVendor >= sizeof(vendorStrings) / sizeof(const char*))
@@ -182,7 +182,7 @@ get_cpu_vendor_string(enum cpu_vendor cpuVendor)
 }
 
 
-#if defined(__INTEL__) || defined(__x86_64__)
+#if defined(__i386__) || defined(__x86_64__)
 /*! Parameter 'name' needs to point to an allocated array of 49 characters. */
 void
 get_cpuid_model_string(char *name)
@@ -237,23 +237,32 @@ get_cpuid_model_string(char *name)
 		}
 	}
 }
-#endif	/* __INTEL__ || __x86_64__ */
+#endif	/* __i386__ || __x86_64__ */
 
 
 static const char*
 get_cpu_model_string(enum cpu_platform platform, enum cpu_vendor cpuVendor,
 	uint32 cpuModel)
 {
-#if defined(__INTEL__) || defined(__x86_64__)
+#if defined(__i386__) || defined(__x86_64__)
 	char cpuidName[49];
 #endif
 
 	(void)cpuVendor;
 	(void)cpuModel;
 
-#if defined(__INTEL__) || defined(__x86_64__)
+#if defined(__i386__) || defined(__x86_64__)
 	if (platform != B_CPU_x86 && platform != B_CPU_x86_64)
 		return NULL;
+
+	// XXX: This *really* isn't accurate. There is differing math
+	// based on the CPU vendor.. Don't use these numbers anywhere
+	// except "fast and dumb" identification of processor names.
+	//
+	// see cpuidtool.c to decode cpuid signatures (sysinfo) into a
+	// value for this function.
+	//
+	// sysinfo has code in it which obtains the proper fam/mod/step ids
 
 	uint16 family = ((cpuModel >> 8) & 0xf) | ((cpuModel >> 16) & 0xff0);
 	uint16 model = ((cpuModel >> 4) & 0xf) | ((cpuModel >> 12) & 0xf0);
@@ -373,8 +382,12 @@ get_cpu_model_string(enum cpu_platform platform, enum cpu_vendor cpuVendor,
 					return "Core 2 Extreme";
 				return "Core 2";
 			}
-			if (model == 0x25)
+			if (model == 0x25) {
+				get_cpuid_model_string(cpuidName);
+				if (strcasestr(cpuidName, "i3") != NULL)
+					return "Core i3";
 				return "Core i5";
+			}
 			if (model == 0x1a || model == 0x1e) {
 				get_cpuid_model_string(cpuidName);
 				if (strcasestr(cpuidName, "Xeon") != NULL)
@@ -469,7 +482,7 @@ get_cpu_type(char *vendorBuffer, size_t vendorSize, char *modelBuffer,
 	cpu_topology_node_info* topology = NULL;
 	get_cpu_topology_info(NULL, &topologyNodeCount);
 	if (topologyNodeCount != 0)
-		topology = new cpu_topology_node_info[topologyNodeCount];
+		topology = (cpu_topology_node_info*)calloc(topologyNodeCount, sizeof(cpu_topology_node_info));
 	get_cpu_topology_info(topology, &topologyNodeCount);
 
 	enum cpu_platform platform = B_CPU_UNKNOWN;
@@ -493,7 +506,7 @@ get_cpu_type(char *vendorBuffer, size_t vendorSize, char *modelBuffer,
 				break;
 		}
 	}
-	delete[] topology;
+	free(topology);
 
 	vendor = get_cpu_vendor_string(cpuVendor);
 	if (vendor == NULL)
@@ -503,15 +516,8 @@ get_cpu_type(char *vendorBuffer, size_t vendorSize, char *modelBuffer,
 	if (model == NULL)
 		model = "Unknown";
 
-#ifdef R5_COMPATIBLE
-	strncpy(vendorBuffer, vendor, vendorSize - 1);
-	vendorBuffer[vendorSize - 1] = '\0';
-	strncpy(modelBuffer, model, modelSize - 1);
-	modelBuffer[modelSize - 1] = '\0';
-#else
 	strlcpy(vendorBuffer, vendor, vendorSize);
 	strlcpy(modelBuffer, model, modelSize);
-#endif
 }
 
 
@@ -522,7 +528,7 @@ get_rounded_cpu_speed(void)
 	cpu_topology_node_info* topology = NULL;
 	get_cpu_topology_info(NULL, &topologyNodeCount);
 	if (topologyNodeCount != 0)
-		topology = new cpu_topology_node_info[topologyNodeCount];
+		topology = (cpu_topology_node_info*)calloc(topologyNodeCount, sizeof(cpu_topology_node_info));
 	get_cpu_topology_info(topology, &topologyNodeCount);
 
 	uint64 cpuFrequency = 0;
@@ -532,7 +538,7 @@ get_rounded_cpu_speed(void)
 				break;
 		}
 	}
-	delete[] topology;
+	free(topology);
 
 	int target, frac, delta;
 	int freqs[] = { 100, 50, 25, 75, 33, 67, 20, 40, 60, 80, 10, 30, 70, 90 };

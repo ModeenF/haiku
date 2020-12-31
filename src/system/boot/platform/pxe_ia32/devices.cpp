@@ -9,6 +9,7 @@
 #include "network.h"
 
 #include <KernelExport.h>
+#include <boot/partitions.h>
 #include <boot/platform.h>
 #include <boot/vfs.h>
 #include <boot/stdio.h>
@@ -75,7 +76,8 @@ platform_add_boot_device(struct stage2_args *args, NodeList *devicesList)
 				platform_free_region(data, size);
 				return B_NO_MEMORY;
 			}
-	
+
+			gBootVolume.SetBool(BOOT_VOLUME_BOOTED_FROM_IMAGE, true);
 			devicesList->Add(disk);
 			return B_OK;
 		} else {
@@ -179,4 +181,11 @@ platform_register_boot_device(Node *device)
 // 	gKernelArgs.boot_disk.cd = false;
 
 	return B_OK;
+}
+
+
+void
+platform_cleanup_devices()
+{
+	net_stack_cleanup();
 }

@@ -27,6 +27,17 @@
 #include <vector>
 
 
+U_NAMESPACE_USE
+
+
+static const DateFormatSymbols::DtWidthType kDateFormatStyleToWidth[] = {
+	DateFormatSymbols::WIDE,
+	DateFormatSymbols::ABBREVIATED,
+	DateFormatSymbols::SHORT,
+	DateFormatSymbols::NARROW,
+};
+
+
 BDateFormat::BDateFormat(const BLocale* locale)
 	: BFormat(locale)
 {
@@ -237,6 +248,9 @@ BDateFormat::GetFields(BDateElement*& fields, int& fieldCount,
 			case UDAT_DATE_FIELD:
 				fields[i] = B_DATE_ELEMENT_DAY;
 				break;
+			case UDAT_DAY_OF_WEEK_FIELD:
+				fields[i] = B_DATE_ELEMENT_WEEKDAY;
+				break;
 			default:
 				fields[i] = B_DATE_ELEMENT_INVALID;
 				break;
@@ -254,8 +268,8 @@ BDateFormat::GetStartOfWeek(BWeekday* startOfWeek) const
 		return B_BAD_VALUE;
 
 	UErrorCode err = U_ZERO_ERROR;
-	ObjectDeleter<Calendar> calendar = Calendar::createInstance(
-		*BFormattingConventions::Private(&fConventions).ICULocale(), err);
+	ObjectDeleter<Calendar> calendar(Calendar::createInstance(
+		*BFormattingConventions::Private(&fConventions).ICULocale(), err));
 
 	if (U_FAILURE(err))
 		return B_ERROR;
@@ -295,8 +309,12 @@ BDateFormat::GetStartOfWeek(BWeekday* startOfWeek) const
 
 
 status_t
-BDateFormat::GetMonthName(int month, BString& outName)
+BDateFormat::GetMonthName(int month, BString& outName,
+	const BDateFormatStyle style) const
 {
+	if (style < 0 || style >= B_DATE_FORMAT_STYLE_COUNT)
+		return B_BAD_VALUE;
+
 	DateFormat* format = _CreateDateFormatter(B_LONG_DATE_FORMAT);
 
 	SimpleDateFormat* simpleFormat = dynamic_cast<SimpleDateFormat*>(format);
@@ -308,7 +326,8 @@ BDateFormat::GetMonthName(int month, BString& outName)
 	const DateFormatSymbols* symbols = simpleFormat->getDateFormatSymbols();
 
 	int32_t count;
-	const UnicodeString* names = symbols->getMonths(count);
+	const UnicodeString* names = symbols->getMonths(count,
+		DateFormatSymbols::STANDALONE, kDateFormatStyleToWidth[style]);
 
 	if (month > count || month <= 0) {
 		delete simpleFormat;
@@ -317,6 +336,40 @@ BDateFormat::GetMonthName(int month, BString& outName)
 
 	BStringByteSink stringConverter(&outName);
 	names[month - 1].toUTF8(stringConverter);
+
+	delete simpleFormat;
+	return B_OK;
+}
+
+
+status_t
+BDateFormat::GetDayName(int day, BString& outName,
+	const BDateFormatStyle style) const
+{
+	if (style < 0 || style >= B_DATE_FORMAT_STYLE_COUNT)
+		return B_BAD_VALUE;
+
+	DateFormat* format = _CreateDateFormatter(B_LONG_DATE_FORMAT);
+
+	SimpleDateFormat* simpleFormat = dynamic_cast<SimpleDateFormat*>(format);
+	if (simpleFormat == NULL) {
+		delete format;
+		return B_ERROR;
+	}
+
+	const DateFormatSymbols* symbols = simpleFormat->getDateFormatSymbols();
+
+	int32_t count;
+	const UnicodeString* names = symbols->getWeekdays(count,
+		DateFormatSymbols::STANDALONE, kDateFormatStyleToWidth[style]);
+
+	if (day >= count || day <= 0) {
+		delete simpleFormat;
+		return B_BAD_DATA;
+	}
+
+	BStringByteSink stringConverter(&outName);
+	names[_ConvertDayNumberToICU(day)].toUTF8(stringConverter);
 
 	delete simpleFormat;
 	return B_OK;

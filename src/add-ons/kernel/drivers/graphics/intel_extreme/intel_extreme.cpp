@@ -1,21 +1,22 @@
 /*
- * Copyright 2006-2014, Haiku, Inc. All Rights Reserved.
+ * Copyright 2006-2018, Haiku, Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
  *		Axel Dörfler, axeld@pinc-software.de
  *		Alexander von Gluck IV, kallisti5@unixzen.com
+ *		Adrien Destugues, pulkomandy@pulkomandy.tk
  */
 
 
 #include "intel_extreme.h"
 
-#include "AreaKeeper.h"
 #include <unistd.h>
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
 
+#include <AreaKeeper.h>
 #include <boot_item.h>
 #include <driver_settings.h>
 #include <util/kernel_cpp.h>
@@ -39,13 +40,17 @@
 
 
 static void
-init_overlay_registers(overlay_registers* registers)
+init_overlay_registers(overlay_registers* _registers)
 {
-	memset(registers, 0, B_PAGE_SIZE);
+	user_memset(_registers, 0, B_PAGE_SIZE);
 
-	registers->contrast_correction = 0x48;
-	registers->saturation_cos_correction = 0x9a;
+	overlay_registers registers;
+	memset(&registers, 0, sizeof(registers));
+	registers.contrast_correction = 0x48;
+	registers.saturation_cos_correction = 0x9a;
 		// this by-passes contrast and saturation correction
+
+	user_memcpy(_registers, &registers, sizeof(overlay_registers));
 }
 
 
@@ -79,12 +84,73 @@ release_vblank_sem(intel_info &info)
 }
 
 
+/** Get the appropriate interrupt mask for enabling or testing interrupts on
+ * the given pipes.
+ *
+ * The bits to test or set are different depending on the hardware generation.
+ *
+ * \param info Intel_extreme driver information
+ * \param pipes bit mask of the pipes to use
+ * \param enable true to get the mask for enabling the interrupts, false to get
+ *               the mask for testing them.
+ */
+static uint32
+intel_get_interrupt_mask(intel_info& info, int pipes, bool enable)
+{
+	uint32 mask = 0;
+	bool hasPCH = info.pch_info != INTEL_PCH_NONE;
+
+	// Intel changed the PCH register mapping between Sandy Bridge and the
+	// later generations (Ivy Bridge and up).
+	// The PCH register itself does not exist in pre-PCH platforms, and the
+	// previous interrupt register of course also had a different mapping.
+
+	if ((pipes & INTEL_PIPE_A) != 0) {
+		if (info.device_type.InGroup(INTEL_GROUP_SNB)
+				|| info.device_type.InGroup(INTEL_GROUP_ILK))
+			mask |= PCH_INTERRUPT_VBLANK_PIPEA_SNB;
+		else if (hasPCH)
+			mask |= PCH_INTERRUPT_VBLANK_PIPEA;
+		else
+			mask |= INTERRUPT_VBLANK_PIPEA;
+	}
+
+	if ((pipes & INTEL_PIPE_B) != 0) {
+		if (info.device_type.InGroup(INTEL_GROUP_SNB)
+				|| info.device_type.InGroup(INTEL_GROUP_ILK))
+			mask |= PCH_INTERRUPT_VBLANK_PIPEB_SNB;
+		else if (hasPCH)
+			mask |= PCH_INTERRUPT_VBLANK_PIPEB;
+		else
+			mask |= INTERRUPT_VBLANK_PIPEB;
+	}
+
+#if 0 // FIXME enable when we support the 3rd pipe
+	if ((pipes & INTEL_PIPE_C) != 0) {
+		// Older generations only had two pipes
+		if (hasPCH && info.device_type.Generation() > 6)
+			mask |= PCH_INTERRUPT_VBLANK_PIPEC;
+	}
+#endif
+
+	// On SandyBridge, there is an extra "global enable" flag, which must also
+	// be set when enabling the interrupts (but not when testing for them).
+	if (enable && info.device_type.InFamily(INTEL_FAMILY_SER5))
+		mask |= PCH_INTERRUPT_GLOBAL_SNB;
+
+	return mask;
+}
+
+
 static int32
 intel_interrupt_handler(void* data)
 {
 	intel_info &info = *(intel_info*)data;
 	uint32 reg = find_reg(info, INTEL_INTERRUPT_IDENTITY);
-	uint16 identity = read16(info, reg);
+	uint32 identity;
+
+	identity = read32(info, reg);
+
 	if (identity == 0)
 		return B_UNHANDLED_INTERRUPT;
 
@@ -92,70 +158,42 @@ intel_interrupt_handler(void* data)
 
 	while (identity != 0) {
 
-		// TODO: verify that these aren't actually the same
-		bool hasPCH = info.device_type.HasPlatformControlHub();
-		uint16 mask;
+		uint32 mask = intel_get_interrupt_mask(info, INTEL_PIPE_A, false);
 
-		// Intel changed the PCH register mapping between Sandy Bridge and the
-		// later generations (Ivy Bridge and up).
-		if (info.device_type.InFamily(INTEL_TYPE_SNB)) {
-			mask = hasPCH ? PCH_INTERRUPT_VBLANK_PIPEA_SNB
-				: INTERRUPT_VBLANK_PIPEA;
-			if ((identity & mask) != 0) {
-				handled = release_vblank_sem(info);
+		if ((identity & mask) != 0) {
+			handled = release_vblank_sem(info);
 
-				// make sure we'll get another one of those
-				write32(info, INTEL_DISPLAY_A_PIPE_STATUS,
-					DISPLAY_PIPE_VBLANK_STATUS | DISPLAY_PIPE_VBLANK_ENABLED);
-			}
-
-			mask = hasPCH ? PCH_INTERRUPT_VBLANK_PIPEB_SNB
-				: INTERRUPT_VBLANK_PIPEB;
-			if ((identity & mask) != 0) {
-				handled = release_vblank_sem(info);
-
-				// make sure we'll get another one of those
-				write32(info, INTEL_DISPLAY_B_PIPE_STATUS,
-					DISPLAY_PIPE_VBLANK_STATUS | DISPLAY_PIPE_VBLANK_ENABLED);
-			}
-		} else {
-			mask = hasPCH ? PCH_INTERRUPT_VBLANK_PIPEA
-				: INTERRUPT_VBLANK_PIPEA;
-			if ((identity & mask) != 0) {
-				handled = release_vblank_sem(info);
-
-				// make sure we'll get another one of those
-				write32(info, INTEL_DISPLAY_A_PIPE_STATUS,
-					DISPLAY_PIPE_VBLANK_STATUS | DISPLAY_PIPE_VBLANK_ENABLED);
-			}
-
-			mask = hasPCH ? PCH_INTERRUPT_VBLANK_PIPEB
-				: INTERRUPT_VBLANK_PIPEB;
-			if ((identity & mask) != 0) {
-				handled = release_vblank_sem(info);
-
-				// make sure we'll get another one of those
-				write32(info, INTEL_DISPLAY_B_PIPE_STATUS,
-					DISPLAY_PIPE_VBLANK_STATUS | DISPLAY_PIPE_VBLANK_ENABLED);
-			}
-
-#if 0
-			// FIXME we don't have supprot for the 3rd pipe yet
-			mask = hasPCH ? PCH_INTERRUPT_VBLANK_PIPEC
-				: 0;
-			if ((identity & mask) != 0) {
-				handled = release_vblank_sem(info);
-
-				// make sure we'll get another one of those
-				write32(info, INTEL_DISPLAY_C_PIPE_STATUS,
-					DISPLAY_PIPE_VBLANK_STATUS | DISPLAY_PIPE_VBLANK_ENABLED);
-			}
-#endif
+			// make sure we'll get another one of those
+			write32(info, INTEL_DISPLAY_A_PIPE_STATUS,
+				DISPLAY_PIPE_VBLANK_STATUS | DISPLAY_PIPE_VBLANK_ENABLED);
 		}
 
+		mask = intel_get_interrupt_mask(info, INTEL_PIPE_B, false);
+		if ((identity & mask) != 0) {
+			handled = release_vblank_sem(info);
+
+			// make sure we'll get another one of those
+			write32(info, INTEL_DISPLAY_B_PIPE_STATUS,
+				DISPLAY_PIPE_VBLANK_STATUS | DISPLAY_PIPE_VBLANK_ENABLED);
+		}
+
+#if 0
+		// FIXME we don't have support for the 3rd pipe yet
+		mask = hasPCH ? PCH_INTERRUPT_VBLANK_PIPEC
+			: 0;
+		if ((identity & mask) != 0) {
+			handled = release_vblank_sem(info);
+
+			// make sure we'll get another one of those
+			write32(info, INTEL_DISPLAY_C_PIPE_STATUS,
+				DISPLAY_PIPE_VBLANK_STATUS | DISPLAY_PIPE_VBLANK_ENABLED);
+		}
+#endif
+
 		// setting the bit clears it!
-		write16(info, reg, identity);
-		identity = read16(info, reg);
+		write32(info, reg, identity);
+		// update our identity register with the remaining interupts
+		identity = read32(info, reg);
 	}
 
 	return handled;
@@ -183,8 +221,8 @@ init_interrupt_handler(intel_info &info)
 
 	// Find the right interrupt vector, using MSIs if available.
 	info.irq = 0xff;
-	info.use_msi = false;	
-	if (info.pci->u.h0.interrupt_pin != 0x00)	
+	info.use_msi = false;
+	if (info.pci->u.h0.interrupt_pin != 0x00)
 		info.irq = info.pci->u.h0.interrupt_line;
 	if (gPCIx86Module != NULL && gPCIx86Module->get_msi_count(info.pci->bus,
 			info.pci->device, info.pci->function) >= 1) {
@@ -193,7 +231,7 @@ init_interrupt_handler(intel_info &info)
 				info.pci->function, 1, &msiVector) == B_OK
 			&& gPCIx86Module->enable_msi(info.pci->bus, info.pci->device,
 				info.pci->function) == B_OK) {
-			ERROR("using message signaled interrupts\n");
+			TRACE("using message signaled interrupts\n");
 			info.irq = msiVector;
 			info.use_msi = true;
 		}
@@ -212,16 +250,15 @@ init_interrupt_handler(intel_info &info)
 			write32(info, INTEL_DISPLAY_B_PIPE_STATUS,
 				DISPLAY_PIPE_VBLANK_STATUS | DISPLAY_PIPE_VBLANK_ENABLED);
 
-			write16(info, find_reg(info, INTEL_INTERRUPT_IDENTITY), ~0);
+			uint32 enable = intel_get_interrupt_mask(info,
+				INTEL_PIPE_A | INTEL_PIPE_B, true);
+
+			// Clear all the interrupts
+			write32(info, find_reg(info, INTEL_INTERRUPT_IDENTITY), ~0);
 
 			// enable interrupts - we only want VBLANK interrupts
-			bool hasPCH = info.device_type.HasPlatformControlHub();
-			uint16 enable = hasPCH
-				? (PCH_INTERRUPT_VBLANK_PIPEA | PCH_INTERRUPT_VBLANK_PIPEB)
-				: (INTERRUPT_VBLANK_PIPEA | INTERRUPT_VBLANK_PIPEB);
-
-			write16(info, find_reg(info, INTEL_INTERRUPT_ENABLED), enable);
-			write16(info, find_reg(info, INTEL_INTERRUPT_MASK), ~enable);
+			write32(info, find_reg(info, INTEL_INTERRUPT_ENABLED), enable);
+			write32(info, find_reg(info, INTEL_INTERRUPT_MASK), ~enable);
 		}
 	}
 	if (status < B_OK) {
@@ -231,7 +268,7 @@ init_interrupt_handler(intel_info &info)
 		info.fake_interrupts = true;
 
 		// TODO: fake interrupts!
-		TRACE("Fake interrupt mode (no PCI interrupt line assigned\n");
+		ERROR("Fake interrupt mode (no PCI interrupt line assigned\n");
 		status = B_ERROR;
 	}
 
@@ -268,7 +305,8 @@ intel_extreme_init(intel_info &info)
 	info.aperture = gGART->map_aperture(info.pci->bus, info.pci->device,
 		info.pci->function, 0, &info.aperture_base);
 	if (info.aperture < B_OK) {
-		ERROR("error: could not map GART aperture! (%s)\n", strerror(info.aperture));
+		ERROR("error: could not map GART aperture! (%s)\n",
+			strerror(info.aperture));
 		return info.aperture;
 	}
 
@@ -276,7 +314,8 @@ intel_extreme_init(intel_info &info)
 	info.shared_area = sharedCreator.Create("intel extreme shared info",
 		(void**)&info.shared_info, B_ANY_KERNEL_ADDRESS,
 		ROUND_TO_PAGE_SIZE(sizeof(intel_shared_info)) + 3 * B_PAGE_SIZE,
-		B_FULL_LOCK, 0);
+		B_FULL_LOCK,
+		B_KERNEL_READ_AREA | B_KERNEL_WRITE_AREA | B_CLONEABLE_AREA);
 	if (info.shared_area < B_OK) {
 		ERROR("error: could not create shared area!\n");
 		gGART->unmap_aperture(info.aperture);
@@ -285,13 +324,11 @@ intel_extreme_init(intel_info &info)
 
 	memset((void*)info.shared_info, 0, sizeof(intel_shared_info));
 
-	int fbIndex = 0;
 	int mmioIndex = 1;
-	if (info.device_type.InFamily(INTEL_TYPE_9xx)) {
+	if (info.device_type.Generation() >= 3) {
 		// For some reason Intel saw the need to change the order of the
 		// mappings with the introduction of the i9xx family
 		mmioIndex = 0;
-		fbIndex = 2;
 	}
 
 	// evaluate driver settings, if any
@@ -308,7 +345,8 @@ intel_extreme_init(intel_info &info)
 	info.registers_area = mmioMapper.Map("intel extreme mmio",
 		info.pci->u.h0.base_registers[mmioIndex],
 		info.pci->u.h0.base_register_sizes[mmioIndex],
-		B_ANY_KERNEL_ADDRESS, B_KERNEL_READ_AREA | B_KERNEL_WRITE_AREA,
+		B_ANY_KERNEL_ADDRESS,
+		B_KERNEL_READ_AREA | B_KERNEL_WRITE_AREA | B_CLONEABLE_AREA,
 		(void**)&info.registers);
 	if (mmioMapper.InitCheck() < B_OK) {
 		ERROR("error: could not map memory I/O!\n");
@@ -316,12 +354,17 @@ intel_extreme_init(intel_info &info)
 		return info.registers_area;
 	}
 
+	bool hasPCH = (info.pch_info != INTEL_PCH_NONE);
+
+	ERROR("Init Intel generation %d GPU %s PCH split.\n",
+		info.device_type.Generation(), hasPCH ? "with" : "without");
+
 	uint32* blocks = info.shared_info->register_blocks;
 	blocks[REGISTER_BLOCK(REGS_FLAT)] = 0;
 
 	// setup the register blocks for the different architectures
-	if (info.device_type.HasPlatformControlHub()) {
-		// PCH based platforms (IronLake and up)
+	if (hasPCH) {
+		// PCH based platforms (IronLake through ultra-low-power Broadwells)
 		blocks[REGISTER_BLOCK(REGS_NORTH_SHARED)]
 			= PCH_NORTH_SHARED_REGISTER_BASE;
 		blocks[REGISTER_BLOCK(REGS_NORTH_PIPE_AND_PORT)]
@@ -346,13 +389,23 @@ intel_extreme_init(intel_info &info)
 			= ICH_PORT_REGISTER_BASE;
 	}
 
-	// "I nearly got violent with the hw guys when they told me..."
-	if (info.device_type.InFamily(INTEL_TYPE_VLV)) {
-		TRACE("%s: ValleyView MMIO offset engaged\n", __func__);
-		blocks[REGISTER_BLOCK(REGS_NORTH_PLANE_CONTROL)] += VLV_DISPLAY_BASE;
-		blocks[REGISTER_BLOCK(REGS_NORTH_SHARED)] += VLV_DISPLAY_BASE;
+	// Everything in the display PRM gets +0x180000
+	if (info.device_type.InGroup(INTEL_GROUP_VLV)) {
+		// "I nearly got violent with the hw guys when they told me..."
 		blocks[REGISTER_BLOCK(REGS_SOUTH_SHARED)] += VLV_DISPLAY_BASE;
+		blocks[REGISTER_BLOCK(REGS_SOUTH_TRANSCODER_PORT)] += VLV_DISPLAY_BASE;
 	}
+
+	TRACE("REGS_NORTH_SHARED: 0x%" B_PRIx32 "\n",
+		blocks[REGISTER_BLOCK(REGS_NORTH_SHARED)]);
+	TRACE("REGS_NORTH_PIPE_AND_PORT: 0x%" B_PRIx32 "\n",
+		blocks[REGISTER_BLOCK(REGS_NORTH_PIPE_AND_PORT)]);
+	TRACE("REGS_NORTH_PLANE_CONTROL: 0x%" B_PRIx32 "\n",
+		blocks[REGISTER_BLOCK(REGS_NORTH_PLANE_CONTROL)]);
+	TRACE("REGS_SOUTH_SHARED: 0x%" B_PRIx32 "\n",
+		blocks[REGISTER_BLOCK(REGS_SOUTH_SHARED)]);
+	TRACE("REGS_SOUTH_TRANSCODER_PORT: 0x%" B_PRIx32 "\n",
+		blocks[REGISTER_BLOCK(REGS_SOUTH_TRANSCODER_PORT)]);
 
 	// make sure bus master, memory-mapped I/O, and frame buffer is enabled
 	set_pci_config(info.pci, PCI_command, 2, get_pci_config(info.pci,
@@ -391,25 +444,34 @@ intel_extreme_init(intel_info &info)
 	info.shared_info->frame_buffer = 0;
 	info.shared_info->dpms_mode = B_DPMS_ON;
 
+	// Pull VBIOS panel mode for later use
 	info.shared_info->got_vbt = get_lvds_mode_from_bios(
-		&info.shared_info->current_mode);
+		&info.shared_info->panel_mode);
+
 	/* at least 855gm can't drive more than one head at time */
-	if (info.device_type.InFamily(INTEL_TYPE_8xx))
+	if (info.device_type.InFamily(INTEL_FAMILY_8xx))
 		info.shared_info->single_head_locked = 1;
 
-	if (info.device_type.InFamily(INTEL_TYPE_9xx)) {
-		info.shared_info->pll_info.reference_frequency = 96000;	// 96 kHz
+	if (info.device_type.InFamily(INTEL_FAMILY_SER5)) {
+		info.shared_info->pll_info.reference_frequency = 120000;	// 120 MHz
+		info.shared_info->pll_info.max_frequency = 350000;
+			// 350 MHz RAM DAC speed
+		info.shared_info->pll_info.min_frequency = 20000;		// 20 MHz
+	} else if (info.device_type.InFamily(INTEL_FAMILY_9xx)) {
+		info.shared_info->pll_info.reference_frequency = 96000;	// 96 MHz
 		info.shared_info->pll_info.max_frequency = 400000;
 			// 400 MHz RAM DAC speed
 		info.shared_info->pll_info.min_frequency = 20000;		// 20 MHz
 	} else {
-		info.shared_info->pll_info.reference_frequency = 48000;	// 48 kHz
+		info.shared_info->pll_info.reference_frequency = 48000;	// 48 MHz
 		info.shared_info->pll_info.max_frequency = 350000;
 			// 350 MHz RAM DAC speed
 		info.shared_info->pll_info.min_frequency = 25000;		// 25 MHz
 	}
 
 	info.shared_info->pll_info.divisor_register = INTEL_DISPLAY_A_PLL_DIVISOR_0;
+
+	info.shared_info->pch_info = info.pch_info;
 
 	info.shared_info->device_type = info.device_type;
 #ifdef __HAIKU__
@@ -424,11 +486,15 @@ intel_extreme_init(intel_info &info)
 	status_t status = intel_allocate_memory(info, B_PAGE_SIZE, 0,
 		intel_uses_physical_overlay(*info.shared_info)
 				? B_APERTURE_NEED_PHYSICAL : 0,
-		(addr_t*)&info.overlay_registers, 
+		(addr_t*)&info.overlay_registers,
 		&info.shared_info->physical_overlay_registers);
 	if (status == B_OK) {
 		info.shared_info->overlay_offset = (addr_t)info.overlay_registers
 			- info.aperture_base;
+		TRACE("Overlay registers mapped at 0x%" B_PRIx32 " = %p - %"
+			B_PRIxADDR " (%" B_PRIxPHYSADDR ")\n",
+			info.shared_info->overlay_offset, info.overlay_registers,
+			info.aperture_base, info.shared_info->physical_overlay_registers);
 		init_overlay_registers(info.overlay_registers);
 	} else {
 		ERROR("error: could not allocate overlay memory! %s\n",
@@ -436,6 +502,7 @@ intel_extreme_init(intel_info &info)
 	}
 
 	// Allocate hardware status page and the cursor memory
+	TRACE("Allocating hardware status page");
 
 	if (intel_allocate_memory(info, B_PAGE_SIZE, 0, B_APERTURE_NEED_PHYSICAL,
 			(addr_t*)info.shared_info->status_page,
@@ -457,6 +524,18 @@ intel_extreme_init(intel_info &info)
 
 	init_interrupt_handler(info);
 
+	if (hasPCH) {
+		if (info.device_type.Generation() == 5) {
+			info.shared_info->fdi_link_frequency = (read32(info, FDI_PLL_BIOS_0)
+				& FDI_PLL_FB_CLOCK_MASK) + 2;
+			info.shared_info->fdi_link_frequency *= 100;
+		} else {
+			info.shared_info->fdi_link_frequency = 2700;
+		}
+	} else {
+		info.shared_info->fdi_link_frequency = 0;
+	}
+
 	TRACE("%s: completed successfully!\n", __func__);
 	return B_OK;
 }
@@ -469,8 +548,8 @@ intel_extreme_uninit(intel_info &info)
 
 	if (!info.fake_interrupts && info.shared_info->vblank_sem > 0) {
 		// disable interrupt generation
-		write16(info, find_reg(info, INTEL_INTERRUPT_ENABLED), 0);
-		write16(info, find_reg(info, INTEL_INTERRUPT_MASK), ~0);
+		write32(info, find_reg(info, INTEL_INTERRUPT_ENABLED), 0);
+		write32(info, find_reg(info, INTEL_INTERRUPT_MASK), ~0);
 
 		remove_io_interrupt_handler(info.irq, intel_interrupt_handler, &info);
 

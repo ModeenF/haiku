@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -111,6 +111,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #ifndef __ACDEBUG_H__
@@ -127,7 +163,7 @@
 
 typedef struct acpi_db_command_info
 {
-    char                    *Name;          /* Command Name */
+    const char              *Name;          /* Command Name */
     UINT8                   MinArgs;        /* Minimum arguments required */
 
 } ACPI_DB_COMMAND_INFO;
@@ -142,7 +178,7 @@ typedef struct acpi_db_command_help
 
 typedef struct acpi_db_argument_info
 {
-    char                    *Name;          /* Argument Name */
+    const char              *Name;          /* Argument Name */
 
 } ACPI_DB_ARGUMENT_INFO;
 
@@ -163,11 +199,17 @@ typedef struct acpi_db_execute_walk
 /*
  * dbxface - external debugger interfaces
  */
+ACPI_DBR_DEPENDENT_RETURN_OK (
 ACPI_STATUS
 AcpiDbSingleStep (
     ACPI_WALK_STATE         *WalkState,
     ACPI_PARSE_OBJECT       *Op,
-    UINT32                  OpType);
+    UINT32                  OpType))
+
+ACPI_DBR_DEPENDENT_RETURN_VOID (
+void
+AcpiDbSignalBreakPoint (
+    ACPI_WALK_STATE         *WalkState))
 
 
 /*
@@ -299,8 +341,8 @@ AcpiDbDisassembleAml (
     ACPI_PARSE_OBJECT       *Op);
 
 void
-AcpiDbBatchExecute (
-    char                    *CountArg);
+AcpiDbEvaluatePredefinedNames (
+    void);
 
 
 /*
@@ -362,10 +404,11 @@ AcpiDbDecodeAndDisplayObject (
     char                    *Target,
     char                    *OutputType);
 
+ACPI_DBR_DEPENDENT_RETURN_VOID (
 void
 AcpiDbDisplayResultObject (
     ACPI_OPERAND_OBJECT     *ObjDesc,
-    ACPI_WALK_STATE         *WalkState);
+    ACPI_WALK_STATE         *WalkState))
 
 ACPI_STATUS
 AcpiDbDisplayAllMethods (
@@ -391,10 +434,11 @@ void
 AcpiDbDisplayObjectType (
     char                    *ObjectArg);
 
+ACPI_DBR_DEPENDENT_RETURN_VOID (
 void
 AcpiDbDisplayArgumentObject (
     ACPI_OPERAND_OBJECT     *ObjDesc,
-    ACPI_WALK_STATE         *WalkState);
+    ACPI_WALK_STATE         *WalkState))
 
 
 /*
@@ -406,6 +450,12 @@ AcpiDbExecute (
     char                    **Args,
     ACPI_OBJECT_TYPE        *Types,
     UINT32                  Flags);
+
+void
+AcpiDbCreateExecutionThread (
+    char                    *MethodNameArg,
+    char                    **Arguments,
+    ACPI_OBJECT_TYPE        *Types);
 
 void
 AcpiDbCreateExecutionThreads (
@@ -446,10 +496,8 @@ AcpiDbLoadAcpiTable (
     char                    *Filename);
 
 ACPI_STATUS
-AcpiDbGetTableFromFile (
-    char                    *Filename,
-    ACPI_TABLE_HEADER       **Table,
-    BOOLEAN                 MustBeAmlTable);
+AcpiDbLoadTables (
+    ACPI_NEW_TABLE_DESC     *ListHead);
 
 
 /*
@@ -487,8 +535,7 @@ AcpiDbExecuteThread (
 
 ACPI_STATUS
 AcpiDbUserCommands (
-    char                    Prompt,
-    ACPI_PARSE_OBJECT       *Op);
+    void);
 
 char *
 AcpiDbGetNextToken (

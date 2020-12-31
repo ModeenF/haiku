@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -111,6 +111,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #include "acpi.h"
@@ -196,6 +232,11 @@ AcpiUtMutexInitialize (
     /* Create the reader/writer lock for namespace access */
 
     Status = AcpiUtCreateRwLock (&AcpiGbl_NamespaceRwLock);
+    if (ACPI_FAILURE (Status))
+    {
+        return_ACPI_STATUS (Status);
+    }
+
     return_ACPI_STATUS (Status);
 }
 
@@ -377,11 +418,12 @@ AcpiUtAcquireMutex (
         "Thread %u attempting to acquire Mutex [%s]\n",
         (UINT32) ThisThreadId, AcpiUtGetMutexName (MutexId)));
 
-    Status = AcpiOsAcquireMutex (AcpiGbl_MutexInfo[MutexId].Mutex,
-                ACPI_WAIT_FOREVER);
+    Status = AcpiOsAcquireMutex (
+        AcpiGbl_MutexInfo[MutexId].Mutex, ACPI_WAIT_FOREVER);
     if (ACPI_SUCCESS (Status))
     {
-        ACPI_DEBUG_PRINT ((ACPI_DB_MUTEX, "Thread %u acquired Mutex [%s]\n",
+        ACPI_DEBUG_PRINT ((ACPI_DB_MUTEX,
+            "Thread %u acquired Mutex [%s]\n",
             (UINT32) ThisThreadId, AcpiUtGetMutexName (MutexId)));
 
         AcpiGbl_MutexInfo[MutexId].UseCount++;
@@ -390,8 +432,8 @@ AcpiUtAcquireMutex (
     else
     {
         ACPI_EXCEPTION ((AE_INFO, Status,
-            "Thread %u could not acquire Mutex [0x%X]",
-            (UINT32) ThisThreadId, MutexId));
+            "Thread %u could not acquire Mutex [%s] (0x%X)",
+            (UINT32) ThisThreadId, AcpiUtGetMutexName (MutexId), MutexId));
     }
 
     return (Status);
@@ -431,7 +473,8 @@ AcpiUtReleaseMutex (
     if (AcpiGbl_MutexInfo[MutexId].ThreadId == ACPI_MUTEX_NOT_ACQUIRED)
     {
         ACPI_ERROR ((AE_INFO,
-            "Mutex [0x%X] is not acquired, cannot release", MutexId));
+            "Mutex [%s] (0x%X) is not acquired, cannot release",
+            AcpiUtGetMutexName (MutexId), MutexId));
 
         return (AE_NOT_ACQUIRED);
     }

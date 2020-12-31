@@ -30,7 +30,7 @@
 #include "util.h"
 
 
-#define TRACE_AHCI
+//#define TRACE_AHCI
 #ifdef TRACE_AHCI
 #	define TRACE(a...) dprintf("ahci: " a)
 #else
@@ -42,6 +42,9 @@
 //#define RWTRACE(a...) dprintf("ahci: " a)
 #define FLOW(a...)
 #define RWTRACE(a...)
+
+
+#define INQUIRY_BASE_LENGTH 36
 
 
 AHCIPort::AHCIPort(AHCIController* controller, int index)
@@ -59,7 +62,7 @@ AHCIPort::AHCIPort(AHCIController* controller, int index)
 	fSectorCount(0),
 	fIsATAPI(false),
 	fTestUnitReadyActive(false),
-	fSoftReset(false),
+	fPortReset(false),
 	fError(false),
 	fTrimSupported(false)
 {
@@ -158,7 +161,7 @@ AHCIPort::Init2()
 	FlushPostedWrites();
 
 	// reset port and probe info
-	SoftReset();
+	ResetDevice();
 
 	DumpHBAState();
 
@@ -230,118 +233,43 @@ AHCIPort::ResetDevice()
 
 
 status_t
-AHCIPort::SoftReset()
-{
-	TRACE("AHCIPort::SoftReset port %d\n", fIndex);
-
-	// Spec v1.3.1, §10.4.1 Software Reset
-	// A single device on one port is reset, HBA and phy comm remain intact.
-
-	// stop port, flush transactions
-	if (!Disable()) {
-		// If the port doesn't power off, move on to a stronger reset.
-		ERROR("%s: port %d soft reset failed. Moving on to port reset.\n",
-			__func__, fIndex);
-		return PortReset();
-	}
-
-	// start port
-	Enable();
-
-	if (wait_until_clear(&fRegs->tfd, ATA_STATUS_BUSY | ATA_STATUS_DATA_REQUEST,
-		1000000) < B_OK) {
-		ERROR("%s: port %d still busy. Moving on to port reset.\n",
-			__func__, fIndex);
-		return PortReset();
-	}
-
-	// TODO: Just can't get AHCI software reset issued properly.
-	#if 0
-	// Spec v1.2.0, §9.3.9
-	// If FBS supported + enabled, disable
-	bool fbsDisabled = false;
-	if ((fRegs->cap & CAP_FBSS) != 0) {
-		if ((fRegs->fbs & PORT_FBS_EN) != 0) {
-			fbsDisabled = true;
-			fRegs->fbs &= ~PORT_FBS_EN;
-		}
-	}
-
-	// set command table soft reset bit
-	fCommandTable->cfis[2] |= ATA_DEVICE_CONTROL_SOFT_RESET;
-
-	// TODO: We could use a low level ahci command call (~ahci_exec_polled_cmd)
-	cpu_status cpu = disable_interrupts();
-	acquire_spinlock(&fSpinlock);
-
-	// FIS ATA set Reset + clear busy
-	fCommandList[0].r = 1;
-	fCommandList[0].c = 1;
-	// FIS ATA clear Reset + clear busy
-	fCommandList[1].r = 0;
-	fCommandList[1].c = 0;
-
-	// Issue Command
-	fRegs->ci = 1;
-	FlushPostedWrites();
-	release_spinlock(&fSpinlock);
-	restore_interrupts(cpu);
-
-	if (wait_until_clear(&fRegs->ci, 0, 1000000) < B_OK) {
-		TRACE("%s: port %d: device is busy\n", __func__, fIndex);
-
-		// Before we bail-out. Re-enable FBS if we disabled it
-		if (fbsDisabled)
-			fRegs->fbs |= PORT_FBS_EN;
-		return PortReset();
-    }
-
-	fCommandTable->cfis[2] &= ~ATA_DEVICE_CONTROL_SOFT_RESET;
-
-	if (fbsDisabled)
-		fRegs->fbs |= PORT_FBS_EN;
-
-	if (wait_until_clear(&fRegs->tfd, ATA_STATUS_BUSY | ATA_STATUS_DATA_REQUEST,
-		1000000) < B_OK) {
-		ERROR("%s: port %d software reset failed. Doing port reset...\n",
-			__func__, fIndex);
-		return PortReset();
-	}
-	#else
-	return PortReset();
-	#endif
-
-	return Probe();
-}
-
-
-status_t
 AHCIPort::PortReset()
 {
 	TRACE("AHCIPort::PortReset port %d\n", fIndex);
 
-	// Spec v1.3.1, §10.4.2 Port Reset
-	// Physical comm between HBA and port disabled. More Intrusive
 	if (!Disable()) {
-		ERROR("%s: port %d unable to reset!\n", __func__, fIndex);
+		ERROR("%s: port %d unable to shutdown!\n", __func__, fIndex);
 		return B_ERROR;
 	}
 
-	fRegs->sctl |= SCTL_PORT_DET_INIT;
-	FlushPostedWrites();
-	spin(1100);
-		// You must wait 1ms at minimum
-	fRegs->sctl = (fRegs->sctl & ~HBA_PORT_DET_MASK) | SCTL_PORT_DET_NOINIT;
+	_ClearErrorRegister();
 
-	FlushPostedWrites();
+	// Wait for BSY and DRQ to clear (idle port)
+	if (wait_until_clear(&fRegs->tfd, ATA_STATUS_BUSY | ATA_STATUS_DATA_REQUEST,
+		1000000) < B_OK) {
+		// If we can't clear busy, do a full comreset
+
+		// Spec v1.3.1, §10.4.2 Port Reset
+		// Physical comm between HBA and port disabled. More Intrusive
+		ERROR("%s: port %d undergoing COMRESET\n", __func__, fIndex);
+
+		// Notice we're throwing out all other control flags.
+		fRegs->sctl = (SSTS_PORT_IPM_ACTIVE | SSTS_PORT_IPM_PARTIAL
+			| SCTL_PORT_DET_INIT);
+		FlushPostedWrites();
+		spin(1100);
+		// You must wait 1ms at minimum
+		fRegs->sctl = (fRegs->sctl & ~HBA_PORT_DET_MASK) | SCTL_PORT_DET_NOINIT;
+		FlushPostedWrites();
+	}
+
+	Enable();
 
 	if (wait_until_set(&fRegs->ssts, SSTS_PORT_DET_PRESENT, 500000) < B_OK) {
 		TRACE("%s: port %d: no device detected\n", __func__, fIndex);
 		fDevicePresent = false;
 		return B_OK;
 	}
-
-	Enable();
 
 	return Probe();
 }
@@ -359,19 +287,21 @@ AHCIPort::Probe()
 		return B_ERROR;
 	}
 
-	switch (fRegs->ssts & HBA_PORT_SPD_MASK) {
-		case 0x10:
-			TRACE("%s: port %d link speed 1.5Gb/s\n", __func__, fIndex);
-			break;
-		case 0x20:
-			TRACE("%s: port %d link speed 3.0Gb/s\n", __func__, fIndex);
-			break;
-		case 0x30:
-			TRACE("%s: port %d link speed 6.0Gb/s\n", __func__, fIndex);
-			break;
-		default:
-			TRACE("%s: port %d link speed unrestricted\n", __func__, fIndex);
-			break;
+	if (!fTestUnitReadyActive) {
+		switch (fRegs->ssts & HBA_PORT_SPD_MASK) {
+			case 0x10:
+				ERROR("%s: port %d link speed 1.5Gb/s\n", __func__, fIndex);
+				break;
+			case 0x20:
+				ERROR("%s: port %d link speed 3.0Gb/s\n", __func__, fIndex);
+				break;
+			case 0x30:
+				ERROR("%s: port %d link speed 6.0Gb/s\n", __func__, fIndex);
+				break;
+			default:
+				ERROR("%s: port %d link speed unrestricted\n", __func__, fIndex);
+				break;
+		}
 	}
 
 	wait_until_clear(&fRegs->tfd, ATA_STATUS_BUSY, 31000000);
@@ -385,13 +315,9 @@ AHCIPort::Probe()
 		fRegs->cmd &= ~PORT_CMD_ATAPI;
 	FlushPostedWrites();
 
-	if (!fTestUnitReadyActive) {
-		TRACE("device signature 0x%08" B_PRIx32 " (%s)\n", fRegs->sig,
-			fRegs->sig == SATA_SIG_ATAPI ? "ATAPI" : fRegs->sig == SATA_SIG_ATA
-				? "ATA" : "unknown");
-	}
-
-	_ClearErrorRegister();
+	TRACE("device signature 0x%08" B_PRIx32 " (%s)\n", fRegs->sig,
+		fRegs->sig == SATA_SIG_ATAPI ? "ATAPI" : fRegs->sig == SATA_SIG_ATA
+			? "ATA" : "unknown");
 
 	return B_OK;
 }
@@ -458,41 +384,36 @@ AHCIPort::Interrupt()
 void
 AHCIPort::InterruptErrorHandler(uint32 is)
 {
-	uint32 ci = fRegs->ci;
-
-	if (!fTestUnitReadyActive) {
-		TRACE("AHCIPort::InterruptErrorHandler port %d, fCommandsActive 0x%08"
-			B_PRIx32 ", is 0x%08" B_PRIx32 ", ci 0x%08" B_PRIx32 "\n", fIndex,
-			fCommandsActive, is, ci);
-		TRACE("ssts 0x%08" B_PRIx32 "\n", fRegs->ssts);
-		TRACE("sctl 0x%08" B_PRIx32 "\n", fRegs->sctl);
-		TRACE("serr 0x%08" B_PRIx32 "\n", fRegs->serr);
-		TRACE("sact 0x%08" B_PRIx32 "\n", fRegs->sact);
-	}
+	TRACE("AHCIPort::InterruptErrorHandler port %d, fCommandsActive 0x%08"
+		B_PRIx32 ", is 0x%08" B_PRIx32 ", ci 0x%08" B_PRIx32 "\n", fIndex,
+		fCommandsActive, is, fRegs->ci);
+	TRACE("ssts 0x%08" B_PRIx32 "\n", fRegs->ssts);
+	TRACE("sctl 0x%08" B_PRIx32 "\n", fRegs->sctl);
+	TRACE("serr 0x%08" B_PRIx32 "\n", fRegs->serr);
+	TRACE("sact 0x%08" B_PRIx32 "\n", fRegs->sact);
 
 	// read and clear SError
 	_ClearErrorRegister();
 
 	if (is & PORT_INT_TFE) {
-		if (!fTestUnitReadyActive)
-			TRACE("Task File Error\n");
+		TRACE("Task File Error\n");
 
-		fSoftReset = true;
+		fPortReset = true;
 		fError = true;
 	}
 	if (is & PORT_INT_HBF) {
-		TRACE("Host Bus Fatal Error\n");
-		fSoftReset = true;
+		ERROR("Host Bus Fatal Error\n");
+		fPortReset = true;
 		fError = true;
 	}
 	if (is & PORT_INT_HBD) {
-		TRACE("Host Bus Data Error\n");
-		fSoftReset = true;
+		ERROR("Host Bus Data Error\n");
+		fPortReset = true;
 		fError = true;
 	}
 	if (is & PORT_INT_IF) {
-		TRACE("Interface Fatal Error\n");
-		fSoftReset = true;
+		ERROR("Interface Fatal Error\n");
+		fPortReset = true;
 		fError = true;
 	}
 	if (is & PORT_INT_INF) {
@@ -500,7 +421,7 @@ AHCIPort::InterruptErrorHandler(uint32 is)
 	}
 	if (is & PORT_INT_OF) {
 		TRACE("Overflow\n");
-		fSoftReset = true;
+		fPortReset = true;
 		fError = true;
 	}
 	if (is & PORT_INT_IPM) {
@@ -508,26 +429,19 @@ AHCIPort::InterruptErrorHandler(uint32 is)
 	}
 	if (is & PORT_INT_PRC) {
 		TRACE("PhyReady Change\n");
-		//fSoftReset = true;
+		//fPortReset = true;
 	}
 	if (is & PORT_INT_PC) {
 		TRACE("Port Connect Change\n");
 		// Unsolicited when we had a port connect change without us requesting
 		// Spec v1.3, §6.2.2.3 Recovery of Unsolicited COMINIT
 
-		// TODO: This isn't enough
-		//if ((fRegs->sctl & SCTL_PORT_DET_INIT) == 0) {
-		//	TRACE("%s: unsolicited port connect change\n", __func__);
-		//	fSoftReset = true;
-		//	fError = true;
-		//}
-
 		// XXX: This shouldn't be needed here... but we can loop without it
-		_ClearErrorRegister();
+		//_ClearErrorRegister();
 	}
 	if (is & PORT_INT_UF) {
 		TRACE("Unknown FIS\n");
-		fSoftReset = true;
+		fPortReset = true;
 	}
 
 	if (fError) {
@@ -552,7 +466,7 @@ AHCIPort::FillPrdTable(volatile prd* prdTable, int* prdCount, int prdMax,
 	status_t status = get_memory_map_etc(B_CURRENT_TEAM, data, dataSize,
 		entries, &entriesUsed);
 	if (status != B_OK) {
-		TRACE("%s: get_memory_map() failed: %s\n", __func__, strerror(status));
+		ERROR("%s: get_memory_map() failed: %s\n", __func__, strerror(status));
 		return B_ERROR;
 	}
 
@@ -573,14 +487,14 @@ AHCIPort::FillPrdTable(volatile prd* prdTable, int* prdCount, int prdMax,
 		FLOW("FillPrdTable: sg-entry addr %#" B_PRIxPHYSADDR ", size %lu\n",
 			address, size);
 		if (address & 1) {
-			TRACE("AHCIPort::FillPrdTable: data alignment error\n");
+			ERROR("AHCIPort::FillPrdTable: data alignment error\n");
 			return B_ERROR;
 		}
 		dataSize -= size;
 		while (size > 0) {
 			size_t bytes = min_c(size, PRD_MAX_DATA_LENGTH);
 			if (*prdCount == prdMax) {
-				TRACE("AHCIPort::FillPrdTable: prd table exhausted\n");
+				ERROR("AHCIPort::FillPrdTable: prd table exhausted\n");
 				return B_ERROR;
 			}
 			FLOW("FillPrdTable: prd-entry %u, addr %p, size %lu\n",
@@ -599,11 +513,11 @@ AHCIPort::FillPrdTable(volatile prd* prdTable, int* prdCount, int prdMax,
 		sgCount--;
 	}
 	if (*prdCount == 0) {
-		TRACE("%s: count is 0\n", __func__);
+		ERROR("%s: count is 0\n", __func__);
 		return B_ERROR;
 	}
 	if (dataSize > 0) {
-		TRACE("AHCIPort::FillPrdTable: sg table %ld bytes too small\n",
+		ERROR("AHCIPort::FillPrdTable: sg table %ld bytes too small\n",
 			dataSize);
 		return B_ERROR;
 	}
@@ -748,8 +662,8 @@ AHCIPort::ScsiInquiry(scsi_ccb* request)
 		// TODO: Sense ILLEGAL REQUEST + INVALID FIELD IN CDB?
 		gSCSI->finished(request, 1);
 		return;
-	} else if (request->data_length < sizeof(scsiData)) {
-		ERROR("invalid request\n");
+	} else if (request->data_length < INQUIRY_BASE_LENGTH) {
+		ERROR("invalid request %" B_PRIu32 "\n", request->data_length);
 		request->subsys_status = SCSI_REQ_ABORTED;
 		gSCSI->finished(request, 1);
 		return;
@@ -818,12 +732,14 @@ AHCIPort::ScsiInquiry(scsi_ccb* request)
 			if (fMaxTrimRangeBlocks == 0)
 				fMaxTrimRangeBlocks = 1;
 
+			#ifdef TRACE_AHCI
 			bool deterministic = ataData.supports_deterministic_read_after_trim;
 			TRACE("trim supported, %" B_PRIu32 " ranges blocks, reads are "
 				"%sdeterministic%s.\n", fMaxTrimRangeBlocks,
 				deterministic ? "" : "non-", deterministic
 					? (ataData.supports_read_zero_after_trim
 						? ", zero" : ", random") : "");
+			#endif
 		}
 	}
 
@@ -853,13 +769,29 @@ AHCIPort::ScsiInquiry(scsi_ccb* request)
 	// There's not enough space to fit all of the data in. ATA has 40 bytes for
 	// the model number, 20 for the serial number and another 8 for the
 	// firmware revision. SCSI has room for 8 for vendor ident, 16 for product
-	// ident and another 4 for product revision. We just try and fit in as much
-	// as possible of the model number into the vendor and product ident fields
-	// and put a little of the serial number into the product revision field.
-	memcpy(scsiData.vendor_ident, modelNumber, sizeof(scsiData.vendor_ident));
-	memcpy(scsiData.product_ident, modelNumber + 8,
-		sizeof(scsiData.product_ident));
-	memcpy(scsiData.product_rev, serialNumber, sizeof(scsiData.product_rev));
+	// ident and another 4 for product revision.
+	size_t vendorLen = strcspn(modelNumber, " ");
+	if (vendorLen >= sizeof(scsiData.vendor_ident))
+		vendorLen = strcspn(modelNumber, "-");
+	if (vendorLen < sizeof(scsiData.vendor_ident)) {
+		// First we try to break things apart smartly.
+		snprintf(scsiData.vendor_ident, vendorLen + 1, "%s", modelNumber);
+		size_t modelRemain = (sizeof(modelNumber) - vendorLen);
+		if (modelRemain > sizeof(scsiData.product_ident))
+			modelRemain = sizeof(scsiData.product_ident);
+		memcpy(scsiData.product_ident, modelNumber + (vendorLen + 1),
+			modelRemain);
+	} else {
+		// If we're unable to smartly break apart the vendor and model, just
+		// dumbly squeeze as much in as possible.
+		memcpy(scsiData.vendor_ident, modelNumber, sizeof(scsiData.vendor_ident));
+		memcpy(scsiData.product_ident, modelNumber + 8,
+			sizeof(scsiData.product_ident));
+	}
+	// Take the last 4 digits of the serial number as product rev
+	size_t serialLen = sizeof(scsiData.product_rev);
+	size_t serialOff = sizeof(serialNumber) - serialLen;
+	memcpy(scsiData.product_rev, serialNumber + serialOff, serialLen);
 
 	if (sg_memcpy(request->sg_list, request->sg_count, &scsiData,
 			sizeof(scsiData)) < B_OK) {
@@ -879,7 +811,7 @@ AHCIPort::ScsiSynchronizeCache(scsi_ccb* request)
 
 	sata_request* sreq = new(std::nothrow) sata_request(request);
 	if (sreq == NULL) {
-		TRACE("out of memory when allocating sync request\n");
+		ERROR("out of memory when allocating sync request\n");
 		request->subsys_status = SCSI_REQ_ABORTED;
 		gSCSI->finished(request, 1);
 		return;
@@ -1049,7 +981,7 @@ for (uint32 i = 0; i < scsiRangeCount; i++) {
 		uint32 lbaRangesSize = lbaRangeCount * sizeof(uint64);
 		uint64* lbaRanges = (uint64*)malloc(lbaRangesSize);
 		if (lbaRanges == NULL) {
-			TRACE("out of memory when allocating %" B_PRIu32 " unmap ranges\n",
+			ERROR("out of memory when allocating %" B_PRIu32 " unmap ranges\n",
 				lbaRangeCount);
 			request->subsys_status = SCSI_REQ_ABORTED;
 			gSCSI->finished(request, 1);
@@ -1105,7 +1037,7 @@ for (uint32 i = 0; i < lbaRangeCount; i++) {
 		sreq.WaitForCompletion();
 
 		if ((sreq.CompletionStatus() & ATA_STATUS_ERROR) != 0) {
-			TRACE("trim failed (%" B_PRIu32 " ranges)!\n", lbaRangeCount);
+			ERROR("trim failed (%" B_PRIu32 " ranges)!\n", lbaRangeCount);
 			request->subsys_status = SCSI_REQ_CMP_ERR;
 		} else
 			request->subsys_status = SCSI_REQ_CMP;
@@ -1142,7 +1074,10 @@ AHCIPort::ExecuteSataRequest(sata_request* request, bool isWrite)
 	fCommandList->cfl = 5; // 20 bytes, length in DWORDS
 	memcpy((char*)fCommandTable->cfis, request->FIS(), 20);
 
+	// We some hide messages when the test unit ready active is clear
+	// as empty removeable media resets constantly.
 	fTestUnitReadyActive = request->IsTestUnitReady();
+
 	if (request->IsATAPI()) {
 		// ATAPI PACKET is a 12 or 16 byte SCSI command
 		memset((char*)fCommandTable->acmd, 0, 32);
@@ -1158,8 +1093,8 @@ AHCIPort::ExecuteSataRequest(sata_request* request, bool isWrite)
 
 	if (wait_until_clear(&fRegs->tfd, ATA_STATUS_BUSY | ATA_STATUS_DATA_REQUEST,
 			1000000) < B_OK) {
-		TRACE("ExecuteAtaRequest port %d: device is busy\n", fIndex);
-		SoftReset();
+		ERROR("ExecuteAtaRequest port %d: device is busy\n", fIndex);
+		PortReset();
 		FinishTransfer();
 		request->Abort();
 		return;
@@ -1195,9 +1130,9 @@ AHCIPort::ExecuteSataRequest(sata_request* request, bool isWrite)
 	TRACE("tfd  0x%08" B_PRIx32 "\n", fRegs->tfd);
 */
 
-	if (fSoftReset || status == B_TIMED_OUT) {
-		fSoftReset = false;
-		SoftReset();
+	if (fPortReset || status == B_TIMED_OUT) {
+		fPortReset = false;
+		PortReset();
 	}
 
 	size_t bytesTransfered = fCommandList->prdbc;
@@ -1205,7 +1140,7 @@ AHCIPort::ExecuteSataRequest(sata_request* request, bool isWrite)
 	FinishTransfer();
 
 	if (status == B_TIMED_OUT) {
-		TRACE("ExecuteAtaRequest port %d: device timeout\n", fIndex);
+		ERROR("ExecuteAtaRequest port %d: device timeout\n", fIndex);
 		request->Abort();
 		return;
 	}
@@ -1226,7 +1161,6 @@ AHCIPort::ScsiExecuteRequest(scsi_ccb* request)
 				ASSERT(request->data_length == 0);
 				break;
 			case SCSI_DIR_IN:
-				ASSERT(request->data_length > 0);
 				break;
 			case SCSI_DIR_OUT:
 				isWrite = true;
@@ -1240,7 +1174,7 @@ AHCIPort::ScsiExecuteRequest(scsi_ccb* request)
 
 		sata_request* sreq = new(std::nothrow) sata_request(request);
 		if (sreq == NULL) {
-			TRACE("out of memory when allocating atapi request\n");
+			ERROR("out of memory when allocating atapi request\n");
 			request->subsys_status = SCSI_REQ_ABORTED;
 			gSCSI->finished(request, 1);
 			return;
@@ -1311,7 +1245,7 @@ AHCIPort::ScsiExecuteRequest(scsi_ccb* request)
 			if (length) {
 				ScsiReadWrite(request, position, length, isWrite);
 			} else {
-				TRACE("AHCIPort::ScsiExecuteRequest error: transfer without "
+				ERROR("AHCIPort::ScsiExecuteRequest error: transfer without "
 					"data!\n");
 				request->subsys_status = SCSI_REQ_INVALID;
 				gSCSI->finished(request, 1);
@@ -1328,7 +1262,7 @@ AHCIPort::ScsiExecuteRequest(scsi_ccb* request)
 			if (length) {
 				ScsiReadWrite(request, position, length, isWrite);
 			} else {
-				TRACE("AHCIPort::ScsiExecuteRequest error: transfer without "
+				ERROR("AHCIPort::ScsiExecuteRequest error: transfer without "
 					"data!\n");
 				request->subsys_status = SCSI_REQ_INVALID;
 				gSCSI->finished(request, 1);
@@ -1345,7 +1279,7 @@ AHCIPort::ScsiExecuteRequest(scsi_ccb* request)
 			if (length) {
 				ScsiReadWrite(request, position, length, isWrite);
 			} else {
-				TRACE("AHCIPort::ScsiExecuteRequest error: transfer without "
+				ERROR("AHCIPort::ScsiExecuteRequest error: transfer without "
 					"data!\n");
 				request->subsys_status = SCSI_REQ_INVALID;
 				gSCSI->finished(request, 1);
@@ -1357,7 +1291,7 @@ AHCIPort::ScsiExecuteRequest(scsi_ccb* request)
 			const scsi_cmd_unmap* cmd = (const scsi_cmd_unmap*)request->cdb;
 
 			if (!fTrimSupported) {
-				TRACE("%s port %d: unsupported request opcode 0x%02x\n",
+				ERROR("%s port %d: unsupported request opcode 0x%02x\n",
 					__func__, fIndex, request->cdb[0]);
 				request->subsys_status = SCSI_REQ_ABORTED;
 				gSCSI->finished(request, 1);
@@ -1370,7 +1304,7 @@ AHCIPort::ScsiExecuteRequest(scsi_ccb* request)
 				|| B_BENDIAN_TO_HOST_INT16(cmd->length) != request->data_length
 				|| B_BENDIAN_TO_HOST_INT16(unmapBlocks->data_length)
 					!= request->data_length - 1) {
-				TRACE("%s port %d: invalid unmap parameter data length\n",
+				ERROR("%s port %d: invalid unmap parameter data length\n",
 					__func__, fIndex);
 				request->subsys_status = SCSI_REQ_ABORTED;
 				gSCSI->finished(request, 1);
@@ -1380,7 +1314,7 @@ AHCIPort::ScsiExecuteRequest(scsi_ccb* request)
 			break;
 		}
 		default:
-			TRACE("AHCIPort::ScsiExecuteRequest port %d unsupported request "
+			ERROR("AHCIPort::ScsiExecuteRequest port %d unsupported request "
 				"opcode 0x%02x\n", fIndex, request->cdb[0]);
 			request->subsys_status = SCSI_REQ_ABORTED;
 			gSCSI->finished(request, 1);
@@ -1427,19 +1361,20 @@ AHCIPort::Enable()
 {
 	// Spec v1.3.1, §10.3.1 Start (PxCMD.ST)
 	TRACE("%s: port %d\n", __func__, fIndex);
+
 	if ((fRegs->cmd & PORT_CMD_ST) != 0) {
-		TRACE("%s: Starting port already running!\n", __func__);
+		ERROR("%s: Starting port already running!\n", __func__);
 		return false;
 	}
 
 	if ((fRegs->cmd & PORT_CMD_FRE) == 0) {
-		TRACE("%s: Unable to start port without FRE enabled!\n", __func__);
+		ERROR("%s: Unable to start port without FRE enabled!\n", __func__);
 		return false;
 	}
 
 	// Clear DMA engine and wait for completion
 	if (wait_until_clear(&fRegs->cmd, PORT_CMD_CR, 500000) < B_OK) {
-		TRACE("%s: port %d error DMA engine still running\n", __func__,
+		ERROR("%s: port %d error DMA engine still running\n", __func__,
 			fIndex);
 		return false;
 	}
@@ -1468,7 +1403,7 @@ AHCIPort::Disable()
 	// Spec v1.3.1, §10.4.2 Port Reset - assume hung after 500 mil.
 	// Clear DMA engine and wait for completion
 	if (wait_until_clear(&fRegs->cmd, PORT_CMD_CR, 500000) < B_OK) {
-		TRACE("%s: port %d error DMA engine still running\n", __func__,
+		ERROR("%s: port %d error DMA engine still running\n", __func__,
 			fIndex);
 		return false;
 	}

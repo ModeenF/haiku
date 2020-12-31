@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -111,6 +111,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #include "acpi.h"
@@ -189,8 +225,8 @@ AcpiExStore (
          * Storing an object into a Named node.
          */
         Status = AcpiExStoreObjectToNode (SourceDesc,
-                    (ACPI_NAMESPACE_NODE *) DestDesc, WalkState,
-                    ACPI_IMPLICIT_CONVERSION);
+            (ACPI_NAMESPACE_NODE *) DestDesc, WalkState,
+            ACPI_IMPLICIT_CONVERSION);
 
         return_ACPI_STATUS (Status);
     }
@@ -219,7 +255,7 @@ AcpiExStore (
         /* Destination is not a Reference object */
 
         ACPI_ERROR ((AE_INFO,
-            "Target is not a Reference or Constant object - %s [%p]",
+            "Target is not a Reference or Constant object - [%s] %p",
             AcpiUtGetObjectTypeName (DestDesc), DestDesc));
 
         return_ACPI_STATUS (AE_AML_OPERAND_TYPE);
@@ -240,8 +276,8 @@ AcpiExStore (
         /* Storing an object into a Name "container" */
 
         Status = AcpiExStoreObjectToNode (SourceDesc,
-                    RefDesc->Reference.Object,
-                    WalkState, ACPI_IMPLICIT_CONVERSION);
+            RefDesc->Reference.Object,
+            WalkState, ACPI_IMPLICIT_CONVERSION);
         break;
 
     case ACPI_REFCLASS_INDEX:
@@ -257,7 +293,7 @@ AcpiExStore (
         /* Store to a method local/arg  */
 
         Status = AcpiDsStoreObjectToLocal (RefDesc->Reference.Class,
-                    RefDesc->Reference.Value, SourceDesc, WalkState);
+            RefDesc->Reference.Value, SourceDesc, WalkState);
         break;
 
     case ACPI_REFCLASS_DEBUG:
@@ -266,7 +302,7 @@ AcpiExStore (
          * displayed and otherwise has no effect -- see ACPI Specification
          */
         ACPI_DEBUG_PRINT ((ACPI_DB_EXEC,
-            "**** Write to Debug Object: Object %p %s ****:\n\n",
+            "**** Write to Debug Object: Object %p [%s] ****:\n\n",
             SourceDesc, AcpiUtGetObjectTypeName (SourceDesc)));
 
         ACPI_DEBUG_OBJECT (SourceDesc, 0, 0);
@@ -346,7 +382,8 @@ AcpiExStoreObjectToIndex (
         {
             /* Normal object, copy it */
 
-            Status = AcpiUtCopyIobjectToIobject (SourceDesc, &NewDesc, WalkState);
+            Status = AcpiUtCopyIobjectToIobject (
+                SourceDesc, &NewDesc, WalkState);
             if (ACPI_FAILURE (Status))
             {
                 return_ACPI_STATUS (Status);
@@ -428,7 +465,7 @@ AcpiExStoreObjectToIndex (
             /* All other types are invalid */
 
             ACPI_ERROR ((AE_INFO,
-                "Source must be Integer/Buffer/String type, not %s",
+                "Source must be type [Integer/Buffer/String], found [%s]",
                 AcpiUtGetObjectTypeName (SourceDesc)));
             return_ACPI_STATUS (AE_AML_OPERAND_TYPE);
         }
@@ -440,8 +477,8 @@ AcpiExStoreObjectToIndex (
 
     default:
         ACPI_ERROR ((AE_INFO,
-            "Target is not a Package or BufferField"));
-        Status = AE_AML_OPERAND_TYPE;
+            "Target is not of type [Package/BufferField]"));
+        Status = AE_AML_TARGET_TYPE;
         break;
     }
 
@@ -462,20 +499,20 @@ AcpiExStoreObjectToIndex (
  *
  * DESCRIPTION: Store the object to the named object.
  *
- *              The Assignment of an object to a named object is handled here
- *              The value passed in will replace the current value (if any)
- *              with the input value.
+ * The assignment of an object to a named object is handled here.
+ * The value passed in will replace the current value (if any)
+ * with the input value.
  *
- *              When storing into an object the data is converted to the
- *              target object type then stored in the object. This means
- *              that the target object type (for an initialized target) will
- *              not be changed by a store operation. A CopyObject can change
- *              the target type, however.
+ * When storing into an object the data is converted to the
+ * target object type then stored in the object. This means
+ * that the target object type (for an initialized target) will
+ * not be changed by a store operation. A CopyObject can change
+ * the target type, however.
  *
- *              The ImplicitConversion flag is set to NO/FALSE only when
- *              storing to an ArgX -- as per the rules of the ACPI spec.
+ * The ImplicitConversion flag is set to NO/FALSE only when
+ * storing to an ArgX -- as per the rules of the ACPI spec.
  *
- *              Assumes parameters are already validated.
+ * Assumes parameters are already validated.
  *
  ******************************************************************************/
 
@@ -500,9 +537,75 @@ AcpiExStoreObjectToNode (
     TargetType = AcpiNsGetType (Node);
     TargetDesc = AcpiNsGetAttachedObject (Node);
 
-    ACPI_DEBUG_PRINT ((ACPI_DB_EXEC, "Storing %p (%s) to node %p (%s)\n",
+    ACPI_DEBUG_PRINT ((ACPI_DB_EXEC, "Storing %p [%s] to node %p [%s]\n",
         SourceDesc, AcpiUtGetObjectTypeName (SourceDesc),
-              Node, AcpiUtGetTypeName (TargetType)));
+        Node, AcpiUtGetTypeName (TargetType)));
+
+    /* Only limited target types possible for everything except CopyObject */
+
+    if (WalkState->Opcode != AML_COPY_OBJECT_OP)
+    {
+        /*
+         * Only CopyObject allows all object types to be overwritten. For
+         * TargetRef(s), there are restrictions on the object types that
+         * are allowed.
+         *
+         * Allowable operations/typing for Store:
+         *
+         * 1) Simple Store
+         *      Integer     --> Integer (Named/Local/Arg)
+         *      String      --> String  (Named/Local/Arg)
+         *      Buffer      --> Buffer  (Named/Local/Arg)
+         *      Package     --> Package (Named/Local/Arg)
+         *
+         * 2) Store with implicit conversion
+         *      Integer     --> String or Buffer  (Named)
+         *      String      --> Integer or Buffer (Named)
+         *      Buffer      --> Integer or String (Named)
+         */
+        switch (TargetType)
+        {
+        case ACPI_TYPE_PACKAGE:
+            /*
+             * Here, can only store a package to an existing package.
+             * Storing a package to a Local/Arg is OK, and handled
+             * elsewhere.
+             */
+            if (WalkState->Opcode == AML_STORE_OP)
+            {
+                if (SourceDesc->Common.Type != ACPI_TYPE_PACKAGE)
+                {
+                    ACPI_ERROR ((AE_INFO,
+                        "Cannot assign type [%s] to [Package] "
+                        "(source must be type Pkg)",
+                        AcpiUtGetObjectTypeName (SourceDesc)));
+
+                    return_ACPI_STATUS (AE_AML_TARGET_TYPE);
+                }
+                break;
+            }
+
+        /* Fallthrough */
+
+        case ACPI_TYPE_DEVICE:
+        case ACPI_TYPE_EVENT:
+        case ACPI_TYPE_MUTEX:
+        case ACPI_TYPE_REGION:
+        case ACPI_TYPE_POWER:
+        case ACPI_TYPE_PROCESSOR:
+        case ACPI_TYPE_THERMAL:
+
+            ACPI_ERROR ((AE_INFO,
+                "Target must be [Buffer/Integer/String/Reference]"
+                ", found [%s] (%4.4s)",
+                AcpiUtGetTypeName (Node->Type), Node->Name.Ascii));
+
+            return_ACPI_STATUS (AE_AML_TARGET_TYPE);
+
+        default:
+            break;
+        }
+    }
 
     /*
      * Resolve the source object to an actual value
@@ -518,15 +621,15 @@ AcpiExStoreObjectToNode (
 
     switch (TargetType)
     {
-    case ACPI_TYPE_INTEGER:
-    case ACPI_TYPE_STRING:
-    case ACPI_TYPE_BUFFER:
         /*
          * The simple data types all support implicit source operand
          * conversion before the store.
          */
+    case ACPI_TYPE_INTEGER:
+    case ACPI_TYPE_STRING:
+    case ACPI_TYPE_BUFFER:
 
-        if ((WalkState->Opcode == AML_COPY_OP) ||
+        if ((WalkState->Opcode == AML_COPY_OBJECT_OP) ||
             !ImplicitConversion)
         {
             /*
@@ -534,8 +637,7 @@ AcpiExStoreObjectToNode (
              * an implicit conversion, as per the ACPI specification.
              * A direct store is performed instead.
              */
-            Status = AcpiExStoreDirectToNode (SourceDesc, Node,
-                WalkState);
+            Status = AcpiExStoreDirectToNode (SourceDesc, Node, WalkState);
             break;
         }
 
@@ -559,11 +661,11 @@ AcpiExStoreObjectToNode (
              * store has been performed such that the node/object type
              * has been changed.
              */
-            Status = AcpiNsAttachObject (Node, NewDesc,
-                NewDesc->Common.Type);
+            Status = AcpiNsAttachObject (
+                Node, NewDesc, NewDesc->Common.Type);
 
             ACPI_DEBUG_PRINT ((ACPI_DB_EXEC,
-                "Store %s into %s via Convert/Attach\n",
+                "Store type [%s] into [%s] via Convert/Attach\n",
                 AcpiUtGetObjectTypeName (SourceDesc),
                 AcpiUtGetObjectTypeName (NewDesc)));
         }
@@ -585,18 +687,14 @@ AcpiExStoreObjectToNode (
 
     default:
         /*
-         * No conversions for all other types. Directly store a copy of
-         * the source object. This is the ACPI spec-defined behavior for
-         * the CopyObject operator.
+         * CopyObject operator: No conversions for all other types.
+         * Instead, directly store a copy of the source object.
          *
-         * NOTE: For the Store operator, this is a departure from the
-         * ACPI spec, which states "If conversion is impossible, abort
-         * the running control method". Instead, this code implements
-         * "If conversion is impossible, treat the Store operation as
-         * a CopyObject".
+         * This is the ACPI spec-defined behavior for the CopyObject
+         * operator. (Note, for this default case, all normal
+         * Store/Target operations exited above with an error).
          */
-        Status = AcpiExStoreDirectToNode (SourceDesc, Node,
-            WalkState);
+        Status = AcpiExStoreDirectToNode (SourceDesc, Node, WalkState);
         break;
     }
 

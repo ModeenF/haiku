@@ -1,10 +1,14 @@
 /*
  * Copyright 2014, Stephan Aßmus <superstippi@gmx.de>.
+ * Copyright 2018-2020, Andrew Lindesay <apl@lindesay.co.nz>.
  * All rights reserved. Distributed under the terms of the MIT License.
  */
 #ifndef RATE_PACKAGE_WINDOW_H
 #define RATE_PACKAGE_WINDOW_H
 
+#include <vector>
+
+#include <PopUpMenu.h>
 #include <Window.h>
 
 #include "Model.h"
@@ -26,11 +30,19 @@ public:
 									Model& model);
 	virtual						~RatePackageWindow();
 
+	virtual	void				DispatchMessage(BMessage* message,
+									BHandler *handler);
 	virtual	void				MessageReceived(BMessage* message);
 
 			void				SetPackage(const PackageInfoRef& package);
 
 private:
+			void				_InitLanguagesMenu(BPopUpMenu* menu);
+			void				_InitStabilitiesMenu(BPopUpMenu* menu);
+			void				_MarkStabilityInMenu(BString* code);
+
+			void				_RelayServerDataToUI(BMessage& result);
+
 			void				_SendRating();
 
 			void				_SetWorkerThread(thread_id thread);
@@ -41,19 +53,22 @@ private:
 	static	int32				_SendRatingThreadEntry(void* data);
 			void				_SendRatingThread();
 
+			void				_RefreshPackageData();
+
 private:
 			Model&				fModel;
 			TextDocumentRef		fRatingText;
 			TextEditorRef		fTextEditor;
 			float				fRating;
-			BString				fStability;
-			StabilityRatingList	fStabilityCodes;
-			BString				fCommentLanguage;
+			bool				fRatingDeterminate;
+			BString				fStabilityCode;
+			BString				fCommentLanguageCode;
 			BString				fRatingID;
 			bool				fRatingActive;
 			PackageInfoRef		fPackage;
 
 			SetRatingView*		fSetRatingView;
+			BCheckBox*			fRatingDeterminateCheckBox;
 			BMenuField*			fStabilityField;
 			BMenuField*			fCommentLanguageField;
 			TextDocumentView*	fTextView;

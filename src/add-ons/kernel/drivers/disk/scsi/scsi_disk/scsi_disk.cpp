@@ -156,6 +156,7 @@ synchronize_cache(das_driver_info *device)
 }
 
 
+#if 0
 static status_t
 trim_device(das_driver_info* device, fs_trim_data* trimData)
 {
@@ -179,6 +180,7 @@ trim_device(das_driver_info* device, fs_trim_data* trimData)
 
 	return status;
 }
+#endif
 
 
 static int
@@ -413,6 +415,7 @@ das_ioctl(void* cookie, uint32 op, void* buffer, size_t length)
 		case B_FLUSH_DRIVE_CACHE:
 			return synchronize_cache(info);
 
+#if 0
 		case B_TRIM_DEVICE:
 		{
 			fs_trim_data* trimData;
@@ -428,6 +431,7 @@ das_ioctl(void* cookie, uint32 op, void* buffer, size_t length)
 
 			return copy_trim_data_to_user(buffer, trimData);
 		}
+#endif
 
 		default:
 			return sSCSIPeripheral->ioctl(handle->scsi_periph_handle, op,
@@ -537,7 +541,7 @@ das_register_device(device_node *node)
 	// get inquiry data
 	if (sDeviceManager->get_attr_raw(node, SCSI_DEVICE_INQUIRY_ITEM,
 			(const void **)&deviceInquiry, &inquiryLength, true) != B_OK
-		|| inquiryLength < sizeof(deviceInquiry))
+		|| inquiryLength < sizeof(scsi_res_inquiry))
 		return B_ERROR;
 
 	// get block limit of underlying hardware to lower it (if necessary)
@@ -552,6 +556,7 @@ das_register_device(device_node *node)
 
 	// ready to register
 	device_attr attrs[] = {
+		{ B_DEVICE_PRETTY_NAME, B_STRING_TYPE, { string: "SCSI Disk" }},
 		// tell block_io whether the device is removable
 		{"removable", B_UINT8_TYPE, {ui8: deviceInquiry->removable_medium}},
 		// impose own max block restriction

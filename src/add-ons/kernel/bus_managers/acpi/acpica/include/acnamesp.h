@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -111,6 +111,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #ifndef __ACNAMESP_H__
@@ -132,14 +168,16 @@
 /* Flags for AcpiNsLookup, AcpiNsSearchAndEnter */
 
 #define ACPI_NS_NO_UPSEARCH         0
-#define ACPI_NS_SEARCH_PARENT       0x01
-#define ACPI_NS_DONT_OPEN_SCOPE     0x02
-#define ACPI_NS_NO_PEER_SEARCH      0x04
-#define ACPI_NS_ERROR_IF_FOUND      0x08
-#define ACPI_NS_PREFIX_IS_SCOPE     0x10
-#define ACPI_NS_EXTERNAL            0x20
-#define ACPI_NS_TEMPORARY           0x40
-#define ACPI_NS_OVERRIDE_IF_FOUND   0x80
+#define ACPI_NS_SEARCH_PARENT       0x0001
+#define ACPI_NS_DONT_OPEN_SCOPE     0x0002
+#define ACPI_NS_NO_PEER_SEARCH      0x0004
+#define ACPI_NS_ERROR_IF_FOUND      0x0008
+#define ACPI_NS_PREFIX_IS_SCOPE     0x0010
+#define ACPI_NS_EXTERNAL            0x0020
+#define ACPI_NS_TEMPORARY           0x0040
+#define ACPI_NS_OVERRIDE_IF_FOUND   0x0080
+#define ACPI_NS_EARLY_INIT          0x0100
+#define ACPI_NS_PREFIX_MUST_EXIST   0x0200
 
 /* Flags for AcpiNsWalkNamespace */
 
@@ -150,6 +188,7 @@
 /* Object is not a package element */
 
 #define ACPI_NOT_PACKAGE_ELEMENT    ACPI_UINT32_MAX
+#define ACPI_ALL_PACKAGE_ELEMENTS   (ACPI_UINT32_MAX-1)
 
 /* Always emit warning message, not dependent on node flags */
 
@@ -165,8 +204,14 @@ AcpiNsInitializeObjects (
 
 ACPI_STATUS
 AcpiNsInitializeDevices (
-    void);
+    UINT32                  Flags);
 
+ACPI_STATUS
+AcpiNsInitOnePackage (
+    ACPI_HANDLE             ObjHandle,
+    UINT32                  Level,
+    void                    *Context,
+    void                    **ReturnValue);
 
 /*
  * nsload -  Namespace loading
@@ -211,6 +256,11 @@ AcpiNsGetNextNodeTyped (
  */
 ACPI_STATUS
 AcpiNsParseTable (
+    UINT32                  TableIndex,
+    ACPI_NAMESPACE_NODE     *StartNode);
+
+ACPI_STATUS
+AcpiNsExecuteTable (
     UINT32                  TableIndex,
     ACPI_NAMESPACE_NODE     *StartNode);
 
@@ -296,11 +346,19 @@ AcpiNsConvertToBuffer (
 
 ACPI_STATUS
 AcpiNsConvertToUnicode (
+    ACPI_NAMESPACE_NODE     *Scope,
     ACPI_OPERAND_OBJECT     *OriginalObject,
     ACPI_OPERAND_OBJECT     **ReturnObject);
 
 ACPI_STATUS
 AcpiNsConvertToResource (
+    ACPI_NAMESPACE_NODE     *Scope,
+    ACPI_OPERAND_OBJECT     *OriginalObject,
+    ACPI_OPERAND_OBJECT     **ReturnObject);
+
+ACPI_STATUS
+AcpiNsConvertToReference (
+    ACPI_NAMESPACE_NODE     *Scope,
     ACPI_OPERAND_OBJECT     *OriginalObject,
     ACPI_OPERAND_OBJECT     **ReturnObject);
 
@@ -321,14 +379,14 @@ AcpiNsDumpEntry (
 void
 AcpiNsDumpPathname (
     ACPI_HANDLE             Handle,
-    char                    *Msg,
+    const char              *Msg,
     UINT32                  Level,
     UINT32                  Component);
 
 void
 AcpiNsPrintPathname (
     UINT32                  NumSegments,
-    char                    *Pathname);
+    const char              *Pathname);
 
 ACPI_STATUS
 AcpiNsDumpOneObject (
@@ -439,8 +497,18 @@ AcpiNsGetNormalizedPathname (
     BOOLEAN                 NoTrailing);
 
 char *
+AcpiNsBuildPrefixedPathname (
+    ACPI_GENERIC_STATE      *PrefixScope,
+    const char              *InternalPath);
+
+char *
 AcpiNsNameOfCurrentScope (
     ACPI_WALK_STATE         *WalkState);
+
+ACPI_STATUS
+AcpiNsHandleToName (
+    ACPI_HANDLE             TargetHandle,
+    ACPI_BUFFER             *Buffer);
 
 ACPI_STATUS
 AcpiNsHandleToPathname (
@@ -452,6 +520,13 @@ BOOLEAN
 AcpiNsPatternMatch (
     ACPI_NAMESPACE_NODE     *ObjNode,
     char                    *SearchFor);
+
+ACPI_STATUS
+AcpiNsGetNodeUnlocked (
+    ACPI_NAMESPACE_NODE     *PrefixNode,
+    const char              *ExternalPathname,
+    UINT32                  Flags,
+    ACPI_NAMESPACE_NODE     **OutNode);
 
 ACPI_STATUS
 AcpiNsGetNode (

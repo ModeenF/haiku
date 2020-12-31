@@ -5,9 +5,9 @@
  * Authors:
  *		Michael Lotz <mmlr@mlotz.ch>
  */
-
 #ifndef _PHYSICAL_MEMORY_ALLOCATOR_H_
 #define _PHYSICAL_MEMORY_ALLOCATOR_H_
+
 
 #include <condition_variable.h>
 #include <SupportDefs.h>
@@ -22,7 +22,7 @@ public:
 										uint32 minCountPerBlock);
 									~PhysicalMemoryAllocator();
 
-		status_t					InitCheck() { return fStatus; };
+		status_t					InitCheck() { return fStatus; }
 
 		status_t					Allocate(size_t size,
 										void **logicalAddress,
@@ -39,9 +39,6 @@ public:
 		void						DumpFreeSlots();
 
 private:
-		bool						_Lock();
-		void						_Unlock();
-
 		char						*fName;
 
 		size_t						fOverhead;
@@ -62,11 +59,9 @@ private:
 		ConditionVariable			fNoMemoryCondition;
 		uint32						fMemoryWaitersCount;
 
-#ifdef HAIKU_TARGET_PLATFORM_HAIKU
 		uint32						fDebugBase;
 		uint32						fDebugChunkSize;
 		uint64						fDebugUseMap;
-#endif
 };
 
 #endif // !_PHYSICAL_MEMORY_ALLOCATOR_H_

@@ -1,6 +1,6 @@
 /*
  * Copyright 2009, Ingo Weinhold, ingo_weinhold@gmx.de.
- * Copyright 2011-2014, Rene Gollent, rene@gollent.com.
+ * Copyright 2011-2016, Rene Gollent, rene@gollent.com.
  * Distributed under the terms of the MIT License.
  */
 
@@ -138,6 +138,7 @@ GraphicalUserInterface::~GraphicalUserInterface()
 {
 	delete fTeamWindowMessenger;
 	delete fFilePanel;
+	delete fFilePanelHandler;
 }
 
 
@@ -178,7 +179,10 @@ GraphicalUserInterface::Init(Team* team, UserInterfaceListener* listener)
 void
 GraphicalUserInterface::Show()
 {
-	fTeamWindow->Show();
+	if (fTeamWindow->IsHidden())
+		fTeamWindow->Show();
+	else
+		fTeamWindow->Activate();
 }
 
 
@@ -188,6 +192,13 @@ GraphicalUserInterface::Terminate()
 	// quit window
 	if (fTeamWindowMessenger && fTeamWindowMessenger->LockTarget())
 		fTeamWindow->Quit();
+}
+
+
+UserInterface*
+GraphicalUserInterface::Clone() const
+{
+	return new(std::nothrow) GraphicalUserInterface;
 }
 
 

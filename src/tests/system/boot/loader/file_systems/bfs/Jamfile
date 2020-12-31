@@ -1,7 +1,5 @@
 SubDir HAIKU_TOP src tests system boot loader file_systems bfs ;
 
-SetSubDirSupportedPlatformsBeOSCompatible ;
-
 UsePrivateKernelHeaders ;
 UsePrivateSystemHeaders ;
 UsePrivateHeaders [ FDirName kernel disk_device_manager ] ;
@@ -9,11 +7,6 @@ UsePrivateHeaders [ FDirName storage ] ;
 SubDirSysHdrs $(HAIKU_TOP) src tests system boot loader ;
 SubDirHdrs $(HAIKU_TOP) src system boot loader file_systems bfs ;
 SubDirHdrs $(HAIKU_TOP) src add-ons kernel file_systems bfs ;
-
-if $(TARGET_PLATFORM) != haiku {
-	UsePublicHeaders drivers ;	# disk_device_manager.h
-	UsePublicHeaders storage ;	# DiskDeviceDefs.h
-}
 
 ObjectDefines
 	bfs.cpp

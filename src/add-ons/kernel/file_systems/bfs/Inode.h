@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2010, Axel Dörfler, axeld@pinc-software.de.
+ * Copyright 2001-2020, Axel Dörfler, axeld@pinc-software.de.
  * This file may be used under the terms of the MIT License.
  */
 #ifndef INODE_H
@@ -21,6 +21,10 @@ class Index;
 class InodeAllocator;
 class NodeGetter;
 class Transaction;
+
+
+// To be used in Inode::Create() as publishFlags
+#define BFS_DO_NOT_PUBLISH_VNODE	0x80000000
 
 
 class Inode : public TransactionListener {
@@ -45,7 +49,7 @@ public:
 			recursive_lock&		SmallDataLock() { return fSmallDataLock; }
 
 			status_t			WriteBack(Transaction& transaction);
-			void				UpdateNodeFromDisk();
+			status_t			UpdateNodeFromDisk();
 
 			bool				IsContainer() const
 									{ return S_ISDIR(Mode()); }
@@ -95,6 +99,9 @@ public:
 			const block_run&	BlockRun() const
 									{ return fNode.inode_num; }
 			block_run&			Parent() { return fNode.parent; }
+			const block_run&	Parent() const { return fNode.parent; }
+			ino_t				ParentID() const
+									{ return fVolume->ToVnode(Parent()); }
 			block_run&			Attributes() { return fNode.attributes; }
 
 			Volume*				GetVolume() const { return fVolume; }
@@ -331,30 +338,25 @@ private:
 class NodeGetter : public CachedBlock {
 public:
 	NodeGetter(Volume* volume)
-		: CachedBlock(volume)
+		:
+		CachedBlock(volume)
 	{
-	}
-
-	NodeGetter(Volume* volume, const Inode* inode)
-		: CachedBlock(volume)
-	{
-		SetTo(volume->VnodeToBlock(inode->ID()));
-	}
-
-	NodeGetter(Volume* volume, Transaction& transaction,
-			const Inode* inode, bool empty = false)
-		: CachedBlock(volume)
-	{
-		SetToWritable(transaction, volume->VnodeToBlock(inode->ID()), empty);
 	}
 
 	~NodeGetter()
 	{
 	}
 
-	const bfs_inode* SetToNode(const Inode* inode)
+	status_t SetTo(const Inode* inode)
 	{
-		return (const bfs_inode*)SetTo(fVolume->VnodeToBlock(inode->ID()));
+		return CachedBlock::SetTo(fVolume->VnodeToBlock(inode->ID()));
+	}
+
+	status_t SetToWritable(Transaction& transaction, const Inode* inode,
+		bool empty = false)
+	{
+		return CachedBlock::SetToWritable(transaction,
+			fVolume->VnodeToBlock(inode->ID()), empty);
 	}
 
 	const bfs_inode* Node() const { return (const bfs_inode*)Block(); }

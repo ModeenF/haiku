@@ -1,5 +1,5 @@
 /*
- * Copyright 2005, Ingo Weinhold, bonefish@users.sf.net.
+ * Copyright 2005-2016 Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  */
 #ifndef _DEBUGGER_H
@@ -18,20 +18,29 @@
 #include <arch/m68k/arch_debugger.h>
 #include <arch/mipsel/arch_debugger.h>
 #include <arch/arm/arch_debugger.h>
+#include <arch/arm64/arch_debugger.h>
+#include <arch/riscv64/arch_debugger.h>
+#include <arch/sparc/arch_debugger.h>
 
 
-#ifdef __x86_64__
+#if defined(__x86_64__)
 	typedef struct x86_64_debug_cpu_state debug_cpu_state;
-#elif __INTEL__
+#elif defined(__i386__)
 	typedef struct x86_debug_cpu_state debug_cpu_state;
-#elif __POWERPC__
+#elif defined(__POWERPC__)
 	typedef struct ppc_debug_cpu_state debug_cpu_state;
-#elif __M68K__
+#elif defined(__M68K__)
 	typedef struct m68k_debug_cpu_state debug_cpu_state;
-#elif __MIPSEL__
+#elif defined(__MIPSEL__)
 	typedef struct mipsel_debug_cpu_state debug_cpu_state;
-#elif __ARM__
+#elif defined(__arm__)
 	typedef struct arm_debug_cpu_state debug_cpu_state;
+#elif defined(__RISCV__) || defined(__riscv64__)
+	typedef struct riscv64_debug_cpu_state debug_cpu_state;
+#elif defined(__sparc64__)
+	typedef struct sparc_debug_cpu_state debug_cpu_state;
+#elif defined(__aarch64__) || defined(__arm64__)
+	typedef struct arm64_debug_cpu_state debug_cpu_state;
 #else
 	#error unsupported architecture
 #endif
@@ -163,7 +172,9 @@ typedef enum {
 										// install_team_debugger()
 
 	B_DEBUG_START_PROFILER,				// start/stop sampling
-	B_DEBUG_STOP_PROFILER				//
+	B_DEBUG_STOP_PROFILER,				//
+
+	B_DEBUG_WRITE_CORE_FILE				// write a core file
 } debug_nub_message;
 
 // messages sent to the debugger
@@ -412,6 +423,20 @@ typedef struct {
 	thread_id			thread;			// thread to profile
 } debug_nub_stop_profiler;
 
+// B_DEBUG_WRITE_CORE_FILE
+
+typedef struct {
+	port_id				reply_port;		// port to send the reply to
+	char				path[B_PATH_NAME_LENGTH];
+										// path of the core file; must not exist
+										// yet; must be absolute
+} debug_nub_write_core_file;
+
+typedef struct {
+	status_t	error;					// B_OK on success
+} debug_nub_write_core_file_reply;
+
+
 // reply is debug_profiler_update
 
 // union of all messages structures sent to the debug nub thread
@@ -433,6 +458,7 @@ typedef union {
 	debug_nub_get_signal_handler	get_signal_handler;
 	debug_nub_start_profiler		start_profiler;
 	debug_nub_stop_profiler			stop_profiler;
+	debug_nub_write_core_file		write_core_file;
 } debug_nub_message_data;
 
 

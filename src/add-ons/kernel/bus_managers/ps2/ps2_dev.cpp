@@ -45,7 +45,7 @@ ps2_reset_mouse(ps2_dev* dev)
 		status = ps2_dev_command(dev, PS2_CMD_RESEND, NULL, 0, data, 2);
 	}
 
-	if (status == B_OK && data[0] != 0xAA && data[1] != 0x00) {
+	if (status == B_OK && (data[0] != 0xAA || data[1] != 0x00)) {
 		TRACE("ps2: reset mouse failed, response was: 0x%02x 0x%02x\n",
 			data[0], data[1]);
 		status = B_ERROR;
@@ -89,15 +89,13 @@ ps2_dev_detect_pointing(ps2_dev* dev, device_hooks** hooks)
 		goto dev_found;
 	}
 
-#if 0
 	status = probe_elantech(dev);
 	if (status == B_OK) {
 		*hooks = &gElantechDeviceHooks;
 		goto dev_found;
 	}
-#endif
 
-	// reset the mouse for the case that the previous probes leaf the mouse in
+	// reset the mouse for the case that the previous probes left the mouse in
 	// a undefined state
 	status = ps2_reset_mouse(dev);
 	if (status != B_OK) {
@@ -370,7 +368,9 @@ standard_command_timeout(ps2_dev* dev, uint8 cmd, const uint8* out,
 	int out_count, uint8* in, int in_count, bigtime_t timeout)
 {
 	status_t res;
+#ifdef TRACE_PS2
 	bigtime_t start;
+#endif
 	int32 sem_count;
 	int i;
 
@@ -428,16 +428,18 @@ standard_command_timeout(ps2_dev* dev, uint8 cmd, const uint8* out,
 		}
 
 		release_sem(gControllerSem);
-
+#ifdef TRACE_PS2
 		start = system_time();
+#endif
 		res = acquire_sem_etc(dev->result_sem, 1, B_RELATIVE_TIMEOUT, timeout);
 
 		if (res != B_OK)
 			atomic_and(&dev->flags, ~PS2_FLAG_CMD);
 
+#ifdef TRACE_PS2
 		TRACE("ps2: ps2_dev_command wait for ack res 0x%08" B_PRIx32 ", "
 			"wait-time %" B_PRId64 "\n", res, system_time() - start);
-
+#endif
 		if (atomic_get(&dev->flags) & PS2_FLAG_ACK) {
 			TRACE("ps2: ps2_dev_command got ACK\n");
 		}
@@ -456,7 +458,9 @@ standard_command_timeout(ps2_dev* dev, uint8 cmd, const uint8* out,
 		if (in_count == 0) {
 			atomic_and(&dev->flags, ~PS2_FLAG_CMD);
 		} else {
+#ifdef TRACE_PS2
 			start = system_time();
+#endif
 			res = acquire_sem_etc(dev->result_sem, 1, B_RELATIVE_TIMEOUT,
 				timeout);
 
@@ -470,11 +474,12 @@ standard_command_timeout(ps2_dev* dev, uint8 cmd, const uint8* out,
 				res = B_IO_ERROR;
 			}
 
+#ifdef TRACE_PS2
 			TRACE("ps2: ps2_dev_command wait for input res 0x%08" B_PRIx32 ", "
 				"wait-time %" B_PRId64 "\n", res, system_time() - start);
-
 			for (i = 0; i < in_count; i++)
 				TRACE("ps2: ps2_dev_command rx: 0x%02x\n", in[i]);
+#endif
 		}
 	}
 

@@ -4,19 +4,7 @@
  * Copyright (C) 2006 Marcus Overhagen <marcus@overhagen.de>
  * Copyright (C) 2008 Stephan Aßmus <superstippi@gmx.de> (MIT Ok)
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- *
+ * Released under the terms of the MIT license.
  */
 
 
@@ -229,9 +217,19 @@ MainApp::ArgvReceived(int32 argc, char** argv)
 	char cwd[B_PATH_NAME_LENGTH];
 	getcwd(cwd, sizeof(cwd));
 
-	BMessage message(B_REFS_RECEIVED);
-
 	for (int i = 1; i < argc; i++) {
+		BUrl url(argv[i]);
+		if (url.IsValid()) {
+			BMessage archivedUrl;
+			url.Archive(&archivedUrl);
+
+			BMessage msg(M_URL_RECEIVED);
+			if (msg.AddMessage("mediaplayer:url", &archivedUrl) == B_OK)
+				RefsReceived(&msg);
+
+			continue;
+		}
+
 		BPath path;
 		if (argv[i][0] != '/')
 			path.SetTo(cwd, argv[i]);
@@ -241,13 +239,11 @@ MainApp::ArgvReceived(int32 argc, char** argv)
 		if (!entry.Exists() || !entry.IsFile())
 			continue;
 
+		BMessage message(B_REFS_RECEIVED);
 		entry_ref ref;
-		if (entry.GetRef(&ref) == B_OK)
-			message.AddRef("refs", &ref);
+		if (entry.GetRef(&ref) == B_OK && message.AddRef("refs", &ref) == B_OK)
+			RefsReceived(&message);
 	}
-
-	if (message.HasRef("refs"))
-		RefsReceived(&message);
 }
 
 

@@ -21,8 +21,8 @@ struct termios {
 	tcflag_t	c_cflag;	/* control modes */
 	tcflag_t	c_lflag;	/* local modes */
 	char		c_line;		/* line discipline */
-	speed_t		c_ispeed;	/* (unused) */
-	speed_t		c_ospeed;	/* (unused) */
+	speed_t		c_ispeed;	/* custom input baudrate */
+	speed_t		c_ospeed;	/* custom output baudrate */
 	cc_t		c_cc[NCCS];	/* control characters */
 };
 
@@ -187,6 +187,7 @@ struct termios {
 #define TIOCCBRK			(TCGETA + 21)	/* both are a frontend to TCSBRK */
 #define TIOCMBIS			(TCGETA + 22)	/* set bits in line state */
 #define TIOCMBIC			(TCGETA + 23)	/* clear bits in line state */
+#define	TIOCGSID			(TCGETA + 24)	/* get session leader process group ID */
 
 /* Event codes.  Returned from TCWAITEVENT */
 #define EV_RING			0x0001
@@ -233,6 +234,8 @@ extern int		tcsendbreak(int fd, int duration);
 extern int		tcdrain(int fd);
 extern int		tcflow(int fd, int action);
 extern int		tcflush(int fd, int queueSelector);
+extern pid_t	tcgetsid(int fd);
+extern int		tcsetsid(int fd, pid_t pid);
 
 #ifdef __cplusplus
 }

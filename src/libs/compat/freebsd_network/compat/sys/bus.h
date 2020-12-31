@@ -69,7 +69,6 @@ struct resource_spec {
 
 enum intr_type {
 	INTR_TYPE_NET	= 4,
-	INTR_FAST		= 128,
 	INTR_MPSAFE		= 512,
 };
 
@@ -79,12 +78,13 @@ int bus_generic_suspend(device_t dev);
 int bus_generic_resume(device_t dev);
 void bus_generic_shutdown(device_t dev);
 
-typedef int (*driver_filter_t)(void *);
+typedef int (driver_filter_t)(void *arg);
 typedef void driver_intr_t(void *);
 
 
 int resource_int_value(const char *name, int unit, const char *resname,
 	int *result);
+int resource_disabled(const char *name, int unit);
 
 struct resource *bus_alloc_resource(device_t dev, int type, int *rid,
 	unsigned long start, unsigned long end, unsigned long count, uint32 flags);
@@ -95,6 +95,7 @@ void bus_release_resources(device_t dev,
 	const struct resource_spec *resourceSpec, struct resource **resources);
 
 int	bus_child_present(device_t child);
+void	bus_enumerate_hinted_children(device_t bus);
 
 static inline struct resource *
 bus_alloc_resource_any(device_t dev, int type, int *rid, uint32 flags)
@@ -102,16 +103,27 @@ bus_alloc_resource_any(device_t dev, int type, int *rid, uint32 flags)
 	return bus_alloc_resource(dev, type, rid, 0, ~0, 1, flags);
 }
 
+static inline struct resource *
+bus_alloc_resource_anywhere(device_t dev, int type, int *rid,
+    unsigned long count, uint32 flags)
+{
+	return (bus_alloc_resource(dev, type, rid, 0, ~0, count, flags));
+}
+
 bus_dma_tag_t bus_get_dma_tag(device_t dev);
 
 int bus_setup_intr(device_t dev, struct resource *r, int flags,
-	driver_filter_t filter, driver_intr_t handler, void *arg, void **_cookie);
+	driver_filter_t* filter, driver_intr_t handler, void *arg, void **_cookie);
 int bus_teardown_intr(device_t dev, struct resource *r, void *cookie);
+int bus_bind_intr(device_t dev, struct resource *r, int cpu);
+int bus_describe_intr(device_t dev, struct resource *irq, void *cookie,
+	const char* fmt, ...);
 
 const char *device_get_name(device_t dev);
 const char *device_get_nameunit(device_t dev);
 int device_get_unit(device_t dev);
 void *device_get_softc(device_t dev);
+void device_set_softc(device_t dev, void *softc);
 int device_printf(device_t dev, const char *, ...) __printflike(2, 3);
 void device_set_desc(device_t dev, const char *desc);
 void device_set_desc_copy(device_t dev, const char *desc);
@@ -124,7 +136,9 @@ int device_get_children(device_t dev, device_t **devlistp, int *devcountp);
 void device_set_ivars(device_t dev, void *);
 void *device_get_ivars(device_t dev);
 
-device_t device_add_child(device_t dev, const char *name, int unit);
+device_t device_add_child(device_t dev, const char* name, int unit);
+device_t device_add_child_driver(device_t dev, const char* name, driver_t* driver,
+	int unit);
 int device_delete_child(device_t dev, device_t child);
 int device_is_attached(device_t dev);
 int device_attach(device_t dev);

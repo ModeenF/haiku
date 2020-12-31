@@ -179,6 +179,7 @@ PlaylistWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case M_URL_RECEIVED:
 		case B_REFS_RECEIVED:
 			// Used for when we open a playlist from playlist window
 			if (!message->HasInt32("append_index")) {
@@ -193,7 +194,7 @@ PlaylistWindow::MessageReceived(BMessage* message)
 			// outside of the playlist!
 			int32 appendIndex;
 			if (message->FindInt32("append_index", &appendIndex) == B_OK)
-				fListView->RefsReceived(message, appendIndex);
+				fListView->ItemsReceived(message, appendIndex);
 			break;
 		}
 
@@ -240,9 +241,11 @@ PlaylistWindow::MessageReceived(BMessage* message)
 		case M_PLAYLIST_RANDOMIZE:
 			fListView->Randomize();
 			break;
+
 		case M_PLAYLIST_REMOVE:
 			fListView->RemoveSelected();
 			break;
+
 		case M_PLAYLIST_MOVE_TO_TRASH:
 		{
 			int32 index;
@@ -252,6 +255,7 @@ PlaylistWindow::MessageReceived(BMessage* message)
 				fListView->RemoveSelectionToTrash();
 			break;
 		}
+
 		default:
 			BWindow::MessageReceived(message);
 			break;

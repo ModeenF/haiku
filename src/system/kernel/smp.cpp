@@ -1489,6 +1489,45 @@ smp_get_current_cpu(void)
 }
 
 
+static void
+_call_single_cpu(uint32 targetCPU, void (*func)(void*, int), void* cookie, bool sync)
+{
+	cpu_status state = disable_interrupts();
+
+	if (targetCPU == (uint32)smp_get_current_cpu()) {
+		func(cookie, smp_get_current_cpu());
+		restore_interrupts(state);
+		return;
+	}
+
+	if (!sICIEnabled) {
+		// Early mechanism not available
+		panic("call_single_cpu is not yet available");
+		restore_interrupts(state);
+		return;
+	}
+
+	smp_send_ici(targetCPU, SMP_MSG_CALL_FUNCTION, (addr_t)cookie,
+		0, 0, (void*)func, sync ? SMP_MSG_FLAG_SYNC : SMP_MSG_FLAG_ASYNC);
+
+	restore_interrupts(state);
+}
+
+
+void
+call_single_cpu(uint32 targetCPU, void (*func)(void*, int), void* cookie)
+{
+	return _call_single_cpu(targetCPU, func, cookie, false);
+}
+
+
+void
+call_single_cpu_sync(uint32 targetCPU, void (*func)(void*, int), void* cookie)
+{
+	return _call_single_cpu(targetCPU, func, cookie, true);
+}
+
+
 // #pragma mark - public exported functions
 
 
@@ -1540,6 +1579,9 @@ call_all_cpus_sync(void (*func)(void*, int), void* cookie)
 }
 
 
+// Ensure the symbols for memory_barriers are still included
+// in the kernel for binary compatibility. Calls are forwarded
+// to the more efficent per-processor atomic implementations.
 #undef memory_read_barrier
 #undef memory_write_barrier
 

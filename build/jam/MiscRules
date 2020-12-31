@@ -63,15 +63,6 @@ rule SetupFeatureObjectsDir feature
 	;
 }
 
-rule SubIncludeGPL
-{
-	# SubInclude rule that can be used to conditionally include GPL licensed
-	# add-ons
-	if $(HAIKU_INCLUDE_GPL_ADDONS) = 1 {
-		SubInclude $(1) ;
-	}
-}
-
 
 # pragma mark - MakeLocate variants
 
@@ -144,7 +135,7 @@ HAIKU_DEFERRED_SUB_INCLUDES = ;
 
 rule DeferredSubInclude params : jamfile : scope
 {
-	# DeferredSubInclude <subdir tokens> [ : <jamfile name>  [ : <scope> ] ] ;
+	# DeferredSubInclude <subdir tokens> [ : <jamfile name> [ : <scope> ] ] ;
 	#
 	# Takes the same directory tokens parameter as SubInclude plus an optional
 	# alternative Jamfile name. The the subdirectory referred to by
@@ -246,7 +237,7 @@ rule RunCommandLine commandLine
 
 	local targetVarName = target ;
 	local i ;
-	for i in $(commandLine)  {
+	for i in $(commandLine) {
 		# targets are marked by the ":" prefix
 		local target = [ Match ^:(.*) : $(i) ] ;
 		if $(target) {
@@ -275,7 +266,7 @@ actions RunCommandLine1 {
 		target=${target}X
 		eval "${target}=${t}"
 	done
-	$(HOST_ADD_BUILD_COMPATIBILITY_LIB_DIR)
+	$(HOST_ADD_BUILD_COMPATIBILITY_LIB_DIR) \
 	"$(COMMAND_LINE)"
 }
 

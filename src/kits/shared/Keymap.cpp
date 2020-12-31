@@ -20,6 +20,8 @@
 #include <ByteOrder.h>
 #include <File.h>
 
+#include <input_globals.h>
+
 
 #ifdef HAIKU_TARGET_PLATFORM_HAIKU
 #	include "SystemKeymap.h"
@@ -116,12 +118,18 @@ BKeymap::SetToCurrent()
 {
 #ifdef HAIKU_TARGET_PLATFORM_HAIKU
 	key_map* keys = NULL;
-	get_key_map(&keys, &fChars);
+	ssize_t charsSize;
+
+	delete[] fChars;
+	_get_key_map(&keys, &fChars, &charsSize);
 	if (!keys)
 		return B_ERROR;
 
 	memcpy(&fKeys, keys, sizeof(fKeys));
 	free(keys);
+
+	fCharsSize = (uint32)charsSize;
+
 	return B_OK;
 #else	// ! __BEOS__
 	fprintf(stderr, "Unsupported operation on this platform!\n");
@@ -137,6 +145,7 @@ BKeymap::SetToDefault()
 	fKeys = kSystemKeymap;
 	fCharsSize = kSystemKeyCharsSize;
 
+	delete[] fChars;
 	fChars = new (std::nothrow) char[fCharsSize];
 	if (fChars == NULL) {
 		Unset();
@@ -411,7 +420,7 @@ BKeymap::GetChars(uint32 keyCode, uint32 modifiers, uint8 activeDeadKey,
 
 	// if dead key, we search for our current offset char in the dead key
 	// offset table string comparison is needed
-	for (int32 i = 0; i < 32; i++) {
+	for (int32 i = 0; i < 32; i += 2) {
 		if (strncmp(&fChars[offset + 1], &fChars[deadKey[i] + 1], *numBytes)
 				== 0) {
 			*numBytes = fChars[deadKey[i + 1]];
@@ -432,7 +441,6 @@ BKeymap::GetChars(uint32 keyCode, uint32 modifiers, uint8 activeDeadKey,
 			}
 			return;
 		}
-		i++;
 	}
 
 	// if not found we return the current char mapped
@@ -452,58 +460,15 @@ BKeymap::GetModifiedCharacters(const char* in, int32 inModifiers,
 	if (in == NULL || *in == '\0' || _outList == NULL)
 		return B_BAD_VALUE;
 
-	int32 inOffset;
-	int32 outOffset;
-
 	for(uint32 i = 0; i < 128; i++) {
-		if (inModifiers == 0)
-			inOffset = fKeys.normal_map[i];
-		else if (inModifiers == B_SHIFT_KEY)
-			inOffset = fKeys.shift_map[i];
-		else if (inModifiers == B_CONTROL_KEY)
-			inOffset = fKeys.control_map[i];
-		else if (inModifiers == B_OPTION_KEY)
-			inOffset = fKeys.option_map[i];
-		else if (inModifiers == (B_OPTION_KEY | B_SHIFT_KEY))
-			inOffset = fKeys.option_shift_map[i];
-		else if (inModifiers == B_CAPS_LOCK)
-			inOffset = fKeys.caps_map[i];
-		else if (inModifiers == (B_CAPS_LOCK | B_SHIFT_KEY))
-			inOffset = fKeys.caps_shift_map[i];
-		else if (inModifiers == (B_OPTION_KEY | B_CAPS_LOCK))
-			inOffset = fKeys.option_caps_map[i];
-		else if (inModifiers == (B_OPTION_KEY | B_CAPS_LOCK | B_SHIFT_KEY))
-			inOffset = fKeys.option_caps_shift_map[i];
-		else
-			return B_BAD_VALUE;
-
+		int32 inOffset = Offset(i, inModifiers);
 		size_t sizeIn = fChars[inOffset++];
 		if (sizeIn == 0 || memcmp(in, fChars + inOffset, sizeIn) != 0) {
 			// this character isn't mapped or doesn't match
 			continue;
 		}
 
-		if (outModifiers == 0)
-			outOffset = fKeys.normal_map[i];
-		else if (outModifiers == B_SHIFT_KEY)
-			outOffset = fKeys.shift_map[i];
-		else if (outModifiers == B_CONTROL_KEY)
-			outOffset = fKeys.control_map[i];
-		else if (outModifiers == B_OPTION_KEY)
-			outOffset = fKeys.option_map[i];
-		else if (outModifiers == (B_OPTION_KEY | B_SHIFT_KEY))
-			outOffset = fKeys.option_shift_map[i];
-		else if (outModifiers == B_CAPS_LOCK)
-			outOffset = fKeys.caps_map[i];
-		else if (outModifiers == (B_CAPS_LOCK | B_SHIFT_KEY))
-			outOffset = fKeys.caps_shift_map[i];
-		else if (outModifiers == (B_OPTION_KEY | B_CAPS_LOCK))
-			outOffset = fKeys.option_caps_map[i];
-		else if (outModifiers == (B_OPTION_KEY | B_CAPS_LOCK | B_SHIFT_KEY))
-			outOffset = fKeys.option_caps_shift_map[i];
-		else
-			return B_BAD_VALUE;
-
+		int32 outOffset = Offset(i, outModifiers);
 		size_t sizeOut = fChars[outOffset++];
 		char* out = (char*)malloc(sizeOut + 1);
 		if (out == NULL)
@@ -540,8 +505,8 @@ BKeymap::operator=(const BKeymap& other)
 {
 	Unset();
 
-	fChars = new char[fCharsSize];
 	fCharsSize = other.fCharsSize;
+	fChars = new char[fCharsSize];
 	memcpy(fChars, other.fChars, fCharsSize);
 	memcpy(&fKeys, &other.fKeys, sizeof(fKeys));
 

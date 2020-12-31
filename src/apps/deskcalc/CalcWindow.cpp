@@ -45,7 +45,7 @@ CalcWindow::CalcWindow(BRect frame, BMessage* settings)
 		kMinimumHeightBasic, kMaximumHeightBasic);
 
 	frame.OffsetTo(B_ORIGIN);
-	fCalcView = new CalcView(frame, baseColor, settings);
+	fCalcView = new CalcView(Frame(), baseColor, settings);
 
 	// create replicant dragger
 	BRect replicantFrame(frame);
@@ -85,10 +85,6 @@ CalcWindow::MessageReceived(BMessage* message)
 	switch (message->what) {
 		case MSG_OPTIONS_AUTO_NUM_LOCK:
 			fCalcView->ToggleAutoNumlock();
-			break;
-
-		case MSG_OPTIONS_AUDIO_FEEDBACK:
-			fCalcView->ToggleAudioFeedback();
 			break;
 
 		case MSG_OPTIONS_ANGLE_MODE_RADIAN:

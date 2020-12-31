@@ -1,4 +1,5 @@
 /*
+ * Copyright 2017, Chế Vũ Gia Hy, cvghy116@gmail.com.
  * Copyright 2001-2009, Axel Dörfler, axeld@pinc-software.de.
  * This file may be used under the terms of the MIT License.
  */
@@ -22,6 +23,32 @@ enum inode_type {
 };
 
 
+inline uint8
+get_filetype(int32 mode)
+{
+	mode &= S_IFMT;
+	switch (mode)
+	{
+		case S_IFSOCK:
+			return BTRFS_FILETYPE_SOCKET;
+		case S_IFLNK:
+			return BTRFS_FILETYPE_SYMLINK;
+		case S_IFREG:
+			return BTRFS_FILETYPE_REGULAR;
+		case S_IFBLK:
+			return BTRFS_FILETYPE_BLKDEV;
+		case S_IFDIR:
+			return BTRFS_FILETYPE_DIRECTORY;
+		case S_IFCHR:
+			return BTRFS_FILETYPE_CHRDEV;
+		case S_IFIFO:
+			return BTRFS_FILETYPE_FIFO;
+		default:
+			return BTRFS_FILETYPE_UNKNOWN;
+	}
+}
+
+
 /*!	Converts the open mode, the open flags given to bfs_open(), into
 	access modes, e.g. since O_RDONLY requires read access to the
 	file, it will be converted to R_OK.
@@ -37,5 +64,6 @@ open_mode_to_access(int openMode)
 
 	return R_OK | W_OK;
 }
+
 
 #endif	// UTILITY_H

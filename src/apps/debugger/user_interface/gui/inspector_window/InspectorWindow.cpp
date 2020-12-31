@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2015, Rene Gollent, rene@gollent.com. All rights reserved.
+ * Copyright 2011-2016, Rene Gollent, rene@gollent.com. All rights reserved.
  * Distributed under the terms of the MIT License.
  */
 
@@ -17,14 +17,15 @@
 #include <StringView.h>
 #include <TextControl.h>
 
+#include "AppMessageCodes.h"
 #include "Architecture.h"
 #include "CppLanguage.h"
 #include "GuiTeamUiSettings.h"
-#include "IntegerValue.h"
 #include "MemoryView.h"
 #include "MessageCodes.h"
 #include "Team.h"
 #include "UserInterface.h"
+#include "Value.h"
 
 
 enum {

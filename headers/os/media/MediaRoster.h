@@ -42,7 +42,7 @@ public:
 				// same time.
 
 	// Check if the media services are running.
-	static bool					IsRunning();
+	static	bool				IsRunning();
 
 	// Getting common instances of system nodes:
 			status_t			GetVideoInput(media_node* _node);

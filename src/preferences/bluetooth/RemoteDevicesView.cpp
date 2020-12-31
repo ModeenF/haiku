@@ -13,7 +13,7 @@
 #include <File.h>
 #include <Path.h>
 
-#include <GroupLayoutBuilder.h>
+#include <LayoutBuilder.h>
 #include <SpaceLayoutItem.h>
 
 #include <PincodeWindow.h>
@@ -41,8 +41,6 @@ using namespace Bluetooth;
 RemoteDevicesView::RemoteDevicesView(const char* name, uint32 flags)
  :	BView(name, flags)
 {
-	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-
 	addButton = new BButton("add", B_TRANSLATE("Add" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgAddDevices));
 
@@ -66,15 +64,13 @@ RemoteDevicesView::RemoteDevicesView(const char* name, uint32 flags)
 	fDeviceList = new BListView("DeviceList", B_SINGLE_SELECTION_LIST);
 
 	fScrollView = new BScrollView("ScrollView", fDeviceList, 0, false, true);
-	fScrollView->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 
-	SetLayout(new BGroupLayout(B_VERTICAL));
-
-	// TODO: use all the additional height
-	AddChild(BGroupLayoutBuilder(B_HORIZONTAL, 10)
+	BLayoutBuilder::Group<>(this, B_HORIZONTAL, 10)
+		.SetInsets(5)
 		.Add(fScrollView)
 		//.Add(BSpaceLayoutItem::CreateHorizontalStrut(5))
-		.Add(BGroupLayoutBuilder(B_VERTICAL)
+		.AddGroup(B_VERTICAL)
+			.SetInsets(0, 15, 0, 15)
 			.Add(addButton)
 			.Add(removeButton)
 			.AddGlue()
@@ -84,10 +80,8 @@ RemoteDevicesView::RemoteDevicesView(const char* name, uint32 flags)
 			.Add(disconnectButton)
 			.Add(blockButton)
 			.AddGlue()
-			.SetInsets(0, 15, 0, 15)
-		)
-		.SetInsets(5, 5, 5, 100)
-	);
+		.End()
+	.End();
 
 	fDeviceList->SetSelectionMessage(NULL);
 }
@@ -121,14 +115,15 @@ RemoteDevicesView::MessageReceived(BMessage* message)
 	switch (message->what) {
 		case kMsgAddDevices:
 		{
-			InquiryPanel* inquiryPanel = new InquiryPanel(BRect(100, 100, 450, 450),
-				ActiveLocalDevice);
+			InquiryPanel* inquiryPanel= new InquiryPanel(
+				BRect(100, 100, 450, 450), ActiveLocalDevice);
 			inquiryPanel->Show();
 			break;
 		}
 
 		case kMsgRemoveDevice:
-			printf("kMsgRemoveDevice: %ld\n", fDeviceList->CurrentSelection(0));
+			printf("kMsgRemoveDevice: %" B_PRId32 "\n",
+				fDeviceList->CurrentSelection(0));
 			fDeviceList->RemoveItem(fDeviceList->CurrentSelection(0));
 			break;
 		case kMsgAddToRemoteList:
@@ -144,10 +139,14 @@ RemoteDevicesView::MessageReceived(BMessage* message)
 		{
 			DeviceListItem* device = static_cast<DeviceListItem*>(fDeviceList
 				->ItemAt(fDeviceList->CurrentSelection(0)));
-			RemoteDevice* remote = dynamic_cast<RemoteDevice*>(device->Device());
+			if (device == NULL)
+				break;
 
-			if (remote != NULL)
-				remote->Authenticate();
+			RemoteDevice* remote = dynamic_cast<RemoteDevice*>(device->Device());
+			if (remote == NULL)
+				break;
+
+			remote->Authenticate();
 
 			break;
 		}
@@ -155,10 +154,14 @@ RemoteDevicesView::MessageReceived(BMessage* message)
 		{
 			DeviceListItem* device = static_cast<DeviceListItem*>(fDeviceList
 				->ItemAt(fDeviceList->CurrentSelection(0)));
-			RemoteDevice* remote = dynamic_cast<RemoteDevice*>(device->Device());
+			if (device == NULL)
+				break;
 
-			if (remote != NULL)
-				remote->Disconnect();
+			RemoteDevice* remote = dynamic_cast<RemoteDevice*>(device->Device());
+			if (remote == NULL)
+				break;
+
+			remote->Disconnect();
 
 			break;
 		}

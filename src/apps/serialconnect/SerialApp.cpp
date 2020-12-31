@@ -1,5 +1,5 @@
 /*
- * Copyright 2012, Adrien Destugues, pulkomandy@gmail.com
+ * Copyright 2012-2017, Adrien Destugues, pulkomandy@gmail.com
  * Distributed under the terms of the MIT licence.
  */
 
@@ -15,6 +15,7 @@
 #include <FindDirectory.h>
 #include <Path.h>
 
+#include "CustomRateWindow.h"
 #include "SerialWindow.h"
 
 
@@ -55,7 +56,7 @@ static property_info sProperties[] = {
 		"get or set the port device",
 		0, { B_STRING_TYPE }
 	},
-	{ NULL }
+	{ 0 }
 };
 
 const BPropertyInfo SerialApp::kScriptingProperties(sProperties);
@@ -64,6 +65,7 @@ const BPropertyInfo SerialApp::kScriptingProperties(sProperties);
 SerialApp::SerialApp()
 	: BApplication(SerialApp::kApplicationSignature)
 	, fLogFile(NULL)
+	, fFileSender(NULL)
 {
 	fWindow = new SerialWindow();
 
@@ -77,6 +79,7 @@ SerialApp::SerialApp()
 SerialApp::~SerialApp()
 {
 	delete fLogFile;
+	delete fFileSender;
 }
 
 
@@ -98,21 +101,32 @@ void SerialApp::MessageReceived(BMessage* message)
 			} else {
 				fSerialPort.Close();
 			}
+
+			// Forward to the window so it can enable/disable menu items
+			fWindow->PostMessage(message);
 			return;
 		}
 		case kMsgDataRead:
 		{
-			// forward the message to the window, which will display the
-			// incoming data
-			fWindow->PostMessage(message);
+			const uint8_t* bytes;
+			ssize_t length;
+			message->FindData("data", B_RAW_TYPE, (const void**)&bytes,
+				&length);
 
-			if (fLogFile) {
-				const char* bytes;
-				ssize_t length;
-				message->FindData("data", B_RAW_TYPE, (const void**)&bytes,
-					&length);
-				if (fLogFile->Write(bytes, length) != length) {
-					// TODO error handling
+			if (fFileSender != NULL) {
+				if (fFileSender->BytesReceived(bytes, length)) {
+					delete fFileSender;
+					fFileSender = NULL;
+				}
+			} else {
+				// forward the message to the window, which will display the
+				// incoming data
+				fWindow->PostMessage(message);
+
+				if (fLogFile) {
+					if (fLogFile->Write(bytes, length) != length) {
+						// TODO error handling
+					}
 				}
 			}
 
@@ -120,6 +134,10 @@ void SerialApp::MessageReceived(BMessage* message)
 		}
 		case kMsgDataWrite:
 		{
+			// Do not allow sending if a file transfer is in progress.
+			if (fFileSender != NULL)
+				return;
+
 			const char* bytes;
 			ssize_t size;
 
@@ -144,6 +162,37 @@ void SerialApp::MessageReceived(BMessage* message)
 					puts(strerror(error));
 			} else
 				debugger("Invalid BMessage received");
+			return;
+		}
+		case kMsgSendFile:
+		{
+			entry_ref ref;
+
+			BString protocol = message->FindString("protocol");
+
+			if (message->FindRef("refs", &ref) == B_OK) {
+				BFile* file = new BFile(&ref, B_READ_ONLY);
+				status_t error = file->InitCheck();
+				if (error != B_OK)
+					puts(strerror(error));
+				else {
+					delete fFileSender;
+					if (protocol == "xmodem")
+						fFileSender = new XModemSender(file, &fSerialPort, fWindow);
+					else
+						fFileSender = new RawSender(file, &fSerialPort, fWindow);
+				}
+			} else {
+				message->PrintToStream();
+				debugger("Invalid BMessage received");
+			}
+			return;
+		}
+		case kMsgCustomBaudrate:
+		{
+			// open the custom baudrate selector window
+			CustomRateWindow* window = new CustomRateWindow(fSerialPort.DataRate());
+			window->Show();
 			return;
 		}
 		case kMsgSettings:

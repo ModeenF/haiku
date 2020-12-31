@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2011, Haiku, Inc. All rights reserved.
+ * Copyright 2010-2017, Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -52,7 +52,8 @@ static const struct preset_name {
 
 
 ConfigView::ConfigView(TranslatorSettings* settings)
-	: BGroupView(B_TRANSLATE("WebPTranslator Settings"), B_VERTICAL),
+	:
+	BGroupView(B_TRANSLATE("WebPTranslator Settings"), B_VERTICAL),
 	fSettings(settings)
 {
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
@@ -73,11 +74,20 @@ ConfigView::ConfigView(TranslatorSettings* settings)
 
 	BString copyrightsText;
 	BStringView *copyrightView = new BStringView("Copyright",
-		B_TRANSLATE(B_UTF8_COPYRIGHT "2010-2011 Haiku Inc."));
+		B_TRANSLATE(B_UTF8_COPYRIGHT "2010-2017 Haiku Inc."));
+
+	BString libwebpInfo = B_TRANSLATE(
+		"Based on libwebp %version%");
+	int v = WebPGetEncoderVersion();
+	char libwebpVersion[32];
+	snprintf(libwebpVersion, sizeof(libwebpVersion),
+		"%d.%d.%d", v >> 16, (v>>8)&255, v&255);
+	libwebpInfo.ReplaceAll("%version%", libwebpVersion);
+	
 	BStringView *copyright2View = new BStringView("Copyright2",
-		B_TRANSLATE("Based on libwebp v0.1,"));
+		libwebpInfo.String());
 	BStringView *copyright3View = new BStringView("Copyright3",
-		B_TRANSLATE(B_UTF8_COPYRIGHT "2010-2011 Google Inc."));
+		B_TRANSLATE(B_UTF8_COPYRIGHT "2010-2017 Google Inc."));
 
 	// output parameters
 
@@ -124,7 +134,13 @@ ConfigView::ConfigView(TranslatorSettings* settings)
 		.Add(version)
 		.Add(copyrightView)
 		.AddGlue()
-		.Add(presetsField)
+		.AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
+			.Add(presetsField->CreateLabelLayoutItem(), 0, 0)
+			.AddGroup(B_HORIZONTAL, 0.0f, 1, 0)
+				.Add(presetsField->CreateMenuBarLayoutItem(), 0.0f)
+				.AddGlue()
+				.End()
+			.End()
 		.Add(fQualitySlider)
 		.Add(fMethodSlider)
 		.Add(fPreprocessingCheckBox)
@@ -134,8 +150,8 @@ ConfigView::ConfigView(TranslatorSettings* settings)
 
 	BFont font;
 	GetFont(&font);
-	SetExplicitPreferredSize(BSize((font.Size() * 250)/12, (font.Size() * 350)/12));
-
+	SetExplicitPreferredSize(BSize((font.Size() * 250) / 12,
+		(font.Size() * 350) / 12));
 }
 
 

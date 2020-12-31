@@ -12,6 +12,9 @@
 #endif
 #include <stdlib.h>
 
+#undef __THROW
+#define __THROW
+
 #include "fssh_dirent.h"
 #include "fssh_errno.h"
 #include "fssh_fcntl.h"
@@ -835,6 +838,7 @@
 #define cache_blocks_in_transaction		fssh_cache_blocks_in_transaction
 #define cache_blocks_in_main_transaction fssh_cache_blocks_in_main_transaction
 #define cache_blocks_in_sub_transaction	fssh_cache_blocks_in_sub_transaction
+#define cache_has_block_in_transaction	fssh_cache_has_block_in_transaction
 
 /* block cache */
 #define block_cache_delete				fssh_block_cache_delete
@@ -895,6 +899,7 @@
 #define B_FS_HAS_SELF_HEALING_LINKS		FSSH_B_FS_HAS_SELF_HEALING_LINKS
 #define B_FS_HAS_ALIASES				FSSH_B_FS_HAS_ALIASES
 #define B_FS_SUPPORTS_NODE_MONITORING	FSSH_B_FS_SUPPORTS_NODE_MONITORING
+#define B_FS_SUPPORTS_MONITOR_CHILDREN	FSSH_B_FS_SUPPORTS_MONITOR_CHILDREN
 
 #define fs_info	fssh_fs_info
 
@@ -942,6 +947,8 @@
 #define remove_vnode				fssh_remove_vnode
 #define unremove_vnode				fssh_unremove_vnode
 #define get_vnode_removed			fssh_get_vnode_removed
+#define mark_vnode_busy				fssh_mark_vnode_busy
+#define change_vnode_id				fssh_change_vnode_id
 #define volume_for_vnode			fssh_volume_for_vnode
 #define check_access_permissions	fssh_check_access_permissions
 #define read_pages					fssh_read_pages
@@ -1275,13 +1282,14 @@
 #define S_LINK_AUTO_DELETE	FSSH_S_LINK_AUTO_DELETE
 
 /* standard file types */
-#define S_IFMT	FSSH_S_IFMT
-#define S_IFLNK	FSSH_S_IFLNK
-#define S_IFREG	FSSH_S_IFREG
-#define S_IFBLK	FSSH_S_IFBLK
-#define S_IFDIR	FSSH_S_IFDIR
-#define S_IFCHR	FSSH_S_IFCHR
-#define S_IFIFO	FSSH_S_IFIFO
+#define S_IFMT		FSSH_S_IFMT
+#define S_IFSOCK	FSSH_S_IFSOCK
+#define S_IFLNK		FSSH_S_IFLNK
+#define S_IFREG		FSSH_S_IFREG
+#define S_IFBLK		FSSH_S_IFBLK
+#define S_IFDIR		FSSH_S_IFDIR
+#define S_IFCHR		FSSH_S_IFCHR
+#define S_IFIFO		FSSH_S_IFIFO
 
 #define S_ISREG(mode)	FSSH_S_ISREG(mode)
 #define S_ISLNK(mode)	FSSH_S_ISLNK(mode)
@@ -1394,6 +1402,8 @@
 #define index		fssh_index
 #define rindex		fssh_rindex
 
+/* SMAP-specific functions */
+#define user_strlcpy	fssh_strlcpy
 
 ////////////////////////////////////////////////////////////////////////////////
 // #pragma mark - fssh_time.h
@@ -1614,8 +1624,13 @@
 #define B_PRIdINO		FSSH_B_PRIdINO
 #define B_PRIiINO		FSSH_B_PRIiINO
 /* time_t */
-#define B_PRIdTIME		FSSH_B_PRId32
-#define B_PRIiTIME		FSSH_B_PRIi32
+#if defined(__i386__) && !defined(__x86_64__)
+#	define B_PRIdTIME		FSSH_B_PRId32
+#	define B_PRIiTIME		FSSH_B_PRIi32
+#else
+#	define B_PRIdTIME		FSSH_B_PRId64
+#	define B_PRIiTIME		FSSH_B_PRIi64
+#endif
 
 
 ////////////////////////////////////////////////////////////////////////////////

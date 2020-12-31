@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2009, Haiku Inc. All rights reserved.
+ * Copyright 2007-2016, Haiku Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -12,14 +12,12 @@
 #include <ServerProtocol.h>
 
 
-void
-string_for_message_code(uint32 code, BString& string)
+const char*
+string_for_message_code(uint32 code)
 {
-	string = "";
-
 	switch (code) {
 		// Return the exact name for each constant
-		#define CODE(x) case x: string = #x; break
+		#define CODE(x) case x: return #x
 
 		CODE(AS_GET_DESKTOP);
 		CODE(AS_REGISTER_INPUT_SERVER);
@@ -56,6 +54,7 @@ string_for_message_code(uint32 code, BString& string)
 		CODE(AS_QUERY_CURSOR_HIDDEN);
 
 		CODE(AS_CREATE_CURSOR);
+		CODE(AS_CREATE_CURSOR_BITMAP);
 		CODE(AS_REFERENCE_CURSOR);
 		CODE(AS_DELETE_CURSOR);
 
@@ -125,6 +124,8 @@ string_for_message_code(uint32 code, BString& string)
 		CODE(AS_GET_HAS_GLYPHS);
 		CODE(AS_GET_GLYPH_SHAPES);
 		CODE(AS_GET_TRUNCATED_STRINGS);
+		CODE(AS_GET_UNICODE_BLOCKS);
+		CODE(AS_GET_HAS_UNICODE_BLOCK);
 
 		// Screen methods
 		CODE(AS_VALID_SCREEN_ID);
@@ -152,6 +153,9 @@ string_for_message_code(uint32 code, BString& string)
 		CODE(AS_SET_DPMS);
 		CODE(AS_GET_DPMS_STATE);
 		CODE(AS_GET_DPMS_CAPABILITIES);
+
+		CODE(AS_SCREEN_SET_BRIGHTNESS);
+		CODE(AS_SCREEN_GET_BRIGHTNESS);
 
 		// Misc stuff
 		CODE(AS_GET_ACCELERANT_PATH);
@@ -318,7 +322,7 @@ string_for_message_code(uint32 code, BString& string)
 		CODE(AS_COLOR_MAP_UPDATED);
 
 		default:
-			string << "unkown code: " << code;
+			return "unknown code";
 			break;
 	}
 }

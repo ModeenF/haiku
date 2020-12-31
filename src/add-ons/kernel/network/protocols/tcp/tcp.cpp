@@ -11,6 +11,7 @@
 
 #include "EndpointManager.h"
 #include "TCPEndpoint.h"
+#include "tcp.h"
 
 #include <net_protocol.h>
 #include <net_stat.h>
@@ -34,10 +35,8 @@
 //#define TRACE_TCP
 #ifdef TRACE_TCP
 #	define TRACE(x) dprintf x
-#	define TRACE_BLOCK(x) dump_block x
 #else
 #	define TRACE(x)
-#	define TRACE_BLOCK(x)
 #endif
 
 
@@ -117,8 +116,7 @@ add_options(tcp_segment_header &segment, uint8 *buffer, size_t bufferSize)
 		option->kind = TCP_OPTION_TIMESTAMP;
 		option->length = 10;
 		option->timestamp.value = htonl(segment.timestamp_value);
-		// TSecr is opaque to us, we send it as we received it.
-		option->timestamp.reply = segment.timestamp_reply;
+		option->timestamp.reply = htonl(segment.timestamp_reply);
 		bump_option(option, length);
 	}
 
@@ -210,7 +208,7 @@ process_options(tcp_segment_header &segment, net_buffer *buffer, size_t size)
 			case TCP_OPTION_TIMESTAMP:
 				if (option->length == 10 && size >= 10) {
 					segment.options |= TCP_HAS_TIMESTAMPS;
-					segment.timestamp_value = option->timestamp.value;
+					segment.timestamp_value = ntohl(option->timestamp.value);
 					segment.timestamp_reply =
 						ntohl(option->timestamp.reply);
 				}
@@ -713,7 +711,14 @@ tcp_receive_data(net_buffer* buffer)
 		buffer->destination, buffer->source);
 	if (endpoint != NULL) {
 		segmentAction = endpoint->SegmentReceived(segment, buffer);
-		gSocketModule->release_socket(endpoint->socket);
+
+		// There are some states in which the socket could have been deleted
+		// while handling a segment. If this flag is set in segmentAction
+		// then we know the socket has been freed and can skip releasing
+		// the reference acquired in EndpointManager::FindConnection()
+		// above.
+		if ((segmentAction & DELETED_ENDPOINT) == 0)
+			gSocketModule->release_socket(endpoint->socket);
 	} else if ((segment.flags & TCP_FLAG_RESET) == 0)
 		segmentAction = DROP | RESET;
 

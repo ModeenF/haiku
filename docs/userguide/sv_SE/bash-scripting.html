@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en-US" xml:lang="en-US">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="sv-SE" xml:lang="sv-SE">
 <head>
 <!-- 
  *
@@ -11,12 +11,14 @@
  *		Humdinger <humdingerb@gmail.com>
  * Translators:
  *		deejam
+ *		Humdinger
  *
 -->
 	<meta http-equiv="content-type" content="text/html; charset=utf-8" />
 	<meta http-equiv="Content-Style-Type" content="text/css" />
 	<meta name="robots" content="all" />
 	<title>Skalet och skript</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<link rel="stylesheet" type="text/css" href="../Haiku-doc.css" />
 </head>
 <body>
@@ -28,23 +30,27 @@
 <div class="nav">
 <div class="inner">
 <ul class="lang-menu">
-<li class="now"><img src="../images/flags/sv_SE.png" alt="" /> Svenska</li>
-<li><a href="../fr/bash-scripting.html"><img src="../images/flags/fr.png" alt="" />Français</a></li>
-<li><a href="../de/bash-scripting.html"><img src="../images/flags/de.png" alt="" />Deutsch</a></li>
-<li><a href="../it/bash-scripting.html"><img src="../images/flags/it.png" alt="" />Italiano</a></li>
-<li><a href="../ru/bash-scripting.html"><img src="../images/flags/ru.png" alt="" />Русский</a></li>
-<li><a href="../es/bash-scripting.html"><img src="../images/flags/es.png" alt="" />Español</a></li>
-<li><a href="../jp/bash-scripting.html"><img src="../images/flags/jp.png" alt="" />日本語</a></li>
-<li><a href="../uk/bash-scripting.html"><img src="../images/flags/uk.png" alt="" />Українська</a></li>
-<li><a href="../zh_CN/bash-scripting.html"><img src="../images/flags/zh_CN.png" alt="" /> 中文 ［中文］</a></li>
-<li><a href="../pt_PT/bash-scripting.html"><img src="../images/flags/pt_PT.png" alt="" />Português</a></li>
-<li><a href="../fi/bash-scripting.html"><img src="../images/flags/fi.png" alt="" />Suomi</a></li>
-<li><a href="../sk/bash-scripting.html"><img src="../images/flags/sk.png" alt="" />Slovenčina</a></li>
-<li><a href="../hu/bash-scripting.html"><img src="../images/flags/hu.png" alt="" />Magyar</a></li>
-<li><a href="../pt_BR/bash-scripting.html"><img src="../images/flags/pt_BR.png" alt="" />Português (Brazil)</a></li>
-<li><a href="../ca/bash-scripting.html"><img src="../images/flags/ca.png" alt="" />Català</a></li>
-<li><a href="../pl/bash-scripting.html"><img src="../images/flags/pl.png" alt="" />Polski</a></li>
-<li><a href="../en/bash-scripting.html"><img src="../images/flags/gb.png" alt="" />English</a></li>
+<li class="now">Svenska&nbsp;<span class="dropdown-caret">&#9660;</span></li>
+<li><a href="../id/bash-scripting.html">Bahasa Indonesia</a></li>
+<li><a href="../ca/bash-scripting.html">Català</a></li>
+<li><a href="../de/bash-scripting.html">Deutsch</a></li>
+<li><a href="../en/bash-scripting.html">English</a></li>
+<li><a href="../es/bash-scripting.html">Español</a></li>
+<li><a href="../fr/bash-scripting.html">Français</a></li>
+<li><a href="../fur/bash-scripting.html">Furlan</a></li>
+<li><a href="../it/bash-scripting.html">Italiano</a></li>
+<li><a href="../hu/bash-scripting.html">Magyar</a></li>
+<li><a href="../pl/bash-scripting.html">Polski</a></li>
+<li><a href="../pt_PT/bash-scripting.html">Português</a></li>
+<li><a href="../pt_BR/bash-scripting.html">Português (Brazil)</a></li>
+<li><a href="../ro/bash-scripting.html">Română</a></li>
+<li><a href="../sk/bash-scripting.html">Slovenčina</a></li>
+<li><a href="../fi/bash-scripting.html">Suomi</a></li>
+<li><a href="../tr/bash-scripting.html">Türkçe</a></li>
+<li><a href="../zh_CN/bash-scripting.html"> 中文 ［中文］</a></li>
+<li><a href="../ru/bash-scripting.html">Русский</a></li>
+<li><a href="../uk/bash-scripting.html">Українська</a></li>
+<li><a href="../jp/bash-scripting.html">日本語</a></li>
 </ul>
 <span>
  «  <a href="preferences.html">Inställningar</a> 
@@ -55,6 +61,7 @@
 
 <div id="content">
 <div>
+<div class="box-info">Översättningen av denna sida är inte komplett. Delar av innehållet kommer därför att visas på engelska.</div>
 
 <h1>Skalet och skript</h1>
 
@@ -64,7 +71,8 @@ Skript kan variera från att starta några få kommandon i en specifik ordning t
 <h2>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="bash" name="bash">Skalet</a></h2>
-<p>Eftersom skript är beroende av det skal som de tolkas av, bör du först bekanta dig med Bash, skalet som används i Haiku. Det finns många resurser på internet eftersom det är ett vanligt skal. En bra resurs är Johan Jansson's <a href="http://www.beforever.com/bashtut.htm" class="printurl">Introduktion till bash - en guide för bash i BeOS</a> (på engelska).</p>
+<p>Since scripts rely naturally a lot on the shell they are interpreted by, you should first familiarize yourself with the BASH that's used by Haiku. There are many resources online as it's a widely used shell. One nice document is Johan Jansson's <a href="https://web.archive.org/web/20011205095723/http://www.beforever.com/bashtut.htm" class="printurl">Introduction to bash - a tutorial for bash under BeOS</a>.<br />
+The <a href="https://www.gnu.org/software/bash/manual/bash.pdf" class="printurl">Bash Reference Manual (PDF, 720 KiB)</a> is a nice resource to get into the details.</p>
 
 <h2>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
@@ -73,13 +81,13 @@ Skript kan variera från att starta några få kommandon i en specifik ordning t
 
 <h2>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a><a id="user-scripts" name="user-scripts">Skript i Haiku</a></h2>
-<p>Haiku använder sig också av skript. Uppstart och avstängning sköts av olika procedurer i skript. Dessa fördefinerade sekvenser kan utökas av dig genom några specifika skript.<br />
-Om dom inte redan finns så måste du skapa dom själv. Annars behöver du bara lägga till kommandon i den delen av processkedjan där du vill att dom ska bli exekverade.</p>
+<p>Haiku used to have scripts for booting and shutting down. Today it uses the <a href="https://dev.haiku-os.org/wiki/LaunchDaemon">launch_daemon</a> instead. However, the user can still augment this process with certain user scripts.
+If they don't exist already, you'll have to create the needed files yourself. Otherwise simply add your commands where in the process you want them to be executed.</p>
 
 <h3>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="userbootscript" name="userbootscript">Skriptet UserBootscript</a></h3>
-<p><span class="path">/boot/home/config/boot/UserBootscript</span> exekveras efter att Haiku har avslutat sin startprocess. Du skulle exempelvis kunna få några program att automatiskt starta vid varje uppstart.</p>
+<p><span class="path">/boot/home/config/settings/boot/UserBootscript</span> exekveras efter att Haiku har avslutat sin startprocess. Du skulle exempelvis kunna få några program att automatiskt starta vid varje uppstart.</p>
 <pre># Starta StartBlocket
 /boot/system/apps/LaunchBox &amp;
 
@@ -87,17 +95,16 @@ Om dom inte redan finns så måste du skapa dom själv. Annars behöver du bara 
 /boot/system/apps/Workspaces &amp;</pre>
 <p>Kom ihåg att avsluta kommandot med "<tt>&amp;</tt>" för att starta den som en bakgrundsprocess, annars kommer skriptet att vänta tills kommandot har avslutats.</p>
 
-<p>Ett annat enkelt alternativ för att starta program vid uppstart är att länka till dem i  <span class="path">/boot/home/config/boot/launch</span> katalogen. Det åstadkoms genom att höger-klicka på det program som du vill ska starta automatiskt, välja <span class="menu">Skapa länk</span> och <a href="tracker.html#navigating">navigera</a> till ovan nämnda katalog.</p>
+<p>Ett annat enkelt alternativ för att starta program vid uppstart är att länka till dem i  <span class="path">/boot/home/config/settings/boot/launch</span> katalogen. Det åstadkoms genom att höger-klicka på det program som du vill ska starta automatiskt, välja <span class="menu">Skapa länk</span> och <a href="tracker.html#navigating">navigera</a> till ovan nämnda katalog.</p>
+
+<h3><a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
+<a id="usershutdownscript" name="usershutdownscript">The UserShutdownScript - <i>not yet working</i></a></h3>
+<p><span class="path">/boot/home/config/settings/boot/UserShutdownScript</span> exekveras som det första steget i avstängningsprocessen. Om skriptet returnerar någon annan status än noll så avbryts avstängningsprocessen.</p>
 
 <h3>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
-<a id="usershutdownscript" name="usershutdownscript">Skriptet UserShutdownScript</a></h3>
-<p><span class="path">/boot/home/config/boot/UserShutdownScript</span> exekveras som det första steget i avstängningsprocessen. Om skriptet returnerar någon annan status än noll så avbryts avstängningsprocessen.</p>
-
-<h3>
-<a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
-<a id="usershutdownfinishscript" name="usershutdownfinishscript">Skriptet UserShutdownFinishScript</a></h3>
-<p><span class="path">/boot/home/config/boot/UserShutdownFinishScript</span> exekveras som det sista steget i avstängningsprocessen. Tänk på att merparten av Haiku har stängts ner när detta skript startas.</p>
+<a id="usershutdownfinishscript" name="usershutdownfinishscript">The UserShutdownFinishScript - <i>not yet working</i></a></h3>
+<p><span class="path">/boot/home/config/settings/boot/UserShutdownFinishScript</span> exekveras som det sista steget i avstängningsprocessen. Tänk på att merparten av Haiku har stängts ner när detta skript startas.</p>
 
 </div>
 </div>

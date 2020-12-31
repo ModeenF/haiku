@@ -18,6 +18,7 @@
 #include "HIDReportItem.h"
 
 #include <new>
+#include <kernel.h>
 #include <string.h>
 #include <usb/USB_hid.h>
 
@@ -27,7 +28,8 @@
 TabletProtocolHandler::TabletProtocolHandler(HIDReport &report,
 	HIDReportItem &xAxis, HIDReportItem &yAxis)
 	:
-	ProtocolHandler(report.Device(), "input/tablet/usb/", 0),
+	ProtocolHandler(report.Device(), "input/tablet/" DEVICE_PATH_SUFFIX "/",
+		0),
 	fReport(report),
 
 	fXAxis(xAxis),
@@ -85,7 +87,7 @@ TabletProtocolHandler::TabletProtocolHandler(HIDReport &report,
 	fYTilt = report.FindItem(B_HID_USAGE_PAGE_DIGITIZER,
 		B_HID_UID_DIG_Y_TILT);
 
-	TRACE("tablet device with %lu buttons, %stip, %seraser, "
+	TRACE("tablet device with %" B_PRIu32 " buttons, %stip, %seraser, "
 		"%spressure, and %stilt\n",
 		buttonCount,
 		fTip == NULL ? "no " : "",
@@ -189,9 +191,17 @@ TabletProtocolHandler::Control(uint32 *cookie, uint32 op, void *buffer,
 				return B_BUFFER_OVERFLOW;
 
 			while (true) {
-				status_t result = _ReadReport(buffer, cookie);
-				if (result != B_INTERRUPTED)
-					return result;
+				tablet_movement movement;
+				status_t result = _ReadReport(&movement, cookie);
+				if (result == B_INTERRUPTED)
+					continue;
+				if (!IS_USER_ADDRESS(buffer)
+					|| user_memcpy(buffer, &movement, sizeof(movement))
+						!= B_OK) {
+					return B_BAD_ADDRESS;
+				}
+
+				return result;
 			}
 		}
 
@@ -205,12 +215,13 @@ TabletProtocolHandler::Control(uint32 *cookie, uint32 op, void *buffer,
 		}
 
 		case MS_SET_CLICKSPEED:
-#ifdef __HAIKU__
-				return user_memcpy(&fClickSpeed, buffer, sizeof(bigtime_t));
-#else
-				fClickSpeed = *(bigtime_t *)buffer;
+				if (!IS_USER_ADDRESS(buffer)
+					|| user_memcpy(&fClickSpeed, buffer, sizeof(bigtime_t))
+						!= B_OK) {
+					return B_BAD_ADDRESS;
+				}
+
 				return B_OK;
-#endif
 	}
 
 	return B_ERROR;
@@ -279,12 +290,12 @@ TabletProtocolHandler::_ReadReport(void *buffer, uint32 *cookie)
 		yTilt = fYTilt->ScaledFloatData();
 
 	bool inRange = true;
-	if (fRange != NULL)
-		inRange = fRange->Extract() == B_OK && fRange->Valid();
+	if (fRange != NULL && fRange->Extract() == B_OK && fRange->Valid())
+		inRange = ((fRange->Data() & 1) != 0);
 
 	bool eraser = false;
 	if (fEraser != NULL && fEraser->Extract() == B_OK && fEraser->Valid())
-		eraser = (fEraser->Data() & 1) != 0;
+		eraser = ((fEraser->Data() & 1) != 0);
 
 	fReport.DoneProcessing();
 	TRACE("got tablet report\n");

@@ -539,6 +539,8 @@ BasicTerminalBuffer::Find(const char* _pattern, const TermPos& start,
 
 	// convert pattern to UTF8Char array
 	BStackOrHeapArray<UTF8Char, 64> pattern(patternByteLen);
+	if (!pattern.IsValid())
+		return false;
 	int32 patternLen = 0;
 	while (*_pattern != '\0') {
 		int32 charLen = UTF8Char::ByteCount(*_pattern);
@@ -745,12 +747,35 @@ BasicTerminalBuffer::InsertTab()
 	if (x != fCursor.x) {
 		TerminalLine* line = _LineAt(fCursor.y);
 		for (int32 i = fCursor.x; i <= x; i++) {
-			line->cells[i].character = ' ';
-			line->cells[i].attributes = fAttributes;
+			if (line->length <= i) {
+				line->cells[i].character = ' ';
+				line->cells[i].attributes = fAttributes;
+			}
 		}
 		fCursor.x = x;
 		if (line->length < fCursor.x)
 			line->length = fCursor.x;
+		_CursorChanged();
+	}
+}
+
+
+void
+BasicTerminalBuffer::InsertCursorBackTab(int32 numTabs)
+{
+	int32 x = fCursor.x - 1;
+
+	fSoftWrappedCursor = false;
+
+	// Find the next tab stop
+	while (numTabs-- > 0)
+		for (; x >=0 && !fTabStops[x]; x--)
+			;
+	// Ensure x stays within the line bounds
+	x = restrict_value(x, 0, fWidth - 1);
+
+	if (x != fCursor.x) {
+		fCursor.x = x;
 		_CursorChanged();
 	}
 }
@@ -1063,7 +1088,7 @@ BasicTerminalBuffer::_AllocateLines(int32 width, int32 count)
 			_FreeLines(lines, i);
 			return NULL;
 		}
-		memset(lines[i], 0, size);
+		lines[i]->Clear(0, width);
 	}
 
 	return lines;

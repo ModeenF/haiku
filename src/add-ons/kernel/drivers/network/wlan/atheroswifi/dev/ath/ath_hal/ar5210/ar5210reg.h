@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: ISC
+ *
  * Copyright (c) 2002-2008 Sam Leffler, Errno Consulting
  * Copyright (c) 2002-2004 Atheros Communications, Inc.
  *
@@ -14,7 +16,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/dev/ath/ath_hal/ar5210/ar5210reg.h 326695 2017-12-08 15:57:29Z pfg $
  */
 #ifndef _DEV_ATH_AR5210REG_H
 #define _DEV_ATH_AR5210REG_H
@@ -385,6 +387,7 @@
 #define	AR_DIAG_SW_SCVRAM_SEED	0x0003f800	/* fixed scrambler seed */
 #define	AR_DIAG_SW_DIS_SEQ_INC	0x00040000	/* seq increment disable */
 #define	AR_DIAG_SW_FRAME_NV0	0x00080000	/* accept frame vers != 0 */
+#define	AR_DIAG_SW_DIS_CRYPTO	(AR_DIAG_SW_DIS_ENC | AR_DIAG_SW_DIS_DEC)
 #define	AR_DIAG_SW_BITS \
 	"\20\1DIS_WEP_ACK\2DIS_ACK\3DIS_CTS\4DIS_ENC\5DIS_DEC\6DIS_TX"\
 	"\7DIS_RX\10LOOP_BACK\11CORR_FCS\12CHAN_INFO\13EN_SCRAM_SEED"\

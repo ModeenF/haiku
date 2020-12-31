@@ -11,6 +11,7 @@
 
 #include "HWInterface.h"
 
+#include <AutoDeleter.h>
 
 class BBitmap;
 class BBitmapBuffer;
@@ -51,6 +52,9 @@ public:
 	virtual uint32				DPMSMode();
 	virtual uint32				DPMSCapabilities();
 
+	virtual status_t			SetBrightness(float);
+	virtual status_t			GetBrightness(float*);
+
 	// frame buffer access
 	virtual	RenderingBuffer*	FrontBuffer() const;
 	virtual	RenderingBuffer*	BackBuffer() const;
@@ -60,8 +64,10 @@ public:
 	virtual	status_t			CopyBackToFront(const BRect& frame);
 
 private:
-			BBitmapBuffer*		fBackBuffer;
-			BBitmapBuffer*		fFrontBuffer;
+			ObjectDeleter<BBitmapBuffer>
+								fBackBuffer;
+			ObjectDeleter<BBitmapBuffer>
+								fFrontBuffer;
 
 			CardWindow*			fWindow;
 

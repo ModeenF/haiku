@@ -1,5 +1,5 @@
 /*
- * Copyright 2014, Dario Casalinuovo
+ * Copyright 2014-2016, Dario Casalinuovo
  * Copyright 1999, Be Incorporated
  * All Rights Reserved.
  * This file may be used under the terms of the Be Sample Code License.
@@ -10,11 +10,12 @@
 
 #include <Buffer.h>
 #include <scheduler.h>
+#include <MediaRoster.h>
+#include <MediaRosterEx.h>
 #include <TimedEventQueue.h>
 #include <TimeSource.h>
 
-#include <MediaDebug.h>
-#include <MediaRecorder.h>
+#include "MediaDebug.h"
 
 
 BMediaRecorderNode::BMediaRecorderNode(const char* name,
@@ -23,10 +24,12 @@ BMediaRecorderNode::BMediaRecorderNode(const char* name,
 	BMediaNode(name),
 	BMediaEventLooper(),
 	BBufferConsumer(type),
-	fRecorder(recorder)
+	fRecorder(recorder),
+	fConnectMode(true)
 {
 	CALLED();
 
+	fInput.node = Node();
 	fInput.destination.id = 1;
 	fInput.destination.port = ControlPort();
 
@@ -101,19 +104,27 @@ BMediaRecorderNode::SetAcceptedFormat(const media_format& format)
 {
 	CALLED();
 
+	fInput.format = format;
 	fOKFormat = format;
 }
 
 
-status_t
+const media_format&
+BMediaRecorderNode::AcceptedFormat() const
+{
+	CALLED();
+
+	return fInput.format;
+}
+
+
+void
 BMediaRecorderNode::GetInput(media_input* outInput)
 {
 	CALLED();
 
 	fInput.node = Node();
 	*outInput = fInput;
-
-	return B_OK;
 }
 
 
@@ -126,6 +137,13 @@ BMediaRecorderNode::SetDataEnabled(bool enabled)
 
 	SetOutputEnabled(fInput.source,
 		fInput.destination, enabled, NULL, &tag);
+}
+
+
+void
+BMediaRecorderNode::ActivateInternalConnect(bool connectMode)
+{
+	fConnectMode = connectMode;
 }
 
 
@@ -287,8 +305,19 @@ BMediaRecorderNode::Connected(const media_source &producer,
 	fInput.format = withFormat;
 	*outInput = fInput;
 
+	if (fConnectMode == true) {
+		// This is a workaround needed for us to get the node
+		// so that our owner class can do it's operations.
+		media_node node;
+		BMediaRosterEx* roster = MediaRosterEx(BMediaRoster::CurrentRoster());
+		if (roster->GetNodeFor(roster->NodeIDFor(producer.port), &node) != B_OK)
+			return B_MEDIA_BAD_NODE;
+
+		fRecorder->fOutputNode = node;
+		fRecorder->fReleaseOutputNode = true;
+	}
+	fRecorder->SetUpConnection(producer);
 	fRecorder->fConnected = true;
-	fRecorder->fInput = fInput;
 
 	return B_OK;
 }
@@ -301,10 +330,10 @@ BMediaRecorderNode::Disconnected(const media_source& producer,
 	CALLED();
 
 	fInput.source = media_source::null;
-
+	// Reset the connection mode
+	fConnectMode = true;
 	fRecorder->fConnected = false;
-
-	fRecorder->fInput.format = fOKFormat;
+	fInput.format = fOKFormat;
 }
 
 

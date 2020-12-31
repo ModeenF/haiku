@@ -5,19 +5,7 @@
  * Copyright (C) 2007-2010 Stephan Aßmus <superstippi@gmx.de> (GPL->MIT ok)
  * Copyright (C) 2007-2009 Fredrik Modéen <[FirstName]@[LastName].se> (MIT ok)
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
- * USA.
+ * Released under the terms of the MIT license.
  */
 
 
@@ -33,6 +21,7 @@
 #include <Catalog.h>
 #include <Debug.h>
 #include <fs_attr.h>
+#include <LayoutBuilder.h>
 #include <Language.h>
 #include <Locale.h>
 #include <MediaRoster.h>
@@ -55,6 +44,7 @@
 #include "DurationToString.h"
 #include "FilePlaylistItem.h"
 #include "MainApp.h"
+#include "NetworkStreamWin.h"
 #include "PeakView.h"
 #include "PlaylistItem.h"
 #include "PlaylistObserver.h"
@@ -76,6 +66,7 @@ int MainWin::sNoVideoWidth = MIN_WIDTH;
 enum {
 	M_DUMMY = 0x100,
 	M_FILE_OPEN = 0x1000,
+	M_NETWORK_STREAM_OPEN,
 	M_FILE_INFO,
 	M_FILE_PLAYLIST,
 	M_FILE_CLOSE,
@@ -119,65 +110,81 @@ enum {
 
 
 static property_info sPropertyInfo[] = {
-	{ B_TRANSLATE("Next"), { B_EXECUTE_PROPERTY },
+	{ "Next", { B_EXECUTE_PROPERTY },
 		{ B_DIRECT_SPECIFIER, 0 },
-		B_TRANSLATE("Skip to the next track."), 0
+		"Skip to the next track.", 0
 	},
-	{ B_TRANSLATE("Prev"), { B_EXECUTE_PROPERTY },
+	{ "Prev", { B_EXECUTE_PROPERTY },
 		{ B_DIRECT_SPECIFIER, 0 },
-		B_TRANSLATE("Skip to the previous track."), 0
+		"Skip to the previous track.", 0
 	},
-	{ B_TRANSLATE("Play"), { B_EXECUTE_PROPERTY },
+	{ "Play", { B_EXECUTE_PROPERTY },
 		{ B_DIRECT_SPECIFIER, 0 },
-		B_TRANSLATE("Start playing."), 0
+		"Start playing.", 0
 	},
-	{ B_TRANSLATE("Stop"), { B_EXECUTE_PROPERTY },
+	{ "Stop", { B_EXECUTE_PROPERTY },
 		{ B_DIRECT_SPECIFIER, 0 },
-		B_TRANSLATE("Stop playing."), 0
+		"Stop playing.", 0
 	},
-	{ B_TRANSLATE("Pause"), { B_EXECUTE_PROPERTY },
+	{ "Pause", { B_EXECUTE_PROPERTY },
 		{ B_DIRECT_SPECIFIER, 0 },
-		B_TRANSLATE("Pause playback."), 0
+		"Pause playback.", 0
 	},
-	{ B_TRANSLATE("TogglePlaying"), { B_EXECUTE_PROPERTY },
+	{ "TogglePlaying", { B_EXECUTE_PROPERTY },
 		{ B_DIRECT_SPECIFIER, 0 },
-		B_TRANSLATE("Toggle pause/play."), 0
+		"Toggle pause/play.", 0
 	},
-	{ B_TRANSLATE("Mute"), { B_EXECUTE_PROPERTY },
+	{ "Mute", { B_EXECUTE_PROPERTY },
 		{ B_DIRECT_SPECIFIER, 0 },
-		B_TRANSLATE("Toggle mute."), 0
+		"Toggle mute.", 0
 	},
-	{ B_TRANSLATE("Volume"), { B_GET_PROPERTY, B_SET_PROPERTY, 0 },
+	{ "Volume", { B_GET_PROPERTY, B_SET_PROPERTY, 0 },
 		{ B_DIRECT_SPECIFIER, 0 },
-		B_TRANSLATE("Gets/sets the volume (0.0-2.0)."), 0,
+		"Gets/sets the volume (0.0-2.0).", 0,
 		{ B_FLOAT_TYPE }
 	},
-	{ B_TRANSLATE("URI"), { B_GET_PROPERTY, 0 },
+	{ "URI", { B_GET_PROPERTY, 0 },
 		{ B_DIRECT_SPECIFIER, 0 },
-		B_TRANSLATE("Gets the URI of the currently playing item."), 0,
+		"Gets the URI of the currently playing item.", 0,
 		{ B_STRING_TYPE }
 	},
-	{ B_TRANSLATE("ToggleFullscreen"), { B_EXECUTE_PROPERTY },
+	{ "TrackNumber", { B_GET_PROPERTY, 0 },
 		{ B_DIRECT_SPECIFIER, 0 },
-		B_TRANSLATE("Toggle fullscreen."), 0
+		"Gets the number of the current track playing.", 0,
+		{ B_INT32_TYPE }
 	},
-	{ B_TRANSLATE("Duration"), { B_GET_PROPERTY, 0 },
+	{ "ToggleFullscreen", { B_EXECUTE_PROPERTY },
 		{ B_DIRECT_SPECIFIER, 0 },
-		B_TRANSLATE("Gets the duration of the currently playing item "
-			"in microseconds."), 0,
+		"Toggle fullscreen.", 0
+	},
+	{ "Duration", { B_GET_PROPERTY, 0 },
+		{ B_DIRECT_SPECIFIER, 0 },
+		"Gets the duration of the currently playing item "
+			"in microseconds.", 0,
 		{ B_INT64_TYPE }
 	},
-	{ B_TRANSLATE("Position"), { B_GET_PROPERTY, B_SET_PROPERTY, 0 },
+	{ "Position", { B_GET_PROPERTY, B_SET_PROPERTY, 0 },
 		{ B_DIRECT_SPECIFIER, 0 },
-		B_TRANSLATE("Gets/sets the current playing position in microseconds."),
+		"Gets/sets the current playing position in microseconds.",
 		0, { B_INT64_TYPE }
 	},
-	{ B_TRANSLATE("Seek"), { B_SET_PROPERTY },
+	{ "Seek", { B_SET_PROPERTY },
 		{ B_DIRECT_SPECIFIER, 0 },
-		B_TRANSLATE("Seek by the specified amounts of microseconds."), 0,
+		"Seek by the specified amounts of microseconds.", 0,
 		{ B_INT64_TYPE }
 	},
-	{ 0, { 0 }, { 0 }, 0, 0 }
+	{ "PlaylistTrackCount", { B_GET_PROPERTY, 0 },
+		{ B_DIRECT_SPECIFIER, 0 },
+		"Gets the number of tracks in Playlist.", 0,
+		{ B_INT16_TYPE }
+	},
+	{ "PlaylistTrackTitle", { B_GET_PROPERTY, 0 },
+		{ B_INDEX_SPECIFIER, 0 },
+		"Gets the title of the nth track in Playlist.", 0,
+		{ B_STRING_TYPE }
+	},
+
+	{ 0 }
 };
 
 
@@ -562,10 +569,25 @@ MainWin::MessageReceived(BMessage* msg)
 				}
 
 				case 9:
+				{
+					if (msg->what == B_GET_PROPERTY) {
+						BAutolock _(fPlaylist);
+						const PlaylistItem* item = fController->Item();
+						if (item == NULL) {
+							result = B_NO_INIT;
+							break;
+						}
+
+						result = reply.AddInt32("result", item->TrackNumber());
+					}
+					break;
+				}
+
+				case 10:
 					PostMessage(M_TOGGLE_FULLSCREEN);
 					break;
 
-				case 10:
+				case 11:
 					if (msg->what != B_GET_PROPERTY)
 						break;
 
@@ -573,7 +595,7 @@ MainWin::MessageReceived(BMessage* msg)
 						fController->TimeDuration());
 					break;
 
-				case 11:
+				case 12:
 				{
 					if (msg->what == B_GET_PROPERTY) {
 						result = reply.AddInt64("result",
@@ -588,7 +610,7 @@ MainWin::MessageReceived(BMessage* msg)
 					break;
 				}
 
-				case 12:
+				case 13:
 				{
 					if (msg->what != B_SET_PROPERTY)
 						break;
@@ -599,6 +621,25 @@ MainWin::MessageReceived(BMessage* msg)
 						break;
 
 					_Wind(seekBy, 0);
+					break;
+				}
+
+				case 14:
+					result = reply.AddInt16("result", fPlaylist->CountItems());
+					break;
+
+				case 15:
+				{
+					int32 i = specifier.GetInt32("index", 0);
+					if (i >= fPlaylist->CountItems()) {
+						result = B_NO_INIT;
+						break;
+					}
+
+					BAutolock _(fPlaylist);
+					const PlaylistItem* item = fPlaylist->ItemAt(i);
+					result = item == NULL ? B_NO_INIT
+						: reply.AddString("result", item->Title());
 					break;
 				}
 
@@ -617,8 +658,10 @@ MainWin::MessageReceived(BMessage* msg)
 		}
 
 		case B_REFS_RECEIVED:
+		case M_URL_RECEIVED:
 			_RefsReceived(msg);
 			break;
+
 		case B_SIMPLE_DATA:
 			if (msg->HasRef("refs"))
 				_RefsReceived(msg);
@@ -705,6 +748,9 @@ MainWin::MessageReceived(BMessage* msg)
 		case MSG_CONTROLLER_FILE_FINISHED:
 		{
 			BAutolock _(fPlaylist);
+
+			//The file is finished. Open at start next time.
+			fController->SaveState(true);
 
 			bool hadNext = fPlaylist->SetCurrentItemIndex(
 				fPlaylist->CurrentItemIndex() + 1);
@@ -808,6 +854,7 @@ MainWin::MessageReceived(BMessage* msg)
 			float volume;
 			if (msg->FindFloat("volume", &volume) == B_OK)
 				fControls->SetVolume(volume);
+			fController->SaveState();
 			break;
 		}
 		case MSG_CONTROLLER_MUTED_CHANGED:
@@ -831,6 +878,15 @@ MainWin::MessageReceived(BMessage* msg)
 			be_app->PostMessage(&appMessage);
 			break;
 		}
+
+		case M_NETWORK_STREAM_OPEN:
+		{
+			BMessenger target(this);
+			NetworkStreamWin* win = new NetworkStreamWin(target);
+			win->Show();
+			break;
+		}
+
 		case M_FILE_INFO:
 			ShowFileInfo();
 			break;
@@ -1076,6 +1132,7 @@ MainWin::WindowActivated(bool active)
 bool
 MainWin::QuitRequested()
 {
+	fController->SaveState();
 	BMessage message(M_PLAYER_QUIT);
 	GetQuitMessage(&message);
 	be_app->PostMessage(&message);
@@ -1139,7 +1196,7 @@ MainWin::OpenPlaylistItem(const PlaylistItemRef& item)
 		_PlaylistItemOpened(item, ret);
 	} else {
 		BString string;
-		string << "Opening '" << item->Name() << "'.";
+		string.SetToFormat(B_TRANSLATE("Opening '%s'."), item->Name().String());
 		fControls->SetDisabledString(string.String());
 	}
 }
@@ -1285,22 +1342,9 @@ MainWin::ResolveSpecifier(BMessage* message, int32 index, BMessage* specifier,
 	int32 what, const char* property)
 {
 	BPropertyInfo propertyInfo(sPropertyInfo);
-	switch (propertyInfo.FindMatch(message, index, specifier, what, property)) {
-		case 0:
-		case 1:
-		case 2:
-		case 3:
-		case 4:
-		case 5:
-		case 6:
-		case 7:
-		case 8:
-		case 9:
-		case 10:
-		case 11:
-		case 12:
-			return this;
-	}
+	if (propertyInfo.FindMatch(message, index, specifier, what, property)
+			!= B_ERROR)
+		return this;
 
 	return BWindow::ResolveSpecifier(message, index, specifier, what, property);
 }
@@ -1410,6 +1454,9 @@ MainWin::_PlaylistItemOpened(const PlaylistItemRef& item, status_t result)
 		}
 		fController->SetTimePosition(fInitialSeekPosition);
 		fInitialSeekPosition = 0;
+
+		if (fPlaylist->CountItems() == 1)
+			fController->RestoreState();
 	}
 	_SetupWindow();
 
@@ -1499,6 +1546,10 @@ MainWin::_CreateMenu()
 	item->SetShortcut('O', 0);
 	fFileMenu->AddItem(item);
 
+	item = new BMenuItem(B_TRANSLATE("Open network stream"),
+		new BMessage(M_NETWORK_STREAM_OPEN));
+	fFileMenu->AddItem(item);
+
 	fFileMenu->AddSeparatorItem();
 
 	fFileMenu->AddItem(new BMenuItem(B_TRANSLATE("File info" B_UTF8_ELLIPSIS),
@@ -1516,7 +1567,7 @@ MainWin::_CreateMenu()
 		new BMessage(M_TOGGLE_ALWAYS_ON_TOP), 'A'));
 
 	item = new BMenuItem(B_TRANSLATE("Settings" B_UTF8_ELLIPSIS),
-		new BMessage(M_SETTINGS), 'S');
+		new BMessage(M_SETTINGS), ',');
 	fFileMenu->AddItem(item);
 	item->SetTarget(be_app);
 
@@ -1854,6 +1905,8 @@ MainWin::_ResizeWindow(int percent, bool useNoVideoWidth, bool stayOnScreen)
 		if (!screenFrame.Contains(frame)) {
 			// Resize the window so it doesn't extend outside the current
 			// screen frame.
+			// We don't use BWindow::MoveOnScreen() in order to resize the
+			// window while keeping the same aspect ratio.
 			if (frame.Width() > screenFrame.Width()
 				|| frame.Height() > screenFrame.Height()) {
 				// too large
@@ -2378,6 +2431,7 @@ MainWin::_ShowIfNeeded()
 	if (!fHasVideo && fNoVideoFrame.IsValid()) {
 		MoveTo(fNoVideoFrame.LeftTop());
 		ResizeTo(fNoVideoFrame.Width(), fNoVideoFrame.Height());
+		MoveOnScreen(B_MOVE_IF_PARTIALLY_OFFSCREEN);
 	} else if (fHasVideo && IsHidden())
 		CenterOnScreen();
 

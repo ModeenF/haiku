@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2015, Haiku.
+ * Copyright 2001-2016, Haiku.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -186,9 +186,10 @@ KeyboardFilter::Filter(BMessage* message, EventTarget** _target,
 	message->FindInt32("modifiers", &modifiers);
 
 	if ((message->what == B_KEY_DOWN || message->what == B_UNMAPPED_KEY_DOWN)) {
-		// Check for safe video mode (cmd + ctrl + escape)
+		// Check for safe video mode (shift + cmd + ctrl + escape)
 		if (key == 0x01 && (modifiers & B_COMMAND_KEY) != 0
-			&& (modifiers & B_CONTROL_KEY) != 0) {
+			&& (modifiers & B_CONTROL_KEY) != 0
+			&& (modifiers & B_SHIFT_KEY) != 0) {
 			system("screenmode --fall-back &");
 			return B_SKIP_MESSAGE;
 		}
@@ -210,7 +211,7 @@ KeyboardFilter::Filter(BMessage* message, EventTarget** _target,
 				fDesktop->SetWorkspaceAsync(key - B_F1_KEY, takeWindow);
 				return B_SKIP_MESSAGE;
 			}
-		} if (key == 0x11
+		} else if (key == 0x11
 			&& (modifiers & (B_COMMAND_KEY | B_CONTROL_KEY | B_OPTION_KEY))
 					== B_COMMAND_KEY) {
 			// switch to previous workspace (command + `)
@@ -464,8 +465,6 @@ Desktop::Desktop(uid_t userID, const char* targetScreen)
 
 Desktop::~Desktop()
 {
-	delete fSettings;
-
 	delete_area(fSharedReadOnlyArea);
 	delete_port(fMessagePort);
 	gFontManager->DetachUser(fUserID);
@@ -481,6 +480,8 @@ Desktop::RegisterListener(DesktopListener* listener)
 }
 
 
+/*!	This method is allowed to throw exceptions.
+*/
 status_t
 Desktop::Init()
 {
@@ -495,13 +496,13 @@ Desktop::Init()
 	char name[B_OS_NAME_LENGTH];
 	snprintf(name, sizeof(name), "d:%d:shared read only", fUserID);
 	fSharedReadOnlyArea = create_area(name, (void **)&fServerReadOnlyMemory,
-		B_ANY_ADDRESS, areaSize, B_NO_LOCK, B_READ_AREA | B_WRITE_AREA);
+		B_ANY_ADDRESS, areaSize, B_NO_LOCK, B_READ_AREA | B_WRITE_AREA | B_CLONEABLE_AREA);
 	if (fSharedReadOnlyArea < B_OK)
 		return fSharedReadOnlyArea;
 
 	gFontManager->AttachUser(fUserID);
 
-	fSettings = new DesktopSettingsPrivate(fServerReadOnlyMemory);
+	fSettings.SetTo(new DesktopSettingsPrivate(fServerReadOnlyMemory));
 
 	for (int32 i = 0; i < kMaxWorkspaces; i++) {
 		_Windows(i).SetIndex(i);
@@ -515,6 +516,10 @@ Desktop::Init()
 		debug_printf("Could not initialize graphics output. Exiting.\n");
 		return B_ERROR;
 	}
+
+	float brightness = fWorkspaces[0].StoredScreenConfiguration().Brightness(0);
+	if (brightness > 0)
+		HWInterface()->SetBrightness(brightness);
 
 	fVirtualScreen.HWInterface()->MoveCursorTo(
 		fVirtualScreen.Frame().Width() / 2,
@@ -881,6 +886,22 @@ Desktop::RevertScreenModes(uint32 workspaces)
 				SetScreenMode(workspace, screen->ID(), stored->mode, false);
 		}
 	}
+}
+
+
+status_t
+Desktop::SetBrightness(int32 id, float brightness)
+{
+	status_t result = HWInterface()->SetBrightness(brightness);
+
+	if (result == B_OK) {
+		fWorkspaces[0].StoredScreenConfiguration().SetBrightness(id,
+			brightness);
+		// Save brightness for next boot
+		StoreWorkspaceConfiguration(0);
+	}
+
+	return result;
 }
 
 
@@ -1592,7 +1613,7 @@ Desktop::SetWindowWorkspaces(Window* window, uint32 workspaces)
 
 
 /*!	\brief Adds the window to the desktop.
-	At this point, the window is still hidden and must be shown explicetly
+	At this point, the window is still hidden and must be shown explicitly
 	via ShowWindow().
 */
 void
@@ -2117,7 +2138,7 @@ Desktop::RedrawBackground()
 	BRegion redraw;
 
 	Window* window = CurrentWindows().FirstWindow();
-	if (window->Feel() == kDesktopWindowFeel) {
+	if (window != NULL && window->Feel() == kDesktopWindowFeel) {
 		redraw = window->VisibleContentRegion();
 
 		// look for desktop background view, and update its background color
@@ -2126,7 +2147,7 @@ Desktop::RedrawBackground()
 		if (view != NULL)
 			view = view->FirstChild();
 
-		while (view) {
+		while (view != NULL) {
 			if (view->IsDesktopBackground()) {
 				view->SetViewColor(fWorkspaces[fCurrentWorkspace].Color());
 				break;
@@ -2539,21 +2560,25 @@ Desktop::_DispatchMessage(int32 code, BPrivate::LinkReceiver& link)
 			if (link.ReadString(&appSignature) != B_OK)
 				break;
 
-			ServerApp* app = new ServerApp(this, clientReplyPort,
-				clientLooperPort, clientTeamID, htoken, appSignature);
-			if (app->InitCheck() == B_OK
-				&& app->Run()) {
+			ObjectDeleter<ServerApp> app(new (std::nothrow) ServerApp(this, clientReplyPort,
+				clientLooperPort, clientTeamID, htoken, appSignature));
+			status_t status = B_OK;
+			if (app.Get() == NULL)
+				status = B_NO_MEMORY;
+			if (status == B_OK)
+				status = app->InitCheck();
+			if (status == B_OK)
+				status = app->Run();
+			if (status == B_OK) {
 				// add the new ServerApp to the known list of ServerApps
 				fApplicationsLock.Lock();
-				fApplications.AddItem(app);
+				fApplications.AddItem(app.Detach());
 				fApplicationsLock.Unlock();
 			} else {
-				delete app;
-
 				// if everything went well, ServerApp::Run() will notify
 				// the client - but since it didn't, we do it here
 				BPrivate::LinkSender reply(clientReplyPort);
-				reply.StartMessage(B_ERROR);
+				reply.StartMessage(status);
 				reply.Flush();
 			}
 
@@ -2667,14 +2692,13 @@ Desktop::_DispatchMessage(int32 code, BPrivate::LinkReceiver& link)
 			fQuitting = true;
 			BroadcastToAllApps(AS_QUIT_APP);
 
-			// We now need to process the remaining AS_DELETE_APP messages and
-			// wait for the kMsgShutdownServer message.
-			// If an application does not quit as asked, the picasso thread
-			// will send us this message in 2-3 seconds.
+			// We now need to process the remaining AS_DELETE_APP messages.
+			// We quit the looper when the last app is deleted.
 
 			// if there are no apps to quit, shutdown directly
 			if (fShutdownCount == 0)
 				PostMessage(kMsgQuitLooper);
+
 			break;
 
 		case AS_ACTIVATE_WORKSPACE:
@@ -3485,6 +3509,19 @@ Desktop::_ResumeDirectFrameBufferAccess()
 
 
 void
+Desktop::ScreenChanged(Screen* screen)
+{
+	AutoWriteLocker windowLocker(fWindowLock);
+
+	AutoWriteLocker screenLocker(fScreenLock);
+	screen->SetPreferredMode();
+	screenLocker.Unlock();
+
+	_ScreenChanged(screen);
+}
+
+
+void
 Desktop::_ScreenChanged(Screen* screen)
 {
 	ASSERT_MULTI_WRITE_LOCKED(fWindowLock);
@@ -3732,13 +3769,11 @@ Desktop::_SetWorkspace(int32 index, bool moveFocusWindow)
 		} else {
 			// We need to remember the previous visible region of the
 			// window if they changed their order
-			BRegion* region = new (std::nothrow)
-				BRegion(window->VisibleRegion());
-			if (region != NULL) {
-				if (previousRegions.AddItem(region))
+			ObjectDeleter<BRegion> region(new (std::nothrow)
+				BRegion(window->VisibleRegion()));
+			if (region.Get() != NULL) {
+				if (previousRegions.AddItem(region.Detach()))
 					windows.AddWindow(window);
-				else
-					delete region;
 			}
 		}
 	}

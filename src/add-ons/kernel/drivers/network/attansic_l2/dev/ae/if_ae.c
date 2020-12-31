@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2008 Stanislav Sedov <stas@FreeBSD.org>.
  * All rights reserved.
  *
@@ -28,15 +30,17 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
+__FBSDID("$FreeBSD: releng/12.0/sys/dev/ae/if_ae.c 339735 2018-10-25 17:00:39Z brooks $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/bus.h>
 #include <sys/endian.h>
 #include <sys/kernel.h>
+#include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/mbuf.h>
+#include <sys/mutex.h>
 #include <sys/rman.h>
 #include <sys/module.h>
 #include <sys/queue.h>
@@ -47,6 +51,7 @@ __FBSDID("$FreeBSD$");
 
 #include <net/bpf.h>
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_arp.h>
 #include <net/ethernet.h>
 #include <net/if_dl.h>
@@ -82,7 +87,7 @@ static struct ae_dev {
 	{ VENDORID_ATTANSIC, DEVICEID_ATTANSIC_L2,
 		"Attansic Technology Corp, L2 FastEthernet" },
 };
-#define	AE_DEVS_COUNT (sizeof(ae_devs) / sizeof(*ae_devs))
+#define	AE_DEVS_COUNT nitems(ae_devs)
 
 static struct resource_spec ae_res_spec_mem[] = {
 	{ SYS_RES_MEMORY,       PCIR_BAR(0),    RF_ACTIVE },
@@ -172,6 +177,8 @@ static driver_t ae_driver = {
 static devclass_t ae_devclass;
 
 DRIVER_MODULE(ae, pci, ae_driver, ae_devclass, 0, 0);
+MODULE_PNP_INFO("U16:vendor;U16:device;D:#", pci, ae, ae_devs,
+    nitems(ae_devs));
 DRIVER_MODULE(miibus, ae, miibus_driver, miibus_devclass, 0, 0);
 MODULE_DEPEND(ae, pci, 1, 1, 1);
 MODULE_DEPEND(ae, ether, 1, 1, 1);
@@ -307,7 +314,7 @@ ae_attach(device_t dev)
 			goto fail;
 		}
 	}
-	
+
 	ae_init_tunables(sc);
 
 	ae_phy_reset(sc);		/* Reset PHY. */
@@ -360,7 +367,7 @@ ae_attach(device_t dev)
 
 	ether_ifattach(ifp, sc->eaddr);
 	/* Tell the upper layer(s) we support long frames. */
-	ifp->if_data.ifi_hdrlen = sizeof(struct ether_vlan_header);
+	ifp->if_hdrlen = sizeof(struct ether_vlan_header);
 
 	/*
 	 * Create and run all helper tasks.
@@ -392,7 +399,7 @@ ae_attach(device_t dev)
 fail:
 	if (error != 0)
 		ae_detach(dev);
-	
+
 	return (error);
 }
 
@@ -496,7 +503,7 @@ ae_reset(ae_softc_t *sc)
 	AE_WRITE_4(sc, AE_MASTER_REG, AE_MASTER_SOFT_RESET);
 	bus_barrier(sc->mem[0], AE_MASTER_REG, 4,
 	    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
-	
+
 	/*
 	 * Wait for reset to complete.
 	 */
@@ -1015,7 +1022,7 @@ ae_get_vpd_eaddr(ae_softc_t *sc, uint32_t *eaddr)
 
 	if (found < 2)
 		return (ENOENT);
-	
+
 	eaddr[1] &= 0xffff;	/* Only last 2 bytes are used. */
 	if (AE_CHECK_EADDR_VALID(eaddr) != 0) {
 		if (bootverbose)
@@ -1062,11 +1069,7 @@ ae_retrieve_address(ae_softc_t *sc)
 		if (bootverbose)
 			device_printf(sc->dev,
 			    "Generating random ethernet address.\n");
-#ifdef __HAIKU__
-		eaddr[0] = random();
-#else
 		eaddr[0] = arc4random();
-#endif
 
 		/*
 		 * Set OUI to ASUSTek COMPUTER INC.
@@ -1227,43 +1230,37 @@ ae_dma_free(ae_softc_t *sc)
 {
 
 	if (sc->dma_txd_tag != NULL) {
-		if (sc->dma_txd_map != NULL) {
+		if (sc->dma_txd_busaddr != 0)
 			bus_dmamap_unload(sc->dma_txd_tag, sc->dma_txd_map);
-			if (sc->txd_base != NULL)
-				bus_dmamem_free(sc->dma_txd_tag, sc->txd_base,
-				    sc->dma_txd_map);
-
-		}
+		if (sc->txd_base != NULL)
+			bus_dmamem_free(sc->dma_txd_tag, sc->txd_base,
+			    sc->dma_txd_map);
 		bus_dma_tag_destroy(sc->dma_txd_tag);
-		sc->dma_txd_map = NULL;
 		sc->dma_txd_tag = NULL;
 		sc->txd_base = NULL;
+		sc->dma_txd_busaddr = 0;
 	}
 	if (sc->dma_txs_tag != NULL) {
-		if (sc->dma_txs_map != NULL) {
+		if (sc->dma_txs_busaddr != 0)
 			bus_dmamap_unload(sc->dma_txs_tag, sc->dma_txs_map);
-			if (sc->txs_base != NULL)
-				bus_dmamem_free(sc->dma_txs_tag, sc->txs_base,
-				    sc->dma_txs_map);
-
-		}
+		if (sc->txs_base != NULL)
+			bus_dmamem_free(sc->dma_txs_tag, sc->txs_base,
+			    sc->dma_txs_map);
 		bus_dma_tag_destroy(sc->dma_txs_tag);
-		sc->dma_txs_map = NULL;
 		sc->dma_txs_tag = NULL;
 		sc->txs_base = NULL;
+		sc->dma_txs_busaddr = 0;
 	}
 	if (sc->dma_rxd_tag != NULL) {
-		if (sc->dma_rxd_map != NULL) {
+		if (sc->dma_rxd_busaddr != 0)
 			bus_dmamap_unload(sc->dma_rxd_tag, sc->dma_rxd_map);
-			if (sc->rxd_base_dma != NULL)
-				bus_dmamem_free(sc->dma_rxd_tag,
-				    sc->rxd_base_dma, sc->dma_rxd_map);
-
-		}
+		if (sc->rxd_base_dma != NULL)
+			bus_dmamem_free(sc->dma_rxd_tag, sc->rxd_base_dma,
+			    sc->dma_rxd_map);
 		bus_dma_tag_destroy(sc->dma_rxd_tag);
-		sc->dma_rxd_map = NULL;
 		sc->dma_rxd_tag = NULL;
 		sc->rxd_base_dma = NULL;
+		sc->dma_rxd_busaddr = 0;
 	}
 	if (sc->dma_parent_tag != NULL) {
 		bus_dma_tag_destroy(sc->dma_parent_tag);
@@ -1291,7 +1288,7 @@ static void
 ae_powersave_disable(ae_softc_t *sc)
 {
 	uint32_t val;
-	
+
 	AE_LOCK_ASSERT(sc);
 
 	AE_PHY_WRITE(sc, AE_PHY_DBG_ADDR, 0);
@@ -1307,7 +1304,7 @@ static void
 ae_powersave_enable(ae_softc_t *sc)
 {
 	uint32_t val;
-	
+
 	AE_LOCK_ASSERT(sc);
 
 	/*
@@ -1365,7 +1362,7 @@ ae_pm_init(ae_softc_t *sc)
 			    IFM_FDX) != 0)
 				val |= AE_MAC_FULL_DUPLEX;
 			AE_WRITE_4(sc, AE_MAC_REG, val);
-			    
+
 		} else {	/* No link. */
 			AE_WRITE_4(sc, AE_WOL_REG, AE_WOL_LNKCHG | \
 			    AE_WOL_LNKCHG_PME);
@@ -1433,7 +1430,7 @@ static unsigned int
 ae_tx_avail_size(ae_softc_t *sc)
 {
 	unsigned int avail;
-	
+
 	if (sc->txd_cur >= sc->txd_ack)
 		avail = AE_TXD_BUFSIZE_DEFAULT - (sc->txd_cur - sc->txd_ack);
 	else
@@ -1454,7 +1451,7 @@ ae_encap(ae_softc_t *sc, struct mbuf **m_head)
 
 	m0 = *m_head;
 	len = m0->m_pkthdr.len;
-	
+
 	if ((sc->flags & AE_FLAG_TXAVAIL) == 0 ||
 	    len + sizeof(ae_txd_t) + 3 > ae_tx_avail_size(sc)) {
 #ifdef AE_DEBUG
@@ -1602,7 +1599,7 @@ ae_link_task(void *arg, int pending)
 		AE_UNLOCK(sc);	/* XXX: could happen? */
 		return;
 	}
-	
+
 	sc->flags &= ~AE_FLAG_LINK;
 	if ((mii->mii_media_status & (IFM_AVALID | IFM_ACTIVE)) ==
 	    (IFM_AVALID | IFM_ACTIVE)) {
@@ -1667,7 +1664,7 @@ ae_stop_rxmac(ae_softc_t *sc)
 	/*
 	 * Wait for IDLE state.
 	 */
-	for (i = 0; i < AE_IDLE_TIMEOUT; i--) {
+	for (i = 0; i < AE_IDLE_TIMEOUT; i++) {
 		val = AE_READ_4(sc, AE_IDLE_REG);
 		if ((val & (AE_IDLE_RXMAC | AE_IDLE_DMAWRITE)) == 0)
 			break;
@@ -1703,7 +1700,7 @@ ae_stop_txmac(ae_softc_t *sc)
 	/*
 	 * Wait for IDLE state.
 	 */
-	for (i = 0; i < AE_IDLE_TIMEOUT; i--) {
+	for (i = 0; i < AE_IDLE_TIMEOUT; i++) {
 		val = AE_READ_4(sc, AE_IDLE_REG);
 		if ((val & (AE_IDLE_TXMAC | AE_IDLE_DMAREAD)) == 0)
 			break;
@@ -1859,9 +1856,9 @@ ae_tx_intr(ae_softc_t *sc)
 		    sizeof(ae_txs_t) + 3) & ~3) % AE_TXD_BUFSIZE_DEFAULT;
 
 		if ((flags & AE_TXS_SUCCESS) != 0)
-			ifp->if_opackets++;
+			if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
 		else
-			ifp->if_oerrors++;
+			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
 
 		sc->tx_inproc--;
 	}
@@ -1904,13 +1901,13 @@ ae_rxeof(ae_softc_t *sc, ae_rxd_t *rxd)
 	size = le16toh(rxd->len) - ETHER_CRC_LEN;
 	if (size < (ETHER_MIN_LEN - ETHER_CRC_LEN - ETHER_VLAN_ENCAP_LEN)) {
 		if_printf(ifp, "Runt frame received.");
-		ifp->if_ierrors++;
+		if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
 		return;
 	}
 
 	m = m_devget(&rxd->data[0], size, ETHER_ALIGN, ifp, NULL);
 	if (m == NULL) {
-		ifp->if_iqdrops++;
+		if_inc_counter(ifp, IFCOUNTER_IQDROPS, 1);
 		return;
 	}
 
@@ -1920,7 +1917,7 @@ ae_rxeof(ae_softc_t *sc, ae_rxd_t *rxd)
 		m->m_flags |= M_VLANTAG;
 	}
 
-	ifp->if_ipackets++;
+	if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
 	/*
 	 * Pass it through.
 	 */
@@ -1966,7 +1963,7 @@ ae_rx_intr(ae_softc_t *sc)
 		if ((flags & AE_RXD_SUCCESS) != 0)
 			ae_rxeof(sc, rxd);
 		else
-			ifp->if_ierrors++;
+			if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
 	}
 
 	if (count > 0) {
@@ -1996,7 +1993,7 @@ ae_watchdog(ae_softc_t *sc)
 	else
 		if_printf(ifp, "watchdog timeout - resetting.\n");
 
-	ifp->if_oerrors++;
+	if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
 	ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 	ae_init_locked(sc);
 	if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))

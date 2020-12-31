@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: ISC
+ *
  * Copyright (c) 2008-2009 Sam Leffler, Errno Consulting
  * Copyright (c) 2008 Atheros Communications, Inc.
  *
@@ -14,7 +16,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/dev/ath/ath_hal/ar9002/ar9285an.h 326695 2017-12-08 15:57:29Z pfg $
  */
 
 #ifndef	__AR9285_AN_H__

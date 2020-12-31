@@ -11,7 +11,7 @@
 #include <Bitmap.h>
 #include <Catalog.h>
 #include <CheckBox.h>
-#include <GroupLayoutBuilder.h>
+#include <LayoutBuilder.h>
 #include <SpaceLayoutItem.h>
 #include <StringView.h>
 
@@ -19,55 +19,46 @@
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "Extended local device view"
 
-ExtendedLocalDeviceView::ExtendedLocalDeviceView(BRect frame,
-	LocalDevice* bDevice, uint32 resizingMode, uint32 flags)
+ExtendedLocalDeviceView::ExtendedLocalDeviceView(LocalDevice* bDevice,
+	uint32 flags)
 	:
-	BView(frame,"ExtendedLocalDeviceView", resizingMode, flags | B_WILL_DRAW),
+	BView("ExtendedLocalDeviceView", flags | B_WILL_DRAW),
 	fDevice(bDevice),
 	fScanMode(0)
 {
-	SetViewColor(B_TRANSPARENT_COLOR);
-	SetLowColor(0, 0, 0);
-	BRect iDontCare(0, 0, 0, 0);
+	fDeviceView = new BluetoothDeviceView(bDevice);
 
-	SetLayout(new BGroupLayout(B_HORIZONTAL));
-
-	fDeviceView = new BluetoothDeviceView(BRect(0, 0, 5, 5), bDevice);
-
-	fDiscoverable = new BCheckBox(iDontCare, "Discoverable",
+	fDiscoverable = new BCheckBox("Discoverable",
 		B_TRANSLATE("Discoverable"), new BMessage(SET_DISCOVERABLE));
-	fVisible = new BCheckBox(iDontCare, "Visible",
+	fVisible = new BCheckBox("Visible",
 		B_TRANSLATE("Show name"), new BMessage(SET_VISIBLE));
-	fAuthentication = new BCheckBox(iDontCare, "Authenticate",
+	fAuthentication = new BCheckBox("Authenticate",
 		B_TRANSLATE("Authenticate"), new BMessage(SET_AUTHENTICATION));
 
 	SetEnabled(false);
 
-	AddChild(BGroupLayoutBuilder(B_VERTICAL, 0)
-				.Add(fDeviceView)
-				.Add(BGroupLayoutBuilder(B_HORIZONTAL)
-						.AddGlue()
-						.Add(fDiscoverable)
-						.Add(fVisible)
-						.SetInsets(5, 5, 5, 5)
-					)
-				.Add(fAuthentication)
-				.Add(BSpaceLayoutItem::CreateVerticalStrut(0))
-			.SetInsets(5, 5, 5, 5)
-	);
+	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
+		.SetInsets(5)
+		.Add(fDeviceView)
+		.AddGroup(B_HORIZONTAL, 0)
+			.SetInsets(5)
+			.AddGlue()
+			.Add(fDiscoverable)
+			.Add(fVisible)
+		.End()
+		.Add(fAuthentication)
+	.End();
 }
 
 
-ExtendedLocalDeviceView::~ExtendedLocalDeviceView(void)
+ExtendedLocalDeviceView::~ExtendedLocalDeviceView()
 {
-
 }
 
 
 void
 ExtendedLocalDeviceView::SetLocalDevice(LocalDevice* lDevice)
 {
-	printf("ExtendedLocalDeviceView::SetLocalDevice\n");
 	if (lDevice != NULL) {
 		fDevice = lDevice;
 		SetName(lDevice->GetFriendlyName().String());
@@ -92,7 +83,6 @@ ExtendedLocalDeviceView::SetLocalDevice(LocalDevice* lDevice)
 void
 ExtendedLocalDeviceView::AttachedToWindow()
 {
-	printf("ExtendedLocalDeviceView::AttachedToWindow\n");
 	fDiscoverable->SetTarget(this);
 	fVisible->SetTarget(this);
 	fAuthentication->SetTarget(this);
@@ -109,10 +99,9 @@ ExtendedLocalDeviceView::SetTarget(BHandler* target)
 void
 ExtendedLocalDeviceView::MessageReceived(BMessage* message)
 {
-	printf("ExtendedLocalDeviceView::MessageReceived\n");
-
 	if (fDevice == NULL) {
 		printf("ExtendedLocalDeviceView::Device missing\n");
+		BView::MessageReceived(message);
 		return;
 	}
 
@@ -148,7 +137,7 @@ ExtendedLocalDeviceView::MessageReceived(BMessage* message)
 
 		default:
 			BView::MessageReceived(message);
-		break;
+			break;
 	}
 }
 
@@ -156,8 +145,6 @@ ExtendedLocalDeviceView::MessageReceived(BMessage* message)
 void
 ExtendedLocalDeviceView::SetEnabled(bool value)
 {
-	printf("ExtendedLocalDeviceView::SetEnabled\n");
-
 	fVisible->SetEnabled(value);
 	fAuthentication->SetEnabled(value);
 	fDiscoverable->SetEnabled(value);
@@ -167,8 +154,6 @@ ExtendedLocalDeviceView::SetEnabled(bool value)
 void
 ExtendedLocalDeviceView::ClearDevice()
 {
-	printf("ExtendedLocalDeviceView::ClearDevice\n");
-
 	fVisible->SetValue(false);
 	fAuthentication->SetValue(false);
 	fDiscoverable->SetValue(false);

@@ -1,4 +1,5 @@
 /*
+ * Copyright 2018, Jérôme Duval, jerome.duval@gmail.com.
  * Copyright 2008-2011, Michael Lotz, mmlr@mlotz.ch.
  * Copyright 2010, Clemens Zeidler, haiku@clemens-zeidler.de.
  * Copyright 2009-2011, Ingo Weinhold, ingo_weinhold@gmx.de.
@@ -139,6 +140,13 @@ x86_unexpected_exception(iframe* frame)
 			signalAddress = frame->ip;
 			break;
 
+		case 12: 	// Stack Fault (#SS)
+			type = B_STACK_FAULT;
+			signalNumber = SIGBUS;
+			signalCode = BUS_ADRERR;
+			signalAddress = frame->ip;
+			break;
+
 		case 13: 	// General Protection Exception (#GP)
 			type = B_GENERAL_PROTECTION_FAULT;
 			signalNumber = SIGILL;
@@ -266,7 +274,7 @@ x86_page_fault_exception(struct iframe* frame)
 			cpu_ent* cpu = &gCPU[smp_get_current_cpu()];
 			if (cpu->fault_handler != 0) {
 				debug_set_page_fault_info(cr2, frame->ip,
-					(frame->error_code & 0x2) != 0
+					(frame->error_code & PGFAULT_W) != 0
 						? DEBUG_PAGE_FAULT_WRITE : 0);
 				frame->ip = cpu->fault_handler;
 				frame->bp = cpu->fault_handler_stack_pointer;
@@ -277,7 +285,7 @@ x86_page_fault_exception(struct iframe* frame)
 				kprintf("ERROR: thread::fault_handler used in kernel "
 					"debugger!\n");
 				debug_set_page_fault_info(cr2, frame->ip,
-					(frame->error_code & 0x2) != 0
+					(frame->error_code & PGFAULT_W) != 0
 						? DEBUG_PAGE_FAULT_WRITE : 0);
 				frame->ip = reinterpret_cast<uintptr_t>(thread->fault_handler);
 				return;
@@ -288,15 +296,31 @@ x86_page_fault_exception(struct iframe* frame)
 		panic("page fault in debugger without fault handler! Touching "
 			"address %p from ip %p\n", (void*)cr2, (void*)frame->ip);
 		return;
-	} else if ((frame->flags & 0x200) == 0) {
+	} else if (!IFRAME_IS_USER(frame)
+		&& (frame->error_code & PGFAULT_I) != 0
+		&& (x86_read_cr4() & IA32_CR4_SMEP) != 0) {
+		// check that: 1. come not from userland,
+		// 2. is an instruction fetch, 3. smep is enabled
+		panic("SMEP violation user-mapped address %p touched from kernel %p\n",
+			(void*)cr2, (void*)frame->ip);
+	} else if ((frame->flags & X86_EFLAGS_ALIGNMENT_CHECK) == 0
+		&& !IFRAME_IS_USER(frame)
+		&& (frame->error_code & PGFAULT_P) != 0
+		&& (x86_read_cr4() & IA32_CR4_SMAP) != 0) {
+		// check that: 1. AC flag is not set, 2. come not from userland,
+		// 3. is a page-protection violation, 4. smap is enabled
+		panic("SMAP violation user-mapped address %p touched from kernel %p\n",
+			(void*)cr2, (void*)frame->ip);
+	} else if ((frame->flags & X86_EFLAGS_INTERRUPT) == 0) {
 		// interrupts disabled
 
 		// If a page fault handler is installed, we're allowed to be here.
 		// TODO: Now we are generally allowing user_memcpy() with interrupts
 		// disabled, which in most cases is a bug. We should add some thread
 		// flag allowing to explicitly indicate that this handling is desired.
-		uintptr_t handler = reinterpret_cast<uintptr_t>(thread->fault_handler);
-		if (thread && thread->fault_handler != 0) {
+		if (thread != NULL && thread->fault_handler != 0) {
+			uintptr_t handler
+				= reinterpret_cast<uintptr_t>(thread->fault_handler);
 			if (frame->ip != handler) {
 				frame->ip = handler;
 				return;
@@ -323,9 +347,9 @@ x86_page_fault_exception(struct iframe* frame)
 	enable_interrupts();
 
 	vm_page_fault(cr2, frame->ip,
-		(frame->error_code & 0x2)!= 0,		// write access
-		(frame->error_code & 0x10) != 0,	// instruction fetch
-		(frame->error_code & 0x4) != 0,		// userland
+		(frame->error_code & PGFAULT_W) != 0,		// write access
+		(frame->error_code & PGFAULT_I) != 0,		// instruction fetch
+		IFRAME_IS_USER(frame),						// userland
 		&newip);
 	if (newip != 0) {
 		// the page fault handler wants us to modify the iframe to set the

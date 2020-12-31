@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2015, Adrien Destugues, pulkomandy@pulkomandy.tk
+ * Copyright 2012-2019, Adrien Destugues, pulkomandy@pulkomandy.tk
  * Distributed under the terms of the MIT licence.
  */
 
@@ -8,6 +8,7 @@
 
 #include <stdio.h>
 
+#include <Catalog.h>
 #include <FilePanel.h>
 #include <GroupLayout.h>
 #include <Menu.h>
@@ -15,9 +16,13 @@
 #include <MenuItem.h>
 #include <ScrollView.h>
 #include <SerialPort.h>
+#include <StatusBar.h>
 
 #include "SerialApp.h"
 #include "TermView.h"
+
+
+#define B_TRANSLATION_CONTEXT "SerialWindow"
 
 
 const int SerialWindow::kBaudrates[] = { 50, 75, 110, 134, 150, 200, 300, 600,
@@ -34,13 +39,16 @@ const int SerialWindow::kBaudrateConstants[] = { B_50_BPS, B_75_BPS, B_110_BPS,
 };
 
 
-const char* SerialWindow::kWindowTitle = "SerialConnect";
+const char* SerialWindow::kWindowTitle =
+	B_TRANSLATE_MARK_SYSTEM_NAME("SerialConnect");
 
 
 SerialWindow::SerialWindow()
-	: BWindow(BRect(100, 100, 400, 400), SerialWindow::kWindowTitle,
+	: BWindow(BRect(100, 100, 400, 400),
+		B_TRANSLATE_NOCOLLECT_SYSTEM_NAME(SerialWindow::kWindowTitle),
 		B_DOCUMENT_WINDOW, B_QUIT_ON_WINDOW_CLOSE | B_AUTO_UPDATE_SIZE_LIMITS)
 	, fLogFilePanel(NULL)
+	, fSendFilePanel(NULL)
 {
 	BMenuBar* menuBar = new BMenuBar(Bounds(), "menuBar");
 	menuBar->ResizeToPreferred();
@@ -56,6 +64,7 @@ SerialWindow::SerialWindow()
 	r.right = r.left + B_V_SCROLL_BAR_WIDTH;
 	r.top -= 1;
 	r.bottom -= B_H_SCROLL_BAR_HEIGHT - 1;
+
 	BScrollBar* scrollBar = new BScrollBar(r, "scrollbar", NULL, 0, 0,
 		B_VERTICAL);
 
@@ -63,74 +72,106 @@ SerialWindow::SerialWindow()
 
 	ResizeTo(r.right - 1, r.bottom + B_H_SCROLL_BAR_HEIGHT - 1);
 
+	r = fTermView->Frame();
+	r.top = r.bottom - 37;
+
+	fStatusBar = new BStatusBar(r, B_TRANSLATE("file transfer progress"),
+		NULL, NULL);
+	fStatusBar->SetResizingMode(B_FOLLOW_BOTTOM | B_FOLLOW_LEFT_RIGHT);
+	fStatusBar->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+	fStatusBar->Hide();
+
 	AddChild(menuBar);
 	AddChild(fTermView);
 	AddChild(scrollBar);
+	AddChild(fStatusBar);
 
-	fConnectionMenu = new BMenu("Connection");
-	BMenu* fileMenu = new BMenu("File");
-	BMenu* settingsMenu = new BMenu("Settings");
+	fConnectionMenu = new BMenu(B_TRANSLATE("Connection"));
+	fFileMenu = new BMenu(B_TRANSLATE("File"));
+	BMenu* settingsMenu = new BMenu(B_TRANSLATE("Settings"));
+	BMenu* editMenu = new BMenu(B_TRANSLATE("Edit"));
 
 	fConnectionMenu->SetRadioMode(true);
 
 	menuBar->AddItem(fConnectionMenu);
-	menuBar->AddItem(fileMenu);
+	menuBar->AddItem(editMenu);
+	menuBar->AddItem(fFileMenu);
 	menuBar->AddItem(settingsMenu);
 
-	// TODO edit menu - what's in it ?
-	//BMenu* editMenu = new BMenu("Edit");
-	//menuBar->AddItem(editMenu);
+	BMenuItem* logFile = new BMenuItem(
+		B_TRANSLATE("Log to file" B_UTF8_ELLIPSIS), new BMessage(kMsgLogfile));
+	fFileMenu->AddItem(logFile);
 
-	BMenuItem* logFile = new BMenuItem("Log to file" B_UTF8_ELLIPSIS,
-		new BMessage(kMsgLogfile));
-	fileMenu->AddItem(logFile);
+	// The "send" items are disabled initially. They are enabled only once we
+	// are connected to a serial port.
+	BMessage* sendMsg = new BMessage(kMsgSendFile);
+	sendMsg->AddString("protocol", "xmodem");
+	BMenuItem* xmodemSend = new BMenuItem(
+		B_TRANSLATE("XModem send" B_UTF8_ELLIPSIS),
+		sendMsg);
+	fFileMenu->AddItem(xmodemSend);
+	xmodemSend->SetEnabled(false);
+
+	BMenuItem* rawSend = new BMenuItem(B_TRANSLATE("Raw send" B_UTF8_ELLIPSIS),
+		new BMessage(kMsgSendFile));
+	fFileMenu->AddItem(rawSend);
+	rawSend->SetEnabled(false);
+
 #if 0
-	// TODO implement these
-	BMenuItem* xmodemSend = new BMenuItem("X/Y/ZModem send" B_UTF8_ELLIPSIS,
-		NULL);
-	fileMenu->AddItem(xmodemSend);
+	// TODO implement this
 	BMenuItem* xmodemReceive = new BMenuItem(
 		"X/Y/Zmodem receive" B_UTF8_ELLIPSIS, NULL);
-	fileMenu->AddItem(xmodemReceive);
+	fFileMenu->AddItem(xmodemReceive);
+	xmodemReceive->SetEnabled(false);
 #endif
+
+	// Items for the edit menu
+	BMenuItem* clearScreen = new BMenuItem(B_TRANSLATE("Clear history"),
+		new BMessage(kMsgClear));
+	editMenu->AddItem(clearScreen);
+
+	// TODO copy (when we have selection), paste
 
 	// Configuring all this by menus may be a bit unhandy. Make a setting
 	// window instead ?
-	fBaudrateMenu = new BMenu("Baud rate");
+	fBaudrateMenu = new BMenu(B_TRANSLATE("Baud rate"));
 	fBaudrateMenu->SetRadioMode(true);
 	settingsMenu->AddItem(fBaudrateMenu);
 
-	fParityMenu = new BMenu("Parity");
+	fParityMenu = new BMenu(B_TRANSLATE("Parity"));
 	fParityMenu->SetRadioMode(true);
 	settingsMenu->AddItem(fParityMenu);
 
-	fStopbitsMenu = new BMenu("Stop bits");
+	fStopbitsMenu = new BMenu(B_TRANSLATE("Stop bits"));
 	fStopbitsMenu->SetRadioMode(true);
 	settingsMenu->AddItem(fStopbitsMenu);
 
-	fFlowcontrolMenu = new BMenu("Flow control");
+	fFlowcontrolMenu = new BMenu(B_TRANSLATE("Flow control"));
 	fFlowcontrolMenu->SetRadioMode(true);
 	settingsMenu->AddItem(fFlowcontrolMenu);
 
-	fDatabitsMenu = new BMenu("Data bits");
+	fDatabitsMenu = new BMenu(B_TRANSLATE("Data bits"));
 	fDatabitsMenu->SetRadioMode(true);
 	settingsMenu->AddItem(fDatabitsMenu);
 
-	fLineTerminatorMenu = new BMenu("Line terminator");
+	fLineTerminatorMenu = new BMenu(B_TRANSLATE("Line terminator"));
 	fLineTerminatorMenu->SetRadioMode(true);
 	settingsMenu->AddItem(fLineTerminatorMenu);
 
 	BMessage* message = new BMessage(kMsgSettings);
 	message->AddInt32("parity", B_NO_PARITY);
-	BMenuItem* parityNone = new BMenuItem("None", message);
+	BMenuItem* parityNone =
+		new BMenuItem(B_TRANSLATE_COMMENT("None", "Parity"), message);
 
 	message = new BMessage(kMsgSettings);
 	message->AddInt32("parity", B_ODD_PARITY);
-	BMenuItem* parityOdd = new BMenuItem("Odd", message);
+	BMenuItem* parityOdd = new BMenuItem(B_TRANSLATE_COMMENT("Odd", "Parity"),
+		message);
 
 	message = new BMessage(kMsgSettings);
 	message->AddInt32("parity", B_EVEN_PARITY);
-	BMenuItem* parityEven = new BMenuItem("Even", message);
+	BMenuItem* parityEven =
+		new BMenuItem(B_TRANSLATE_COMMENT("Even", "Parity"), message);
 
 	fParityMenu->AddItem(parityNone);
 	fParityMenu->AddItem(parityOdd);
@@ -174,23 +215,33 @@ SerialWindow::SerialWindow()
 		fBaudrateMenu->AddItem(item);
 	}
 
+	message = new BMessage(kMsgCustomBaudrate);
+	BMenuItem* custom =
+		new BMenuItem(B_TRANSLATE_COMMENT("custom" B_UTF8_ELLIPSIS,
+		"Baudrate"), message);
+	fBaudrateMenu->AddItem(custom);
+
 	fBaudrateMenu->SetTargetForItems(be_app);
 
 	message = new BMessage(kMsgSettings);
 	message->AddInt32("flowcontrol", B_HARDWARE_CONTROL);
-	BMenuItem* hardware = new BMenuItem("Hardware", message);
+	BMenuItem* hardware =
+		new BMenuItem(B_TRANSLATE_COMMENT("Hardware", "Flowcontrol"), message);
 
 	message = new BMessage(kMsgSettings);
 	message->AddInt32("flowcontrol", B_SOFTWARE_CONTROL);
-	BMenuItem* software = new BMenuItem("Software", message);
+	BMenuItem* software =
+		new BMenuItem(B_TRANSLATE_COMMENT("Software", "Flowcontrol"), message);
 
 	message = new BMessage(kMsgSettings);
 	message->AddInt32("flowcontrol", B_HARDWARE_CONTROL | B_SOFTWARE_CONTROL);
-	BMenuItem* both = new BMenuItem("Both", message);
+	BMenuItem* both =
+		new BMenuItem(B_TRANSLATE_COMMENT("Both", "Flowcontrol"), message);
 
 	message = new BMessage(kMsgSettings);
 	message->AddInt32("flowcontrol", 0);
-	BMenuItem* noFlow = new BMenuItem("None", message);
+	BMenuItem* noFlow =
+		new BMenuItem(B_TRANSLATE_COMMENT("None", "Flowcontrol"), message);
 
 	fFlowcontrolMenu->AddItem(hardware);
 	fFlowcontrolMenu->AddItem(software);
@@ -221,6 +272,7 @@ SerialWindow::SerialWindow()
 SerialWindow::~SerialWindow()
 {
 	delete fLogFilePanel;
+	delete fSendFilePanel;
 }
 
 
@@ -257,14 +309,15 @@ void SerialWindow::MenusBeginning()
 	if (deviceCount > 0) {
 		fConnectionMenu->AddSeparatorItem();
 
-		BMenuItem* disconnect = new BMenuItem("Disconnect",
+		BMenuItem* disconnect = new BMenuItem(B_TRANSLATE("Disconnect"),
 			new BMessage(kMsgOpenPort), 'Z', B_OPTION_KEY);
 		if (!connected)
 			disconnect->SetEnabled(false);
 		disconnect->SetTarget(be_app);
 		fConnectionMenu->AddItem(disconnect);
 	} else {
-		BMenuItem* noDevices = new BMenuItem("<no serial port available>", NULL);
+		BMenuItem* noDevices =
+			new BMenuItem(B_TRANSLATE("<no serial port available>"), NULL);
 		noDevices->SetEnabled(false);
 		fConnectionMenu->AddItem(noDevices);
 	}
@@ -275,6 +328,18 @@ void SerialWindow::MessageReceived(BMessage* message)
 {
 	switch (message->what)
 	{
+		case kMsgOpenPort:
+		{
+			BString path;
+			bool open = (message->FindString("port name", &path) == B_OK);
+			int i = 1; // Skip "log to file", which woeks even when offline.
+			BMenuItem* item;
+			while((item = fFileMenu->ItemAt(i++)))
+			{
+				item->SetEnabled(open);
+			}
+			return;
+		}
 		case kMsgDataRead:
 		{
 			const char* bytes;
@@ -288,11 +353,22 @@ void SerialWindow::MessageReceived(BMessage* message)
 		{
 			// Let's lazy init the file panel
 			if (fLogFilePanel == NULL) {
-				fLogFilePanel = new BFilePanel(B_SAVE_PANEL, &be_app_messenger,
-					NULL, B_FILE_NODE, false);
+				fLogFilePanel = new BFilePanel(B_SAVE_PANEL,
+					&be_app_messenger, NULL, B_FILE_NODE, false);
 				fLogFilePanel->SetMessage(message);
 			}
 			fLogFilePanel->Show();
+			return;
+		}
+		case kMsgSendFile:
+		{
+			// Let's lazy init the file panel
+			if (fSendFilePanel == NULL) {
+				fSendFilePanel = new BFilePanel(B_OPEN_PANEL,
+					&be_app_messenger, NULL, B_FILE_NODE, false);
+			}
+			fSendFilePanel->SetMessage(message);
+			fSendFilePanel->Show();
 			return;
 		}
 		case kMsgSettings:
@@ -351,13 +427,25 @@ void SerialWindow::MessageReceived(BMessage* message)
 			}
 
 			if (message->FindInt32("baudrate", &baudrate) == B_OK) {
-				for (int i = 0; i < fBaudrateMenu->CountItems(); i++) {
-					BMenuItem* item = fBaudrateMenu->ItemAt(i);
-					int32 code;
+				int i;
+				BMenuItem* item = NULL;
+				for (i = 0; i < fBaudrateMenu->CountItems(); i++) {
+					item = fBaudrateMenu->ItemAt(i);
+					int32 code = 0;
 					item->Message()->FindInt32("baudrate", &code);
 
-					if (baudrate == code)
+					if (baudrate == code) {
 						item->SetMarked(true);
+						break;
+					}
+				}
+
+				if (i == fBaudrateMenu->CountItems() && item != NULL) {
+					// Rate was not found, mark it as "custom".
+					// Since that is the last item in the menu, we still point
+					// to it.
+					item->SetMarked(true);
+					item->Message()->SetInt32("baudrate", baudrate);
 				}
 			}
 
@@ -375,7 +463,36 @@ void SerialWindow::MessageReceived(BMessage* message)
 
 			return;
 		}
-	}
+		case kMsgClear:
+		{
+			fTermView->Clear();
+			return;
+		}
+		case kMsgProgress:
+		{
+			// File transfer progress
+			int32 pos = message->FindInt32("pos");
+			int32 size = message->FindInt32("size");
+			BString label = message->FindString("info");
 
-	BWindow::MessageReceived(message);
+			if (pos >= size) {
+				if (!fStatusBar->IsHidden()) {
+					fStatusBar->Hide();
+					fTermView->ResizeBy(0, fStatusBar->Bounds().Height() - 1);
+				}
+			} else {
+				BString text;
+				text.SetToFormat("%" B_PRId32 "/%" B_PRId32, pos, size);
+				fStatusBar->SetMaxValue(size);
+				fStatusBar->SetTo(pos, label, text);
+				if (fStatusBar->IsHidden()) {
+					fStatusBar->Show();
+					fTermView->ResizeBy(0, -(fStatusBar->Bounds().Height() - 1));
+				}
+			}
+			return;
+		}
+		default:
+			BWindow::MessageReceived(message);
+	}
 }

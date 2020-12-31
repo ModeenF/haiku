@@ -5,6 +5,7 @@
  *
  * Authors:
  *		Ingo Weinhold, ingo_weinhold@gmx.de
+ *		Simon South, simon@simonsouth.net
  *		Siarzhuk Zharski, zharik@gmx.li
  */
 
@@ -38,7 +39,7 @@ TerminalBuffer::TerminalBuffer()
 
 TerminalBuffer::~TerminalBuffer()
 {
-	delete fAlternateScreen;
+	free(fAlternateScreen);
 	delete fAlternateHistory;
 	delete[] fColorsPalette;
 }
@@ -47,8 +48,8 @@ TerminalBuffer::~TerminalBuffer()
 status_t
 TerminalBuffer::Init(int32 width, int32 height, int32 historySize)
 {
-	if (Sem() < 0)
-		return Sem();
+	if (BLocker::InitCheck() < 0)
+		return BLocker::InitCheck();
 
 	fAlternateScreen = _AllocateLines(width, height);
 	if (fAlternateScreen == NULL)
@@ -61,8 +62,8 @@ TerminalBuffer::Init(int32 width, int32 height, int32 historySize)
 	if (fColorsPalette == NULL)
 		return B_NO_MEMORY;
 
-	memcpy(fColorsPalette, TermApp::DefaultPalette(),
-			sizeof(rgb_color) * kTermColorCount);
+	for (uint i = 0; i < kTermColorCount; i++)
+		fColorsPalette[i] = TermApp::DefaultPalette()[i];
 
 	return BasicTerminalBuffer::Init(width, height, historySize);
 }
@@ -87,6 +88,28 @@ int
 TerminalBuffer::Encoding() const
 {
 	return fEncoding;
+}
+
+
+void
+TerminalBuffer::EnableInterpretMetaKey(bool enable)
+{
+	if (fListenerValid) {
+		BMessage message(MSG_ENABLE_META_KEY);
+		message.AddBool("enableInterpretMetaKey", enable);
+		fListener.SendMessage(&message);
+	}
+}
+
+
+void
+TerminalBuffer::EnableMetaKeySendsEscape(bool enable)
+{
+	if (fListenerValid) {
+		BMessage message(MSG_ENABLE_META_KEY);
+		message.AddBool("enableMetaKeySendsEscape", enable);
+		fListener.SendMessage(&message);
+	}
 }
 
 
@@ -129,6 +152,17 @@ TerminalBuffer::ReportAnyMouseEvent(bool reportAnyMouseEvent)
 	if (fListenerValid) {
 		BMessage message(MSG_REPORT_MOUSE_EVENT);
 		message.AddBool("reportAnyMouseEvent", reportAnyMouseEvent);
+		fListener.SendMessage(&message);
+	}
+}
+
+
+void
+TerminalBuffer::EnableExtendedMouseCoordinates(bool enable)
+{
+	if (fListenerValid) {
+		BMessage message(MSG_REPORT_MOUSE_EVENT);
+		message.AddBool("enableExtendedMouseCoordinates", enable);
 		fListener.SendMessage(&message);
 	}
 }
@@ -231,15 +265,14 @@ TerminalBuffer::SetCursorHidden(bool hidden)
 void
 TerminalBuffer::SetPaletteColor(uint8 index, rgb_color color)
 {
-	if (index < kTermColorCount)
-		fColorsPalette[index] = color;
+	fColorsPalette[index] = color;
 }
 
 
 rgb_color
 TerminalBuffer::PaletteColor(uint8 index)
 {
-	return fColorsPalette[min_c(index, kTermColorCount - 1)];
+	return fColorsPalette[index];
 }
 
 

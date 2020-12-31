@@ -53,7 +53,8 @@ debug_get_keyboard_config(int argc, char **argv)
 KeyboardProtocolHandler::KeyboardProtocolHandler(HIDReport &inputReport,
 	HIDReport *outputReport)
 	:
-	ProtocolHandler(inputReport.Device(), "input/keyboard/usb/", 512),
+	ProtocolHandler(inputReport.Device(), "input/keyboard/" DEVICE_PATH_SUFFIX
+		"/", 512),
 	fInputReport(inputReport),
 	fOutputReport(outputReport),
 	fRepeatDelay(300000),
@@ -80,7 +81,8 @@ KeyboardProtocolHandler::KeyboardProtocolHandler(HIDReport &inputReport,
 		if (item->UsagePage() == B_HID_USAGE_PAGE_KEYBOARD
 			|| item->UsagePage() == B_HID_USAGE_PAGE_CONSUMER
 			|| item->UsagePage() == B_HID_USAGE_PAGE_BUTTON) {
-			TRACE("keyboard item with usage %lx\n", item->UsageMinimum());
+			TRACE("keyboard item with usage %" B_PRIx32 "\n",
+				item->UsageMinimum());
 
 			if (item->Array()) {
 				// normal or "consumer"/button keys handled as array items
@@ -114,8 +116,8 @@ KeyboardProtocolHandler::KeyboardProtocolHandler(HIDReport &inputReport,
 			sDebugKeyboardFound = true;
 	}
 
-	TRACE("keyboard device with %lu keys and %lu modifiers\n", fKeyCount,
-		fModifierCount);
+	TRACE("keyboard device with %" B_PRIu32 " keys and %" B_PRIu32
+		" modifiers\n", fKeyCount, fModifierCount);
 	TRACE("input report: %u; output report: %u\n", inputReport.ID(),
 		outputReport != NULL ? outputReport->ID() : 255);
 
@@ -186,7 +188,13 @@ KeyboardProtocolHandler::AddHandlers(HIDDevice &device,
 			switch (collection.UsageID()) {
 				case B_HID_UID_GD_KEYBOARD:
 				case B_HID_UID_GD_KEYPAD:
+#if 0
+				// This is not specific enough to deserve a keyboard device on
+				// its own (some mice have one such descriptor, for example).
+				// If your keyboard uses this, do a more extensive check of
+				// the descriptor to make sure there actually are keys in it.
 				case B_HID_UID_GD_SYSTEM_CONTROL:
+#endif
 					handled = true;
 			}
 
@@ -219,7 +227,7 @@ KeyboardProtocolHandler::AddHandlers(HIDDevice &device,
 	collection.BuildReportList(HID_REPORT_TYPE_INPUT, inputReports,
 		inputReportCount);
 
-	TRACE("input report count: %lu\n", inputReportCount);
+	TRACE("input report count: %" B_PRIu32 "\n", inputReportCount);
 
 	for (uint32 i = 0; i < inputReportCount; i++) {
 		HIDReport *inputReport = inputReports[i];
@@ -369,6 +377,9 @@ KeyboardProtocolHandler::Control(uint32 *cookie, uint32 op, void *buffer,
 					continue;
 				}
 
+				if (!IS_USER_ADDRESS(buffer))
+					return B_BAD_ADDRESS;
+
 				// process what is in the ring_buffer, it could be written
 				// there because we handled an interrupt transfer or because
 				// we wrote the current repeat key
@@ -379,16 +390,21 @@ KeyboardProtocolHandler::Control(uint32 *cookie, uint32 op, void *buffer,
 		case KB_SET_LEDS:
 		{
 			uint8 ledData[4];
-			if (user_memcpy(ledData, buffer, sizeof(ledData)) != B_OK)
+			if (!IS_USER_ADDRESS(buffer)
+				|| user_memcpy(ledData, buffer, sizeof(ledData)) != B_OK) {
 				return B_BAD_ADDRESS;
+			}
 			return _SetLEDs(ledData);
 		}
 
 		case KB_SET_KEY_REPEAT_RATE:
 		{
 			int32 repeatRate;
-			if (user_memcpy(&repeatRate, buffer, sizeof(repeatRate)) != B_OK)
+			if (!IS_USER_ADDRESS(buffer)
+				|| user_memcpy(&repeatRate, buffer, sizeof(repeatRate))
+					!= B_OK) {
 				return B_BAD_ADDRESS;
+			}
 
 			if (repeatRate == 0 || repeatRate > 1000000)
 				return B_BAD_VALUE;
@@ -400,21 +416,28 @@ KeyboardProtocolHandler::Control(uint32 *cookie, uint32 op, void *buffer,
 		case KB_GET_KEY_REPEAT_RATE:
 		{
 			int32 repeatRate = 10000000 / fRepeatRate;
-			if (user_memcpy(buffer, &repeatRate, sizeof(repeatRate)) != B_OK)
+			if (!IS_USER_ADDRESS(buffer)
+				|| user_memcpy(buffer, &repeatRate, sizeof(repeatRate))
+					!= B_OK) {
 				return B_BAD_ADDRESS;
+			}
 			return B_OK;
 		}
 
 		case KB_SET_KEY_REPEAT_DELAY:
-			if (user_memcpy(&fRepeatDelay, buffer, sizeof(fRepeatDelay))
-					!= B_OK)
+			if (!IS_USER_ADDRESS(buffer)
+				|| user_memcpy(&fRepeatDelay, buffer, sizeof(fRepeatDelay))
+					!= B_OK) {
 				return B_BAD_ADDRESS;
+			}
 			return B_OK;
 
 		case KB_GET_KEY_REPEAT_DELAY:
-			if (user_memcpy(buffer, &fRepeatDelay, sizeof(fRepeatDelay))
-					!= B_OK)
+			if (!IS_USER_ADDRESS(buffer)
+				|| user_memcpy(buffer, &fRepeatDelay, sizeof(fRepeatDelay))
+					!= B_OK) {
 				return B_BAD_ADDRESS;
+			}
 			return B_OK;
 
 		case KB_SET_DEBUG_READER:

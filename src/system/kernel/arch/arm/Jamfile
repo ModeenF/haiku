@@ -2,8 +2,6 @@ SubDir HAIKU_TOP src system kernel arch arm ;
 
 SubDirHdrs $(SUBDIR) $(DOTDOT) generic ;
 UsePrivateKernelHeaders ;
-UsePrivateHeaders [ FDirName kernel arch $(TARGET_KERNEL_ARCH) board $(TARGET_BOOT_BOARD) ] ;
-
 
 SEARCH_SOURCE += [ FDirName $(SUBDIR) paging ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) paging 32bit ] ;
@@ -27,8 +25,11 @@ KernelMergeObject kernel_arch_arm.o :
 	arch_vm.cpp
 	arch_vm_translation_map.cpp
 	arch_asm.S
+
+	# Serial UART and drivers
 	debug_uart_8250.cpp
 	arch_uart_8250.cpp
+	arch_uart_8250_omap.cpp
 	arch_uart_pl011.cpp
 
 	arch_atomic64.cpp
@@ -54,7 +55,7 @@ KernelMergeObject kernel_arch_arm.o :
 	:
 	$(TARGET_KERNEL_PIC_CCFLAGS) -Wno-unused
 	:
-
+	kernel_fdt.a
 ;
 
 CreateAsmStructOffsetsHeader asm_offsets.h : asm_offsets.cpp ;

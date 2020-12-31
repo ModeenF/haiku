@@ -19,18 +19,20 @@
 #include <string.h>
 #include <usb/USB_hid.h>
 
+#include <kernel.h>
 #include <keyboard_mouse_driver.h>
 
 
 MouseProtocolHandler::MouseProtocolHandler(HIDReport &report,
 	HIDReportItem &xAxis, HIDReportItem &yAxis)
 	:
-	ProtocolHandler(report.Device(), "input/mouse/usb/", 0),
+	ProtocolHandler(report.Device(), "input/mouse/" DEVICE_PATH_SUFFIX "/", 0),
 	fReport(report),
 
 	fXAxis(xAxis),
 	fYAxis(yAxis),
 	fWheel(NULL),
+	fHorizontalPan(NULL),
 
 	fLastButtons(0),
 	fClickCount(0),
@@ -53,8 +55,11 @@ MouseProtocolHandler::MouseProtocolHandler(HIDReport &report,
 
 	fWheel = report.FindItem(B_HID_USAGE_PAGE_GENERIC_DESKTOP,
 		B_HID_UID_GD_WHEEL);
+	fHorizontalPan = report.FindItem(B_HID_USAGE_PAGE_CONSUMER,
+		B_HID_UID_CON_AC_PAN);
 
-	TRACE("mouse device with %lu buttons and %swheel\n", buttonCount,
+	TRACE("mouse device with %" B_PRIu32 " buttons %sand %swheel\n",
+		buttonCount, fHorizontalPan == NULL ? "" : ", horizontal pan ",
 		fWheel == NULL ? "no " : "");
 	TRACE("report id: %u\n", report.ID());
 }
@@ -132,9 +137,18 @@ MouseProtocolHandler::Control(uint32 *cookie, uint32 op, void *buffer,
 				return B_BUFFER_OVERFLOW;
 
 			while (true) {
-				status_t result = _ReadReport(buffer, cookie);
-				if (result != B_INTERRUPTED)
-					return result;
+				mouse_movement movement;
+				status_t result = _ReadReport(&movement, cookie);
+				if (result == B_INTERRUPTED)
+					continue;
+
+				if (!IS_USER_ADDRESS(buffer)
+					|| user_memcpy(buffer, &movement, sizeof(movement))
+						!= B_OK) {
+					return B_BAD_ADDRESS;
+				}
+
+				return result;
 			}
 		}
 
@@ -148,12 +162,13 @@ MouseProtocolHandler::Control(uint32 *cookie, uint32 op, void *buffer,
 		}
 
 		case MS_SET_CLICKSPEED:
-#ifdef __HAIKU__
-				return user_memcpy(&fClickSpeed, buffer, sizeof(bigtime_t));
-#else
-				fClickSpeed = *(bigtime_t *)buffer;
-				return B_OK;
-#endif
+			if (!IS_USER_ADDRESS(buffer)
+				|| user_memcpy(&fClickSpeed, buffer, sizeof(bigtime_t))
+					!= B_OK) {
+				return B_BAD_ADDRESS;
+			}
+
+			return B_OK;
 	}
 
 	return B_ERROR;
@@ -193,9 +208,12 @@ MouseProtocolHandler::_ReadReport(void *buffer, uint32 *cookie)
 	if (fYAxis.Extract() == B_OK && fYAxis.Valid())
 		axisRelativeData[1] = fYAxis.Data();
 
-	uint32 wheelData = 0;
+	uint32 wheelData[2] = {0};
 	if (fWheel != NULL && fWheel->Extract() == B_OK && fWheel->Valid())
-		wheelData = fWheel->Data();
+		wheelData[0] = fWheel->Data();
+	if (fHorizontalPan != NULL && fHorizontalPan->Extract() == B_OK
+			&& fHorizontalPan->Valid())
+		wheelData[1] = fHorizontalPan->Data();
 
 	uint32 buttons = 0;
 	for (uint32 i = 0; i < B_MAX_MOUSE_BUTTONS; i++) {
@@ -234,7 +252,8 @@ MouseProtocolHandler::_ReadReport(void *buffer, uint32 *cookie)
 	info->ydelta = -axisRelativeData[1];
 	info->clicks = clicks;
 	info->timestamp = timestamp;
-	info->wheel_ydelta = -wheelData;
+	info->wheel_ydelta = -wheelData[0];
+	info->wheel_xdelta = wheelData[1];
 
 	return B_OK;
 }

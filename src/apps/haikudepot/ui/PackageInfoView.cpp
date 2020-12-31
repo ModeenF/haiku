@@ -1,12 +1,12 @@
 /*
  * Copyright 2013-2014, Stephan Aßmus <superstippi@gmx.de>.
+ * Copyright 2018-2020, Andrew Lindesay <apl@lindesay.co.nz>.
  * All rights reserved. Distributed under the terms of the MIT License.
  */
 
 #include "PackageInfoView.h"
 
 #include <algorithm>
-#include <stdio.h>
 
 #include <Alert.h>
 #include <Autolock.h>
@@ -34,10 +34,11 @@
 #include <package/hpkg/PackageContentHandler.h>
 #include <package/hpkg/PackageEntry.h>
 
-#include "BitmapButton.h"
 #include "BitmapView.h"
 #include "LinkView.h"
 #include "LinkedBitmapView.h"
+#include "LocaleUtils.h"
+#include "Logger.h"
 #include "MarkupTextView.h"
 #include "MessagePackageListener.h"
 #include "PackageActionHandler.h"
@@ -53,7 +54,14 @@
 #define B_TRANSLATION_CONTEXT "PackageInfoView"
 
 
-static const rgb_color kLightBlack = (rgb_color) { 60, 60, 60, 255 };
+enum {
+	TAB_ABOUT		= 0,
+	TAB_RATINGS		= 1,
+	TAB_CHANGELOG	= 2,
+	TAB_CONTENTS	= 3
+};
+
+
 static const float kContentTint = (B_NO_TINT + B_LIGHTEN_1_TINT) / 2.0f;
 
 
@@ -258,9 +266,10 @@ private:
 
 class TitleView : public BGroupView {
 public:
-	TitleView()
+	TitleView(PackageIconRepository& packageIconRepository)
 		:
-		BGroupView("title view", B_HORIZONTAL)
+		BGroupView("title view", B_HORIZONTAL),
+		fPackageIconRepository(packageIconRepository)
 	{
 		fIconView = new BitmapView("package icon view");
 		fTitleView = new BStringView("package title view", "");
@@ -281,7 +290,7 @@ public:
 		font.SetSize(std::max(9.0f, floorf(font.Size() * 0.92f)));
 		font.SetFamilyAndStyle(family, "Italic");
 		fPublisherView->SetFont(&font);
-		fPublisherView->SetHighColor(kLightBlack);
+		fPublisherView->SetHighUIColor(B_PANEL_TEXT_COLOR, B_LIGHTEN_1_TINT);
 
 		// slightly bigger font
 		GetFont(&font);
@@ -290,7 +299,7 @@ public:
 		// Version info
 		fVersionInfo = new BStringView("package version info", "");
 		fVersionInfo->SetFont(&font);
-		fVersionInfo->SetHighColor(kLightBlack);
+		fVersionInfo->SetHighUIColor(B_PANEL_TEXT_COLOR, B_LIGHTEN_1_TINT);
 
 		// Rating view
 		fRatingView = new TransitReportingRatingView(
@@ -298,14 +307,14 @@ public:
 
 		fAvgRating = new BStringView("package average rating", "");
 		fAvgRating->SetFont(&font);
-		fAvgRating->SetHighColor(kLightBlack);
+		fAvgRating->SetHighUIColor(B_PANEL_TEXT_COLOR, B_LIGHTEN_1_TINT);
 
 		fVoteInfo = new BStringView("package vote info", "");
 		// small font
 		GetFont(&font);
 		font.SetSize(std::max(9.0f, floorf(font.Size() * 0.85f)));
 		fVoteInfo->SetFont(&font);
-		fVoteInfo->SetHighColor(kLightBlack);
+		fVoteInfo->SetHighUIColor(B_PANEL_TEXT_COLOR, B_LIGHTEN_1_TINT);
 
 		// Rate button
 		fRateButton = new TransitReportingButton("rate",
@@ -385,19 +394,26 @@ public:
 
 	void SetPackage(const PackageInfo& package)
 	{
-		if (package.Icon().Get() != NULL)
-			fIconView->SetBitmap(package.Icon(), SharedBitmap::SIZE_32);
+		BitmapRef bitmap;
+		status_t iconResult = fPackageIconRepository.GetIcon(
+			package.Name(), BITMAP_SIZE_64, bitmap);
+
+		if (iconResult == B_OK)
+			fIconView->SetBitmap(bitmap, BITMAP_SIZE_32);
 		else
 			fIconView->UnsetBitmap();
 
 		fTitleView->SetText(package.Title());
 
 		BString publisher = package.Publisher().Name();
-		fPublisherView->SetText(publisher);
+		if (publisher.CountChars() > 45) {
+			fPublisherView->SetToolTip(publisher);
+			fPublisherView->SetText(publisher.TruncateChars(45)
+				.Append(B_UTF8_ELLIPSIS));
+		} else
+			fPublisherView->SetText(publisher);
 
-		BString version = B_TRANSLATE("%Version%");
-		version.ReplaceAll("%Version%", package.Version().ToString());
-		fVersionInfo->SetText(version);
+		fVersionInfo->SetText(package.Version().ToString());
 
 		RatingSummary ratingSummary = package.CalculateRatingSummary();
 
@@ -436,6 +452,8 @@ public:
 	}
 
 private:
+	PackageIconRepository&			fPackageIconRepository;
+
 	BitmapView*						fIconView;
 
 	BStringView*					fTitleView;
@@ -497,7 +515,6 @@ public:
 		} else {
 			AdoptActions(package);
 		}
-
 	}
 
 	void AdoptActions(const PackageInfo& package)
@@ -614,8 +631,8 @@ private:
 			= fPackageActionHandler->SchedulePackageActions(actions);
 
 		if (result != B_OK) {
-			fprintf(stderr, "Failed to schedule action: "
-				"%s '%s': %s\n", action->Label(),
+			HDERROR("Failed to schedule action: %s '%s': %s",
+				action->Label(),
 				action->Package()->Name().String(),
 				strerror(result));
 			BString message(B_TRANSLATE("The package action "
@@ -724,7 +741,6 @@ public:
 		fWebsiteLinkView->SetViewUIColor(ViewUIColor(), kContentTint);
 
 		BLayoutBuilder::Group<>(this, B_HORIZONTAL, 0.0f)
-//			.Add(BSpaceLayoutItem::CreateHorizontalStrut(32.0f))
 			.AddGroup(leftGroup, 1.0f)
 				.Add(fScreenshotView)
 				.AddGroup(B_HORIZONTAL)
@@ -802,19 +818,25 @@ public:
 		fDescriptionView->SetText(package.ShortDescription(),
 			package.FullDescription());
 
-		fEmailIconView->SetBitmap(&fEmailIcon, SharedBitmap::SIZE_16);
+		fEmailIconView->SetBitmap(&fEmailIcon, BITMAP_SIZE_16);
 		_SetContactInfo(fEmailLinkView, package.Publisher().Email());
-		fWebsiteIconView->SetBitmap(&fWebsiteIcon, SharedBitmap::SIZE_16);
+		fWebsiteIconView->SetBitmap(&fWebsiteIcon, BITMAP_SIZE_16);
 		_SetContactInfo(fWebsiteLinkView, package.Publisher().Website());
 
+		int32 countScreenshots = package.CountScreenshots();
 		bool hasScreenshot = false;
-		const BitmapList& screenShots = package.Screenshots();
-		if (screenShots.CountItems() > 0) {
-			const BitmapRef& bitmapRef = screenShots.ItemAtFast(0);
+		if (countScreenshots > 0) {
+			const BitmapRef& bitmapRef = package.ScreenshotAtIndex(0);
 			if (bitmapRef.Get() != NULL) {
+				HDDEBUG("did find screenshot for package [%s]",
+					package.Name().String());
 				hasScreenshot = true;
 				fScreenshotView->SetBitmap(bitmapRef);
 			}
+		}
+		else {
+			HDTRACE("did not find screenshots for package [%s]",
+				package.Name().String());
 		}
 
 		if (!hasScreenshot)
@@ -867,98 +889,65 @@ private:
 
 class RatingItemView : public BGroupView {
 public:
-	RatingItemView(const UserRating& rating, const BitmapRef& voteUpIcon,
-		const BitmapRef& voteDownIcon)
+	RatingItemView(const UserRating& rating)
 		:
 		BGroupView(B_HORIZONTAL, 0.0f)
 	{
 		SetViewUIColor(B_PANEL_BACKGROUND_COLOR, kContentTint);
 
-		fAvatarView = new BitmapView("avatar view");
-		if (rating.User().Avatar().Get() != NULL) {
-			fAvatarView->SetBitmap(rating.User().Avatar(),
-				SharedBitmap::SIZE_16);
+		BGroupLayout* verticalGroup = new BGroupLayout(B_VERTICAL, 0.0f);
+		GroupLayout()->AddItem(verticalGroup);
+
+		{
+			BStringView* userNicknameView = new BStringView("user-nickname",
+				rating.User().NickName());
+			userNicknameView->SetFont(be_bold_font);
+			verticalGroup->AddView(userNicknameView);
 		}
-		fAvatarView->SetExplicitMinSize(BSize(16.0f, 16.0f));
 
-		fNameView = new BStringView("user name", rating.User().NickName());
+		BGroupLayout* ratingGroup =
+			new BGroupLayout(B_HORIZONTAL, B_USE_DEFAULT_SPACING);
+		verticalGroup->AddItem(ratingGroup);
 
-		BFont nameFont(be_bold_font);
-		nameFont.SetSize(std::max(9.0f, floorf(nameFont.Size() * 0.9f)));
-		fNameView->SetFont(&nameFont);
-		fNameView->SetExplicitMaxSize(
-			BSize(nameFont.StringWidth("xxxxxxxxxxxxxxxxxxxxxx"), B_SIZE_UNSET));
+		if (rating.Rating() >= 0) {
+			RatingView* ratingView = new RatingView("package rating view");
+			ratingView->SetRating(rating.Rating());
+			ratingGroup->AddView(ratingView);
+		}
 
-		fRatingView = new RatingView("package rating view");
-		fRatingView->SetRating(rating.Rating());
+		{
+			BString createTimestampPresentation =
+				LocaleUtils::TimestampToDateTimeString(
+					rating.CreateTimestamp());
 
-		BString ratingLabel;
-		if (rating.Rating() >= 0.0f)
-			ratingLabel.SetToFormat("%.1f", rating.Rating());
-		fRatingLabelView = new BStringView("rating label", ratingLabel);
+			BString ratingContextDescription(
+				B_TRANSLATE("%hd.timestamp% (version %hd.version%)"));
+			ratingContextDescription.ReplaceAll("%hd.timestamp%",
+				createTimestampPresentation);
+			ratingContextDescription.ReplaceAll("%hd.version%",
+				rating.PackageVersion());
 
-		BString versionLabel(B_TRANSLATE("for %Version%"));
-		versionLabel.ReplaceAll("%Version%", rating.PackageVersion());
-		fPackageVersionView = new BStringView("package version",
-			versionLabel);
-		BFont versionFont(be_plain_font);
-		versionFont.SetSize(std::max(9.0f, floorf(versionFont.Size() * 0.85f)));
-		fPackageVersionView->SetFont(&versionFont);
+			BStringView* ratingContextView = new BStringView("rating-context",
+				ratingContextDescription);
+			BFont versionFont(be_plain_font);
+			ratingContextView->SetFont(&versionFont);
+			ratingGroup->AddView(ratingContextView);
+		}
 
-		// TODO: User rating IDs to identify which rating to vote up or down
-//		BMessage* voteUpMessage = new BMessage(MSG_VOTE_UP);
-//		voteUpMessage->AddInt32("rating id", -1);
-//		BMessage* voteDownMessage = new BMessage(MSG_VOTE_DOWN);
-//		voteDownMessage->AddInt32("rating id", -1);
-//
-//		fVoteUpIconView = new BitmapButton("vote up icon", voteUpMessage);
-//		fUpVoteCountView = new BStringView("up vote count", "");
-//		fVoteDownIconView = new BitmapButton("vote down icon", voteDownMessage);
-//		fDownVoteCountView = new BStringView("up vote count", "");
-//
-//		fVoteUpIconView->SetBitmap(voteUpIcon, SharedBitmap::SIZE_16);
-//		fVoteDownIconView->SetBitmap(voteDownIcon, SharedBitmap::SIZE_16);
-//
-//		fUpVoteCountView->SetFont(&versionFont);
-//		fUpVoteCountView->SetHighColor(kLightBlack);
-//		fDownVoteCountView->SetFont(&versionFont);
-//		fDownVoteCountView->SetHighColor(kLightBlack);
-//
-//		BString voteCountLabel;
-//		voteCountLabel.SetToFormat("%" B_PRId32, rating.UpVotes());
-//		fUpVoteCountView->SetText(voteCountLabel);
-//		voteCountLabel.SetToFormat("%" B_PRId32, rating.DownVotes());
-//		fDownVoteCountView->SetText(voteCountLabel);
+		ratingGroup->AddItem(BSpaceLayoutItem::CreateGlue());
 
-		fTextView = new TextView("rating text");
-		ParagraphStyle paragraphStyle(fTextView->ParagraphStyle());
-		paragraphStyle.SetJustify(true);
-		fTextView->SetParagraphStyle(paragraphStyle);
+		if (rating.Comment() > 0) {
+			TextView* textView = new TextView("rating-text");
+			ParagraphStyle paragraphStyle(textView->ParagraphStyle());
+			paragraphStyle.SetJustify(true);
+			textView->SetParagraphStyle(paragraphStyle);
+			textView->SetText(rating.Comment());
+			verticalGroup->AddItem(BSpaceLayoutItem::CreateVerticalStrut(8.0f));
+			verticalGroup->AddView(textView);
+			verticalGroup->AddItem(BSpaceLayoutItem::CreateVerticalStrut(8.0f));
+		}
 
-		fTextView->SetText(rating.Comment());
-
-		BLayoutBuilder::Group<>(this)
-			.Add(fAvatarView, 0.2f)
-			.AddGroup(B_VERTICAL, 0.0f)
-				.AddGroup(B_HORIZONTAL, B_USE_DEFAULT_SPACING)
-					.Add(fNameView)
-					.Add(fRatingView)
-					.Add(fRatingLabelView)
-					.AddGlue(0.1f)
-					.Add(fPackageVersionView)
-					.AddGlue(5.0f)
-//					.AddGroup(B_HORIZONTAL, 0.0f, 0.0f)
-//						.Add(fVoteUpIconView)
-//						.Add(fUpVoteCountView)
-//						.AddStrut(B_USE_HALF_ITEM_SPACING)
-//						.Add(fVoteDownIconView)
-//						.Add(fDownVoteCountView)
-//					.End()
-				.End()
-				.Add(fTextView)
-			.End()
-			.SetInsets(B_USE_DEFAULT_SPACING)
-		;
+		verticalGroup->SetInsets(B_USE_DEFAULT_SPACING);
 
 		SetFlags(Flags() | B_WILL_DRAW);
 	}
@@ -976,19 +965,6 @@ public:
 		StrokeLine(Bounds().LeftBottom(), Bounds().RightBottom());
 	}
 
-private:
-	BitmapView*		fAvatarView;
-	BStringView*	fNameView;
-	RatingView*		fRatingView;
-	BStringView*	fRatingLabelView;
-	BStringView*	fPackageVersionView;
-
-//	BitmapView*		fVoteUpIconView;
-//	BStringView*	fUpVoteCountView;
-//	BitmapView*		fVoteDownIconView;
-//	BStringView*	fDownVoteCountView;
-
-	TextView*		fTextView;
 };
 
 
@@ -1062,9 +1038,7 @@ class UserRatingsView : public BGroupView {
 public:
 	UserRatingsView()
 		:
-		BGroupView("package ratings view", B_HORIZONTAL),
-		fThumbsUpIcon(BitmapRef(new SharedBitmap(502), true)),
-		fThumbsDownIcon(BitmapRef(new SharedBitmap(503), true))
+		BGroupView("package ratings view", B_HORIZONTAL)
 	{
 		SetViewUIColor(B_PANEL_BACKGROUND_COLOR, kContentTint);
 
@@ -1077,6 +1051,8 @@ public:
 
 		BScrollView* scrollView = new RatingsScrollView(
 			"ratings scroll view", ratingsContainerView);
+		scrollView->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED,
+			B_SIZE_UNLIMITED));
 
 		BLayoutBuilder::Group<>(this)
 			.AddGroup(B_VERTICAL)
@@ -1084,11 +1060,10 @@ public:
 				.AddGlue()
 				.SetInsets(0.0f, B_USE_DEFAULT_SPACING, 0.0f, 0.0f)
 			.End()
+			.AddStrut(64.0)
 			.Add(scrollView, 1.0f)
 			.SetInsets(B_USE_DEFAULT_SPACING, -1.0f, -1.0f, -1.0f)
 		;
-
-		_InitPreferredLanguages();
 	}
 
 	virtual ~UserRatingsView()
@@ -1122,15 +1097,10 @@ public:
 		// TODO: Sort by age or usefullness rating
 		for (int i = count - 1; i >= 0; i--) {
 			const UserRating& rating = userRatings.ItemAtFast(i);
-			// Prevent ratings from showing that have a comment which
-			// is in another language
-			if (!rating.Comment().IsEmpty()
-				&& fPreferredLanguages.CountItems() > 0
-				&& !fPreferredLanguages.Contains(rating.Language())) {
-				continue;
-			}
-			RatingItemView* view = new RatingItemView(rating, fThumbsUpIcon,
-				fThumbsDownIcon);
+				// was previously filtering comments just for the current
+				// user's language, but as there are not so many comments at
+				// the moment, just show all of them for now.
+			RatingItemView* view = new RatingItemView(rating);
 			fRatingContainerLayout->AddView(0, view);
 		}
 	}
@@ -1156,34 +1126,8 @@ public:
 	}
 
 private:
-	void _InitPreferredLanguages()
-	{
-		fPreferredLanguages.Clear();
-
-		BLocaleRoster* localeRoster = BLocaleRoster::Default();
-		if (localeRoster == NULL)
-			return;
-
-		BMessage preferredLanguages;
-		if (localeRoster->GetPreferredLanguages(&preferredLanguages) != B_OK)
-			return;
-
-		BString language;
-		int32 index = 0;
-		while (preferredLanguages.FindString("language", index++,
-				&language) == B_OK) {
-			BString languageCode;
-			language.CopyInto(languageCode, 0, 2);
-				fPreferredLanguages.Add(languageCode);
-		}
-	}
-
-private:
 	BGroupLayout*			fRatingContainerLayout;
 	RatingSummaryView*		fRatingSummaryView;
-	BitmapRef				fThumbsUpIcon;
-	BitmapRef				fThumbsDownIcon;
-	StringList				fPreferredLanguages;
 };
 
 
@@ -1285,8 +1229,7 @@ class PagesView : public BTabView {
 public:
 	PagesView()
 		:
-		BTabView("pages view", B_WIDTH_FROM_WIDEST),
-		fLayout(new BCardLayout())
+		BTabView("pages view", B_WIDTH_FROM_WIDEST)
 	{
 		SetBorder(B_NO_BORDER);
 
@@ -1300,12 +1243,12 @@ public:
 		AddTab(fChangelogView);
 		AddTab(fContentsView);
 
-		TabAt(0)->SetLabel(B_TRANSLATE("About"));
-		TabAt(1)->SetLabel(B_TRANSLATE("Ratings"));
-		TabAt(2)->SetLabel(B_TRANSLATE("Changelog"));
-		TabAt(3)->SetLabel(B_TRANSLATE("Contents"));
+		TabAt(TAB_ABOUT)->SetLabel(B_TRANSLATE("About"));
+		TabAt(TAB_RATINGS)->SetLabel(B_TRANSLATE("Ratings"));
+		TabAt(TAB_CHANGELOG)->SetLabel(B_TRANSLATE("Changelog"));
+		TabAt(TAB_CONTENTS)->SetLabel(B_TRANSLATE("Contents"));
 
-		Select(0);
+		Select(TAB_ABOUT);
 	}
 
 	virtual ~PagesView()
@@ -1316,7 +1259,16 @@ public:
 	void SetPackage(const PackageInfoRef& package, bool switchToDefaultTab)
 	{
 		if (switchToDefaultTab)
-			Select(0);
+			Select(TAB_ABOUT);
+
+		TabAt(TAB_CHANGELOG)->SetEnabled(
+			package.Get() != NULL && package->HasChangelog());
+		TabAt(TAB_CONTENTS)->SetEnabled(
+			package.Get() != NULL
+				&& (package->State() == ACTIVATED || package->IsLocalFile()));
+		Invalidate(TabFrame(TAB_CHANGELOG));
+		Invalidate(TabFrame(TAB_CONTENTS));
+
 		fAboutView->SetPackage(*package.Get());
 		fUserRatingsView->SetPackage(*package.Get());
 		fChangelogView->SetPackage(*package.Get());
@@ -1332,8 +1284,6 @@ public:
 	}
 
 private:
-	BCardLayout*		fLayout;
-
 	AboutView*			fAboutView;
 	UserRatingsView*	fUserRatingsView;
 	ChangelogView*		fChangelogView;
@@ -1344,11 +1294,11 @@ private:
 // #pragma mark - PackageInfoView
 
 
-PackageInfoView::PackageInfoView(BLocker* modelLock,
+PackageInfoView::PackageInfoView(Model* model,
 		PackageActionHandler* handler)
 	:
 	BView("package info view", 0),
-	fModelLock(modelLock),
+	fModel(model),
 	fPackageListener(new(std::nothrow) OnePackageMessagePackageListener(this))
 {
 	fCardLayout = new BCardLayout();
@@ -1359,7 +1309,7 @@ PackageInfoView::PackageInfoView(BLocker* modelLock,
 
 	BStringView* noPackageView = new BStringView("no package view",
 		B_TRANSLATE("Click a package to view information"));
-	noPackageView->SetHighColor(kLightBlack);
+	noPackageView->SetHighUIColor(B_PANEL_TEXT_COLOR, B_LIGHTEN_1_TINT);
 	noPackageView->SetExplicitAlignment(BAlignment(
 		B_ALIGN_HORIZONTAL_CENTER, B_ALIGN_VERTICAL_CENTER));
 
@@ -1373,7 +1323,7 @@ PackageInfoView::PackageInfoView(BLocker* modelLock,
 
 	fCardLayout->SetVisibleItem((int32)0);
 
-	fTitleView = new TitleView();
+	fTitleView = new TitleView(fModel->GetPackageIconRepository());
 	fPackageActionView = new PackageActionView(handler);
 	fPackageActionView->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED,
 		B_SIZE_UNSET));
@@ -1427,7 +1377,7 @@ PackageInfoView::MessageReceived(BMessage* message)
 			if (package->Name() != name)
 				break;
 
-			BAutolock _(fModelLock);
+			BAutolock _(fModel->Lock());
 
 			if ((changes & PKG_CHANGED_SUMMARY) != 0
 				|| (changes & PKG_CHANGED_DESCRIPTION) != 0
@@ -1444,9 +1394,8 @@ PackageInfoView::MessageReceived(BMessage* message)
 				fTitleView->SetPackage(*package.Get());
 			}
 
-			if ((changes & PKG_CHANGED_STATE) != 0) {
+			if ((changes & PKG_CHANGED_STATE) != 0)
 				fPackageActionView->SetPackage(*package.Get());
-			}
 
 			break;
 		}
@@ -1460,7 +1409,7 @@ PackageInfoView::MessageReceived(BMessage* message)
 void
 PackageInfoView::SetPackage(const PackageInfoRef& packageRef)
 {
-	BAutolock _(fModelLock);
+	BAutolock _(fModel->Lock());
 
 	if (packageRef.Get() == NULL) {
 		Clear();
@@ -1505,7 +1454,7 @@ PackageInfoView::SetPackage(const PackageInfoRef& packageRef)
 void
 PackageInfoView::Clear()
 {
-	BAutolock _(fModelLock);
+	BAutolock _(fModel->Lock());
 
 	fTitleView->Clear();
 	fPackageActionView->Clear();
@@ -1517,4 +1466,3 @@ PackageInfoView::Clear()
 
 	fPackage.Unset();
 }
-

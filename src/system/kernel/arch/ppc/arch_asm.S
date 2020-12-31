@@ -7,17 +7,17 @@
  */
 
 
+#include "asm_defs.h"
 #include "asm_offsets.h"
-
-#define FUNCTION(x) .global x; .type x,@function; x
 
 #define MSR_EXCEPTIONS_ENABLED 15
 
 .text
 
-// ToDo: fixme
+// TODO: FIXME
 FUNCTION(reboot):
     b   .
+FUNCTION_END(reboot)
 
 
 /* void arch_int_enable_interrupts(void) */
@@ -31,6 +31,7 @@ FUNCTION(arch_int_enable_interrupts):
 	mtmsr	%r3							// put it back into the msr
 	isync
 	blr
+FUNCTION_END(arch_int_enable_interrupts)
 
 
 /* int arch_int_disable_interrupts(void)
@@ -46,6 +47,7 @@ FUNCTION(arch_int_disable_interrupts):
 	mtmsr	%r4							// put it back into the msr
 	isync
 	blr
+FUNCTION_END(arch_int_disable_interrupts)
 
 
 /* void arch_int_restore_interrupts(int oldState)
@@ -60,6 +62,8 @@ FUNCTION(arch_int_restore_interrupts):
 	mtmsr	%r4
 	isync
 	blr
+FUNCTION_END(arch_int_restore_interrupts)
+
 
 /* bool arch_int_are_interrupts_enabled(void) */
 FUNCTION(arch_int_are_interrupts_enabled):
@@ -67,11 +71,13 @@ FUNCTION(arch_int_are_interrupts_enabled):
 	extrwi	%r3, %r3, 1, 31 - MSR_EXCEPTIONS_ENABLED
 		// mask out the EE bit
 	blr
+FUNCTION_END(arch_int_are_interrupts_enabled)
 
 
-// ToDo: fixme
+// TODO: FIXME
 FUNCTION(dbg_save_registers):
 	blr
+FUNCTION_END(dbg_save_registers)
 
 /* long long get_time_base(void) */
 FUNCTION(get_time_base):
@@ -82,6 +88,8 @@ FUNCTION(get_time_base):
 	cmpw	%r5, %r3					// see if it changed while we were reading the lower
 	bne-	1b							// if so, repeat
 	blr
+FUNCTION_END(get_time_base)
+
 
 /* void getibats(int bats[8]); */
 FUNCTION(getibats):
@@ -102,6 +110,8 @@ FUNCTION(getibats):
 	mfibatl 	%r0,3
 	stwu		%r0,4(%r3)
 	blr
+FUNCTION_END(getibats)
+
 
 // void setibats(int bats[8]);
 FUNCTION(setibats):
@@ -131,6 +141,8 @@ FUNCTION(setibats):
 	isync
 
 	blr
+FUNCTION_END(setibats)
+
 
 // void getdbats(int bats[8]);
 FUNCTION(getdbats):
@@ -151,6 +163,8 @@ FUNCTION(getdbats):
 	mfdbatl 	%r0,3
 	stwu		%r0,4(%r3)
 	blr
+FUNCTION_END(getdbats)
+
 
 // void setdbats(int bats[8]);
 FUNCTION(setdbats):
@@ -173,11 +187,15 @@ FUNCTION(setdbats):
 	sync
 
 	blr
+FUNCTION_END(setdbats)
+
 
 // unsigned int gethid0();
 FUNCTION(gethid0):
 	mfspr		%r3, 1008
 	blr
+FUNCTION_END(gethid0)
+
 
 // void sethid0(unsigned int val);
 FUNCTION(sethid0):
@@ -185,11 +203,15 @@ FUNCTION(sethid0):
 	mtspr		1008, %r3
 	isync
 	blr
+FUNCTION_END(sethid0)
+
 
 // unsigned int getl2cr();
 FUNCTION(getl2cr):
 	mfspr		%r3, 1017
 	blr
+FUNCTION_END(getl2cr)
+
 
 // void setl2cr(unsigned int val);
 FUNCTION(setl2cr):
@@ -197,6 +219,7 @@ FUNCTION(setl2cr):
 	mtspr		1017, %r3
 	isync
 	blr
+FUNCTION_END(setl2cr)
 
 
 // void ppc_context_switch(addr_t *old_sp, addr_t new_sp);
@@ -313,6 +336,7 @@ FUNCTION(ppc_context_switch):
 	addi		%r1, %r1, 8
 
 	blr
+FUNCTION_END(ppc_context_switch)
 
 
 // ppc_kernel_thread_root(): parameters in r13-r15, the functions to call
@@ -331,6 +355,7 @@ FUNCTION(ppc_kernel_thread_root):
 	// debugger (without a message at the moment).
 	li			%r3, 0
 	b			kernel_debugger
+FUNCTION_END(ppc_kernel_thread_root)
 
 
 /*!	\fn void arch_debug_call_with_fault_handler(cpu_ent* cpu,
@@ -387,3 +412,4 @@ FUNCTION(arch_debug_call_with_fault_handler):
 	ori		%r0, %r0, longjmp@l
 	mtlr	%r0
 	blr
+FUNCTION_END(arch_debug_call_with_fault_handler)

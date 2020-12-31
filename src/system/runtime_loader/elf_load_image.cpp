@@ -75,6 +75,7 @@ count_regions(const char* imagePath, char const* buff, int phnum, int phentsize)
 			case PT_PHDR:
 				// we don't use it
 				break;
+			case PT_EH_FRAME:
 			case PT_RELRO:
 				// not implemented yet, but can be ignored
 				break;
@@ -199,6 +200,7 @@ parse_program_headers(image_t* image, char* buff, int phnum, int phentsize)
 			case PT_PHDR:
 				// we don't use it
 				break;
+			case PT_EH_FRAME:
 			case PT_RELRO:
 				// not implemented yet, but can be ignored
 				break;
@@ -339,6 +341,33 @@ parse_dynamic_segment(image_t* image)
 				}
 				break;
 			}
+			case DT_INIT_ARRAY:
+				// array of pointers to initialization functions
+				image->init_array = (addr_t*)
+					(d[i].d_un.d_ptr + image->regions[0].delta);
+				break;
+			case DT_INIT_ARRAYSZ:
+				// size in bytes of the array of initialization functions
+				image->init_array_len = d[i].d_un.d_val;
+				break;
+			case DT_PREINIT_ARRAY:
+				// array of pointers to pre-initialization functions
+				image->preinit_array = (addr_t*)
+					(d[i].d_un.d_ptr + image->regions[0].delta);
+				break;
+			case DT_PREINIT_ARRAYSZ:
+				// size in bytes of the array of pre-initialization functions
+				image->preinit_array_len = d[i].d_un.d_val;
+				break;
+			case DT_FINI_ARRAY:
+				// array of pointers to termination functions
+				image->term_array = (addr_t*)
+					(d[i].d_un.d_ptr + image->regions[0].delta);
+				break;
+			case DT_FINI_ARRAYSZ:
+				// size in bytes of the array of termination functions
+				image->term_array_len = d[i].d_un.d_val;
+				break;
 			default:
 				continue;
 
@@ -348,9 +377,6 @@ parse_dynamic_segment(image_t* image)
 			// DT_SYMENT: The size of a symbol table entry.
 			// DT_PLTREL: The type of the PLT relocation entries (DT_JMPREL).
 			// DT_BIND_NOW/DF_BIND_NOW: No lazy binding allowed.
-			// DT_INIT_ARRAY[SZ], DT_FINI_ARRAY[SZ]: Initialization/termination
-			//		function arrays.
-			// DT_PREINIT_ARRAY[SZ]: Preinitialization function array.
 			// DT_RUNPATH: Library search path (supersedes DT_RPATH).
 			// DT_TEXTREL/DF_TEXTREL: Indicates whether text relocations are
 			//		required (for optimization purposes only).
@@ -375,7 +401,7 @@ status_t
 parse_elf_header(elf_ehdr* eheader, int32* _pheaderSize,
 	int32* _sheaderSize)
 {
-	if (memcmp(eheader->e_ident, ELF_MAGIC, 4) != 0)
+	if (memcmp(eheader->e_ident, ELFMAG, 4) != 0)
 		return B_NOT_AN_EXECUTABLE;
 
 	if (eheader->e_ident[4] != ELF_CLASS)
@@ -390,11 +416,66 @@ parse_elf_header(elf_ehdr* eheader, int32* _pheaderSize,
 	*_pheaderSize = eheader->e_phentsize * eheader->e_phnum;
 	*_sheaderSize = eheader->e_shentsize * eheader->e_shnum;
 
-	if (*_pheaderSize <= 0 || *_sheaderSize <= 0)
+	if (*_pheaderSize <= 0)
 		return B_NOT_AN_EXECUTABLE;
 
 	return B_OK;
 }
+
+
+#if defined(_COMPAT_MODE)
+#if defined(__x86_64__)
+status_t
+parse_elf32_header(Elf32_Ehdr* eheader, int32* _pheaderSize,
+	int32* _sheaderSize)
+{
+	if (memcmp(eheader->e_ident, ELFMAG, 4) != 0)
+		return B_NOT_AN_EXECUTABLE;
+
+	if (eheader->e_ident[4] != ELFCLASS32)
+		return B_NOT_AN_EXECUTABLE;
+
+	if (eheader->e_phoff == 0)
+		return B_NOT_AN_EXECUTABLE;
+
+	if (eheader->e_phentsize < sizeof(Elf32_Phdr))
+		return B_NOT_AN_EXECUTABLE;
+
+	*_pheaderSize = eheader->e_phentsize * eheader->e_phnum;
+	*_sheaderSize = eheader->e_shentsize * eheader->e_shnum;
+
+	if (*_pheaderSize <= 0)
+		return B_NOT_AN_EXECUTABLE;
+
+	return B_OK;
+}
+#else
+status_t
+parse_elf64_header(Elf64_Ehdr* eheader, int32* _pheaderSize,
+	int32* _sheaderSize)
+{
+	if (memcmp(eheader->e_ident, ELFMAG, 4) != 0)
+		return B_NOT_AN_EXECUTABLE;
+
+	if (eheader->e_ident[4] != ELFCLASS64)
+		return B_NOT_AN_EXECUTABLE;
+
+	if (eheader->e_phoff == 0)
+		return B_NOT_AN_EXECUTABLE;
+
+	if (eheader->e_phentsize < sizeof(Elf64_Phdr))
+		return B_NOT_AN_EXECUTABLE;
+
+	*_pheaderSize = eheader->e_phentsize * eheader->e_phnum;
+	*_sheaderSize = eheader->e_shentsize * eheader->e_shnum;
+
+	if (*_pheaderSize <= 0)
+		return B_NOT_AN_EXECUTABLE;
+
+	return B_OK;
+}
+#endif	// __x86_64__
+#endif	// _COMPAT_MODE
 
 
 status_t
@@ -546,19 +627,21 @@ load_image(char const* name, image_type type, const char* rpath,
 	analyze_image_haiku_version_and_abi(fd, image, eheader, sheaderSize,
 		pheaderBuffer, sizeof(pheaderBuffer));
 
-	// If this is the executable image, we init the search path
-	// subdir, if the compiler version doesn't match ours.
-	if (type == B_APP_IMAGE) {
-		#if __GNUC__ == 2
+	// If sSearchPathSubDir is unset (meaning, this is the first image we're
+	// loading) we init the search path subdir if the compiler version doesn't
+	// match ours.
+	if (sSearchPathSubDir == NULL) {
+		#if __GNUC__ == 2 || (defined(_COMPAT_MODE) && !defined(__x86_64__))
 			if ((image->abi & B_HAIKU_ABI_MAJOR) == B_HAIKU_ABI_GCC_4)
 				sSearchPathSubDir = "x86";
-		#elif __GNUC__ >= 4
+		#endif
+		#if __GNUC__ >= 4 || (defined(_COMPAT_MODE) && !defined(__x86_64__))
 			if ((image->abi & B_HAIKU_ABI_MAJOR) == B_HAIKU_ABI_GCC_2)
 				sSearchPathSubDir = "x86_gcc2";
 		#endif
 	}
 
-	set_abi_version(image->abi);
+	set_abi_api_version(image->abi, image->api_version);
 
 	// init gcc version dependent image flags
 	// symbol resolution strategy

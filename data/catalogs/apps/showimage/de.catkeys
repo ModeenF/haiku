@@ -1,4 +1,4 @@
-1	german	x-vnd.Haiku-ShowImage	575555985
+1	german	x-vnd.Haiku-ShowImage	601442731
 Use as background…	Menus		Als Hintergrund verwenden…
 File	Menus		Datei
 Slide delay	Menus		Verzögerung
@@ -7,6 +7,7 @@ Zoom in	Menus		Vergrößern
 The document '%s' has been changed. Do you want to close the document?	ClosePrompt		Das Bild '%s' wurde verändert. Trotzdem schließen?
 Page setup…	Menus		Seite einrichten…
 Print…	Menus		Drucken…
+Get info…	Menus		Datei-Info…
 OK	SaveToFile		OK
 Previous page	Menus		Vorherige Seite
 View	Menus		Ansicht
@@ -44,7 +45,6 @@ Progress monitor	ProgressWindow		Fortschrittsanzeige
 Last page	Menus		Letzte Seite
 Stretch to window	Menus		Auf Fenstergröße vergrößern
 Previous file	Menus		Vorherige Datei
-ShowImage	System name		Bildbetrachter
 Slide show	Menus		Diashow
 Fit image to page	PrintOptionsWindow		Bild in Seite einpassen
 Flip top to bottom	Menus		Vertikal spiegeln

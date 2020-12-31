@@ -13,7 +13,6 @@
 
 /*!
 	\file Layout.h
-	\ingroup interface
 	\ingroup layout
 	\ingroup libbe
 	\brief Defines the BLayout class.
@@ -22,7 +21,6 @@
 
 /*!
 	\class BLayout
-	\ingroup interface
 	\ingroup layout
 	\ingroup libbe
 	\brief The BLayout class provides an interface, and some basic
@@ -36,7 +34,7 @@
 	view. When a BLayout is attached directly to a BView via BView::SetLayout()
 	then that BView becomes the target of the layout. When a BLayout is nested
 	in another BLayout (via BLayout::AddItem()) the nested BLayout inherits the
-	target of the layout it's nested in, if it does not have a target already.
+	target of the layout its nested in, if it does not have a target already.
 	You can retrieve the target view for a layout with the TargetView() method.
 	When adding a BLayoutItem to a BLayout, the item's view (as returned by
 	BLayoutItem::View()) is added to the BLayout's target view.

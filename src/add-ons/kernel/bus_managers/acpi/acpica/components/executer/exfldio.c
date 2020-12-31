@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -111,6 +111,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #include "acpi.h"
@@ -192,7 +228,8 @@ AcpiExSetupRegion (
 
     if (!AcpiIsValidSpaceId (SpaceId))
     {
-        ACPI_ERROR ((AE_INFO, "Invalid/unknown Address Space ID: 0x%2.2X", SpaceId));
+        ACPI_ERROR ((AE_INFO,
+            "Invalid/unknown Address Space ID: 0x%2.2X", SpaceId));
         return_ACPI_STATUS (AE_AML_INVALID_SPACE_ID);
     }
 
@@ -242,8 +279,8 @@ AcpiExSetupRegion (
      * (Region length is specified in bytes)
      */
     if (RgnDesc->Region.Length <
-            (ObjDesc->CommonField.BaseByteOffset + FieldDatumByteOffset +
-            ObjDesc->CommonField.AccessByteWidth))
+        (ObjDesc->CommonField.BaseByteOffset + FieldDatumByteOffset +
+        ObjDesc->CommonField.AccessByteWidth))
     {
         if (AcpiGbl_EnableInterpreterSlack)
         {
@@ -270,7 +307,8 @@ AcpiExSetupRegion (
              * byte, and a field with Dword access specified.
              */
             ACPI_ERROR ((AE_INFO,
-                "Field [%4.4s] access width (%u bytes) too large for region [%4.4s] (length %u)",
+                "Field [%4.4s] access width (%u bytes) "
+                "too large for region [%4.4s] (length %u)",
                 AcpiUtGetNodeName (ObjDesc->CommonField.Node),
                 ObjDesc->CommonField.AccessByteWidth,
                 AcpiUtGetNodeName (RgnDesc->Region.Node),
@@ -282,7 +320,8 @@ AcpiExSetupRegion (
          * exceeds region length, indicate an error
          */
         ACPI_ERROR ((AE_INFO,
-            "Field [%4.4s] Base+Offset+Width %u+%u+%u is beyond end of region [%4.4s] (length %u)",
+            "Field [%4.4s] Base+Offset+Width %u+%u+%u "
+            "is beyond end of region [%4.4s] (length %u)",
             AcpiUtGetNodeName (ObjDesc->CommonField.Node),
             ObjDesc->CommonField.BaseByteOffset,
             FieldDatumByteOffset, ObjDesc->CommonField.AccessByteWidth,
@@ -372,8 +411,8 @@ AcpiExAccessRegion (
     /* Invoke the appropriate AddressSpace/OpRegion handler */
 
     Status = AcpiEvAddressSpaceDispatch (RgnDesc, ObjDesc,
-                Function, RegionOffset,
-                ACPI_MUL_8 (ObjDesc->CommonField.AccessByteWidth), Value);
+        Function, RegionOffset,
+        ACPI_MUL_8 (ObjDesc->CommonField.AccessByteWidth), Value);
 
     if (ACPI_FAILURE (Status))
     {
@@ -584,8 +623,8 @@ AcpiExFieldDatumIo (
          * For simple RegionFields, we just directly access the owning
          * Operation Region.
          */
-        Status = AcpiExAccessRegion (ObjDesc, FieldDatumByteOffset, Value,
-                    ReadWrite);
+        Status = AcpiExAccessRegion (
+            ObjDesc, FieldDatumByteOffset, Value, ReadWrite);
         break;
 
     case ACPI_TYPE_LOCAL_INDEX_FIELD:
@@ -608,8 +647,7 @@ AcpiExFieldDatumIo (
             FieldDatumByteOffset));
 
         Status = AcpiExInsertIntoField (ObjDesc->IndexField.IndexObj,
-                    &FieldDatumByteOffset,
-                    sizeof (FieldDatumByteOffset));
+            &FieldDatumByteOffset, sizeof (FieldDatumByteOffset));
         if (ACPI_FAILURE (Status))
         {
             return_ACPI_STATUS (Status);
@@ -622,8 +660,8 @@ AcpiExFieldDatumIo (
             ACPI_DEBUG_PRINT ((ACPI_DB_BFIELD,
                 "Read from Data Register\n"));
 
-            Status = AcpiExExtractFromField (ObjDesc->IndexField.DataObj,
-                        Value, sizeof (UINT64));
+            Status = AcpiExExtractFromField (
+                ObjDesc->IndexField.DataObj, Value, sizeof (UINT64));
         }
         else
         {
@@ -633,8 +671,8 @@ AcpiExFieldDatumIo (
                 "Write to Data Register: Value %8.8X%8.8X\n",
                 ACPI_FORMAT_UINT64 (*Value)));
 
-            Status = AcpiExInsertIntoField (ObjDesc->IndexField.DataObj,
-                        Value, sizeof (UINT64));
+            Status = AcpiExInsertIntoField (
+                ObjDesc->IndexField.DataObj, Value, sizeof (UINT64));
         }
         break;
 
@@ -716,14 +754,14 @@ AcpiExWriteWithUpdateRule (
              * ones)  The left shift drops the bits we want to ignore.
              */
             if ((~Mask << (ACPI_MUL_8 (sizeof (Mask)) -
-                           ACPI_MUL_8 (ObjDesc->CommonField.AccessByteWidth))) != 0)
+                   ACPI_MUL_8 (ObjDesc->CommonField.AccessByteWidth))) != 0)
             {
                 /*
                  * Read the current contents of the byte/word/dword containing
                  * the field, and merge with the new field value.
                  */
-                Status = AcpiExFieldDatumIo (ObjDesc, FieldDatumByteOffset,
-                            &CurrentValue, ACPI_READ);
+                Status = AcpiExFieldDatumIo (
+                    ObjDesc, FieldDatumByteOffset, &CurrentValue, ACPI_READ);
                 if (ACPI_FAILURE (Status))
                 {
                     return_ACPI_STATUS (Status);
@@ -751,13 +789,15 @@ AcpiExWriteWithUpdateRule (
 
             ACPI_ERROR ((AE_INFO,
                 "Unknown UpdateRule value: 0x%X",
-                (ObjDesc->CommonField.FieldFlags & AML_FIELD_UPDATE_RULE_MASK)));
+                (ObjDesc->CommonField.FieldFlags &
+                    AML_FIELD_UPDATE_RULE_MASK)));
             return_ACPI_STATUS (AE_AML_OPERAND_VALUE);
         }
     }
 
     ACPI_DEBUG_PRINT ((ACPI_DB_BFIELD,
-        "Mask %8.8X%8.8X, DatumOffset %X, Width %X, Value %8.8X%8.8X, MergedValue %8.8X%8.8X\n",
+        "Mask %8.8X%8.8X, DatumOffset %X, Width %X, "
+        "Value %8.8X%8.8X, MergedValue %8.8X%8.8X\n",
         ACPI_FORMAT_UINT64 (Mask),
         FieldDatumByteOffset,
         ObjDesc->CommonField.AccessByteWidth,
@@ -766,8 +806,8 @@ AcpiExWriteWithUpdateRule (
 
     /* Write the merged value */
 
-    Status = AcpiExFieldDatumIo (ObjDesc, FieldDatumByteOffset,
-                &MergedValue, ACPI_WRITE);
+    Status = AcpiExFieldDatumIo (
+        ObjDesc, FieldDatumByteOffset, &MergedValue, ACPI_WRITE);
 
     return_ACPI_STATUS (Status);
 }
@@ -878,8 +918,8 @@ AcpiExExtractFromField (
         /* Get next input datum from the field */
 
         FieldOffset += ObjDesc->CommonField.AccessByteWidth;
-        Status = AcpiExFieldDatumIo (ObjDesc, FieldOffset,
-                    &RawDatum, ACPI_READ);
+        Status = AcpiExFieldDatumIo (
+            ObjDesc, FieldOffset, &RawDatum, ACPI_READ);
         if (ACPI_FAILURE (Status))
         {
             return_ACPI_STATUS (Status);
@@ -976,7 +1016,8 @@ AcpiExInsertIntoField (
 
     NewBuffer = NULL;
     RequiredLength = ACPI_ROUND_BITS_UP_TO_BYTES (
-                        ObjDesc->CommonField.BitLength);
+        ObjDesc->CommonField.BitLength);
+
     /*
      * We must have a buffer that is at least as long as the field
      * we are writing to. This is because individual fields are
@@ -1013,20 +1054,9 @@ AcpiExInsertIntoField (
 
     AccessBitWidth = ACPI_MUL_8 (ObjDesc->CommonField.AccessByteWidth);
 
-    /*
-     * Create the bitmasks used for bit insertion.
-     * Note: This if/else is used to bypass compiler differences with the
-     * shift operator
-     */
-    if (AccessBitWidth == ACPI_INTEGER_BIT_SIZE)
-    {
-        WidthMask = ACPI_UINT64_MAX;
-    }
-    else
-    {
-        WidthMask = ACPI_MASK_BITS_ABOVE (AccessBitWidth);
-    }
+    /* Create the bitmasks used for bit insertion */
 
+    WidthMask = ACPI_MASK_BITS_ABOVE_64 (AccessBitWidth);
     Mask = WidthMask &
         ACPI_MASK_BITS_BELOW (ObjDesc->CommonField.StartFieldBitOffset);
 
@@ -1054,8 +1084,8 @@ AcpiExInsertIntoField (
         /* Write merged datum to the target field */
 
         MergedDatum &= Mask;
-        Status = AcpiExWriteWithUpdateRule (ObjDesc, Mask,
-                    MergedDatum, FieldOffset);
+        Status = AcpiExWriteWithUpdateRule (
+            ObjDesc, Mask, MergedDatum, FieldOffset);
         if (ACPI_FAILURE (Status))
         {
             goto Exit;
@@ -1112,8 +1142,8 @@ AcpiExInsertIntoField (
     /* Write the last datum to the field */
 
     MergedDatum &= Mask;
-    Status = AcpiExWriteWithUpdateRule (ObjDesc,
-                Mask, MergedDatum, FieldOffset);
+    Status = AcpiExWriteWithUpdateRule (
+        ObjDesc, Mask, MergedDatum, FieldOffset);
 
 Exit:
     /* Free temporary buffer if we used one */

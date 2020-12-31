@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: ISC
+ *
  * Copyright (c) 2002-2008 Sam Leffler, Errno Consulting
  * Copyright (c) 2002-2008 Atheros Communications, Inc.
  *
@@ -14,7 +16,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/dev/ath/ath_hal/ar5212/ar5212_beacon.c 326695 2017-12-08 15:57:29Z pfg $
  */
 #include "opt_ah.h"
 
@@ -44,11 +46,21 @@ ar5212GetNextTBTT(struct ath_hal *ah)
 void
 ar5212SetBeaconTimers(struct ath_hal *ah, const HAL_BEACON_TIMERS *bt)
 {
+	struct ath_hal_5212 *ahp = AH5212(ah);
 
-	OS_REG_WRITE(ah, AR_TIMER0, bt->bt_nexttbtt);
-	OS_REG_WRITE(ah, AR_TIMER1, bt->bt_nextdba);
-	OS_REG_WRITE(ah, AR_TIMER2, bt->bt_nextswba);
-	OS_REG_WRITE(ah, AR_TIMER3, bt->bt_nextatim);
+	/*
+	 * Limit the timers to their specific resolutions:
+	 *
+	 * + Timer 0 - 0..15 0xffff TU
+	 * + Timer 1 - 0..18 0x7ffff TU/8
+	 * + Timer 2 - 0..24 0x1ffffff TU/8
+	 * + Timer 3 - 0..15 0xffff TU
+	 */
+	OS_REG_WRITE(ah, AR_TIMER0, bt->bt_nexttbtt & 0xffff);
+	OS_REG_WRITE(ah, AR_TIMER1, bt->bt_nextdba & 0x7ffff);
+	OS_REG_WRITE(ah, AR_TIMER2, bt->bt_nextswba & 0x1ffffff);
+	/* XXX force nextatim to be non-zero? */
+	OS_REG_WRITE(ah, AR_TIMER3, bt->bt_nextatim & 0xffff);
 	/*
 	 * Set the Beacon register after setting all timers.
 	 */
@@ -65,6 +77,7 @@ ar5212SetBeaconTimers(struct ath_hal *ah, const HAL_BEACON_TIMERS *bt)
 		OS_REG_WRITE(ah, AR_BEACON, AR_BEACON_RESET_TSF);
 	}
 	OS_REG_WRITE(ah, AR_BEACON, bt->bt_intval);
+	ahp->ah_beaconInterval = (bt->bt_intval & HAL_BEACON_PERIOD);
 }
 
 /*

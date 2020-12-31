@@ -46,6 +46,7 @@ public:
 			BRect				Padding() const;
 			void				GetItemMargins(float*, float*, float*, float*)
 									const;
+			void				SetItemMargins(float, float, float, float);
 
 			int					State(BMenuItem** item = NULL) const;
 
@@ -55,6 +56,7 @@ public:
 			void				SetSuperItem(BMenuItem* item);
 			void				InvokeItem(BMenuItem* item, bool now = false);
 			void				QuitTracking(bool thisMenuOnly = true);
+			bool				HasSubmenus() { return fMenu->fHasSubmenus; }
 
 	static	status_t			CreateBitmaps();
 	static	void				DeleteBitmaps();

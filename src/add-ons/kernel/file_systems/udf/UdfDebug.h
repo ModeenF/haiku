@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------
 //  This software is part of the OpenBeOS distribution and is covered
-//  by the OpenBeOS license.
+//  by the MIT License.
 //
 //  This version copyright (c) 2003 Tyler Dauwalder, tyler@dauwalder.net
 //  Initial version copyright (c) 2002 Axel Dörfler, axeld@pinc-software.de
@@ -177,8 +177,9 @@ private:
 			(objectPointer)->dump();	\
 		}
 
-	#define REPORT_ERROR(error) {											\
-		LPRINT(("returning error 0x%lx, `%s'\n", error, strerror(error)));	\
+	#define REPORT_ERROR(error) {									\
+		LPRINT(("returning error 0x%" B_PRIx32 ", `%s'\n", error,	\
+			strerror(error)));										\
 	}
 
 	#define RETURN_ERROR(error) { 		\
@@ -195,7 +196,8 @@ private:
 		} else if (_status == (status_t)B_OK) {						\
 			LPRINT(("returning B_OK\n"));							\
 		} else {													\
-			LPRINT(("returning 0x%lx = %ld\n", _status, _status));	\
+			LPRINT(("returning 0x%" B_PRIx32 " = %" PRId32 "\n",	\
+				_status, _status));									\
 		}															\
 		return _status; 											\
 	}

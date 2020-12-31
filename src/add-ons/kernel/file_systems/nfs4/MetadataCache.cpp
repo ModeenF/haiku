@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 Haiku, Inc. All rights reserved.
+ * Copyright 2012-2016 Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -79,7 +79,7 @@ MetadataCache::GrowFile(size_t newSize)
 	fStatCache.st_size = max_c((off_t)newSize, fStatCache.st_size);
 
 	if (oldSize != fStatCache.st_size) {
-		notify_stat_changed(fInode->GetFileSystem()->DevId(), fInode->ID(),
+		notify_stat_changed(fInode->GetFileSystem()->DevId(), -1, fInode->ID(),
 			B_STAT_SIZE);
 	}
 }
@@ -166,21 +166,22 @@ MetadataCache::NotifyChanges(const struct stat* oldStat,
 		flags |= B_STAT_GID;
 
 	if (memcmp(&oldStat->st_atim, &newStat->st_atim,
-		sizeof(struct timespec) == 0))
+		sizeof(struct timespec)) == 0)
 		flags |= B_STAT_ACCESS_TIME;
 
 	if (memcmp(&oldStat->st_ctim, &newStat->st_ctim,
-		sizeof(struct timespec) == 0))
+		sizeof(struct timespec)) == 0)
 		flags |= B_STAT_CHANGE_TIME;
 
 	if (memcmp(&oldStat->st_crtim, &newStat->st_crtim,
-		sizeof(struct timespec) == 0))
+		sizeof(struct timespec)) == 0)
 		flags |= B_STAT_CREATION_TIME;
 
 	if (memcmp(&oldStat->st_mtim, &newStat->st_mtim,
-		sizeof(struct timespec) == 0))
+		sizeof(struct timespec)) == 0)
 		flags |= B_STAT_MODIFICATION_TIME;
 
-	notify_stat_changed(fInode->GetFileSystem()->DevId(), fInode->ID(), flags);
+	notify_stat_changed(fInode->GetFileSystem()->DevId(), -1, fInode->ID(),
+		flags);
 }
 

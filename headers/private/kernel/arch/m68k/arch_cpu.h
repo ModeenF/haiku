@@ -1,6 +1,6 @@
 /*
 ** Copyright 2003-2004, Axel Dörfler, axeld@pinc-software.de. All rights reserved.
-** Distributed under the terms of the Haiku License.
+** Distributed under the terms of the MIT License.
 */
 #ifndef _KERNEL_ARCH_M68K_CPU_H
 #define _KERNEL_ARCH_M68K_CPU_H
@@ -11,6 +11,15 @@
 #include <kernel.h>
 
 #endif	// !_ASSEMBLER
+
+
+#define CPU_MAX_CACHE_LEVEL	8
+
+#define CACHE_LINE_SIZE		16
+
+
+#define set_ac()
+#define clear_ac()
 
 
 #define SR_IP_MASK 0x0700
@@ -439,6 +448,26 @@ extern bool m68k_set_fault_handler(addr_t *handlerLocation, addr_t handler)
 extern bool m68k_is_hw_register_readable(addr_t address);
 extern bool m68k_is_hw_register_writable(addr_t address, uint16 value);
 	// defined in kernel: arch/m68k/cpu_asm.S
+
+
+static inline void
+arch_cpu_idle(void)
+{
+	// TODO: M68K CPU idle call
+	// there isn't really any insn for this. Maybe NOP/FNOP?
+	// TODO: make a 060 module using LPSTOP
+	//asm volatile ("lpstop");
+}
+
+
+static inline void
+arch_cpu_pause(void)
+{
+	// TODO: M68K STOP call
+	// the problem is STOP wants an immediate to put into SR
+	// but we don't want to overwrite it.
+	//asm volatile("stop #0" : : : "memory");
+}
 
 #ifdef __cplusplus
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2014, Axel Dörfler, axeld@pinc-software.de.
+ * Copyright 2001-2020, Axel Dörfler, axeld@pinc-software.de.
  * This file may be used under the terms of the MIT License.
  */
 
@@ -7,13 +7,15 @@
 //!	file system interface to Haiku's vnode layer
 
 
+#include "Attribute.h"
+#include "CheckVisitor.h"
 #include "Debug.h"
 #include "Volume.h"
 #include "Inode.h"
 #include "Index.h"
 #include "BPlusTree.h"
 #include "Query.h"
-#include "Attribute.h"
+#include "ResizeVisitor.h"
 #include "bfs_control.h"
 #include "bfs_disk_system.h"
 
@@ -25,6 +27,14 @@
 
 
 #define BFS_IO_SIZE	65536
+
+#if defined(BFS_LITTLE_ENDIAN_ONLY)
+#define BFS_ENDIAN_SUFFIX ""
+#define BFS_ENDIAN_PRETTY_SUFFIX ""
+#else
+#define BFS_ENDIAN_SUFFIX "_big"
+#define BFS_ENDIAN_PRETTY_SUFFIX " (Big Endian)"
+#endif
 
 
 struct identify_cookie {
@@ -125,7 +135,7 @@ bfs_identify_partition(int fd, partition_data* partition, void** _cookie)
 	memcpy(&cookie->super_block, &superBlock, sizeof(disk_super_block));
 
 	*_cookie = cookie;
-	return 0.8f;
+	return 0.85f;
 }
 
 
@@ -208,7 +218,8 @@ bfs_read_fs_stat(fs_volume* _volume, struct fs_info* info)
 	// File system flags.
 	info->flags = B_FS_IS_PERSISTENT | B_FS_HAS_ATTR | B_FS_HAS_MIME
 		| (volume->IndicesNode() != NULL ? B_FS_HAS_QUERY : 0)
-		| (volume->IsReadOnly() ? B_FS_IS_READONLY : 0);
+		| (volume->IsReadOnly() ? B_FS_IS_READONLY : 0)
+		| B_FS_SUPPORTS_MONITOR_CHILDREN;
 
 	info->io_size = BFS_IO_SIZE;
 		// whatever is appropriate here?
@@ -230,7 +241,7 @@ bfs_read_fs_stat(fs_volume* _volume, struct fs_info* info)
 static status_t
 bfs_write_fs_stat(fs_volume* _volume, const struct fs_info* info, uint32 mask)
 {
-	FUNCTION_START(("mask = %ld\n", mask));
+	FUNCTION_START(("mask = %" B_PRId32 "\n", mask));
 
 	Volume* volume = (Volume*)_volume->private_volume;
 	if (volume->IsReadOnly())
@@ -283,14 +294,16 @@ bfs_get_vnode(fs_volume* _volume, ino_t id, fs_vnode* _node, int* _type,
 		return B_ERROR;
 	}
 
-	CachedBlock cached(volume, id);
-	bfs_inode* node = (bfs_inode*)cached.Block();
-	if (node == NULL) {
-		FATAL(("could not read inode: %" B_PRIdINO "\n", id));
-		return B_IO_ERROR;
+	CachedBlock cached(volume);
+	status_t status = cached.SetTo(id);
+	if (status != B_OK) {
+		FATAL(("could not read inode: %" B_PRIdINO ": %s\n", id,
+			strerror(status)));
+		return status;
 	}
+	bfs_inode* node = (bfs_inode*)cached.Block();
 
-	status_t status = node->InitCheck(volume);
+	status = node->InitCheck(volume);
 	if (status != B_OK) {
 		if ((node->Flags() & INODE_DELETED) != 0) {
 			INFORM(("inode at %" B_PRIdINO " is already deleted!\n", id));
@@ -622,8 +635,8 @@ static status_t
 bfs_ioctl(fs_volume* _volume, fs_vnode* _node, void* _cookie, uint32 cmd,
 	void* buffer, size_t bufferLength)
 {
-	FUNCTION_START(("node = %p, cmd = %lu, buf = %p, len = %ld\n", _node, cmd,
-		buffer, bufferLength));
+	FUNCTION_START(("node = %p, cmd = %" B_PRIu32 ", buf = %p"
+		", len = %" B_PRIuSIZE "\n", _node, cmd, buffer, bufferLength));
 
 	Volume* volume = (Volume*)_volume->private_volume;
 
@@ -663,12 +676,18 @@ bfs_ioctl(fs_volume* _volume, fs_vnode* _node, void* _cookie, uint32 cmd,
 		case BFS_IOCTL_START_CHECKING:
 		{
 			// start checking
-			BlockAllocator& allocator = volume->Allocator();
-			check_control control;
-			if (user_memcpy(&control, buffer, sizeof(check_control)) != B_OK)
-				return B_BAD_ADDRESS;
+			status_t status = volume->CreateCheckVisitor();
+			if (status != B_OK)
+				return status;
 
-			status_t status = allocator.StartChecking(&control);
+			CheckVisitor* checker = volume->CheckVisitor();
+
+			if (user_memcpy(&checker->Control(), buffer,
+					sizeof(check_control)) != B_OK) {
+				return B_BAD_ADDRESS;
+			}
+
+			status = checker->StartBitmapPass();
 			if (status == B_OK) {
 				file_cookie* cookie = (file_cookie*)_cookie;
 				cookie->open_mode |= BFS_OPEN_MODE_CHECKING;
@@ -679,28 +698,51 @@ bfs_ioctl(fs_volume* _volume, fs_vnode* _node, void* _cookie, uint32 cmd,
 		case BFS_IOCTL_STOP_CHECKING:
 		{
 			// stop checking
-			BlockAllocator& allocator = volume->Allocator();
-			check_control control;
+			CheckVisitor* checker = volume->CheckVisitor();
+			if (checker == NULL)
+				return B_NO_INIT;
 
-			status_t status = allocator.StopChecking(&control);
+			status_t status = checker->StopChecking();
+
 			if (status == B_OK) {
 				file_cookie* cookie = (file_cookie*)_cookie;
 				cookie->open_mode &= ~BFS_OPEN_MODE_CHECKING;
+
+				status = user_memcpy(buffer, &checker->Control(),
+					sizeof(check_control));
 			}
-			if (status == B_OK)
-				status = user_memcpy(buffer, &control, sizeof(check_control));
+
+			volume->DeleteCheckVisitor();
+			volume->SetCheckingThread(-1);
 
 			return status;
 		}
 		case BFS_IOCTL_CHECK_NEXT_NODE:
 		{
 			// check next
-			BlockAllocator& allocator = volume->Allocator();
-			check_control control;
+			CheckVisitor* checker = volume->CheckVisitor();
+			if (checker == NULL)
+				return B_NO_INIT;
 
-			status_t status = allocator.CheckNextNode(&control);
-			if (status == B_OK)
-				status = user_memcpy(buffer, &control, sizeof(check_control));
+			volume->SetCheckingThread(find_thread(NULL));
+
+			checker->Control().errors = 0;
+
+			status_t status = checker->Next();
+			if (status == B_ENTRY_NOT_FOUND) {
+				checker->Control().status = B_ENTRY_NOT_FOUND;
+					// tells StopChecking() that we finished the pass
+
+				if (checker->Pass() == BFS_CHECK_PASS_BITMAP) {
+					if (checker->WriteBackCheckBitmap() == B_OK)
+						status = checker->StartIndexPass();
+				}
+			}
+
+			if (status == B_OK) {
+				status = user_memcpy(buffer, &checker->Control(),
+					sizeof(check_control));
+			}
 
 			return status;
 		}
@@ -713,14 +755,31 @@ bfs_ioctl(fs_volume* _volume, fs_vnode* _node, void* _cookie, uint32 cmd,
 				return B_BAD_VALUE;
 			if (user_memcpy(&update, buffer, sizeof(update_boot_block)) != B_OK)
 				return B_BAD_ADDRESS;
-			if (update.offset < offsetof(disk_super_block, pad_to_block)
-				|| update.length + update.offset > 512)
+
+			uint32 minOffset = offsetof(disk_super_block, pad_to_block);
+			if (update.offset < minOffset
+				|| update.offset >= 512 || update.length > 512 - minOffset
+				|| update.length + update.offset > 512) {
 				return B_BAD_VALUE;
+			}
 			if (user_memcpy((uint8*)&volume->SuperBlock() + update.offset,
-					update.data, update.length) != B_OK)
+					update.data, update.length) != B_OK) {
 				return B_BAD_ADDRESS;
+			}
 
 			return volume->WriteSuperBlock();
+		}
+		case BFS_IOCTL_RESIZE:
+		{
+			if (bufferLength != sizeof(uint64))
+				return B_BAD_VALUE;
+
+			uint64 size;
+			if (user_memcpy((uint8*)&size, buffer, sizeof(uint64)) != B_OK)
+				return B_BAD_ADDRESS;
+
+			ResizeVisitor resizer(volume);
+			return resizer.Resize(size, -1);
 		}
 
 #ifdef DEBUG_FRAGMENTER
@@ -743,12 +802,14 @@ bfs_ioctl(fs_volume* _volume, fs_vnode* _node, void* _cookie, uint32 cmd,
 			block_run run;
 			while (allocator.AllocateBlocks(transaction, 8, 0, 64, 1, run)
 					== B_OK) {
-				PRINT(("write block_run(%ld, %d, %d)\n", run.allocation_group,
-					run.start, run.length));
+				PRINT(("write block_run(%" B_PRId32 ", %" B_PRIu16
+					", %" B_PRIu16 ")\n", run.allocation_group, run.start,
+					run.length));
+
 				for (int32 i = 0;i < run.length;i++) {
-					uint8* block = cached.SetToWritable(transaction, run);
-					if (block != NULL)
-						memset(block, 0, volume->BlockSize());
+					status_t status = cached.SetToWritable(transaction, run);
+					if (status == B_OK)
+						memset(cached.WritableBlock(), 0, volume->BlockSize());
 				}
 			}
 			return B_OK;
@@ -875,8 +936,8 @@ bfs_write_stat(fs_volume* _volume, fs_vnode* _node, const struct stat* stat,
 		// only the user or root can do that
 		if (!isOwnerOrRoot)
 			RETURN_ERROR(B_NOT_ALLOWED);
-		PRINT(("original mode = %ld, stat->st_mode = %d\n", node.Mode(),
-			stat->st_mode));
+		PRINT(("original mode = %u, stat->st_mode = %u\n",
+			(unsigned int)node.Mode(), (unsigned int)stat->st_mode));
 		node.mode = HOST_ENDIAN_TO_BFS_INT32((node.Mode() & ~S_IUMSK)
 			| (stat->st_mode & S_IUMSK));
 		updateTime = true;
@@ -923,7 +984,7 @@ bfs_write_stat(fs_volume* _volume, fs_vnode* _node, const struct stat* stat,
 	if (status == B_OK)
 		status = transaction.Done();
 	if (status == B_OK)
-		notify_stat_changed(volume->ID(), inode->ID(), mask);
+		notify_stat_changed(volume->ID(), inode->ParentID(), inode->ID(), mask);
 
 	return status;
 }
@@ -1311,7 +1372,7 @@ bfs_open(fs_volume* _volume, fs_vnode* _node, int openMode, void** _cookie)
 	cookie->last_notification = system_time();
 
 	// Disable the file cache, if requested?
-	CObjectDeleter<void> fileCacheEnabler(file_cache_enable);
+	CObjectDeleter<void, void, file_cache_enable> fileCacheEnabler;
 	if ((openMode & O_NOCACHE) != 0 && inode->FileCache() != NULL) {
 		status = file_cache_disable(inode->FileCache());
 		if (status != B_OK)
@@ -1397,7 +1458,7 @@ bfs_write(fs_volume* _volume, fs_vnode* _node, void* _cookie, off_t pos,
 		if (!inode->IsDeleted() && cookie->last_size != inode->Size()
 			&& system_time() > cookie->last_notification
 					+ INODE_NOTIFICATION_INTERVAL) {
-			notify_stat_changed(volume->ID(), inode->ID(),
+			notify_stat_changed(volume->ID(), inode->ParentID(), inode->ID(),
 				B_STAT_MODIFICATION_TIME | B_STAT_SIZE | B_STAT_INTERIM_UPDATE);
 			cookie->last_size = inode->Size();
 			cookie->last_notification = system_time();
@@ -1483,7 +1544,7 @@ bfs_free_cookie(fs_volume* _volume, fs_vnode* _node, void* _cookie)
 		}
 
 		if (changedSize || changedTime) {
-			notify_stat_changed(volume->ID(), inode->ID(),
+			notify_stat_changed(volume->ID(), inode->ParentID(), inode->ID(),
 				(changedTime ? B_STAT_MODIFICATION_TIME : 0)
 				| (changedSize ? B_STAT_SIZE : 0));
 		}
@@ -1494,7 +1555,8 @@ bfs_free_cookie(fs_volume* _volume, fs_vnode* _node, void* _cookie)
 	if ((cookie->open_mode & BFS_OPEN_MODE_CHECKING) != 0) {
 		// "chkbfs" exited abnormally, so we have to stop it here...
 		FATAL(("check process was aborted!\n"));
-		volume->Allocator().StopChecking(NULL);
+		volume->CheckVisitor()->StopChecking();
+		volume->DeleteCheckVisitor();
 	}
 
 	if ((cookie->open_mode & O_NOCACHE) != 0 && inode->FileCache() != NULL)
@@ -1534,21 +1596,22 @@ bfs_read_link(fs_volume* _volume, fs_vnode* _node, char* buffer,
 		RETURN_ERROR(B_BAD_VALUE);
 
 	if ((inode->Flags() & INODE_LONG_SYMLINK) != 0) {
-		if ((uint64)inode->Size() < (uint64)*_bufferSize)
-			*_bufferSize = inode->Size();
-
 		status_t status = inode->ReadAt(0, (uint8*)buffer, _bufferSize);
 		if (status < B_OK)
 			RETURN_ERROR(status);
 
+		*_bufferSize = inode->Size();
 		return B_OK;
 	}
 
-	size_t linkLen = strlen(inode->Node().short_symlink);
-	if (linkLen < *_bufferSize)
-		*_bufferSize = linkLen;
+	size_t linkLength = strlen(inode->Node().short_symlink);
 
-	return user_memcpy(buffer, inode->Node().short_symlink, *_bufferSize);
+	size_t bytesToCopy = min_c(linkLength, *_bufferSize);
+
+	*_bufferSize = linkLength;
+
+	memcpy(buffer, inode->Node().short_symlink, bytesToCopy);
+	return B_OK;
 }
 
 
@@ -1890,9 +1953,11 @@ bfs_write_attr(fs_volume* _volume, fs_vnode* _file, void* _cookie,
 	if (status == B_OK) {
 		status = transaction.Done();
 		if (status == B_OK) {
-			notify_attribute_changed(volume->ID(), inode->ID(), cookie->name,
+			notify_attribute_changed(volume->ID(), inode->ParentID(),
+				inode->ID(), cookie->name,
 				created ? B_ATTR_CREATED : B_ATTR_CHANGED);
-			notify_stat_changed(volume->ID(), inode->ID(), B_STAT_CHANGE_TIME);
+			notify_stat_changed(volume->ID(), inode->ParentID(), inode->ID(),
+				B_STAT_CHANGE_TIME);
 		}
 	}
 
@@ -1956,8 +2021,8 @@ bfs_remove_attr(fs_volume* _volume, fs_vnode* _node, const char* name)
 	if (status == B_OK)
 		status = transaction.Done();
 	if (status == B_OK) {
-		notify_attribute_changed(volume->ID(), inode->ID(), name,
-			B_ATTR_REMOVED);
+		notify_attribute_changed(volume->ID(), inode->ParentID(), inode->ID(),
+			name, B_ATTR_REMOVED);
 	}
 
 	return status;
@@ -1976,8 +2041,8 @@ bfs_create_special_node(fs_volume* _volume, fs_vnode* _directory,
 	if (name == NULL)
 		return B_UNSUPPORTED;
 
-	FUNCTION_START(("name = \"%s\", mode = %d, flags = 0x%lx, subVnode: %p\n",
-		name, mode, flags, subVnode));
+	FUNCTION_START(("name = \"%s\", mode = %u, flags = 0x%" B_PRIx32
+		", subVnode: %p\n", name, (unsigned int)mode, flags, subVnode));
 
 	Volume* volume = (Volume*)_volume->private_volume;
 	Inode* directory = (Inode*)_directory->private_node;
@@ -2105,7 +2170,8 @@ static status_t
 bfs_create_index(fs_volume* _volume, const char* name, uint32 type,
 	uint32 flags)
 {
-	FUNCTION_START(("name = \"%s\", type = %ld, flags = %ld\n", name, type, flags));
+	FUNCTION_START(("name = \"%s\", type = %" B_PRIu32
+		", flags = %" B_PRIu32 "\n", name, type, flags));
 
 	Volume* volume = (Volume*)_volume->private_volume;
 
@@ -2195,7 +2261,8 @@ static status_t
 bfs_open_query(fs_volume* _volume, const char* queryString, uint32 flags,
 	port_id port, uint32 token, void** _cookie)
 {
-	FUNCTION_START(("bfs_open_query(\"%s\", flags = %lu, port_id = %ld, token = %ld)\n",
+	FUNCTION_START(("bfs_open_query(\"%s\", flags = %" B_PRIu32
+		", port_id = %" B_PRId32 ", token = %" B_PRIu32 ")\n",
 		queryString, flags, port, token));
 
 	Volume* volume = (Volume*)_volume->private_volume;
@@ -2492,13 +2559,13 @@ fs_vnode_ops gBFSVnodeOps = {
 
 static file_system_module_info sBeFileSystem = {
 	{
-		"file_systems/bfs" B_CURRENT_FS_API_VERSION,
+		"file_systems/bfs" BFS_ENDIAN_SUFFIX B_CURRENT_FS_API_VERSION,
 		0,
 		bfs_std_ops,
 	},
 
-	"bfs",						// short_name
-	"Be File System",			// pretty_name
+	"bfs" BFS_ENDIAN_SUFFIX,						// short_name
+	"Be File System" BFS_ENDIAN_PRETTY_SUFFIX,		// pretty_name
 
 	// DDM flags
 	0

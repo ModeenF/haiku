@@ -188,10 +188,11 @@ public:
 	};
 
 	MulticastGroupInterface*& HashLink() { return fLink; }
+	MulticastGroupInterface*& MulticastGroupsHashLink() { return fMulticastGroupsLink; }
 
 private:
 	// for g++ 2.95
-	friend class HashDefinition;
+	friend struct HashDefinition;
 
 	Filter *fParent;
 	AddressType fMulticastAddress;
@@ -199,6 +200,7 @@ private:
 	FilterMode fFilterMode;
 	AddressSet fAddresses;
 	MulticastGroupInterface* fLink;
+	MulticastGroupInterface* fMulticastGroupsLink;
 };
 
 

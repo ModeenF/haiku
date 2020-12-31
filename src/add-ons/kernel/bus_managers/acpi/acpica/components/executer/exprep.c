@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Module Name: exprep - ACPI AML (p-code) execution - field prep utilities
+ * Module Name: exprep - ACPI AML field prep utilities
  *
  *****************************************************************************/
 
@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -111,6 +111,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #include "acpi.h"
@@ -140,6 +176,7 @@ AcpiExGenerateAccess (
     UINT32                  FieldBitOffset,
     UINT32                  FieldBitLength,
     UINT32                  RegionLength);
+
 
 /*******************************************************************************
  *
@@ -185,10 +222,13 @@ AcpiExGenerateAccess (
 
     /* Round Field start offset and length to "minimal" byte boundaries */
 
-    FieldByteOffset    = ACPI_DIV_8 (ACPI_ROUND_DOWN (FieldBitOffset, 8));
-    FieldByteEndOffset = ACPI_DIV_8 (ACPI_ROUND_UP   (FieldBitLength +
-                                                      FieldBitOffset, 8));
-    FieldByteLength    = FieldByteEndOffset - FieldByteOffset;
+    FieldByteOffset = ACPI_DIV_8 (
+        ACPI_ROUND_DOWN (FieldBitOffset, 8));
+
+    FieldByteEndOffset = ACPI_DIV_8 (
+        ACPI_ROUND_UP (FieldBitLength + FieldBitOffset, 8));
+
+    FieldByteLength = FieldByteEndOffset - FieldByteOffset;
 
     ACPI_DEBUG_PRINT ((ACPI_DB_BFIELD,
         "Bit length %u, Bit offset %u\n",
@@ -213,7 +253,8 @@ AcpiExGenerateAccess (
          *    are done. (This does not optimize for the perfectly aligned
          *    case yet).
          */
-        if (ACPI_ROUND_UP (FieldByteEndOffset, AccessByteWidth) <= RegionLength)
+        if (ACPI_ROUND_UP (FieldByteEndOffset, AccessByteWidth) <=
+            RegionLength)
         {
             FieldStartOffset =
                 ACPI_ROUND_DOWN (FieldByteOffset, AccessByteWidth) /
@@ -237,7 +278,8 @@ AcpiExGenerateAccess (
             if (Accesses <= 1)
             {
                 ACPI_DEBUG_PRINT ((ACPI_DB_BFIELD,
-                    "Entire field can be accessed with one operation of size %u\n",
+                    "Entire field can be accessed "
+                    "with one operation of size %u\n",
                     AccessByteWidth));
                 return_VALUE (AccessByteWidth);
             }
@@ -248,14 +290,15 @@ AcpiExGenerateAccess (
              */
             if (Accesses < MinimumAccesses)
             {
-                MinimumAccesses    = Accesses;
+                MinimumAccesses = Accesses;
                 MinimumAccessWidth = AccessByteWidth;
             }
         }
         else
         {
             ACPI_DEBUG_PRINT ((ACPI_DB_BFIELD,
-                "AccessWidth %u end is NOT within region\n", AccessByteWidth));
+                "AccessWidth %u end is NOT within region\n",
+                AccessByteWidth));
             if (AccessByteWidth == 1)
             {
                 ACPI_DEBUG_PRINT ((ACPI_DB_BFIELD,
@@ -283,6 +326,7 @@ AcpiExGenerateAccess (
      */
     ACPI_DEBUG_PRINT ((ACPI_DB_BFIELD,
         "Cannot access field in one operation, using width 8\n"));
+
     return_VALUE (8);
 }
 #endif /* ACPI_UNDER_DEVELOPMENT */
@@ -367,6 +411,7 @@ AcpiExDecodeFieldAccess (
         ACPI_ERROR ((AE_INFO,
             "Unknown field access type 0x%X",
             Access));
+
         return_UINT32 (0);
     }
 
@@ -446,8 +491,8 @@ AcpiExPrepCommonFieldObject (
      * For all other access types (Byte, Word, Dword, Qword), the Bitwidth is
      * the same (equivalent) as the ByteAlignment.
      */
-    AccessBitWidth = AcpiExDecodeFieldAccess (ObjDesc, FieldFlags,
-                        &ByteAlignment);
+    AccessBitWidth = AcpiExDecodeFieldAccess (
+        ObjDesc, FieldFlags, &ByteAlignment);
     if (!AccessBitWidth)
     {
         return_ACPI_STATUS (AE_AML_OPERAND_VALUE);
@@ -543,8 +588,8 @@ AcpiExPrepFieldValue (
 
     ObjDesc->CommonField.Node = Info->FieldNode;
     Status = AcpiExPrepCommonFieldObject (ObjDesc,
-                Info->FieldFlags, Info->Attribute,
-                Info->FieldBitPosition, Info->FieldBitLength);
+        Info->FieldFlags, Info->Attribute,
+        Info->FieldBitPosition, Info->FieldBitLength);
     if (ACPI_FAILURE (Status))
     {
         AcpiUtDeleteObjectDesc (ObjDesc);
@@ -576,8 +621,10 @@ AcpiExPrepFieldValue (
                 }
             }
 
-            ObjDesc->Field.ResourceBuffer = SecondDesc->Buffer.Pointer;
-            ObjDesc->Field.ResourceLength = (UINT16) SecondDesc->Buffer.Length;
+            ObjDesc->Field.ResourceBuffer =
+                SecondDesc->Buffer.Pointer;
+            ObjDesc->Field.ResourceLength =
+                (UINT16) SecondDesc->Buffer.Length;
         }
         else if (Info->ResourceBuffer)
         {
@@ -599,7 +646,8 @@ AcpiExPrepFieldValue (
 
             if (AccessByteWidth < 256)
             {
-                ObjDesc->CommonField.AccessByteWidth = (UINT8) AccessByteWidth;
+                ObjDesc->CommonField.AccessByteWidth =
+                    (UINT8) AccessByteWidth;
             }
         }
 
@@ -609,8 +657,10 @@ AcpiExPrepFieldValue (
 
         ACPI_DEBUG_PRINT ((ACPI_DB_BFIELD,
             "RegionField: BitOff %X, Off %X, Gran %X, Region %p\n",
-            ObjDesc->Field.StartFieldBitOffset, ObjDesc->Field.BaseByteOffset,
-            ObjDesc->Field.AccessByteWidth, ObjDesc->Field.RegionObj));
+            ObjDesc->Field.StartFieldBitOffset,
+            ObjDesc->Field.BaseByteOffset,
+            ObjDesc->Field.AccessByteWidth,
+            ObjDesc->Field.RegionObj));
         break;
 
     case ACPI_TYPE_LOCAL_BANK_FIELD:
@@ -690,7 +740,8 @@ AcpiExPrepFieldValue (
             ObjDesc->IndexField.AccessByteWidth);
 
         ACPI_DEBUG_PRINT ((ACPI_DB_BFIELD,
-            "IndexField: BitOff %X, Off %X, Value %X, Gran %X, Index %p, Data %p\n",
+            "IndexField: BitOff %X, Off %X, Value %X, "
+            "Gran %X, Index %p, Data %p\n",
             ObjDesc->IndexField.StartFieldBitOffset,
             ObjDesc->IndexField.BaseByteOffset,
             ObjDesc->IndexField.Value,
@@ -710,10 +761,11 @@ AcpiExPrepFieldValue (
      * Store the constructed descriptor (ObjDesc) into the parent Node,
      * preserving the current type of that NamedObj.
      */
-    Status = AcpiNsAttachObject (Info->FieldNode, ObjDesc,
-                AcpiNsGetType (Info->FieldNode));
+    Status = AcpiNsAttachObject (
+        Info->FieldNode, ObjDesc, AcpiNsGetType (Info->FieldNode));
 
-    ACPI_DEBUG_PRINT ((ACPI_DB_BFIELD, "Set NamedObj %p [%4.4s], ObjDesc %p\n",
+    ACPI_DEBUG_PRINT ((ACPI_DB_BFIELD,
+        "Set NamedObj %p [%4.4s], ObjDesc %p\n",
         Info->FieldNode, AcpiUtGetNodeName (Info->FieldNode), ObjDesc));
 
     /* Remove local reference to the object */

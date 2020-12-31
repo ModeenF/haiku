@@ -1,4 +1,5 @@
 /*
+ * Copyright 2018, Jérôme Duval, jerome.duval@gmail.com.
  * Copyright 2012, Alex Smith, alex@alex-smith.me.uk.
  * Copyright 2002-2008, Axel Dörfler, axeld@pinc-software.de.
  * Distributed under the terms of the MIT License.
@@ -67,7 +68,10 @@ class RestartSyscall : public AbstractTraceEntry {
 extern "C" void x86_64_thread_entry();
 
 // Initial thread saved state.
-static arch_thread sInitialState;
+static arch_thread sInitialState _ALIGNED(64);
+extern uint64 gFPUSaveLength;
+extern bool gHasXsave;
+extern bool gHasXsavec;
 
 
 void
@@ -101,12 +105,16 @@ arch_randomize_stack_pointer(addr_t value)
 	static_assert(MAX_RANDOM_VALUE >= B_PAGE_SIZE - 1,
 		"randomization range is too big");
 	value -= random_value() & (B_PAGE_SIZE - 1);
-	return value & ~addr_t(0xf);
+	return (value & ~addr_t(0xf)) - 8;
+		// This means, result % 16 == 8, which is what rsp should adhere to
+		// when a function is entered for the stack to be considered aligned to
+		// 16 byte.
 }
 
 
 static uint8*
-get_signal_stack(Thread* thread, iframe* frame, struct sigaction* action)
+get_signal_stack(Thread* thread, iframe* frame, struct sigaction* action,
+	size_t spaceNeeded)
 {
 	// Use the alternate signal stack if we should and can.
 	if (thread->signal_stack_enabled
@@ -115,14 +123,15 @@ get_signal_stack(Thread* thread, iframe* frame, struct sigaction* action)
 				|| frame->user_sp >= thread->signal_stack_base
 					+ thread->signal_stack_size)) {
 		addr_t stackTop = thread->signal_stack_base + thread->signal_stack_size;
-		return (uint8*)arch_randomize_stack_pointer(stackTop);
+		return (uint8*)arch_randomize_stack_pointer(stackTop - spaceNeeded);
 	}
 
 	// We are going to use the stack that we are already on. We must not touch
 	// the red zone (128 byte area below the stack pointer, reserved for use
 	// by functions to store temporary data and guaranteed not to be modified
 	// by signal handlers).
-	return (uint8*)(frame->user_sp - 128);
+	return (uint8*)((frame->user_sp - 128 - spaceNeeded) & ~addr_t(0xf)) - 8;
+		// align stack pointer (cf. arch_randomize_stack_pointer())
 }
 
 
@@ -134,12 +143,35 @@ arch_thread_init(kernel_args* args)
 {
 	// Save one global valid FPU state; it will be copied in the arch dependent
 	// part of each new thread.
-	asm volatile (
-		"clts;"		\
-		"fninit;"	\
-		"fnclex;"	\
-		"fxsave %0;"
-		: "=m" (sInitialState.fpu_state));
+	if (gHasXsave || gHasXsavec) {
+		memset(sInitialState.fpu_state, 0, gFPUSaveLength);
+		if (gHasXsavec) {
+			asm volatile (
+				"clts;"		\
+				"fninit;"	\
+				"fnclex;"	\
+				"movl $0x7,%%eax;"	\
+				"movl $0x0,%%edx;"	\
+				"xsavec64 %0"
+				:: "m" (sInitialState.fpu_state));
+		} else {
+			asm volatile (
+				"clts;"		\
+				"fninit;"	\
+				"fnclex;"	\
+				"movl $0x7,%%eax;"	\
+				"movl $0x0,%%edx;"	\
+				"xsave64 %0"
+				:: "m" (sInitialState.fpu_state));
+		}
+	} else {
+		asm volatile (
+			"clts;"		\
+			"fninit;"	\
+			"fnclex;"	\
+			"fxsaveq %0"
+			:: "m" (sInitialState.fpu_state));
+	}
 	return B_OK;
 }
 
@@ -207,19 +239,21 @@ arch_thread_enter_userspace(Thread* thread, addr_t entry, void* args1,
 	void* args2)
 {
 	addr_t stackTop = thread->user_stack_base + thread->user_stack_size;
+	addr_t codeAddr;
 
 	TRACE("arch_thread_enter_userspace: entry %#lx, args %p %p, "
 		"stackTop %#lx\n", entry, args1, args2, stackTop);
 
-	stackTop = arch_randomize_stack_pointer(stackTop);
+	stackTop = arch_randomize_stack_pointer(stackTop - sizeof(codeAddr));
 
 	// Copy the address of the stub that calls exit_thread() when the thread
 	// entry function returns to the top of the stack to act as the return
 	// address. The stub is inside commpage.
 	addr_t commPageAddress = (addr_t)thread->team->commpage_address;
-	addr_t codeAddr = ((addr_t*)commPageAddress)[COMMPAGE_ENTRY_X86_THREAD_EXIT]
+	set_ac();
+	codeAddr = ((addr_t*)commPageAddress)[COMMPAGE_ENTRY_X86_THREAD_EXIT]
 		+ commPageAddress;
-	stackTop -= sizeof(codeAddr);
+	clear_ac();
 	if (user_memcpy((void*)stackTop, (const void*)&codeAddr, sizeof(codeAddr))
 			!= B_OK)
 		return B_BAD_ADDRESS;
@@ -301,11 +335,10 @@ arch_setup_signal_frame(Thread* thread, struct sigaction* action,
 
 	if (frame->fpu != nullptr) {
 		memcpy((void*)&signalFrameData->context.uc_mcontext.fpu, frame->fpu,
-			sizeof(signalFrameData->context.uc_mcontext.fpu));
+			gFPUSaveLength);
 	} else {
 		memcpy((void*)&signalFrameData->context.uc_mcontext.fpu,
-			sInitialState.fpu_state,
-			sizeof(signalFrameData->context.uc_mcontext.fpu));
+			sInitialState.fpu_state, gFPUSaveLength);
 	}
 
 	// Fill in signalFrameData->context.uc_stack.
@@ -315,10 +348,11 @@ arch_setup_signal_frame(Thread* thread, struct sigaction* action,
 	signalFrameData->syscall_restart_return_value = frame->orig_rax;
 
 	// Get the stack to use and copy the frame data to it.
-	uint8* userStack = get_signal_stack(thread, frame, action);
+	uint8* userStack = get_signal_stack(thread, frame, action,
+		sizeof(*signalFrameData) + sizeof(frame->ip));
 
-	userStack -= sizeof(*signalFrameData);
-	signal_frame_data* userSignalFrameData = (signal_frame_data*)userStack;
+	signal_frame_data* userSignalFrameData
+		= (signal_frame_data*)(userStack + sizeof(frame->ip));
 
 	if (user_memcpy(userSignalFrameData, signalFrameData,
 			sizeof(*signalFrameData)) != B_OK) {
@@ -326,7 +360,6 @@ arch_setup_signal_frame(Thread* thread, struct sigaction* action,
 	}
 
 	// Copy a return address to the stack so that backtraces will be correct.
-	userStack -= sizeof(frame->ip);
 	if (user_memcpy(userStack, &frame->ip, sizeof(frame->ip)) != B_OK)
 		return B_BAD_ADDRESS;
 
@@ -338,8 +371,10 @@ arch_setup_signal_frame(Thread* thread, struct sigaction* action,
 	// stack. First argument points to the frame data.
 	addr_t* commPageAddress = (addr_t*)thread->team->commpage_address;
 	frame->user_sp = (addr_t)userStack;
+	set_ac();
 	frame->ip = commPageAddress[COMMPAGE_ENTRY_X86_SIGNAL_HANDLER]
 		+ (addr_t)commPageAddress;
+	clear_ac();
 	frame->di = (addr_t)userSignalFrameData;
 
 	return B_OK;
@@ -375,8 +410,7 @@ arch_restore_signal_frame(struct signal_frame_data* signalFrameData)
 	Thread* thread = thread_get_current_thread();
 
 	memcpy(thread->arch_info.fpu_state,
-		(void*)&signalFrameData->context.uc_mcontext.fpu,
-		sizeof(thread->arch_info.fpu_state));
+		(void*)&signalFrameData->context.uc_mcontext.fpu, gFPUSaveLength);
 	frame->fpu = &thread->arch_info.fpu_state;
 
 	// The syscall return code overwrites frame->ax with the return value of

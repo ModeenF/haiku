@@ -1,10 +1,11 @@
 /*
- * Copyright 2005-2012, Haiku.
+ * Copyright 2005-2016, Haiku.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
- *		Michael Lotz <mmlr@mlotz.ch>
  *		Stephan Aßmus <superstippi@gmx.de>
+ *		Axel Dörfler, axeld@pinc-software.de
+ *		Michael Lotz <mmlr@mlotz.ch>
  */
 #ifndef ACCELERANT_HW_INTERFACE_H
 #define ACCELERANT_HW_INTERFACE_H
@@ -12,6 +13,7 @@
 
 #include "HWInterface.h"
 
+#include <AutoDeleter.h>
 #include <image.h>
 #include <video_overlay.h>
 
@@ -54,6 +56,9 @@ public:
 	virtual status_t			SetDPMSMode(uint32 state);
 	virtual uint32				DPMSMode();
 	virtual uint32				DPMSCapabilities();
+
+	virtual status_t			SetBrightness(float);
+	virtual status_t			GetBrightness(float*);
 
 	virtual status_t			GetAccelerantPath(BString& path);
 	virtual status_t			GetDriverPath(BString& path);
@@ -104,6 +109,7 @@ private:
 			int					_OpenGraphicsDevice(int deviceNumber);
 			status_t			_OpenAccelerant(int device);
 			status_t			_SetupDefaultHooks();
+			void				_UpdateHooksAfterModeChange();
 			status_t			_UpdateModeList();
 			status_t			_UpdateFrameBufferConfig();
 			void				_RegionToRectParams(/*const*/ BRegion* region,
@@ -157,6 +163,10 @@ private:
 			dpms_mode			fAccDPMSMode;
 			set_dpms_mode		fAccSetDPMSMode;
 
+			// brightness hooks
+			set_brightness		fAccSetBrightness;
+			get_brightness		fAccGetBrightness;
+
 			// overlay hooks
 			overlay_count				fAccOverlayCount;
 			overlay_supported_spaces	fAccOverlaySupportedSpaces;
@@ -172,8 +182,10 @@ private:
 			int					fModeCount;
 			display_mode*		fModeList;
 
-			RenderingBuffer*	fBackBuffer;
-			AccelerantBuffer*	fFrontBuffer;
+			ObjectDeleter<RenderingBuffer>
+								fBackBuffer;
+			ObjectDeleter<AccelerantBuffer>
+								fFrontBuffer;
 			bool				fOffscreenBackBuffer;
 
 			display_mode		fDisplayMode;

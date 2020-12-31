@@ -140,7 +140,7 @@ ScreenshotWindow::ScreenshotWindow(const Utility& utility, bool silent,
 
 	// Check if fUtility contains valid data
 	if (fUtility.wholeScreen == NULL) {
-		_NewScreenshot(silent, clipboard);
+		_NewScreenshot(silent, clipboard, true);
 		return;
 	}
 
@@ -229,7 +229,7 @@ ScreenshotWindow::ScreenshotWindow(const Utility& utility, bool silent,
 			.End()
 		.End()
 		.Add(new BSeparatorView(B_HORIZONTAL))
-		.AddGroup(B_HORIZONTAL, 0)
+		.AddGroup(B_HORIZONTAL)
 			.SetInsets(B_USE_WINDOW_SPACING, B_USE_DEFAULT_SPACING,
 				B_USE_WINDOW_SPACING, B_USE_WINDOW_SPACING)
 			.Add(new BButton("", B_TRANSLATE("Copy to clipboard"),
@@ -391,15 +391,19 @@ ScreenshotWindow::Quit()
 
 
 void
-ScreenshotWindow::_NewScreenshot(bool silent, bool clipboard)
+ScreenshotWindow::_NewScreenshot(bool silent, bool clipboard, bool ignoreDelay)
 {
 	BMessage message(B_ARGV_RECEIVED);
-	int32 argc = 3;
-	BString delay;
-	delay << fDelay / 1000000;
+	int32 argc = 1;
 	message.AddString("argv", "screenshot");
-	message.AddString("argv", "--delay");
-	message.AddString("argv", delay);
+
+	if (!ignoreDelay) {
+		argc += 2;
+		BString delay;
+		delay << fDelay / 1000000;
+		message.AddString("argv", "--delay");
+		message.AddString("argv", delay);
+	}
 
 	if (silent || clipboard) {
 		if (silent) {
@@ -604,6 +608,21 @@ ScreenshotWindow::_SetupTranslatorMenu()
 }
 
 
+void
+ScreenshotWindow::_DisplaySaveError(BString _message) {
+	BString alertText;
+	alertText.SetToFormat(B_TRANSLATE("Error saving \"%s\":\n\t%s"),
+		fNameControl->Text(), _message.String());
+
+	BAlert* alert = new BAlert(B_TRANSLATE("Failed to save screenshot"),
+		alertText.String(),	B_TRANSLATE("OK"),
+		NULL, NULL, B_WIDTH_AS_USUAL, B_STOP_ALERT);
+
+	alert->SetShortcut(0, B_ESCAPE);
+	alert->Go();
+}
+
+
 status_t
 ScreenshotWindow::_SaveScreenshot()
 {
@@ -614,6 +633,28 @@ ScreenshotWindow::_SaveScreenshot()
 
 	if (path == NULL)
 		return B_ERROR;
+
+	BEntry directoryEntry;
+	directoryEntry.SetTo(path.Path());
+
+	// create folder if it doesn't exist
+	// necessary, for example, when the user selects the Artwork folder from
+	// the list of predefined folders.
+	if (!directoryEntry.Exists()) {
+		status_t directoryCreateStatus = create_directory(path.Path(), 0755);
+		if (directoryCreateStatus != B_OK) {
+			_DisplaySaveError(strerror(directoryCreateStatus));
+
+			return directoryCreateStatus;
+		}
+	} else if (!directoryEntry.IsDirectory()) {
+		// the entry exists but is not a directory.
+		// not much we can do
+		_DisplaySaveError(
+			B_TRANSLATE("The destination path exists but is not a folder."));
+
+		return B_NOT_A_DIRECTORY;
+	}
 
 	path.Append(fNameControl->Text());
 
@@ -635,7 +676,14 @@ ScreenshotWindow::_SaveScreenshot()
 			return B_CANCELED;
 	}
 
-	return fUtility.Save(fScreenshot, path.Path(), fImageFileType);
+	status_t saveStatus = fUtility.Save(fScreenshot,
+		path.Path(), fImageFileType);
+
+	if (saveStatus != B_OK) {
+		_DisplaySaveError(strerror(saveStatus));
+		return saveStatus;
+	}
+	return B_OK;
 }
 
 
@@ -658,7 +706,7 @@ ScreenshotWindow::_ShowSettings(bool activate)
 		translator, NULL, &view, &rect);
 	if (status != B_OK || view == NULL) {
 		// TODO: proper translation, better error dialog
-		BAlert* alert = new BAlert(NULL, strerror(status), "OK");
+		BAlert* alert = new BAlert(NULL, strerror(status), B_TRANSLATE("OK"));
 		alert->SetFlags(alert->Flags() | B_CLOSE_ON_ESCAPE);
 		alert->Go();
 	} else if (fSettingsWindow != NULL) {

@@ -101,8 +101,11 @@ private:
 			void				_SetSlideShowDelay(bigtime_t delay);
 			void				_StartSlideShow();
 			void				_StopSlideShow();
+			void				_ResetSlideShowDelay();
 
 			void				_UpdateRatingMenu();
+
+			void				_GetFileInfo(const entry_ref& ref);
 
 			void				_SetToolBarVisible(bool visible,
 									bool animate = false);

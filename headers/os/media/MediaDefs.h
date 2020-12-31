@@ -15,10 +15,11 @@
 #if defined(__cplusplus)
 #	include <GraphicsDefs.h>
 #	include <Looper.h>
+class media_node;
+#else
+struct media_node;
 #endif
 
-
-struct media_node;
 
 #define B_MEDIA_NAME_LENGTH 64
 
@@ -401,7 +402,7 @@ struct media_video_header {
 	uint32      display_line_width; // Number of pixels per display_line
 	uint32      display_line_count;	// Sum of all interlace fields lines
 	uint32      bytes_per_row;		// Number of bytes in a display_line
-									// (padding bytes excluded)	
+									// (padding bytes excluded)
 	uint16      pixel_width_aspect;	// 1:1 has 1 here, 4:3 has 4 here
 									// 16:9 has 16 here!
 	uint16      pixel_height_aspect;// 1:1 has 1 here, 4:3 has 3 here
@@ -602,6 +603,9 @@ public:
 	status_t		SetMetaData(const void* data, size_t size);
 	const void*		MetaData() const;
 	int32			MetaDataSize() const;
+
+	void			Unflatten(const char *flatBuffer);
+	void			Clear();
 
 					media_format();
 					media_format(const media_format& other);

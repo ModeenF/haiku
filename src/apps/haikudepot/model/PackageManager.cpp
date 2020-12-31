@@ -1,17 +1,17 @@
 /*
- * Copyright 2013-2015, Haiku, Inc. All Rights Reserved.
+ * Copyright 2013-2020, Haiku, Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
  *		Ingo Weinhold <ingo_weinhold@gmx.de>
  * 		Stephan Aßmus <superstippi@gmx.de>
  * 		Rene Gollent <rene@gollent.com>
+ *		Julian Harnath <julian.harnath@rwth-aachen.de>
+ *		Andrew Lindesay <apl@lindesay.co.nz>
  */
 
 
 #include "PackageManager.h"
-
-#include <stdio.h>
 
 #include <Alert.h>
 #include <Catalog.h>
@@ -35,6 +35,7 @@
 
 #include "AutoDeleter.h"
 #include "AutoLocker.h"
+#include "Logger.h"
 #include "Model.h"
 #include "PackageInfo.h"
 #include "ProblemWindow.h"
@@ -82,6 +83,13 @@ PackageProgressListener::DownloadProgressChanged(const char* packageName,
 
 void
 PackageProgressListener::DownloadProgressComplete(const char* packageName)
+{
+}
+
+
+void
+PackageProgressListener::ConfirmedChanges(
+	BPackageManager::InstalledRepository& repository)
 {
 }
 
@@ -140,7 +148,7 @@ public:
 		const char* packageNameString = packageName.String();
 		try {
 			fPackageManager->Install(&packageNameString, 1);
-		} catch (BFatalErrorException ex) {
+		} catch (BFatalErrorException& ex) {
 			BString errorString;
 			errorString.SetToFormat(
 				"Fatal error occurred while installing package %s: "
@@ -154,20 +162,19 @@ public:
 			_SetDownloadedPackagesState(NONE);
 			ref->SetState(state);
 			return ex.Error();
-		} catch (BAbortedByUserException ex) {
-			fprintf(stderr, "Installation of package "
-				"%s aborted by user: %s\n", packageNameString,
-				ex.Message().String());
+		} catch (BAbortedByUserException& ex) {
+			HDINFO("Installation of package %s is aborted by user: %s",
+				packageNameString, ex.Message().String());
 			_SetDownloadedPackagesState(NONE);
 			ref->SetState(state);
 			return B_OK;
-		} catch (BNothingToDoException ex) {
-			fprintf(stderr, "Nothing to do while installing package "
-				"%s: %s\n", packageNameString, ex.Message().String());
+		} catch (BNothingToDoException& ex) {
+			HDINFO("Nothing to do while installing package %s: %s",
+				packageNameString, ex.Message().String());
 			return B_OK;
-		} catch (BException ex) {
-			fprintf(stderr, "Exception occurred while installing package "
-				"%s: %s\n", packageNameString, ex.Message().String());
+		} catch (BException& ex) {
+			HDERROR("Exception occurred while installing package %s: %s",
+				packageNameString, ex.Message().String());
 			_SetDownloadedPackagesState(NONE);
 			ref->SetState(state);
 			return B_ERROR;
@@ -206,6 +213,20 @@ public:
 		if (ref.Get() != NULL) {
 			ref->SetDownloadProgress(1.0);
 			fDownloadedPackages.insert(ref);
+		}
+	}
+
+	virtual	void ConfirmedChanges(BPackageManager::InstalledRepository&
+		repository)
+	{
+		BPackageManager::InstalledRepository::PackageList& activationList =
+			repository.PackagesToActivate();
+
+		BSolverPackage* package = NULL;
+		for (int32 i = 0; (package = activationList.ItemAt(i)); i++) {
+			PackageInfoRef ref(FindPackageByName(package->Info().Name()));
+			if (ref.Get() != NULL)
+				ref->SetState(PENDING);
 		}
 	}
 
@@ -251,7 +272,7 @@ public:
 		const char* packageName = ref->Name().String();
 		try {
 			fPackageManager->Uninstall(&packageName, 1);
-		} catch (BFatalErrorException ex) {
+		} catch (BFatalErrorException& ex) {
 			BString errorString;
 			errorString.SetToFormat(
 				"Fatal error occurred while uninstalling package %s: "
@@ -264,13 +285,13 @@ public:
 				alert->Go();
 			ref->SetState(state);
 			return ex.Error();
-		} catch (BAbortedByUserException ex) {
+		} catch (BAbortedByUserException& ex) {
 			return B_OK;
-		} catch (BNothingToDoException ex) {
+		} catch (BNothingToDoException& ex) {
 			return B_OK;
-		} catch (BException ex) {
-			fprintf(stderr, "Exception occurred while uninstalling package "
-				"%s: %s\n", packageName, ex.Message().String());
+		} catch (BException& ex) {
+			HDERROR("Exception occurred while uninstalling package %s: %s",
+				packageName, ex.Message().String());
 			ref->SetState(state);
 			return B_ERROR;
 		}
@@ -368,9 +389,9 @@ public:
 	{
 		BString path = MakePath(entry);
 		if (path.FindFirst("data/deskbar/menu") == 0
-			&& entry->SymlinkPath() != NULL) {
-			printf("found deskbar entry: %s -> %s\n", path.String(),
-				entry->SymlinkPath());
+				&& entry->SymlinkPath() != NULL) {
+			HDINFO("found deskbar entry: %s -> %s",
+				path.String(), entry->SymlinkPath());
 			fDeskbarLinks.Add(DeskbarLink(path, entry->SymlinkPath()));
 		}
 		return B_OK;
@@ -442,7 +463,7 @@ public:
 		BPath path;
 		if (fDeskbarLink.link.FindFirst('/') == 0) {
 			status = path.SetTo(fDeskbarLink.link);
-			printf("trying to launch (absolute link): %s\n", path.Path());
+			HDINFO("trying to launch (absolute link): %s", path.Path());
 		} else {
 			int32 location = InstallLocation();
 			if (location == B_PACKAGE_INSTALLATION_LOCATION_SYSTEM) {
@@ -462,7 +483,7 @@ public:
 				status = path.GetParent(&path);
 			if (status == B_OK) {
 				status = path.Append(fDeskbarLink.link, true);
-				printf("trying to launch: %s\n", path.Path());
+				HDINFO("trying to launch: %s", path.Path());
 			}
 		}
 
@@ -496,7 +517,7 @@ public:
 				return false;
 			}
 		} else {
-			printf("OpenPackageAction::FindAppToLaunch(): "
+			HDINFO("OpenPackageAction::FindAppToLaunch(): "
 				"unknown install location");
 			return false;
 		}
@@ -508,8 +529,8 @@ public:
 
 		status_t status = reader.Init(packagePath.Path());
 		if (status != B_OK) {
-			printf("OpenPackageAction::FindAppToLaunch(): "
-				"failed to init BPackageReader(%s): %s\n",
+			HDINFO("OpenPackageAction::FindAppToLaunch(): "
+				"failed to init BPackageReader(%s): %s",
 				packagePath.Path(), strerror(status));
 			return false;
 		}
@@ -518,8 +539,8 @@ public:
 		DeskbarLinkFinder contentHandler(foundLinks);
 		status = reader.ParseContent(&contentHandler);
 		if (status != B_OK) {
-			printf("OpenPackageAction::FindAppToLaunch(): "
-				"failed parse package contents (%s): %s\n",
+			HDINFO("OpenPackageAction::FindAppToLaunch(): "
+				"failed parse package contents (%s): %s",
 				packagePath.Path(), strerror(status));
 			return false;
 		}
@@ -612,12 +633,12 @@ PackageManager::RefreshRepository(const BRepositoryConfig& repoConfig)
 	status_t result;
 	try {
 		result = BPackageManager::RefreshRepository(repoConfig);
-	} catch (BFatalErrorException ex) {
-		fprintf(stderr, "Fatal error occurred while refreshing repository: "
-			"%s (%s)\n", ex.Message().String(), ex.Details().String());
+	} catch (BFatalErrorException& ex) {
+		HDERROR("Fatal error occurred while refreshing repository: "
+			"%s (%s)", ex.Message().String(), ex.Details().String());
 		result = ex.Error();
-	} catch (BException ex) {
-		fprintf(stderr, "Exception occurred while refreshing "
+	} catch (BException& ex) {
+		HDERROR("Exception occurred while refreshing "
 			"repository: %s\n", ex.Message().String());
 		result = B_ERROR;
 	}
@@ -634,14 +655,14 @@ PackageManager::DownloadPackage(const BString& fileURL,
 	try {
 		result = BPackageManager::DownloadPackage(fileURL, targetEntry,
 			checksum);
-	} catch (BFatalErrorException ex) {
-		fprintf(stderr, "Fatal error occurred while downloading package: "
-			"%s: %s (%s)\n", fileURL.String(), ex.Message().String(),
+	} catch (BFatalErrorException& ex) {
+		HDERROR("Fatal error occurred while downloading package: "
+			"%s: %s (%s)", fileURL.String(), ex.Message().String(),
 			ex.Details().String());
 		result = ex.Error();
-	} catch (BException ex) {
-		fprintf(stderr, "Exception occurred while downloading package "
-			"%s: %s\n", fileURL.String(), ex.Message().String());
+	} catch (BException& ex) {
+		HDERROR("Exception occurred while downloading package "
+			"%s: %s", fileURL.String(), ex.Message().String());
 		result = B_ERROR;
 	}
 
@@ -690,6 +711,7 @@ PackageManager::ConfirmChanges(bool fromMostSpecific)
 
 	bool hasOtherChanges = false;
 	int32 count = fInstalledRepositories.CountItems();
+
 	if (fromMostSpecific) {
 		for (int32 i = count - 1; i >= 0; i--)
 			hasOtherChanges
@@ -700,12 +722,16 @@ PackageManager::ConfirmChanges(bool fromMostSpecific)
 				|= _AddResults(*fInstalledRepositories.ItemAt(i), window);
 	}
 
-	if (!hasOtherChanges)
+	if (!hasOtherChanges) {
+		_NotifyChangesConfirmed();
 		return;
+	}
 
 	// show the window
 	if (windowDeleter.Detach()->Go() == 0)
 		throw BAbortedByUserException();
+
+	_NotifyChangesConfirmed();
 }
 
 
@@ -789,6 +815,16 @@ PackageManager::ProgressApplyingChangesDone(InstalledRepository& repository)
 {
 	for (int32 i = 0; i < fPackageProgressListeners.CountItems(); i++)
 		fPackageProgressListeners.ItemAt(i)->ApplyingChangesDone(repository);
+
+	if (BPackageRoster().IsRebootNeeded()) {
+		BString infoString(B_TRANSLATE("A reboot is necessary to complete the "
+			"installation process."));
+		BAlert* alert = new(std::nothrow) BAlert(B_TRANSLATE("Reboot required"),
+			infoString, B_TRANSLATE("Close"), NULL, NULL,
+			B_WIDTH_AS_USUAL, B_INFO_ALERT);
+		if (alert != NULL)
+			alert->Go();
+	}
 }
 
 
@@ -810,6 +846,19 @@ PackageManager::_AddResults(InstalledRepository& repository,
 	return window->AddLocationChanges(repository.Name(),
 		repository.PackagesToActivate(), installPackages,
 		repository.PackagesToDeactivate(), uninstallPackages);
+}
+
+
+void
+PackageManager::_NotifyChangesConfirmed()
+{
+	int32 count = fInstalledRepositories.CountItems();
+	for (int32 i = 0; i < count; i++) {
+		for (int32 j = 0; j < fPackageProgressListeners.CountItems(); j++) {
+			fPackageProgressListeners.ItemAt(j)->ConfirmedChanges(
+				*fInstalledRepositories.ItemAt(i));
+		}
+	}
 }
 
 

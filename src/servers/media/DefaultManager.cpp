@@ -16,9 +16,11 @@
 #include <TimeSource.h>
 #include <string.h>
 
+#include "MediaDebug.h"
 #include "DormantNodeManager.h"
+#include "media_server.h"
 #include "NodeManager.h"
-#include "debug.h"
+
 
 /* no locking used in this file, we assume that the caller (NodeManager) does it.
  */
@@ -418,6 +420,9 @@ DefaultManager::_RescanThread()
 
 	fRescanThread = -1;
 
+	BMessage msg(MEDIA_SERVER_RESCAN_COMPLETED);
+	be_app->PostMessage(&msg);
+
 	TRACE("DefaultManager::_RescanThread() leave\n");
 }
 
@@ -457,7 +462,6 @@ DefaultManager::_FindPhysical(volatile media_node_id *id, uint32 default_type,
 		}
 	}
 
-	memset(&format, 0, sizeof(format));
 	format.type = type;
 	count = MAX_NODE_INFOS;
 	rv = fRoster->GetLiveNodes(&info[0], &count,
@@ -558,7 +562,6 @@ DefaultManager::_FindTimeSource()
 
 	/* Now try to find another physical audio out node
 	 */
-	memset(&input, 0, sizeof(input));
 	input.type = B_MEDIA_RAW_AUDIO;
 	count = MAX_NODE_INFOS;
 	rv = fRoster->GetLiveNodes(&info[0], &count, &input, NULL, NULL,
@@ -689,7 +692,7 @@ DefaultManager::_ConnectMixerToOutput()
 
 			case 1:
 				TRACE("DefaultManager: Trying connect in format 1\n");
-				memset(&format, 0, sizeof(format));
+				format.Clear();
 				format.type = B_MEDIA_RAW_AUDIO;
 				format.u.raw_audio.frame_rate = 44100;
 				format.u.raw_audio.channel_count = 2;
@@ -698,7 +701,7 @@ DefaultManager::_ConnectMixerToOutput()
 
 			case 2:
 				TRACE("DefaultManager: Trying connect in format 2\n");
-				memset(&format, 0, sizeof(format));
+				format.Clear();
 				format.type = B_MEDIA_RAW_AUDIO;
 				format.u.raw_audio.frame_rate = 48000;
 				format.u.raw_audio.channel_count = 2;
@@ -707,7 +710,7 @@ DefaultManager::_ConnectMixerToOutput()
 
 			case 3:
 				TRACE("DefaultManager: Trying connect in format 3\n");
-				memset(&format, 0, sizeof(format));
+				format.Clear();
 				format.type = B_MEDIA_RAW_AUDIO;
 				break;
 
@@ -722,7 +725,7 @@ DefaultManager::_ConnectMixerToOutput()
 
 			case 5:
 				TRACE("DefaultManager: Trying connect in format 4\n");
-				memset(&format, 0, sizeof(format));
+				format.Clear();
 				break;
 
 		}

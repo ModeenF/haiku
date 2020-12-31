@@ -1,5 +1,5 @@
 /*
- * Copyright 2005-2007, Haiku.
+ * Copyright 2005-2016, Haiku.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -9,6 +9,7 @@
 
 #include "MessageLooper.h"
 
+#include <malloc.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -18,6 +19,7 @@
 MessageLooper::MessageLooper(const char* name)
 	:
 	BLocker(name),
+	fName(strdup(name)),
 	fThread(-1),
 	fQuitting(false),
 	fDeathSemaphore(-1)
@@ -27,10 +29,11 @@ MessageLooper::MessageLooper(const char* name)
 
 MessageLooper::~MessageLooper()
 {
+	free((void*)fName);
 }
 
 
-bool
+status_t
 MessageLooper::Run()
 {
 	BAutolock locker(this);
@@ -44,17 +47,17 @@ MessageLooper::Run()
 	fThread = spawn_thread(_message_thread, name, B_DISPLAY_PRIORITY, this);
 	if (fThread < B_OK) {
 		fQuitting = true;
-		return false;
+		return fThread;
 	}
 
 	if (resume_thread(fThread) != B_OK) {
 		fQuitting = true;
 		kill_thread(fThread);
 		fThread = -1;
-		return false;
+		return B_BAD_THREAD_ID;
 	}
 
-	return true;
+	return B_OK;
 }
 
 
@@ -120,10 +123,8 @@ MessageLooper::_PrepareQuit()
 void
 MessageLooper::_GetLooperName(char* name, size_t length)
 {
-	sem_id semaphore = Sem();
-	sem_info info;
-	if (get_sem_info(semaphore, &info) == B_OK)
-		strlcpy(name, info.name, length);
+	if (fName != NULL)
+		strlcpy(name, fName, length);
 	else
 		strlcpy(name, "unnamed looper", length);
 }

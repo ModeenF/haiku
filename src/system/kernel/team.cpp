@@ -1,6 +1,6 @@
 /*
  * Copyright 2014, Paweł Dziepak, pdziepak@quarnos.org.
- * Copyright 2008-2011, Ingo Weinhold, ingo_weinhold@gmx.de.
+ * Copyright 2008-2016, Ingo Weinhold, ingo_weinhold@gmx.de.
  * Copyright 2002-2010, Axel Dörfler, axeld@pinc-software.de.
  * Distributed under the terms of the MIT License.
  *
@@ -43,8 +43,10 @@
 #include <port.h>
 #include <posix/realtime_sem.h>
 #include <posix/xsi_semaphore.h>
+#include <safemode.h>
 #include <sem.h>
 #include <syscall_process_info.h>
+#include <syscall_load_image.h>
 #include <syscall_restart.h>
 #include <syscalls.h>
 #include <tls.h>
@@ -143,13 +145,14 @@ typedef BOpenHashTable<ProcessGroupHashDefinition> ProcessGroupHashTable;
 
 // the team_id -> Team hash table and the lock protecting it
 static TeamTable sTeamHash;
-static spinlock sTeamHashLock = B_SPINLOCK_INITIALIZER;
+static rw_spinlock sTeamHashLock = B_RW_SPINLOCK_INITIALIZER;
 
 // the pid_t -> ProcessGroup hash table and the lock protecting it
 static ProcessGroupHashTable sGroupHash;
 static spinlock sGroupHashLock = B_SPINLOCK_INITIALIZER;
 
 static Team* sKernelTeam = NULL;
+static bool sDisableUserAddOns = false;
 
 // A list of process groups of children of dying session leaders that need to
 // be signalled, if they have become orphaned and contain stopped processes.
@@ -174,7 +177,7 @@ static const size_t kTeamUserDataInitialSize	= 4 * B_PAGE_SIZE;
 TeamListIterator::TeamListIterator()
 {
 	// queue the entry
-	InterruptsSpinLocker locker(sTeamHashLock);
+	InterruptsWriteSpinLocker locker(sTeamHashLock);
 	sTeamHash.InsertIteratorEntry(&fEntry);
 }
 
@@ -182,7 +185,7 @@ TeamListIterator::TeamListIterator()
 TeamListIterator::~TeamListIterator()
 {
 	// remove the entry
-	InterruptsSpinLocker locker(sTeamHashLock);
+	InterruptsWriteSpinLocker locker(sTeamHashLock);
 	sTeamHash.RemoveIteratorEntry(&fEntry);
 }
 
@@ -191,7 +194,7 @@ Team*
 TeamListIterator::Next()
 {
 	// get the next team -- if there is one, get reference for it
-	InterruptsSpinLocker locker(sTeamHashLock);
+	InterruptsWriteSpinLocker locker(sTeamHashLock);
 	Team* team = sTeamHash.NextElement(&fEntry);
 	if (team != NULL)
 		team->AcquireReference();
@@ -467,7 +470,6 @@ Team::Team(team_id id, bool kernel)
 
 	// dead threads
 	list_init(&dead_threads);
-	dead_threads_count = 0;
 
 	// dead children
 	dead_children.count = 0;
@@ -503,6 +505,8 @@ Team::Team(team_id id, bool kernel)
 	memset(fSignalActions, 0, sizeof(fSignalActions));
 
 	fUserDefinedTimerCount = 0;
+
+	fCoreDumpCondition = NULL;
 }
 
 
@@ -589,7 +593,7 @@ Team::Get(team_id id)
 		return team;
 	}
 
-	InterruptsSpinLocker locker(sTeamHashLock);
+	InterruptsReadSpinLocker locker(sTeamHashLock);
 	Team* team = sTeamHash.Lookup(id);
 	if (team != NULL)
 		team->AcquireReference();
@@ -1219,6 +1223,50 @@ dump_teams(int argc, char** argv)
 //	#pragma mark - Private functions
 
 
+/*! Get the parent of a given process.
+
+	Used in the implementation of getppid (where a process can get its own
+	parent, only) as well as in user_process_info where the information is
+	available to anyone (allowing to display a tree of running processes)
+*/
+static pid_t
+_getppid(pid_t id)
+{
+	if (id < 0) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	if (id == 0) {
+		Team* team = thread_get_current_thread()->team;
+		TeamLocker teamLocker(team);
+		if (team->parent == NULL) {
+			errno = EINVAL;
+			return -1;
+		}
+		return team->parent->id;
+	}
+
+	Team* team = Team::GetAndLock(id);
+	if (team == NULL) {
+		errno = ESRCH;
+		return -1;
+	}
+
+	pid_t parentID;
+
+	if (team->parent == NULL) {
+		errno = EINVAL;
+		parentID = -1;
+	} else
+		parentID = team->parent->id;
+
+	team->UnlockAndReleaseReference();
+
+	return parentID;
+}
+
+
 /*!	Inserts team \a team into the child list of team \a parent.
 
 	The caller must hold the lock of both \a parent and \a team.
@@ -1373,7 +1421,8 @@ create_team_user_data(Team* team, void* exactAddress = NULL)
 
 	physical_address_restrictions physicalRestrictions = {};
 	team->user_data_area = create_area_etc(team->id, "user area",
-		kTeamUserDataInitialSize, B_FULL_LOCK, B_READ_AREA | B_WRITE_AREA, 0, 0,
+		kTeamUserDataInitialSize, B_FULL_LOCK,
+		B_READ_AREA | B_WRITE_AREA | B_KERNEL_AREA, 0, 0,
 		&virtualRestrictions, &physicalRestrictions, &address);
 	if (team->user_data_area < 0)
 		return team->user_data_area;
@@ -1572,6 +1621,8 @@ team_create_thread_start_internal(void* args)
 		|| user_memcpy(&programArgs->error_token, &teamArgs->error_token,
 				sizeof(uint32)) < B_OK
 		|| user_memcpy(&programArgs->umask, &teamArgs->umask, sizeof(mode_t)) < B_OK
+		|| user_memcpy(&programArgs->disable_user_addons,
+			&sDisableUserAddOns, sizeof(bool)) < B_OK
 		|| user_memcpy(userArgs, teamArgs->flat_args,
 				teamArgs->flat_args_size) < B_OK) {
 		// the team deletion process will clean this mess
@@ -1602,15 +1653,19 @@ team_create_thread_start_internal(void* args)
 
 	// Register commpage image
 	image_id commPageImage = get_commpage_image();
-	image_info imageInfo;
-	err = get_image_info(commPageImage, &imageInfo);
+	extended_image_info imageInfo;
+	err = get_image_info(commPageImage, &imageInfo.basic_info);
 	if (err != B_OK) {
 		TRACE(("team_create_thread_start: get_image_info() failed: %s\n",
 			strerror(err)));
 		return err;
 	}
-	imageInfo.text = team->commpage_address;
-	image_id image = register_image(team, &imageInfo, sizeof(image_info));
+	imageInfo.basic_info.text = team->commpage_address;
+	imageInfo.text_delta = (ssize_t)(addr_t)team->commpage_address;
+	imageInfo.symbol_table = NULL;
+	imageInfo.symbol_hash = NULL;
+	imageInfo.string_table = NULL;
+	image_id image = register_image(team, &imageInfo, sizeof(imageInfo));
 	if (image < 0) {
 		TRACE(("team_create_thread_start: register_image() failed: %s\n",
 			strerror(image)));
@@ -1675,8 +1730,10 @@ load_image_internal(char**& _flatArgs, size_t flatArgsSize, int32 argCount,
 	status_t status;
 	struct team_arg* teamArgs;
 	struct team_loading_info loadingInfo;
+	ConditionVariableEntry loadingWaitEntry;
 	io_context* parentIOContext = NULL;
 	team_id teamID;
+	bool teamLimitReached = false;
 
 	if (flatArgs == NULL || argCount == 0)
 		return B_BAD_VALUE;
@@ -1706,10 +1763,10 @@ load_image_internal(char**& _flatArgs, size_t flatArgsSize, int32 argCount,
 		return B_NO_MEMORY;
 	BReference<Team> teamReference(team, true);
 
-	if (flags & B_WAIT_TILL_LOADED) {
-		loadingInfo.thread = thread_get_current_thread();
+	if ((flags & B_WAIT_TILL_LOADED) != 0) {
+		loadingInfo.condition.Init(team, "image load");
+		loadingInfo.condition.Add(&loadingWaitEntry);
 		loadingInfo.result = B_ERROR;
-		loadingInfo.done = false;
 		team->loading_info = &loadingInfo;
 	}
 
@@ -1725,18 +1782,6 @@ load_image_internal(char**& _flatArgs, size_t flatArgsSize, int32 argCount,
 	// inherit the parent's user/group
 	inherit_parent_user_and_group(team, parent);
 
- 	InterruptsSpinLocker teamsLocker(sTeamHashLock);
-
-	sTeamHash.Insert(team);
-	bool teamLimitReached = sUsedTeams >= sMaxTeams;
-	if (!teamLimitReached)
-		sUsedTeams++;
-
-	teamsLocker.Unlock();
-
-	insert_team_into_parent(parent, team);
-	insert_team_into_group(parent->group, team);
-
 	// get a reference to the parent's I/O context -- we need it to create ours
 	parentIOContext = parent->io_context;
 	vfs_get_io_context(parentIOContext);
@@ -1744,16 +1789,8 @@ load_image_internal(char**& _flatArgs, size_t flatArgsSize, int32 argCount,
 	team->Unlock();
 	parent->UnlockTeamAndProcessGroup();
 
-	// notify team listeners
-	sNotificationService.Notify(TEAM_ADDED, team);
-
 	// check the executable's set-user/group-id permission
 	update_set_id_user_and_group(team, path);
-
-	if (teamLimitReached) {
-		status = B_NO_MORE_TEAMS;
-		goto err1;
-	}
 
 	status = create_team_arg(&teamArgs, path, flatArgs, flatArgsSize, argCount,
 		envCount, (mode_t)-1, errorPort, errorToken);
@@ -1791,6 +1828,33 @@ load_image_internal(char**& _flatArgs, size_t flatArgsSize, int32 argCount,
 	if (status != B_OK)
 		goto err4;
 
+	// insert the team into its parent and the teams hash
+	parent->LockTeamAndProcessGroup();
+	team->Lock();
+
+	{
+		InterruptsWriteSpinLocker teamsLocker(sTeamHashLock);
+
+		sTeamHash.Insert(team);
+		teamLimitReached = sUsedTeams >= sMaxTeams;
+		if (!teamLimitReached)
+			sUsedTeams++;
+	}
+
+	insert_team_into_parent(parent, team);
+	insert_team_into_group(parent->group, team);
+
+	team->Unlock();
+	parent->UnlockTeamAndProcessGroup();
+
+	// notify team listeners
+	sNotificationService.Notify(TEAM_ADDED, team);
+
+	if (teamLimitReached) {
+		status = B_NO_MORE_TEAMS;
+		goto err6;
+	}
+
 	// In case we start the main thread, we shouldn't access the team object
 	// afterwards, so cache the team's ID.
 	teamID = team->id;
@@ -1805,7 +1869,7 @@ load_image_internal(char**& _flatArgs, size_t flatArgsSize, int32 argCount,
 		thread = thread_create_thread(threadAttributes, false);
 		if (thread < 0) {
 			status = thread;
-			goto err5;
+			goto err6;
 		}
 	}
 
@@ -1820,13 +1884,11 @@ load_image_internal(char**& _flatArgs, size_t flatArgsSize, int32 argCount,
 			thread_continue(mainThread);
 		}
 
-		// Now suspend ourselves until loading is finished. We will be woken
-		// either by the thread, when it finished or aborted loading, or when
-		// the team is going to die (e.g. is killed). In either case the one
-		// setting `loadingInfo.done' is responsible for removing the info from
-		// the team structure.
-		while (!loadingInfo.done)
-			thread_suspend();
+		// Now wait until loading is finished. We will be woken either by the
+		// thread, when it finished or aborted loading, or when the team is
+		// going to die (e.g. is killed). In either case the one notifying is
+		// responsible for unsetting `loading_info` in the team structure.
+		loadingWaitEntry.Wait();
 
 		if (loadingInfo.result < B_OK)
 			return loadingInfo.result;
@@ -1837,16 +1899,7 @@ load_image_internal(char**& _flatArgs, size_t flatArgsSize, int32 argCount,
 
 	return thread;
 
-err5:
-	delete_team_user_data(team);
-err4:
-	team->address_space->Put();
-err2:
-	free_team_arg(teamArgs);
-err1:
-	if (parentIOContext != NULL)
-		vfs_put_io_context(parentIOContext);
-
+err6:
 	// Remove the team structure from the process group, the parent team, and
 	// the team hash table and delete the team structure.
 	parent->LockTeamAndProcessGroup();
@@ -1858,13 +1911,23 @@ err1:
 	team->Unlock();
 	parent->UnlockTeamAndProcessGroup();
 
-	teamsLocker.Lock();
-	sTeamHash.Remove(team);
-	if (!teamLimitReached)
-		sUsedTeams--;
-	teamsLocker.Unlock();
+	{
+		InterruptsWriteSpinLocker teamsLocker(sTeamHashLock);
+		sTeamHash.Remove(team);
+		if (!teamLimitReached)
+			sUsedTeams--;
+	}
 
 	sNotificationService.Notify(TEAM_REMOVED, team);
+
+	delete_team_user_data(team);
+err4:
+	team->address_space->Put();
+err2:
+	free_team_arg(teamArgs);
+err1:
+	if (parentIOContext != NULL)
+		vfs_put_io_context(parentIOContext);
 
 	return status;
 }
@@ -2029,7 +2092,7 @@ fork_team(void)
 	thread_id threadID;
 	status_t status;
 	ssize_t areaCookie;
-	int32 imageCookie;
+	bool teamLimitReached = false;
 
 	TRACE(("fork_team(): team %" B_PRId32 "\n", parentTeam->id));
 
@@ -2066,32 +2129,12 @@ fork_team(void)
 	// inherit signal handlers
 	team->InheritSignalActions(parentTeam);
 
-	InterruptsSpinLocker teamsLocker(sTeamHashLock);
-
-	sTeamHash.Insert(team);
-	bool teamLimitReached = sUsedTeams >= sMaxTeams;
-	if (!teamLimitReached)
-		sUsedTeams++;
-
-	teamsLocker.Unlock();
-
-	insert_team_into_parent(parentTeam, team);
-	insert_team_into_group(parentTeam->group, team);
-
 	team->Unlock();
 	parentTeam->UnlockTeamAndProcessGroup();
-
-	// notify team listeners
-	sNotificationService.Notify(TEAM_ADDED, team);
 
 	// inherit some team debug flags
 	team->debug_info.flags |= atomic_get(&parentTeam->debug_info.flags)
 		& B_TEAM_DEBUG_INHERITED_FLAGS;
-
-	if (teamLimitReached) {
-		status = B_NO_MORE_TEAMS;
-		goto err1;
-	}
 
 	forkArgs = (arch_fork_arg*)malloc(sizeof(arch_fork_arg));
 	if (forkArgs == NULL) {
@@ -2138,7 +2181,7 @@ fork_team(void)
 		} else {
 			void* address;
 			area_id area = vm_copy_area(team->address_space->ID(), info.name,
-				&address, B_CLONE_ADDRESS, info.protection, info.area);
+				&address, B_CLONE_ADDRESS, info.area);
 			if (area < B_OK) {
 				status = area;
 				break;
@@ -2172,13 +2215,34 @@ fork_team(void)
 	arch_store_fork_frame(forkArgs);
 
 	// copy image list
-	image_info imageInfo;
-	imageCookie = 0;
-	while (get_next_image_info(parentTeam->id, &imageCookie, &imageInfo)
-			== B_OK) {
-		image_id image = register_image(team, &imageInfo, sizeof(imageInfo));
-		if (image < 0)
-			goto err5;
+	if (copy_images(parentTeam->id, team) != B_OK)
+		goto err5;
+
+	// insert the team into its parent and the teams hash
+	parentTeam->LockTeamAndProcessGroup();
+	team->Lock();
+
+	{
+		InterruptsWriteSpinLocker teamsLocker(sTeamHashLock);
+
+		sTeamHash.Insert(team);
+		teamLimitReached = sUsedTeams >= sMaxTeams;
+		if (!teamLimitReached)
+			sUsedTeams++;
+	}
+
+	insert_team_into_parent(parentTeam, team);
+	insert_team_into_group(parentTeam->group, team);
+
+	team->Unlock();
+	parentTeam->UnlockTeamAndProcessGroup();
+
+	// notify team listeners
+	sNotificationService.Notify(TEAM_ADDED, team);
+
+	if (teamLimitReached) {
+		status = B_NO_MORE_TEAMS;
+		goto err6;
 	}
 
 	// create the main thread
@@ -2186,10 +2250,11 @@ fork_team(void)
 		ThreadCreationAttributes threadCreationAttributes(NULL,
 			parentThread->name, parentThread->priority, NULL, team->id, thread);
 		threadCreationAttributes.forkArgs = forkArgs;
+		threadCreationAttributes.flags |= THREAD_CREATION_FLAG_DEFER_SIGNALS;
 		threadID = thread_create_thread(threadCreationAttributes, false);
 		if (threadID < 0) {
 			status = threadID;
-			goto err5;
+			goto err6;
 		}
 	}
 
@@ -2201,15 +2266,7 @@ fork_team(void)
 	resume_thread(threadID);
 	return threadID;
 
-err5:
-	remove_images(team);
-err4:
-	team->address_space->RemoveAndPut();
-err3:
-	delete_realtime_sem_context(team->realtime_sem_context);
-err2:
-	free(forkArgs);
-err1:
+err6:
 	// Remove the team structure from the process group, the parent team, and
 	// the team hash table and delete the team structure.
 	parentTeam->LockTeamAndProcessGroup();
@@ -2221,14 +2278,23 @@ err1:
 	team->Unlock();
 	parentTeam->UnlockTeamAndProcessGroup();
 
-	teamsLocker.Lock();
-	sTeamHash.Remove(team);
-	if (!teamLimitReached)
-		sUsedTeams--;
-	teamsLocker.Unlock();
+	{
+		InterruptsWriteSpinLocker teamsLocker(sTeamHashLock);
+		sTeamHash.Remove(team);
+		if (!teamLimitReached)
+			sUsedTeams--;
+	}
 
 	sNotificationService.Notify(TEAM_REMOVED, team);
-
+err5:
+	remove_images(team);
+err4:
+	team->address_space->RemoveAndPut();
+err3:
+	delete_realtime_sem_context(team->realtime_sem_context);
+err2:
+	free(forkArgs);
+err1:
 	team->ReleaseReference();
 
 	return status;
@@ -2290,7 +2356,7 @@ get_job_control_entry(team_job_control_children& children, pid_t id)
 
 
 /*!	Returns the first job control entry from one of team's dead, continued, or
-    stopped children which matches \a id.
+	stopped children which matches \a id.
 	\a id can be:
 	- \code > 0 \endcode: Matching an entry with that team ID.
 	- \code == -1 \endcode: Matching any entry.
@@ -2303,20 +2369,24 @@ get_job_control_entry(team_job_control_children& children, pid_t id)
 		checked.
 	\param id The match criterion.
 	\param flags Specifies which children shall be considered. Dead children
-		always are. Stopped children are considered when \a flags is ORed
-		bitwise with \c WUNTRACED, continued children when \a flags is ORed
-		bitwise with \c WCONTINUED.
+		are considered when \a flags is ORed bitwise with \c WEXITED, stopped
+		children are considered when \a flags is ORed bitwise with \c WUNTRACED
+		or \c WSTOPPED, continued children when \a flags is ORed bitwise with
+		\c WCONTINUED.
 	\return The first matching entry or \c NULL, if none matches.
 */
 static job_control_entry*
 get_job_control_entry(Team* team, pid_t id, uint32 flags)
 {
-	job_control_entry* entry = get_job_control_entry(team->dead_children, id);
+	job_control_entry* entry = NULL;
+
+	if ((flags & WEXITED) != 0)
+		entry = get_job_control_entry(team->dead_children, id);
 
 	if (entry == NULL && (flags & WCONTINUED) != 0)
 		entry = get_job_control_entry(team->continued_children, id);
 
-	if (entry == NULL && (flags & WUNTRACED) != 0)
+	if (entry == NULL && (flags & (WUNTRACED | WSTOPPED)) != 0)
 		entry = get_job_control_entry(team->stopped_children, id);
 
 	return entry;
@@ -2369,6 +2439,10 @@ job_control_entry::InitDeadState()
 		reason = team->exit.reason;
 		signal = team->exit.signal;
 		signaling_user = team->exit.signaling_user;
+		user_time = team->dead_threads_user_time
+			+ team->dead_children.user_time;
+		kernel_time = team->dead_threads_kernel_time
+			+ team->dead_children.kernel_time;
 
 		team = NULL;
 	}
@@ -2387,6 +2461,8 @@ job_control_entry::operator=(const job_control_entry& other)
 	group_id = other.group_id;
 	status = other.status;
 	reason = other.reason;
+	user_time = other.user_time;
+	kernel_time = other.kernel_time;
 
 	return *this;
 }
@@ -2395,7 +2471,8 @@ job_control_entry::operator=(const job_control_entry& other)
 /*! This is the kernel backend for waitid().
 */
 static thread_id
-wait_for_child(pid_t child, uint32 flags, siginfo_t& _info)
+wait_for_child(pid_t child, uint32 flags, siginfo_t& _info,
+	team_usage_info& _usage_info)
 {
 	Thread* thread = thread_get_current_thread();
 	Team* team = thread->team;
@@ -2407,6 +2484,11 @@ wait_for_child(pid_t child, uint32 flags, siginfo_t& _info)
 		child, flags));
 
 	T(WaitForChild(child, flags));
+
+	if ((flags & (WEXITED | WUNTRACED | WSTOPPED | WCONTINUED)) == 0) {
+		T(WaitForChildDone(B_BAD_VALUE));
+		return B_BAD_VALUE;
+	}
 
 	pid_t originalChild = child;
 
@@ -2434,7 +2516,7 @@ wait_for_child(pid_t child, uint32 flags, siginfo_t& _info)
 				childrenExist = team->children != NULL;
 			} else if (child < -1) {
 				childrenExist = has_children_in_group(team, -child);
-			} else {
+			} else if (child != team->id) {
 				if (Team* childTeam = Team::Get(child)) {
 					BReference<Team> childTeamReference(childTeam, true);
 					TeamLocker childTeamLocker(childTeam);
@@ -2533,6 +2615,8 @@ wait_for_child(pid_t child, uint32 flags, siginfo_t& _info)
 			_info.si_code = foundEntry.reason;
 			_info.si_status = foundEntry.reason == CLD_EXITED
 				? foundEntry.status : foundEntry.signal;
+			_usage_info.user_time = foundEntry.user_time;
+			_usage_info.kernel_time = foundEntry.kernel_time;
 			break;
 		case JOB_CONTROL_STATE_STOPPED:
 			_info.si_code = CLD_STOPPED;
@@ -2799,6 +2883,10 @@ team_init(kernel_args* args)
 	// stick it in the team hash
 	sTeamHash.Insert(sKernelTeam);
 
+	// check safe mode settings
+	sDisableUserAddOns = get_safemode_boolean(B_SAFEMODE_DISABLE_USER_ADD_ONS,
+		false);
+
 	add_debugger_command_etc("team", &dump_team_info,
 		"Dump info about a particular team",
 		"[ <id> | <address> | <name> ]\n"
@@ -2829,7 +2917,7 @@ team_max_teams(void)
 int32
 team_used_teams(void)
 {
-	InterruptsSpinLocker teamsLocker(sTeamHashLock);
+	InterruptsReadSpinLocker teamsLocker(sTeamHashLock);
 	return sUsedTeams;
 }
 
@@ -2874,8 +2962,7 @@ team_is_valid(team_id id)
 	if (id <= 0)
 		return false;
 
-	InterruptsSpinLocker teamsLocker(sTeamHashLock);
-
+	InterruptsReadSpinLocker teamsLocker(sTeamHashLock);
 	return team_get_team_struct_locked(id) != NULL;
 }
 
@@ -2971,6 +3058,17 @@ team_set_foreground_process_group(int32 ttyIndex, pid_t processGroupID)
 }
 
 
+uid_t
+team_geteuid(team_id id)
+{
+	InterruptsReadSpinLocker teamsLocker(sTeamHashLock);
+	Team* team = team_get_team_struct_locked(id);
+	if (team == NULL)
+		return (uid_t)-1;
+	return team->effective_uid;
+}
+
+
 /*!	Removes the specified team from the global team hash, from its process
 	group, and from its parent.
 	It also moves all of its children to the kernel team.
@@ -2993,7 +3091,7 @@ team_remove_team(Team* team, pid_t& _signalGroup)
 		+ team->dead_children.user_time;
 
 	// remove the team from the hash table
-	InterruptsSpinLocker teamsLocker(sTeamHashLock);
+	InterruptsWriteSpinLocker teamsLocker(sTeamHashLock);
 	sTeamHash.Remove(team);
 	sUsedTeams--;
 	teamsLocker.Unlock();
@@ -3193,10 +3291,9 @@ team_delete_team(Team* team, port_id debuggerPort)
 		team->loading_info = NULL;
 
 		loadingInfo->result = B_ERROR;
-		loadingInfo->done = true;
 
 		// wake up the waiting thread
-		thread_continue(loadingInfo->thread);
+		loadingInfo->condition.NotifyAll();
 	}
 
 	// notify team watchers
@@ -3264,7 +3361,7 @@ team_get_address_space(team_id id, VMAddressSpace** _addressSpace)
 		return B_OK;
 	}
 
-	InterruptsSpinLocker teamsLocker(sTeamHashLock);
+	InterruptsReadSpinLocker teamsLocker(sTeamHashLock);
 
 	Team* team = team_get_team_struct_locked(id);
 	if (team == NULL)
@@ -3705,7 +3802,7 @@ status_t
 wait_for_team(team_id id, status_t* _returnCode)
 {
 	// check whether the team exists
-	InterruptsSpinLocker teamsLocker(sTeamHashLock);
+	InterruptsReadSpinLocker teamsLocker(sTeamHashLock);
 
 	Team* team = team_get_team_struct_locked(id);
 	if (team == NULL)
@@ -3723,7 +3820,7 @@ wait_for_team(team_id id, status_t* _returnCode)
 status_t
 kill_team(team_id id)
 {
-	InterruptsSpinLocker teamsLocker(sTeamHashLock);
+	InterruptsReadSpinLocker teamsLocker(sTeamHashLock);
 
 	Team* team = team_get_team_struct_locked(id);
 	if (team == NULL)
@@ -3763,7 +3860,7 @@ _get_next_team_info(int32* cookie, team_info* info, size_t size)
 	if (slot < 1)
 		slot = 1;
 
-	InterruptsSpinLocker locker(sTeamHashLock);
+	InterruptsReadSpinLocker locker(sTeamHashLock);
 
 	team_id lastTeamID = peek_next_thread_id();
 		// TODO: This is broken, since the id can wrap around!
@@ -3804,13 +3901,9 @@ getpid(void)
 
 
 pid_t
-getppid(void)
+getppid()
 {
-	Team* team = thread_get_current_thread()->team;
-
-	TeamLocker teamLocker(team);
-
-	return team->parent->id;
+	return _getppid(0);
 }
 
 
@@ -3915,19 +4008,28 @@ _user_fork(void)
 
 
 pid_t
-_user_wait_for_child(thread_id child, uint32 flags, siginfo_t* userInfo)
+_user_wait_for_child(thread_id child, uint32 flags, siginfo_t* userInfo,
+	team_usage_info* usageInfo)
 {
 	if (userInfo != NULL && !IS_USER_ADDRESS(userInfo))
 		return B_BAD_ADDRESS;
+	if (usageInfo != NULL && !IS_USER_ADDRESS(usageInfo))
+		return B_BAD_ADDRESS;
 
 	siginfo_t info;
-	pid_t foundChild = wait_for_child(child, flags, info);
+	team_usage_info usage_info;
+	pid_t foundChild = wait_for_child(child, flags, info, usage_info);
 	if (foundChild < 0)
 		return syscall_restart_handle_post(foundChild);
 
 	// copy info back to userland
 	if (userInfo != NULL && user_memcpy(userInfo, &info, sizeof(info)) != B_OK)
 		return B_BAD_ADDRESS;
+	// copy usage_info back to userland
+	if (usageInfo != NULL && user_memcpy(usageInfo, &usage_info,
+		sizeof(usage_info)) != B_OK) {
+		return B_BAD_ADDRESS;
+	}
 
 	return foundChild;
 }
@@ -3936,11 +4038,6 @@ _user_wait_for_child(thread_id child, uint32 flags, siginfo_t* userInfo)
 pid_t
 _user_process_info(pid_t process, int32 which)
 {
-	// we only allow to return the parent of the current process
-	if (which == PARENT_ID
-		&& process != 0 && process != thread_get_current_thread()->team->id)
-		return B_BAD_VALUE;
-
 	pid_t result;
 	switch (which) {
 		case SESSION_ID:
@@ -3950,7 +4047,7 @@ _user_process_info(pid_t process, int32 which)
 			result = getpgid(process);
 			break;
 		case PARENT_ID:
-			result = getppid();
+			result = _getppid(process);
 			break;
 		default:
 			return B_BAD_VALUE;
@@ -4339,16 +4436,7 @@ _user_get_extended_team_info(team_id teamID, uint32 flags, void* buffer,
 			uid_t	effective_uid;
 			gid_t	effective_gid;
 			char	name[B_OS_NAME_LENGTH];
-		};
-
-		ExtendedTeamData* teamClone
-			= (ExtendedTeamData*)malloc(sizeof(ExtendedTeamData));
-			// It would be nicer to use new, but then we'd have to use
-			// ObjectDeleter and declare the structure outside of the function
-			// due to template parameter restrictions.
-		if (teamClone == NULL)
-			return B_NO_MEMORY;
-		MemoryDeleter teamCloneDeleter(teamClone);
+		} teamClone;
 
 		io_context* ioContext;
 		{
@@ -4360,31 +4448,31 @@ _user_get_extended_team_info(team_id teamID, uint32 flags, void* buffer,
 			TeamLocker teamLocker(team, true);
 
 			// copy the data
-			teamClone->id = team->id;
-			strlcpy(teamClone->name, team->Name(), sizeof(teamClone->name));
-			teamClone->group_id = team->group_id;
-			teamClone->session_id = team->session_id;
-			teamClone->real_uid = team->real_uid;
-			teamClone->real_gid = team->real_gid;
-			teamClone->effective_uid = team->effective_uid;
-			teamClone->effective_gid = team->effective_gid;
+			teamClone.id = team->id;
+			strlcpy(teamClone.name, team->Name(), sizeof(teamClone.name));
+			teamClone.group_id = team->group_id;
+			teamClone.session_id = team->session_id;
+			teamClone.real_uid = team->real_uid;
+			teamClone.real_gid = team->real_gid;
+			teamClone.effective_uid = team->effective_uid;
+			teamClone.effective_gid = team->effective_gid;
 
 			// also fetch a reference to the I/O context
 			ioContext = team->io_context;
 			vfs_get_io_context(ioContext);
 		}
-		CObjectDeleter<io_context> ioContextPutter(ioContext,
-			&vfs_put_io_context);
+		CObjectDeleter<io_context, void, vfs_put_io_context>
+			ioContextPutter(ioContext);
 
 		// add the basic data to the info message
-		if (info.AddInt32("id", teamClone->id) != B_OK
-			|| info.AddString("name", teamClone->name) != B_OK
-			|| info.AddInt32("process group", teamClone->group_id) != B_OK
-			|| info.AddInt32("session", teamClone->session_id) != B_OK
-			|| info.AddInt32("uid", teamClone->real_uid) != B_OK
-			|| info.AddInt32("gid", teamClone->real_gid) != B_OK
-			|| info.AddInt32("euid", teamClone->effective_uid) != B_OK
-			|| info.AddInt32("egid", teamClone->effective_gid) != B_OK) {
+		if (info.AddInt32("id", teamClone.id) != B_OK
+			|| info.AddString("name", teamClone.name) != B_OK
+			|| info.AddInt32("process group", teamClone.group_id) != B_OK
+			|| info.AddInt32("session", teamClone.session_id) != B_OK
+			|| info.AddInt32("uid", teamClone.real_uid) != B_OK
+			|| info.AddInt32("gid", teamClone.real_gid) != B_OK
+			|| info.AddInt32("euid", teamClone.effective_uid) != B_OK
+			|| info.AddInt32("egid", teamClone.effective_gid) != B_OK) {
 			return B_NO_MEMORY;
 		}
 

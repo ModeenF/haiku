@@ -37,7 +37,7 @@ getdtablesize(void)
 {
 	struct rlimit rlimit;
 	if (getrlimit(RLIMIT_NOFILE, &rlimit) < 0)
-		return 0;
+		return OPEN_MAX;
 
 	return rlimit.rlim_cur;
 }
@@ -71,14 +71,24 @@ __sysconf(int name)
 			return CLK_TCK;
 		case _SC_JOB_CONTROL:
 			return 1;
+		case _SC_HOST_NAME_MAX:
+			return _POSIX_HOST_NAME_MAX;
 		case _SC_NGROUPS_MAX:
 			return NGROUPS_MAX;
 		case _SC_OPEN_MAX:
-			return OPEN_MAX;
+			return getdtablesize();
+		case _SC_REGEXP:
+			return 1;
 		case _SC_SAVED_IDS:
+			return 1;
+		case _SC_SHELL:
 			return 1;
 		case _SC_STREAM_MAX:
 			return STREAM_MAX;
+		case _SC_SYMLOOP_MAX:
+			return SYMLOOP_MAX;
+		case _SC_TTY_NAME_MAX:
+			return TTY_NAME_MAX;
 		case _SC_TZNAME_MAX:
 			return TZNAME_MAX;
 		case _SC_VERSION:
@@ -90,7 +100,7 @@ __sysconf(int name)
 		case _SC_PAGE_SIZE:
 			return B_PAGE_SIZE;
 		case _SC_SEM_NSEMS_MAX:
-			return MAX_POSIX_SEMS;
+			return _POSIX_SEM_NSEMS_MAX;
 		case _SC_SEM_VALUE_MAX:
 			return _POSIX_SEM_VALUE_MAX;
 		case _SC_SEMAPHORES:

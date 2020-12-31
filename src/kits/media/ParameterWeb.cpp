@@ -23,7 +23,7 @@
 #include <MediaRoster.h>
 
 #include "DataExchange.h"
-#include "debug.h"
+#include "MediaDebug.h"
 #include "MediaMisc.h"
 
 
@@ -198,6 +198,8 @@ read_string_from_buffer(const void **_buffer, char **_string, ssize_t size)
 
 	memcpy(string, buffer, length);
 	string[length] = '\0';
+
+	free(*_string);
 
 	*_buffer = static_cast<const void *>(buffer + length);
 	*_string = string;
@@ -442,8 +444,9 @@ BParameterWeb::ParameterAt(int32 index)
 			groups.AddList(group->fGroups);
 	}
 
-	TRACE("*** could not find parameter at %ld (count = %ld)\n", index,
-		CountParameters());
+	TRACE("*** could not find parameter at %"
+		B_PRId32 " (count = %" B_PRId32 ")\n", index, CountParameters());
+
 	return NULL;
 }
 
@@ -2204,7 +2207,7 @@ BDiscreteParameter::Unflatten(type_code code, const void* buffer, ssize_t size)
 	MakeEmpty();
 
 	for (int32 i = 0; i < count; i++) {
-		char* name;
+		char* name = NULL;
 		if (read_string_from_buffer(&buffer, &name, size_left(size, bufferStart,
 				buffer)) < B_OK)
 			return B_BAD_DATA;

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2007-2008 Sam Leffler, Errno Consulting
  * All rights reserved.
  *
@@ -22,14 +24,14 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/net80211/ieee80211_monitor.h 326272 2017-11-27 15:23:17Z pfg $
  */
-#ifndef _FBSD_COMPAT_NET80211_IEEE80211_MONITOR_H_
-#define _FBSD_COMPAT_NET80211_IEEE80211_MONITOR_H_
+#ifndef _NET80211_IEEE80211_MONITOR_H_
+#define _NET80211_IEEE80211_MONITOR_H_
 
 /*
  * Monitor implementation definitions.
  */
 void	ieee80211_monitor_attach(struct ieee80211com *);
 void	ieee80211_monitor_detach(struct ieee80211com *);
-#endif /* _FBSD_COMPAT_NET80211_IEEE80211_MONITOR_H_ */
+#endif /* !_NET80211_IEEE80211_MONITOR_H_ */

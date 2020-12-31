@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2010 Bernhard Schmidt <bschmidt@FreeBSD.org>
  * All rights reserved.
  *
@@ -24,18 +26,21 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
+__FBSDID("$FreeBSD: releng/12.0/sys/net80211/ieee80211_ratectl_none.c 326272 2017-11-27 15:23:17Z pfg $");
 
 #include "opt_wlan.h"
 
 #include <sys/param.h>
+#include <sys/systm.h>
 #include <sys/kernel.h>
+#include <sys/malloc.h>
 #include <sys/module.h>
 #include <sys/socket.h>
 #include <sys/sysctl.h>
 
 #include <net/if.h>
 #include <net/if_media.h>
+#include <net/ethernet.h>
 
 #ifdef INET
 #include <netinet/in.h>
@@ -53,7 +58,7 @@ none_init(struct ieee80211vap *vap)
 static void
 none_deinit(struct ieee80211vap *vap)
 {
-	free(vap->iv_rs, M_80211_RATECTL);
+	IEEE80211_FREE(vap->iv_rs, M_80211_RATECTL);
 }
 
 static void
@@ -77,15 +82,14 @@ none_rate(struct ieee80211_node *ni, void *arg __unused, uint32_t iarg __unused)
 }
 
 static void
-none_tx_complete(const struct ieee80211vap *vap,
-    const struct ieee80211_node *ni, int ok,
-    void *arg1, void *arg2 __unused)
+none_tx_complete(const struct ieee80211_node *ni,
+    const struct ieee80211_ratectl_tx_status *status)
 {
 }
 
 static void
-none_tx_update(const struct ieee80211vap *vap, const struct ieee80211_node *ni,
-    void *arg1, void *arg2, void *arg3)
+none_tx_update(struct ieee80211vap *vap,
+    struct ieee80211_ratectl_tx_stats *stats)
 {
 }
 

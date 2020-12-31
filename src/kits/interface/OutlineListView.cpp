@@ -199,8 +199,10 @@ BOutlineListView::KeyDown(const char* bytes, int32 numBytes)
 				if (item && item->fHasSubitems) {
 					if (!item->IsExpanded())
 						Expand(item);
-					else
+					else {
 						Select(currentSel + 1);
+						ScrollToSelection();
+					}
 				}
 				return;
 			}
@@ -209,12 +211,14 @@ BOutlineListView::KeyDown(const char* bytes, int32 numBytes)
 			{
 				BListItem* item = ItemAt(currentSel);
 				if (item) {
-					if (item->fHasSubitems)
+					if (item->fHasSubitems && item->IsExpanded())
 						Collapse(item);
 					else {
 						item = Superitem(item);
-						if (item)
+						if (item) {
 							Select(IndexOf(item));
+							ScrollToSelection();
+						}
 					}
 				}
 				return;
@@ -589,7 +593,26 @@ BOutlineListView::ResizeToPreferred()
 void
 BOutlineListView::GetPreferredSize(float* _width, float* _height)
 {
-	BListView::GetPreferredSize(_width, _height);
+	int32 count = CountItems();
+
+	if (count > 0) {
+		float maxWidth = 0.0;
+		for (int32 i = 0; i < count; i++) {
+			// The item itself does not take his OutlineLevel into account, so
+			// we must make up for that. Also add space for the latch.
+			float itemWidth = ItemAt(i)->Width() + be_plain_font->Size()
+				+ (ItemAt(i)->OutlineLevel() + 1)
+					* be_control_look->DefaultItemSpacing();
+			if (itemWidth > maxWidth)
+				maxWidth = itemWidth;
+		}
+
+		if (_width != NULL)
+			*_width = maxWidth;
+		if (_height != NULL)
+			*_height = ItemAt(count - 1)->Bottom();
+	} else
+		BView::GetPreferredSize(_width, _height);
 }
 
 
@@ -702,15 +725,16 @@ BListItem*
 BOutlineListView::EachItemUnder(BListItem* superItem, bool oneLevelOnly,
 	BListItem* (*eachFunc)(BListItem* item, void* arg), void* arg)
 {
-	int32 i = IndexOf(superItem);
+	int32 i = FullListIndexOf(superItem);
 	if (i == -1)
 		return NULL;
 
+	i++; // skip the superitem
 	while (i < FullListCountItems()) {
 		BListItem* item = FullListItemAt(i);
 
 		// If we jump out of the subtree, return NULL
-		if (item->fLevel < superItem->OutlineLevel())
+		if (item->fLevel <= superItem->OutlineLevel())
 			return NULL;
 
 		// If the level matches, check the index
@@ -870,7 +894,7 @@ BOutlineListView::ExpandOrCollapse(BListItem* item, bool expand)
 				// adjust the indexes to correspond to their new visible positions
 				fFirstSelected -= count;
 				fLastSelected -= count;
-		}			
+		}
 
 		int32 maxIndex = fList.CountItems() - 1;
 		if (fFirstSelected > maxIndex)
@@ -911,8 +935,13 @@ BOutlineListView::DrawLatch(BRect itemRect, int32 level, bool collapsed,
 	int32 arrowDirection = collapsed ? BControlLook::B_RIGHT_ARROW
 		: BControlLook::B_DOWN_ARROW;
 
+	float tintColor = B_DARKEN_4_TINT;
+	if (base.red + base.green + base.blue <= 128 * 3) {
+		tintColor = B_LIGHTEN_2_TINT;
+	}
+
 	be_control_look->DrawArrowShape(this, latchRect, itemRect, base,
-		arrowDirection, 0, B_DARKEN_4_TINT);
+		arrowDirection, 0, tintColor);
 }
 
 

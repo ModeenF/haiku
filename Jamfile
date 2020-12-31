@@ -1,8 +1,5 @@
 SubDir HAIKU_TOP ;
 
-NotFile doc_files ;
-Depends files : doc_files ;
-
 # Prepare the optional build features before parsing the Jamfile tree.
 local architectureObject ;
 for architectureObject in [ MultiArchSubDirSetup ] {
@@ -22,21 +19,32 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 
 # Include required packages:
 # primary architecture
-AddHaikuImagePackages [ FFilterByBuildFeatures
-	bash coreutils curl freetype icu libsolv zlib
+AddHaikuImageSystemPackages [ FFilterByBuildFeatures
+	bash bc coreutils curl freetype icu libsolv zlib zstd
 
 	regular_image @{
-		bzip2 ctags diffutils expat ffmpeg findutils gawk glu grep gutenprint
-		gzip jasper jpeg
-		less libicns libpcap libpng16 libwebp
-		mesa mesa_devel mesa_swrast
+		bzip2 diffutils expat ffmpeg findutils gawk glu grep gutenprint8
+		gzip
+		lame less libedit libicns
+		mesa mesa_devel mesa_swpipe@!gcc2 mesa_swrast@gcc2
 		netcat
 		sed sharutils
 		tar tcpdump unzip wget which zip
 	}@
 ] ;
+AddHaikuImageSourcePackages [ FFilterByBuildFeatures
+	bash bc coreutils
+
+	regular_image @{
+		expat ffmpeg findutils gawk grep gutenprint8
+		gzip
+		lame less libicns
+		sed sharutils
+		tar wget which
+	}@
+] ;
 if $(HAIKU_PACKAGING_ARCHS[1]) != x86_gcc2 {
-	AddHaikuImagePackages [ FFilterByBuildFeatures gcc_syslibs ] ;
+	AddHaikuImageSystemPackages [ FFilterByBuildFeatures gcc_syslibs ] ;
 }
 
 if $(HAIKU_PACKAGING_ARCHS[2]) {
@@ -45,15 +53,16 @@ if $(HAIKU_PACKAGING_ARCHS[2]) {
 	for architectureObject
 			in [ MultiArchSubDirSetup $(HAIKU_PACKAGING_ARCHS[2-]) ] {
 		on $(architectureObject) {
-			AddHaikuImagePackages [ FFilterByBuildFeatures
+			AddHaikuImageSystemPackages [ FFilterByBuildFeatures
 				curl freetype icu libsolv zlib
 
 				regular_image @{
-					ffmpeg glu jasper jpeg libicns libpng libwebp mesa
+					ffmpeg glu jasper jpeg libicns libpng16 libwebp mesa
 				}@
 			] ;
 			if $(TARGET_PACKAGING_ARCH) != x86_gcc2 {
-				AddHaikuImagePackages [ FFilterByBuildFeatures gcc_syslibs ] ;
+				AddHaikuImageSystemPackages [ FFilterByBuildFeatures gcc_syslibs
+					mesa_swpipe ] ;
 			}
 		}
 	}
@@ -61,11 +70,11 @@ if $(HAIKU_PACKAGING_ARCHS[2]) {
 
 # If enabled, make sure that OpenSSL is added to the image.
 if [ FIsBuildFeatureEnabled openssl ] {
-	AddHaikuImagePackages openssl ;
+	AddHaikuImageSystemPackages openssl ;
 }
 
 # add additionally requested packages
-AddHaikuImagePackages $(HAIKU_IMAGE_ADDITIONAL_PACKAGES) ;
+AddHaikuImageSystemPackages $(HAIKU_IMAGE_ADDITIONAL_PACKAGES) ;
 
 # Optionally we allow not to include the "src" subdirectory.
 if $(HAIKU_DONT_INCLUDE_SRC) {
@@ -99,9 +108,9 @@ include [ FDirName $(HAIKU_BUILD_RULES_DIR) images HaikuImage ] ;
 include [ FDirName $(HAIKU_BUILD_RULES_DIR) images NetBootArchive ] ;
 include [ FDirName $(HAIKU_BUILD_RULES_DIR) images FloppyBootImage ] ;
 include [ FDirName $(HAIKU_BUILD_RULES_DIR) images CDBootImage ] ;
-include [ FDirName $(HAIKU_BUILD_RULES_DIR) images CDBootPPCImage ] ;
 include [ FDirName $(HAIKU_BUILD_RULES_DIR) images HaikuCD ] ;
 include [ FDirName $(HAIKU_BUILD_RULES_DIR) images AnybootImage ] ;
+include [ FDirName $(HAIKU_BUILD_RULES_DIR) images MMCImage ] ;
 
 # Check whether all requested optional packages do actually exist.
 local package ;

@@ -58,12 +58,12 @@ respective holders. All rights reserved.
 #include <Entry.h>
 #include <FindDirectory.h>
 #include <Locale.h>
-#include <MessageFormat.h>
 #include <NodeInfo.h>
 #include <Path.h>
 #include <Roster.h>
 #include <Screen.h>
 #include <String.h>
+#include <StringFormat.h>
 #include <SymLink.h>
 #include <Volume.h>
 #include <VolumeRoster.h>
@@ -75,6 +75,7 @@ respective holders. All rights reserved.
 #include <AutoLocker.h>
 #include <libroot/libroot_private.h>
 #include <system/syscalls.h>
+#include <system/syscall_load_image.h>
 
 #include "Attributes.h"
 #include "Bitmaps.h"
@@ -621,9 +622,8 @@ enum {
 
 
 bool
-ConfirmChangeIfWellKnownDirectory(const BEntry* entry,
-	const char* ifYouDoAction, const char* toDoAction,
-	const char* toConfirmAction, bool dontAsk, int32* confirmedAlready)
+ConfirmChangeIfWellKnownDirectory(const BEntry* entry, DestructiveAction action,
+	bool dontAsk, int32* confirmedAlready)
 {
 	// Don't let the user casually move/change important files/folders
 	//
@@ -636,8 +636,9 @@ ConfirmChangeIfWellKnownDirectory(const BEntry* entry,
 	if (FSIsDeskDir(entry) || FSIsTrashDir(entry) || FSIsRootDir(entry))
 		return false;
 
-	if (!DirectoryMatchesOrContains(entry, B_SYSTEM_DIRECTORY)
+	if ((!DirectoryMatchesOrContains(entry, B_SYSTEM_DIRECTORY)
 		&& !DirectoryMatchesOrContains(entry, B_USER_DIRECTORY))
+		|| DirectoryMatchesOrContains(entry, B_SYSTEM_TEMP_DIRECTORY))
 		// quick way out
 		return true;
 
@@ -645,46 +646,82 @@ ConfirmChangeIfWellKnownDirectory(const BEntry* entry,
 	bool requireOverride = true;
 
 	if (DirectoryMatchesOrContains(entry, B_SYSTEM_DIRECTORY)) {
-		warning.SetTo(
-			B_TRANSLATE("If you %ifYouDoAction the system folder or its "
-			"contents, you won't be able to boot %osName!\n\nAre you sure "
-			"you want to do this?\n\nTo %toDoAction the system folder or its "
-			"contents anyway, hold down the Shift key and click "
-			"\"%toConfirmAction\"."));
+		if (action == kRename) {
+			warning.SetTo(
+				B_TRANSLATE("If you rename the system folder or its "
+				"contents, you won't be able to boot %osName!\n\nAre you sure "
+				"you want to do this?\n\nTo rename the system folder or its "
+				"contents anyway, hold down the Shift key and click "
+				"\"Rename\"."));
+		} else if(action == kMove) {
+			warning.SetTo(
+				B_TRANSLATE("If you move the system folder or its "
+				"contents, you won't be able to boot %osName!\n\nAre you sure "
+				"you want to do this?\n\nTo move the system folder or its "
+				"contents anyway, hold down the Shift key and click "
+				"\"Move\"."));
+		} else {
+			warning.SetTo(
+				B_TRANSLATE("If you alter the system folder or its "
+				"contents, you won't be able to boot %osName!\n\nAre you sure "
+				"you want to do this?\n\nTo alter the system folder or its "
+				"contents anyway, hold down the Shift key and click "
+				"\"I know what I'm doing\"."));
+		}
 	} else if (DirectoryMatches(entry, B_USER_DIRECTORY)) {
-		warning .SetTo(
-			B_TRANSLATE("If you %ifYouDoAction the home folder, %osName "
-			"may not behave properly!\n\nAre you sure you want to do this?"
-			"\n\nTo %toDoAction the home folder anyway, hold down the "
-			"Shift key and click \"%toConfirmAction\"."));
+		if (action == kRename) {
+			warning .SetTo(
+				B_TRANSLATE("If you rename the home folder, %osName "
+				"may not behave properly!\n\nAre you sure you want to do this?"
+				"\n\nTo rename the home folder anyway, hold down the "
+				"Shift key and click \"Rename\"."));
+		} else if (action == kMove) {
+			warning .SetTo(
+				B_TRANSLATE("If you move the home folder, %osName "
+				"may not behave properly!\n\nAre you sure you want to do this?"
+				"\n\nTo move the home folder anyway, hold down the "
+				"Shift key and click \"Move\"."));
+		} else {
+			warning .SetTo(
+				B_TRANSLATE("If you alter the home folder, %osName "
+				"may not behave properly!\n\nAre you sure you want to do this?"
+				"\n\nTo alter the home folder anyway, hold down the "
+				"Shift key and click \"I know what I'm doing\"."));
+		}
 	} else if (DirectoryMatchesOrContains(entry, B_USER_CONFIG_DIRECTORY)
 		|| DirectoryMatchesOrContains(entry, B_SYSTEM_SETTINGS_DIRECTORY)) {
+		if (action == kRename) {
+			warning.SetTo(
+				B_TRANSLATE("If you rename %target, %osName may not behave "
+				"properly!\n\nAre you sure you want to do this?"));
+		} else if (action == kMove) {
+			warning.SetTo(
+				B_TRANSLATE("If you move %target, %osName may not behave "
+				"properly!\n\nAre you sure you want to do this?"));
+		} else {
+			warning.SetTo(
+				B_TRANSLATE("If you alter %target, %osName may not behave "
+				"properly!\n\nAre you sure you want to do this?"));
+		}
+
 		if (DirectoryMatchesOrContains(entry, "beos_mime",
 				B_USER_SETTINGS_DIRECTORY)
 			|| DirectoryMatchesOrContains(entry, "beos_mime",
 				B_SYSTEM_SETTINGS_DIRECTORY)) {
-			warning.SetTo(
-				B_TRANSLATE("If you %ifYouDoAction the mime settings, "
-				"%osName may not behave properly!\n\nAre you sure you want "
-				"to do this?"));
+			warning.ReplaceFirst("%target", B_TRANSLATE("the MIME settings"));
 			requireOverride = false;
 		} else if (DirectoryMatches(entry, B_USER_CONFIG_DIRECTORY)) {
-			warning.SetTo(
-				B_TRANSLATE("If you %ifYouDoAction the config folder, "
-				"%osName may not behave properly!\n\nAre you sure you want "
-				"to do this?"));
+			warning.ReplaceFirst("%target", B_TRANSLATE("the config folder"));
 			requireOverride = false;
 		} else if (DirectoryMatches(entry, B_USER_SETTINGS_DIRECTORY)
 			|| DirectoryMatches(entry, B_SYSTEM_SETTINGS_DIRECTORY)) {
-			warning.SetTo(
-				B_TRANSLATE("If you %ifYouDoAction the settings folder, "
-				"%osName may not behave properly!\n\nAre you sure you want "
-				"to do this?"));
+			warning.ReplaceFirst("%target", B_TRANSLATE("the settings folder"));
 			requireOverride = false;
+		} else {
+			// It was not a special directory/file after all. Allow renaming.
+			return true;
 		}
-	}
-
-	if (!warning.Length())
+	} else
 		return true;
 
 	if (dontAsk)
@@ -701,11 +738,15 @@ ConfirmChangeIfWellKnownDirectory(const BEntry* entry,
 	else
 		warning.ReplaceFirst("%osName", name.sysname);
 
-	warning.ReplaceFirst("%ifYouDoAction", ifYouDoAction);
-	warning.ReplaceFirst("%toDoAction", toDoAction);
-	warning.ReplaceFirst("%toConfirmAction", toConfirmAction);
-
-	BString buttonLabel(toConfirmAction);
+	BString buttonLabel;
+	if (action == kRename) {
+		buttonLabel = B_TRANSLATE_COMMENT("Rename", "button label");
+	} else if (action == kMove) {
+		buttonLabel = B_TRANSLATE_COMMENT("Move", "button label");
+	} else {
+		buttonLabel = B_TRANSLATE_COMMENT("I know what I'm doing",
+			"button label");
+	}
 
 	OverrideAlert* alert = new OverrideAlert("", warning.String(),
 		buttonLabel.String(), (requireOverride ? B_SHIFT_KEY : 0),
@@ -769,15 +810,7 @@ InitCopy(CopyLoopControl* loopControl, uint32 moveMode,
 			return B_ERROR;
 		}
 		if (moveMode == kMoveSelectionTo
-			&& !ConfirmChangeIfWellKnownDirectory(&entry,
-				B_TRANSLATE_COMMENT("move",
-					"As in 'if you move this folder...' (en) "
-					"'Wird dieser Ordner verschoben...' (de)"),
-				B_TRANSLATE_COMMENT("move",
-					"As in 'to move this folder...' (en) "
-					"Um diesen Ordner zu verschieben...' (de)"),
-				B_TRANSLATE_COMMENT("Move",
-					"Button label, 'Move' (en), 'Verschieben' (de)"),
+			&& !ConfirmChangeIfWellKnownDirectory(&entry, kMove,
 				false, &askOnceOnly)) {
 			return B_ERROR;
 		}
@@ -1557,10 +1590,12 @@ CopyFolder(BEntry* srcEntry, BDirectory* destDir,
 				removeSource);
 			if (removeSource)
 				FSDeleteFolder(&entry, loopControl, true, true, false);
-		} else {
+		} else if (S_ISREG(statbuf.st_mode) || S_ISLNK(statbuf.st_mode)) {
 			CopyFile(&entry, &statbuf, &newDir, loopControl, 0, false, undo);
 			if (removeSource)
 				entry.Remove();
+		} else {
+			// Ignore special files
 		}
 	}
 	if (removeSource)
@@ -1753,7 +1788,7 @@ MoveItem(BEntry* entry, BDirectory* destDir, BPoint* loc, uint32 moveMode,
 	} catch (status_t error) {
 		// no alert, was already taken care of before
 		return error;
-	} catch (MoveError error) {
+	} catch (MoveError& error) {
 		BString errorString(B_TRANSLATE("Error moving \"%name\""));
 		errorString.ReplaceFirst("%name", ref.name);
 		BAlert* alert = new BAlert("", errorString.String(), B_TRANSLATE("OK"),
@@ -1761,7 +1796,7 @@ MoveItem(BEntry* entry, BDirectory* destDir, BPoint* loc, uint32 moveMode,
 		alert->SetFlags(alert->Flags() | B_CLOSE_ON_ESCAPE);
 		alert->Go();
 		return error.fError;
-	} catch (FailWithAlert error) {
+	} catch (FailWithAlert& error) {
 		BString buffer(error.fString);
 		if (error.fName != NULL)
 			buffer.ReplaceFirst("%name", error.fName);
@@ -1804,7 +1839,7 @@ FSCopyFolder(BEntry* srcEntry, BDirectory* destDir,
 
 
 status_t
-FSCopyAttributesAndStats(BNode* srcNode, BNode* destNode)
+FSCopyAttributesAndStats(BNode* srcNode, BNode* destNode, bool copyTimes)
 {
 	char* buffer = new char[1024];
 
@@ -1847,8 +1882,10 @@ FSCopyAttributesAndStats(BNode* srcNode, BNode* destNode)
 	destNode->SetPermissions(srcStat.st_mode);
 	destNode->SetOwner(srcStat.st_uid);
 	destNode->SetGroup(srcStat.st_gid);
-	destNode->SetModificationTime(srcStat.st_mtime);
-	destNode->SetCreationTime(srcStat.st_crtime);
+	if (copyTimes) {
+		destNode->SetModificationTime(srcStat.st_mtime);
+		destNode->SetCreationTime(srcStat.st_crtime);
+	}
 
 	return B_OK;
 }
@@ -2056,7 +2093,7 @@ FileStatToString(StatStruct* stat, char* buffer, int32 length)
 	localtime_r(&stat->st_mtime, &timeData);
 
 	BString size;
-	static BMessageFormat format(
+	static BStringFormat format(
 		B_TRANSLATE("{0, plural, one{# byte} other{# bytes}}"));
 	format.Format(size, stat->st_size);
 	uint32 pos = snprintf(buffer, length, "\n\t(%s ", size.String());
@@ -2387,7 +2424,7 @@ FSMakeOriginalName(char* name, BDirectory* destDir, const char* suffix)
 	fnum = 1;
 	strcpy(temp_name, name);
 	while (destDir->Contains(temp_name)) {
-		sprintf(temp_name, "%s %" B_PRId32, copybase, ++fnum);
+		snprintf(temp_name, sizeof(temp_name), "%s %" B_PRId32, copybase, ++fnum);
 
 		if (strlen(temp_name) > (B_FILE_NAME_LENGTH - 1)) {
 			// The name has grown too long. Maybe we just went from
@@ -2396,7 +2433,7 @@ FSMakeOriginalName(char* name, BDirectory* destDir, const char* suffix)
 			// truncate the 'root' name and continue.
 			// ??? should we reset fnum or not ???
 			root[strlen(root) - 1] = '\0';
-			sprintf(temp_name, "%s%s %" B_PRId32, root, suffix, fnum);
+			snprintf(temp_name, sizeof(temp_name), "%s%s %" B_PRId32, root, suffix, fnum);
 		}
 	}
 
@@ -2562,19 +2599,6 @@ FSGetTrashDir(BDirectory* trashDir, dev_t dev)
 
 	return B_OK;
 }
-
-
-#if __GNUC__ && __GNUC__ < 3
-// obsolete version of FSGetDeskDir retained for bin compat with
-// BeIDE and a few other apps that apparently use it
-status_t
-FSGetDeskDir(BDirectory* deskDir, dev_t)
-{
-	// since we no longer keep a desktop directory on any volume other
-	// than /boot, redirect to FSGetDeskDir ignoring the volume argument
-	return FSGetDeskDir(deskDir);
-}
-#endif // __GNUC__ && __GNUC__ < 3
 
 
 status_t
@@ -3733,15 +3757,6 @@ TrackerLaunch(const BMessage* refs, bool async, bool openWithOK)
 	else
 		AsynchLaunchBinder(&_TrackerLaunchDocuments, NULL, refs, openWithOK);
 
-	return B_OK;
-}
-
-status_t
-LaunchBrokenLink(const char* signature, const BMessage* refs)
-{
-	// This call is to support a hacky workaround for double-clicking
-	// broken refs for cifs
-	be_roster->Launch(signature, const_cast<BMessage*>(refs));
 	return B_OK;
 }
 

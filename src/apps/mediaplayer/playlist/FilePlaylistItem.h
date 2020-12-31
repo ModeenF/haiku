@@ -44,6 +44,11 @@ public:
 	virtual	status_t			GetAttribute(const Attribute& attribute,
 									int64& value) const;
 
+	virtual	status_t			SetAttribute(const Attribute& attribute,
+									const float& value);
+	virtual	status_t			GetAttribute(const Attribute& attribute,
+									float& value) const;
+
 	// methods
 	virtual	BString				LocationURI() const;
 	virtual	status_t			GetIcon(BBitmap* bitmap,
@@ -52,9 +57,6 @@ public:
 	virtual	status_t			MoveIntoTrash();
 	virtual	status_t			RestoreFromTrash();
 
-	// playback
-	virtual	TrackSupplier*		CreateTrackSupplier() const;
-
 			status_t			AddRef(const entry_ref& ref);
 			const entry_ref&	Ref() const { return fRefs[0]; }
 
@@ -62,7 +64,9 @@ public:
 			const entry_ref&	ImageRef() const;
 
 protected:
-	virtual	bigtime_t			_CalculateDuration() const;
+	virtual	bigtime_t			_CalculateDuration();
+	// playback
+	virtual	TrackSupplier*		_CreateTrackSupplier() const;
 
 private:
 			status_t			_SetAttribute(const char* attrName,

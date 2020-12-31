@@ -21,9 +21,15 @@ msleep(void* identifier, struct mtx* mutex, int priority,
 
 	conditionPublish(&sleep, identifier, description);
 
-	mtx_unlock(mutex);
+	// FreeBSD's msleep() does not allow the mutex to be NULL, but we
+	// do, as we implement some other functions like tsleep() with it.
+	if (mutex != NULL)
+		mtx_unlock(mutex);
+
 	status = publishedConditionTimedWait(identifier, timeout);
-	mtx_lock(mutex);
+
+	if (mutex != NULL)
+		mtx_lock(mutex);
 
 	conditionUnpublish(&sleep);
 
@@ -38,10 +44,8 @@ wakeup(void* identifier)
 }
 
 
-int
-_pause(const char* waitMessage, int timeout)
+void
+wakeup_one(void* identifier)
 {
-	int waitChannel;
-	KASSERT(timeout != 0, ("pause: timeout required"));
-	return tsleep(&waitChannel, 0, waitMessage, timeout);
+	publishedConditionNotifyOne(identifier);
 }

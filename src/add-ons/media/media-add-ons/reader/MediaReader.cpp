@@ -10,7 +10,7 @@
 // see also MediaReaderAddOn.cpp
 #include "../AbstractFileInterfaceNode.h"
 #include "MediaReader.h"
-#include "misc.h"
+#include "../misc.h"
 #include "debug.h"
 
 #include <Buffer.h>
@@ -472,7 +472,7 @@ void MediaReader::Connect(
 	FindLatencyFor(output.destination, &fDownstreamLatency, &id);
 
 	// compute the buffer period (must be done before setbuffergroup)
-	fBufferPeriod = bigtime_t(1000 * 8000000 / 1024
+	fBufferPeriod = bigtime_t(1000u * 8000000u / 1024u
 	                     * output.format.u.multistream.max_chunk_size
 			             / output.format.u.multistream.max_bit_rate);
 
@@ -645,7 +645,7 @@ void MediaReader::AdditionalBufferRequested(			//	used to be Reserved 0
 			PRINT("MediaReader::AdditionalBufferRequested got an error from GetFilledBuffer.\n");
 			return; // don't send the buffer
 		}
-		SendBuffer(buffer,output.destination);
+		SendBuffer(buffer, output.source, output.destination);
 	}
 }
 
@@ -689,7 +689,7 @@ status_t MediaReader::HandleBuffer(
 			buffer->Recycle();
 		} else {
 			if (fOutputEnabled) {
-				status = SendBuffer(buffer,output.destination);
+				status = SendBuffer(buffer, output.source, output.destination);
 				if (status != B_OK) {
 					PRINT("MediaReader::HandleEvent got an error from SendBuffer.\n");
 					buffer->Recycle();
@@ -728,8 +728,9 @@ void MediaReader::GetFlavor(flavor_info * outInfo, int32 id)
 		return;
 
 	AbstractFileInterfaceNode::GetFlavor(outInfo,id);
-	outInfo->name = strdup("OpenBeOS Media Reader");
-	outInfo->info = strdup("The OpenBeOS Media Reader reads a file and produces a multistream.");
+	outInfo->name = strdup("Media Reader");
+	outInfo->info = strdup(
+		"The Haiku Media Reader reads a file and produces a multistream.");
 	outInfo->kinds |= B_BUFFER_PRODUCER;
 	outInfo->out_format_count = 1; // 1 output
 	media_format * formats = new media_format[outInfo->out_format_count];

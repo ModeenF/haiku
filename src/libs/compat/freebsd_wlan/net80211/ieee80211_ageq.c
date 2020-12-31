@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2009 Sam Leffler, Errno Consulting
  * All rights reserved.
  *
@@ -24,7 +26,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
+__FBSDID("$FreeBSD: releng/12.0/sys/net80211/ieee80211_ageq.c 326272 2017-11-27 15:23:17Z pfg $");
 
 /*
  * IEEE 802.11 age queue support.
@@ -34,10 +36,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/systm.h> 
 #include <sys/kernel.h>
+#include <sys/malloc.h>
  
 #include <sys/socket.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_media.h>
 #include <net/ethernet.h>
 

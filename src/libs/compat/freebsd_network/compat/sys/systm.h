@@ -28,7 +28,15 @@ int printf(const char *format, ...) __printflike(1, 2);
 
 #define ovbcopy(f, t, l) bcopy((f), (t), (l))
 
+#if KDEBUG_LEVEL_2
+#define INVARIANTS
+#endif
+
+#if KDEBUG_LEVEL_1
 #define bootverbose 1
+#else
+#define bootverbose 0
+#endif
 
 #ifdef INVARIANTS
 #define KASSERT(cond,msg) do {	\
@@ -48,12 +56,13 @@ int printf(const char *format, ...) __printflike(1, 2);
 			snooze(n);	\
 	} while (0)
 
-void wakeup(void *);
+#define	cold 0
 
-#ifndef CTASSERT /* Allow lint to override */
-#define CTASSERT(x)			_CTASSERT(x, __LINE__)
-#define _CTASSERT(x, y)		__CTASSERT(x, y)
-#define __CTASSERT(x, y)	typedef char __assert ## y[(x) ? 1 : -1]
+void wakeup(void *);
+void wakeup_one(void *);
+
+#ifndef CTASSERT	/* Allow lint to override */
+#define	CTASSERT(x)	_Static_assert(x, "compile-time assertion failed")
 #endif
 
 
@@ -79,7 +88,7 @@ static inline void log(int level, const char *fmt, ...) { }
 int snprintf(char *, size_t, const char *, ...) __printflike(3, 4);
 extern int sprintf(char *buf, const char *, ...);
 
-extern void driver_vprintf(const char *format, va_list vl);
+extern int driver_vprintf(const char *format, va_list vl);
 #define vprintf(fmt, vl) driver_vprintf(fmt, vl)
 
 extern int vsnprintf(char *, size_t, const char *, __va_list)
@@ -90,6 +99,12 @@ int _pause(const char *, int);
 #define pause(waitMessage, timeout) _pause((waitMessage), (timeout))
 #define tsleep(channel, priority, waitMessage, timeout) \
 	msleep((channel), NULL, (priority), (waitMessage), (timeout))
+#define msleep_spin(chan, mtx, wmesg, timo) \
+	msleep(chan, mtx, PZERO, wmesg, timo)
+#define mtx_sleep msleep
+
+void critical_enter(void);
+void critical_exit(void);
 
 struct unrhdr;
 struct unrhdr *new_unrhdr(int low, int high, struct mtx *mutex);
@@ -99,5 +114,6 @@ void free_unr(struct unrhdr *, u_int);
 
 extern char *getenv(const char *name);
 extern void    freeenv(char *env);
+extern char *kern_getenv(const char *name);
 
 #endif	/* _FBSD_COMPAT_SYS_SYSTM_H_ */

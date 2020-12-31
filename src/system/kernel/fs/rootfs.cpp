@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2009, Axel Dörfler, axeld@pinc-software.de.
+ * Copyright 2002-2017, Axel Dörfler, axeld@pinc-software.de.
  * Distributed under the terms of the MIT License.
  *
  * Copyright 2001-2002, Travis Geiselbrecht. All rights reserved.
@@ -10,7 +10,7 @@
 #if FS_SHELL
 #	include "fssh_api_wrapper.h"
 
-#	include "KOpenHashTable.h"
+#	include "OpenHashTable.h"
 #	include "list.h"
 #else
 #	include <stdio.h>
@@ -149,6 +149,15 @@ current_timespec()
 }
 
 
+static ino_t
+get_parent_id(struct rootfs_vnode* vnode)
+{
+	if (vnode->parent != NULL)
+		return vnode->parent->id;
+	return -1;
+}
+
+
 static struct rootfs_vnode*
 rootfs_create_vnode(struct rootfs* fs, struct rootfs_vnode* parent,
 	const char* name, int type)
@@ -264,7 +273,8 @@ rootfs_insert_in_dir(struct rootfs* fs, struct rootfs_vnode* dir,
 	vnode->parent = dir;
 	dir->modification_time = current_timespec();
 
-	notify_stat_changed(fs->id, dir->id, B_STAT_MODIFICATION_TIME);
+	notify_stat_changed(fs->id, get_parent_id(dir), dir->id,
+		B_STAT_MODIFICATION_TIME);
 	return B_OK;
 }
 
@@ -289,7 +299,8 @@ rootfs_remove_from_dir(struct rootfs* fs, struct rootfs_vnode* dir,
 			vnode->dir_next = NULL;
 
 			dir->modification_time = current_timespec();
-			notify_stat_changed(fs->id, dir->id, B_STAT_MODIFICATION_TIME);
+			notify_stat_changed(fs->id, get_parent_id(dir), dir->id,
+				B_STAT_MODIFICATION_TIME);
 			return B_OK;
 		}
 	}
@@ -572,8 +583,15 @@ rootfs_create(fs_volume* _volume, fs_vnode* _dir, const char* name, int omode,
 
 
 static status_t
-rootfs_open(fs_volume* _volume, fs_vnode* _v, int oflags, void** _cookie)
+rootfs_open(fs_volume* _volume, fs_vnode* _v, int openMode, void** _cookie)
 {
+	struct rootfs_vnode* vnode = (rootfs_vnode*)_v->private_node;
+
+	if (S_ISDIR(vnode->stream.type) && (openMode & O_RWMASK) != O_RDONLY)
+		return B_IS_A_DIRECTORY;
+	if ((openMode & O_DIRECTORY) != 0 && !S_ISDIR(vnode->stream.type))
+		return B_NOT_A_DIRECTORY;
+
 	// allow to open the file, but it can't be done anything with it
 
 	*_cookie = NULL;
@@ -849,10 +867,11 @@ rootfs_read_link(fs_volume* _volume, fs_vnode* _link, char* buffer,
 	if (!S_ISLNK(link->stream.type))
 		return B_BAD_VALUE;
 
-	if (link->stream.symlink.length < *_bufferSize)
-		*_bufferSize = link->stream.symlink.length;
+	memcpy(buffer, link->stream.symlink.path, min_c(*_bufferSize,
+		link->stream.symlink.length));
 
-	memcpy(buffer, link->stream.symlink.path, *_bufferSize);
+	*_bufferSize = link->stream.symlink.length;
+
 	return B_OK;
 }
 
@@ -1057,7 +1076,7 @@ rootfs_write_stat(fs_volume* _volume, fs_vnode* _vnode, const struct stat* stat,
 
 	locker.Unlock();
 
-	notify_stat_changed(fs->id, vnode->id, statMask);
+	notify_stat_changed(fs->id, get_parent_id(vnode), vnode->id, statMask);
 	return B_OK;
 }
 

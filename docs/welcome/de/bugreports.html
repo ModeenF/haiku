@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en-US" xml:lang="en-US"> 
+<html xmlns="http://www.w3.org/1999/xhtml" lang="de" xml:lang="de"> 
 <head>
 <!-- 
  *
- * Copyright 2008-2012, Haiku. All rights reserved.
+ * Copyright 2008-2020, Haiku. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -12,42 +12,47 @@
  *		http://dev.haiku-os.org/wiki/ and http://dev.haiku-os.org/wiki/ReportingBugs
  *		Humdinger <humdingerb@gmail.com>
  * Translators:
- *		Matthias
  *		Humdinger
+ *		Matthias
  *		taos
  *
 -->
 	<meta http-equiv="content-type" content="text/html; charset=utf-8" />
 	<meta name="robots" content="all" />
 	<title>Bugs melden</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<link rel="stylesheet" type="text/css" href="../Haiku-doc.css" />
 </head>
 <body>
 
 <div id="banner">
-<div><span>User Guide</span></div>
+<div><span>User guide</span></div>
 </div>
 
 <div class="nav">
 <div class="inner">
 <ul class="lang-menu">
-<li class="now"><img src="../images/flags/de.png" alt="" /> Deutsch</li>
-<li><a href="../fr/bugreports.html"><img src="../images/flags/fr.png" alt="" />Français</a></li>
-<li><a href="../it/bugreports.html"><img src="../images/flags/it.png" alt="" />Italiano</a></li>
-<li><a href="../ru/bugreports.html"><img src="../images/flags/ru.png" alt="" />Русский</a></li>
-<li><a href="../es/bugreports.html"><img src="../images/flags/es.png" alt="" />Español</a></li>
-<li><a href="../sv_SE/bugreports.html"><img src="../images/flags/sv_SE.png" alt="" />Svenska</a></li>
-<li><a href="../jp/bugreports.html"><img src="../images/flags/jp.png" alt="" />日本語</a></li>
-<li><a href="../uk/bugreports.html"><img src="../images/flags/uk.png" alt="" />Українська</a></li>
-<li><a href="../zh_CN/bugreports.html"><img src="../images/flags/zh_CN.png" alt="" /> 中文 ［中文］</a></li>
-<li><a href="../pt_PT/bugreports.html"><img src="../images/flags/pt_PT.png" alt="" />Português</a></li>
-<li><a href="../fi/bugreports.html"><img src="../images/flags/fi.png" alt="" />Suomi</a></li>
-<li><a href="../sk/bugreports.html"><img src="../images/flags/sk.png" alt="" />Slovenčina</a></li>
-<li><a href="../hu/bugreports.html"><img src="../images/flags/hu.png" alt="" />Magyar</a></li>
-<li><a href="../pt_BR/bugreports.html"><img src="../images/flags/pt_BR.png" alt="" />Português (Brazil)</a></li>
-<li><a href="../ca/bugreports.html"><img src="../images/flags/ca.png" alt="" />Català</a></li>
-<li><a href="../pl/bugreports.html"><img src="../images/flags/pl.png" alt="" />Polski</a></li>
-<li><a href="../en/bugreports.html"><img src="../images/flags/gb.png" alt="" />English</a></li>
+<li class="now">Deutsch&nbsp;<span class="dropdown-caret">&#9660;</span></li>
+<li><a href="../id/bugreports.html">Bahasa Indonesia</a></li>
+<li><a href="../ca/bugreports.html">Català</a></li>
+<li><a href="../en/bugreports.html">English</a></li>
+<li><a href="../es/bugreports.html">Español</a></li>
+<li><a href="../fr/bugreports.html">Français</a></li>
+<li><a href="../fur/bugreports.html">Furlan</a></li>
+<li><a href="../it/bugreports.html">Italiano</a></li>
+<li><a href="../hu/bugreports.html">Magyar</a></li>
+<li><a href="../pl/bugreports.html">Polski</a></li>
+<li><a href="../pt_PT/bugreports.html">Português</a></li>
+<li><a href="../pt_BR/bugreports.html">Português (Brazil)</a></li>
+<li><a href="../ro/bugreports.html">Română</a></li>
+<li><a href="../sk/bugreports.html">Slovenčina</a></li>
+<li><a href="../fi/bugreports.html">Suomi</a></li>
+<li><a href="../sv_SE/bugreports.html">Svenska</a></li>
+<li><a href="../tr/bugreports.html">Türkçe</a></li>
+<li><a href="../zh_CN/bugreports.html"> 中文 ［中文］</a></li>
+<li><a href="../ru/bugreports.html">Русский</a></li>
+<li><a href="../uk/bugreports.html">Українська</a></li>
+<li><a href="../jp/bugreports.html">日本語</a></li>
 </ul>
 <span>
     <a href="../welcome_de.html" class="uplink">Welcome</a>
@@ -56,7 +61,6 @@
 
 <div id="content">
 <div>
-<div class="box-info">Solange die Übersetzung dieser Seite noch nicht ganz fertig ist, erscheint für die noch fehlenden Teile die englische Version.</div>
 
 <table class="index" id="index" summary="index">
 <tr class="heading"><td>Index</td></tr>
@@ -86,9 +90,9 @@
 <p>Bevor man einen Fehler meldet, sollte man sich <a href="http://dev.haiku-os.org/query?status=new&amp;status=assigned&amp;status=reopened&amp;status=closed&amp;summary=%7Etext+you+want+to+search+for&amp;order=priority">sicher sein</a>, dass das nicht schon geschehen ist. Hierzu kann auch die <a href="http://dev.haiku-os.org/search?q=&amp;noquickjump=1&amp;ticket=on">Suchfunktion</a> verwendet werden.<br />
 Nach dieser Überprüfung sollte man so genau wie möglich den Fehler beschreiben:</p>
 <ul>
-	<li><p>Attempt to reproduce your issue on the current revision of Haiku. Pre-built images for testing purposes are  <a href="http://download.haiku-os.org">available</a>.</p></li>
+	<li><p>Der Fehler sollte mit einer aktuellen Version von Haiku reproduzierbar sein. Zum Testen gibt es installierbare <a href="http://download.haiku-os.org">Nightly Images</a>.</p></li>
 	<li><p>Wie wurde Haiku verwendet (auf echter Hardware oder virtualisiert unter VMWare, QEMU oder ähnlichem)?</p></li>
-	<li><p>Welche Versionsnummer aus dem <acronym title="Subversion, unser Source Code Management System">SVN</acronym> wurde verwendet? Die Version ist auch unter <span class="menu">Über Haiku...</span> im Deskbar Menü zu finden. Wie genau Haiku kompiliert wurde (gcc2, gcc4, gcc2hybrid, gcc4hybrid), ist ebenfalls von Interesse. Die runterladbaren Images sind entsprechend benannt; Leute, die sich ihr Haiku selber zusammenbauen, sollten wissen wie sie das gemacht haben.</p></li>
+	<li><p>Welche Haiku-Versionsnummer wurde verwendet? Die Version ist unter <span class="menu">Über Haiku...</span> im Deskbar Menü zu finden. Wie genau Haiku kompiliert wurde (x86_gcc2, x86_64), ist ebenfalls von Interesse. Die runterladbaren Images sind entsprechend benannt; Leute, die sich ihr Haiku selber zusammenbauen, sollten wissen wie sie das gemacht haben.</p></li>
 	<li><p>Der Fehler sollte so präzise wie möglich beschrieben werden. Welches Verhalten wurde erwartet und was wurde statt dessen beobachtet?</p></li>
 	<li><p>Wann tritt der Fehler auf? Nur mit einer Schritt-für-Schritt Anleitung können die Entwickler den Bug nachstellen und beheben.</p></li>
 	<li><p>An den Fehlerbericht sollten so viele Informationen wie möglich angehängt werden. Handelt es sich um einen Bug in der grafischen Oberfläche oder einer der Anwendungen, ist ein Bildschirmfoto mittels der <span class="key">DRUCK</span> Taste hilfreich.</p></li>
@@ -96,12 +100,14 @@ Nach dieser Überprüfung sollte man so genau wie möglich den Fehler beschreibe
 	
 <h2><a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="app" name="app">Bugs in Anwendungen</a></h2>
-<p>Stürzt eine Anwendung ab, sollte man den Debugger aus dem erscheinenden Hinweisfenster aufrufen. Dadurch wird ein Terminal mit gdb (dem GNU Debugger) geöffnet. Gibt man dort <span class="cli">bt</span> ein, wird ein sogenannter "backtrace" erstellt, der komplett (auch mit dem Teil bevor <span class="cli">bt</span> eingegeben wurde) mit an die Fehlermeldung angehängt werden sollte.</p>
+<p>Stürzt eine Anwendung ab, kann man entweder einen 'Bericht' speichern oder eine 'Core-Datei' schreiben (beides erscheint auf dem Desktop), die man dann an einen Bugreport hängen kann oder man ruft den Debugger auf. Siehe dazu das Kapitel <a href="../../userguide/de/applications/debugger.html">Debugger</a>.</p>
+<p>Führt ein Bug nicht zu einen Crash, kann man manchmal wertvolle Informationen sammeln, indem man die Anwendung vom Terminal aus startet. Einige Programme bieten extra Logging oder andere Optionen wenn sie mit entsprechenden Parametern gestartet werden. Einfach mal <tt>-h</tt> or <tt>--help</tt> probieren, um zu sehen ob das der Fall ist. Ein Beispiel für verschiedene Logging-Stufen ist <a href="../../userguide/de/applications/haikudepot.html#logs">HaikuDepot</a>.</p>
 
 <h2><a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="server" name="server">Bugs in Servern</a></h2>
-<p>Stürzen lebenswichtige Server wie der App Server, der Registrar oder der Input Server ab, bekommt man nicht den gewöhnlichen Crash-Hinweis zu sehen. Stattdessen wird der gesamte Bildschirm weiß und der gdb wird gestartet, der seine Ausgabe direkt auf den Bildschirm schreibt. Unter Umständen kann man immer noch die Maus bewegen, die daraufhin das Weiß und die gdb Ausgabe übermalt. Noch laufende Anwendungen, wie ProcessController oder die Uhr in der Deskbar, tun das vielleicht auch noch.<br />
-Außer dass alles etwas unansehnlicher und unbequemer ist, gilt eigentlich das gleiche wie für Bugs in Anwendungen. Am wichtigsten ist das sichern eines "backtrace" mittels <span class="cli">bt</span>. Weil man den Text ja nicht mehr irgendwohin kopieren kann, müsste man die Ausgabe per Kamera festhalten.</p>
+<p>Stürzen lebenswichtige Server wie der App Server, der Registrar oder der Input Server ab, bekommt man nicht den gewöhnlichen Crash-Hinweis zu sehen. Stattdessen wird der gesamte Bildschirm weiß und der Debugger wird im Textmodus gestartet, der seine Ausgabe direkt auf den Bildschirm schreibt. Unter Umständen kann man immer noch die Maus bewegen, die daraufhin das Weiß und die Debugger Ausgabe übermalt. Noch laufende Anwendungen, wie ProcessController oder die Uhr in der Deskbar, tun das vielleicht auch noch.<br />
+Außer dass alles etwas unansehnlicher und unbequemer ist, gilt eigentlich das gleiche wie für Bugs in Anwendungen. Am wichtigsten ist das sichern eines "backtrace" mittels <span class="cli">bt</span>. Weil man den Text ja nicht mehr irgendwohin kopieren kann, müsste man die Ausgabe per Kamera festhalten.<br />
+Je nachdem was genau abgestürzt ist, kann man auch probieren mit dem Befehl <span class="cli">save-report</span> einen 'Crash-Bericht' oder per <span class="cli">write-core</span> eine 'Core-Datei' auf dem Desktop zu speichern. Danach sollte man einmal auf den Powerknopf drücken, um zu versuchen den Rechner sauber herunterzufahren. Funktioneirt ther Powerknopf nicht, gibt es noch die Befehle <span class="cli">shutdown</span> und <span class="cli">reboot</span> zum Ausschalten bzw. für einen Neustart.</p>
 
 <h2><a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="kernel" name="kernel">Bugs im Kernel</a></h2>
@@ -113,15 +119,15 @@ Außer dass alles etwas unansehnlicher und unbequemer ist, gilt eigentlich das g
 <li><p>Das System fährt nicht mehr richtig hoch. Unter Umständen führt es spontan einen Neustart durch oder bleibt an einer Stelle stecken, vielleicht bei einem bestimmten Symbol des Boot Bildschirms. In letzterem Falle sollte man auch mal ein <span class="key">ALT</span> <span class="key">SysReq</span> <span class="key">D</span> versuchen.</p></li>
 <li><p>Das ganze System oder eine bestimmte Hardwarekomponente funktioniert nicht richtig. Es könnte beispielsweise nur sehr langsam laufen, Fehler könnten auftreten oder etwas funktioniert überhaupt nicht. Verweigert eine Hardwarekomponente die Arbeit komplett, sollte man natürlich erst mal checken, ob Haiku sie momentan überhaupt treibermäßig unterstützt, indem man zum Beispiel auf der Mainlingliste oder im Forum nachfragt.</p></li>
 </ul>
-<p>Während nur der letzte Punkt explizit auf eine Hardware-Ursache eingeht, können auch alle anderen Symptome auf Fehler in einem Hardware Treiber hindeuten. Hat man einen Verdacht welche Hardware oder entsprechender Treiber mit dem Problem zu tun haben könnte, sollte man prüfen ob das Entfernen oder Deaktivieren von Hardware oder Treiber Abhilfe schafft. Wenn man das Problem beispielsweise beim WLAN vermutet, könnte diese Funktion vielleicht im BIOS ausgeschaltet werden. Wenn nicht, kann man auch den entsprechenden Treiber auf eine "Schwarze Liste" setzen und so im System deaktivieren (siehe <a href="../../../userguide/de/bootloader.html">Boot Loader</a>).</p>
+<p>Während nur der letzte Punkt explizit auf eine Hardware-Ursache eingeht, können auch alle anderen Symptome auf Fehler in einem Hardware Treiber hindeuten. Hat man einen Verdacht welche Hardware oder entsprechender Treiber mit dem Problem zu tun haben könnte, sollte man prüfen ob das Entfernen oder Deaktivieren von Hardware oder Treiber Abhilfe schafft. Wenn man das Problem beispielsweise beim WLAN vermutet, könnte diese Funktion vielleicht im BIOS ausgeschaltet werden. Wenn nicht, kann man auch den entsprechenden Treiber auf eine "Schwarze Liste" setzen und so im System deaktivieren (siehe <a href="../../userguide/de/bootloader.html">Boot Loader</a>).</p>
 
 <h3><a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="kdl" name="kdl">Kernel Debugging Land - KDL</a></h3>
-<p>Stürzt das System nicht von selbst ins KDL, kann man das auch absichtlich mit der Tastenkombination <span class="key">ALT</span><span class="key">SysReq</span><span class="key">D</span> erreichen.<br />
-Im KDL kann es passieren, dass die Tastatur nicht mehr funktioniert. PS/2 Tastaturen gehen immer, USB Tastaturen an UHCI Controllern nur wenn man vorher schonmal per Tastenkombination das KDL betreten hat. USB OHCI wird zur Zeit noch gar nicht unterstützt.</p>
+<p>Stürzt das System nicht von selbst ins KDL, kann man das auch absichtlich mit der Tastenkombination <span class="key">ALT</span><span class="key">SysReq</span><span class="key">D</span> erreichen (<span class="key">SysReq</span> ist normalerweise die <span class="key">Druck</span> Taste).<br />
+Im KDL kann es passieren, dass die Tastatur nicht mehr funktioniert. PS/2 Tastaturen gehen immer, bei USB Tastaturen kommt es auf die Art des USB Controllers an (UHCI/EHCI). Generell sollte die Tastatur direkt an einem Port hängen, nicht über einen Hub. Ein bestimmten Fällen kann es sein, dass die Tastatur nur funktioniert wenn man vorher schonmal per Tastenkombination das KDL betreten hat. USB OHCI wird zur Zeit noch gar nicht unterstützt.</p>
 <p>Das KDL ist eine Art Konsole. Es lassen sich Befehle eingeben, die Informationen über das System ausgeben. Folgende Befehle sind von besonderen Interesse:</p>
 <table summary="layout" border="0" cellpadding="2" cellspacing="0">
-<tr><td><span class="cli">bt</span> (auch "sc")</td><td> </td><td>Zeigt einen "backtrace" (oder auch "stack crawl") wo genau der Fehler aufgetreten ist. Ist das System von selbst ins KDL gefallen, sollte man diesen Befehl unbedingt ausführen.</td></tr>
+<tr><td><span class="cli">bt</span> (auch <span class="cli">sc</span>)</td><td> </td><td>Zeigt einen "backtrace" (oder auch "stackcrawl") wo genau der Fehler aufgetreten ist. Ist das System von selbst ins KDL gefallen, wird so ein backtrace automatisch ausgegeben. Der Befehl ist einzugeben wenn das nicht geschehen oder ein Teil nicht zu sehen ist (beispielsweise bei sehr langen Ausgaben, bei denen das Ende der Ausgabe am Ende der Seite den Anfang überschreibt), und die einzige Möglichkeit die Information an die Entwickler zu senden ein Foto ist.</td></tr>
 <tr><td><span class="cli">ints</span></td><td> </td><td>Zeigt die unbenutzten und verwendeten Interrupts.</td></tr>
 <tr><td class="onelinetop"><span class="cli">co</span> (auch "continue")</td><td> </td><td>Verlässt den Kernel Debugger und das System läuft - soweit möglich - normal weiter.</td></tr>
 <tr><td><span class="cli">reboot</span></td><td> </td><td>Führt einen unmittelbaren Neustart durch. Alle ungespeicherten Daten gehen verloren und selbst was man gespeichert hat, aber noch nicht auf die Platte geschrieben wurde, ist weg.</td></tr>
@@ -144,7 +150,7 @@ Dort sollte man im <span class="menu">Debug menu</span> die Einträge <span clas
 <p><b>Die Ausgabe auf dem Bildschirm ist nur bei ganz bestimmten Situationen sinnvoll und hat bekanntermaßen Timing-Probleme. Es sollte also wirklich nur im Notfall benutzt werden.</b><br />
 Das ist zum Beispiel der Fall wenn Haiku nicht ganz hochfährt und Bootloader's <span class="menu">Debug syslog option</span> irgendwie nicht funktioniert. Noch bevor das Haiku Bootlogo erscheint, die <span class="key">SHIFT</span> Taste gedrückt halten, um das Bootloader Menü aufzurufen. Von hier in das Menü <span class="menu">Select safe mode options</span> wechseln und dort weiter unten <span class="menu">[ ] Enable on screen debug output</span> aktivieren. (Die anderen Optionen kann man auch mal probieren, um zu versuchen Haiku erfolgreich zu booten. Wenn Haiku nur mit einer oder mehreren aktivierten Optionen hochfahren kann, sollte man natürlich erwähnen welche das sind.)<br />
 Abschließend geht man auf <span class="menu">Return to main menu</span> und dann <span class="menu">Continue booting</span>.<br />
-Auf dem Bildschirm werden einige Seiten Text ausgegeben, von denen aber nur die letzten paar für einen Bugreport interessant sind. Der Userguide hat noch weitere Infos zum <a href="../../../userguide/de/bootloader.html">Boot Loader</a>.</p>
+Auf dem Bildschirm werden einige Seiten Text ausgegeben, von denen aber nur die letzten paar für einen Bugreport interessant sind. Der Userguide hat noch weitere Infos zum <a href="../../userguide/de/bootloader.html">Boot Loader</a>.</p>
 
 <h2><a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="hardware" name="hardware">Bugs von Hardware/Treiber</a></h2>
@@ -153,10 +159,11 @@ Auf dem Bildschirm werden einige Seiten Text ausgegeben, von denen aber nur die 
 <table summary="layout" border="0" cellpadding="2" cellspacing="0">
 <tr><td>- <span class="cli">listdev</span></td><td> </td><td>Eine detaillierte Auflistung aller vorhandener Hardware inklusive "vendor id" und "pci id"; ähnlich den Befehlen <span class="cli">lshw</span> und <span class="cli">lspci</span> unter Linux.</td></tr>
 <tr><td>- <span class="cli">listusb -v</span></td><td> </td><td>Bei Fehlern im Zusammenhang mit USB, ähnlich dem Befehlt <span class="cli">lsusb</span> unter Linux.</td></tr>
-<tr><td>- <span class="cli">open /var/log/syslog</span></td><td> </td><td>Die zentrale Log-Datei von Haiku. Mit dem Befehl <span class="cli">open</span> kann das Log im Texteditor auf eine sinnvolle Länge gekürzt werden.</td></tr>
+<tr><td>- <span class="cli">open /var/log/syslog</span></td><td> </td><td>Die zentrale Log-Datei von Haiku, siehe <a href="#syslog">Syslog</a> weiter oben, entspricht der Debug Bildschirmausgabe. Mit dem Befehl <span class="cli">open</span> kann das Log im Texteditor auf eine sinnvolle Länge gekürzt werden.</td></tr>
 <tr><td class="onelinetop">- <span class="cli">listimage | grep drivers/</span></td><td> </td><td>Eine Auflistung aller verwendeten Treiber.</td></tr>
+<tr><td>- <span class="cli">usb_hid_report</span></td><td> </td><td>Sind USB Eingabegeräte betroffen sollte man die <span class="cli">/tmp/usb_hid_report_descriptor_*.bin</span> Datei an den Fehlerbericht hängen.</td></tr>
 <tr><td>- <span class="cli">ints</span></td><td> </td><td>Nur im <i>Kernel Debugging Land</i> (siehe weiter oben). Es zeigt eine Liste aller verwendeter "Interrupts". Wenn sich mehrere Geräte zuviele von ihnen teilen, ist das schlecht.</td></tr>
-<tr><td colspan="3">- "On screen debug output" (die Bootloader Debug Option zur Ausgabe auf dem Bildschirm).</td></tr>
+<tr><td colspan="3">- "On screen debug output" (die Bootloader Debug Option zur Ausgabe auf dem Bildschirm, siehe <a href="#onscreen">weiter oben</a>).</td></tr>
 </table>
 
 <p>Die ersten vier dieser Befehle sind im Terminal einzugeben. Mit dem Zusatz "<span class="cli"> &gt; output.txt</span>" an den Befehl wird dessen Ausgabe in die Datei "output.txt" gespeichert, die dann an den Fehlerbericht angehängt werden kann.</p>

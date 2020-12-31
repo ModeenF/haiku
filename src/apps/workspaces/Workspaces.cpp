@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2012, Haiku, Inc. All rights reserved.
+ * Copyright 2002-2016, Haiku, Inc. All rights reserved.
  * Copyright 2002, François Revol, revol@free.fr.
  * This file is distributed under the terms of the MIT License.
  *
@@ -8,6 +8,7 @@
  *		Axel Dörfler, axeld@pinc-software.de
  *		Oliver "Madison" Kohl,
  *		Matt Madia
+ *		Daniel Devine, devine@ddevnet.net
  */
 
 
@@ -54,10 +55,38 @@ static const uint32 kMsgToggleBorder = 'tgBd';
 static const uint32 kMsgToggleAutoRaise = 'tgAR';
 static const uint32 kMsgToggleAlwaysOnTop = 'tgAT';
 static const uint32 kMsgToggleLiveInDeskbar = 'tgDb';
+static const uint32 kMsgToggleSwitchOnWheel = 'tgWh';
 
-static const float kScreenBorderOffset = 10.0;
 
-extern "C" _EXPORT BView* instantiate_deskbar_item();
+extern "C" _EXPORT BView* instantiate_deskbar_item(float maxWidth,
+	float maxHeight);
+
+
+static status_t
+OpenSettingsFile(BFile& file, int mode)
+{
+	BPath path;
+	status_t status = find_directory(B_USER_SETTINGS_DIRECTORY, &path);
+	if (status != B_OK)
+		status = find_directory(B_SYSTEM_SETTINGS_DIRECTORY, &path);
+	if (status != B_OK)
+		return status;
+
+	status = path.Append(kSettingsFile);
+	if (status != B_OK)
+		return status;
+
+	status = file.SetTo(path.Path(), mode);
+	if (mode == B_READ_ONLY && status == B_ENTRY_NOT_FOUND) {
+		if (find_directory(B_SYSTEM_SETTINGS_DIRECTORY, &path) == B_OK
+			&& path.Append(kSettingsFile) == B_OK) {
+			status = file.SetTo(path.Path(), mode);
+		}
+	}
+
+	return status;
+}
+
 
 class WorkspacesSettings {
 	public:
@@ -71,6 +100,7 @@ class WorkspacesSettings {
 		bool AlwaysOnTop() const { return fAlwaysOnTop; }
 		bool HasTitle() const { return fHasTitle; }
 		bool HasBorder() const { return fHasBorder; }
+		bool SettingsLoaded() const { return fLoaded; }
 
 		void UpdateFramesForScreen(BRect screenFrame);
 		void UpdateScreenFrame();
@@ -82,14 +112,13 @@ class WorkspacesSettings {
 		void SetHasBorder(bool enable) { fHasBorder = enable; }
 
 	private:
-		status_t _Open(BFile& file, int mode);
-
 		BRect	fWindowFrame;
 		BRect	fScreenFrame;
 		bool	fAutoRaising;
 		bool	fAlwaysOnTop;
 		bool	fHasTitle;
 		bool	fHasBorder;
+		bool	fLoaded;
 };
 
 class WorkspacesView : public BView {
@@ -110,6 +139,9 @@ class WorkspacesView : public BView {
 			const BMessage* dragMessage);
 		virtual void MouseDown(BPoint where);
 
+		bool SwitchOnWheel() const { return fSwitchOnWheel; }
+		void SetSwitchOnWheel(bool enable);
+
 	private:
 		void _AboutRequested();
 
@@ -117,8 +149,14 @@ class WorkspacesView : public BView {
 		void _ExcludeFromParentClipping();
 		void _CleanupParentClipping();
 
+		friend class WorkspacesWindow;
+
+		void _LoadSettings();
+		void _SaveSettings();
+
 		BView*	fParentWhichDrawsOnChildren;
 		BRect	fCurrentFrame;
+		bool	fSwitchOnWheel;
 };
 
 class WorkspacesWindow : public BWindow {
@@ -135,11 +173,17 @@ class WorkspacesWindow : public BWindow {
 		virtual bool QuitRequested();
 
 		void SetAutoRaise(bool enable);
-		bool IsAutoRaising() const { return fAutoRaising; }
+		bool IsAutoRaising() const { return fSettings->AutoRaising(); }
+
+		float GetTabHeight() { return fSettings->HasTitle() ? fTabHeight : 0; }
+		float GetBorderWidth() { return fBorderWidth; }
+		float GetScreenBorderOffset() { return 2.0 * fBorderWidth; }
 
 	private:
 		WorkspacesSettings *fSettings;
-		bool	fAutoRaising;
+		WorkspacesView *fWorkspacesView;
+		float	fTabHeight;
+		float	fBorderWidth;
 };
 
 class WorkspacesApp : public BApplication {
@@ -158,29 +202,29 @@ class WorkspacesApp : public BApplication {
 };
 
 
+//	#pragma mark - WorkspacesSettings
+
+
 WorkspacesSettings::WorkspacesSettings()
 	:
 	fAutoRaising(false),
 	fAlwaysOnTop(false),
 	fHasTitle(true),
-	fHasBorder(true)
+	fHasBorder(true),
+	fLoaded(false)
 {
 	UpdateScreenFrame();
 
-	bool loaded = false;
 	BScreen screen;
 
 	BFile file;
-	if (_Open(file, B_READ_ONLY) == B_OK) {
+	if (OpenSettingsFile(file, B_READ_ONLY) == B_OK) {
 		BMessage settings;
 		if (settings.Unflatten(&file) == B_OK) {
-			if (settings.FindRect("window", &fWindowFrame) == B_OK
-				&& settings.FindRect("screen", &fScreenFrame) == B_OK)
-				loaded = true;
-
+			fLoaded = settings.FindRect("window", &fWindowFrame) == B_OK
+				&& settings.FindRect("screen", &fScreenFrame) == B_OK;
 			settings.FindBool("auto-raise", &fAutoRaising);
 			settings.FindBool("always on top", &fAlwaysOnTop);
-
 			if (settings.FindBool("has title", &fHasTitle) != B_OK)
 				fHasTitle = true;
 			if (settings.FindBool("has border", &fHasBorder) != B_OK)
@@ -202,96 +246,39 @@ WorkspacesSettings::WorkspacesSettings()
 				else
 					fScreenFrame = screen.Frame();
 
-				loaded = true;
+				fLoaded = true;
 			}
 		}
 	}
 
-	if (loaded) {
+	if (fLoaded) {
 		// if the current screen frame is different from the one
 		// just loaded, we need to alter the window frame accordingly
 		if (fScreenFrame != screen.Frame())
 			UpdateFramesForScreen(screen.Frame());
-	}
-
-	if (!loaded
-		|| !(screen.Frame().right + 5 >= fWindowFrame.right
-			&& screen.Frame().bottom + 5 >= fWindowFrame.bottom
-			&& screen.Frame().left - 5 <= fWindowFrame.left
-			&& screen.Frame().top - 5 <= fWindowFrame.top)) {
-		// set to some usable defaults
-		float screenWidth = screen.Frame().Width();
-		float screenHeight = screen.Frame().Height();
-		float aspectRatio = screenWidth / screenHeight;
-
-		uint32 columns, rows;
-		BPrivate::get_workspaces_layout(&columns, &rows);
-
-		// default size of ~1/10 of screen width
-		float workspaceWidth = screenWidth / 10;
-		float workspaceHeight = workspaceWidth / aspectRatio;
-
-		float width = floor(workspaceWidth * columns);
-		float height = floor(workspaceHeight * rows);
-
-		float tabHeight = 20;
-			// TODO: find tabHeight without being a window
-
-		// shrink to fit more
-		while (width + 2 * kScreenBorderOffset > screenWidth
-			|| height + 2 * kScreenBorderOffset + tabHeight > screenHeight) {
-			width = floor(0.95 * width);
-			height = floor(0.95 * height);
-		}
-
-		fWindowFrame = fScreenFrame;
-		fWindowFrame.OffsetBy(-kScreenBorderOffset, -kScreenBorderOffset);
-		fWindowFrame.left = fWindowFrame.right - width;
-		fWindowFrame.top = fWindowFrame.bottom - height;
 	}
 }
 
 
 WorkspacesSettings::~WorkspacesSettings()
 {
-	// write settings file
 	BFile file;
-	if (_Open(file, B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE) != B_OK)
+	if (OpenSettingsFile(file, B_WRITE_ONLY | B_ERASE_FILE | B_CREATE_FILE)
+			!= B_OK) {
 		return;
+	}
+
+	// switch on wheel saved by view later on
 
 	BMessage settings('wksp');
-
 	if (settings.AddRect("window", fWindowFrame) == B_OK
 		&& settings.AddRect("screen", fScreenFrame) == B_OK
 		&& settings.AddBool("auto-raise", fAutoRaising) == B_OK
 		&& settings.AddBool("always on top", fAlwaysOnTop) == B_OK
 		&& settings.AddBool("has title", fHasTitle) == B_OK
-		&& settings.AddBool("has border", fHasBorder) == B_OK)
+		&& settings.AddBool("has border", fHasBorder) == B_OK) {
 		settings.Flatten(&file);
-}
-
-
-status_t
-WorkspacesSettings::_Open(BFile& file, int mode)
-{
-	BPath path;
-	status_t status = find_directory(B_USER_SETTINGS_DIRECTORY, &path);
-	if (status != B_OK)
-		status = find_directory(B_SYSTEM_SETTINGS_DIRECTORY, &path);
-	if (status != B_OK)
-		return status;
-
-	path.Append(kSettingsFile);
-
-	status = file.SetTo(path.Path(), mode);
-	if (mode == B_READ_ONLY && status == B_ENTRY_NOT_FOUND) {
-		if (find_directory(B_SYSTEM_SETTINGS_DIRECTORY, &path) == B_OK) {
-			path.Append(kSettingsFile);
-			status = file.SetTo(path.Path(), mode);
-		}
 	}
-
-	return status;
 }
 
 
@@ -333,16 +320,19 @@ WorkspacesSettings::SetWindowFrame(BRect frame)
 }
 
 
-//	#pragma mark -
+//	#pragma mark - WorkspacesView
 
 
-WorkspacesView::WorkspacesView(BRect frame, bool showDragger=true)
+WorkspacesView::WorkspacesView(BRect frame, bool showDragger = true)
 	:
 	BView(frame, kDeskbarItemName, B_FOLLOW_ALL,
 		kWorkspacesViewFlag | B_FRAME_EVENTS),
 	fParentWhichDrawsOnChildren(NULL),
-	fCurrentFrame(frame)
+	fCurrentFrame(frame),
+	fSwitchOnWheel(false)
 {
+	_LoadSettings();
+
 	if (showDragger) {
 		frame.OffsetTo(B_ORIGIN);
 		frame.top = frame.bottom - 7;
@@ -358,8 +348,11 @@ WorkspacesView::WorkspacesView(BMessage* archive)
 	:
 	BView(archive),
 	fParentWhichDrawsOnChildren(NULL),
-	fCurrentFrame(Frame())
+	fCurrentFrame(Frame()),
+	fSwitchOnWheel(false)
 {
+	_LoadSettings();
+
 	// Just in case we are instantiated from an older archive...
 	SetFlags(Flags() | B_FRAME_EVENTS);
 	// Make sure the auto-raise feature didn't leave any artifacts - this is
@@ -371,6 +364,7 @@ WorkspacesView::WorkspacesView(BMessage* archive)
 
 WorkspacesView::~WorkspacesView()
 {
+	_SaveSettings();
 }
 
 
@@ -498,6 +492,38 @@ WorkspacesView::_CleanupParentClipping()
 
 
 void
+WorkspacesView::_LoadSettings()
+{
+	BFile file;
+	if (OpenSettingsFile(file, B_READ_ONLY) == B_OK) {
+		BMessage settings;
+		if (settings.Unflatten(&file) == B_OK)
+			settings.FindBool("switch on wheel", &fSwitchOnWheel);
+	}
+}
+
+
+void
+WorkspacesView::_SaveSettings()
+{
+	BFile file;
+	if (OpenSettingsFile(file, B_READ_ONLY | B_CREATE_FILE) != B_OK)
+		return;
+
+	BMessage settings('wksp');
+	settings.Unflatten(&file);
+
+	if (OpenSettingsFile(file, B_WRITE_ONLY | B_ERASE_FILE) != B_OK)
+		return;
+
+	if (settings.ReplaceBool("switch on wheel", fSwitchOnWheel) != B_OK)
+		settings.AddBool("switch on wheel", fSwitchOnWheel);
+
+	settings.Flatten(&file);
+}
+
+
+void
 WorkspacesView::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
@@ -507,10 +533,13 @@ WorkspacesView::MessageReceived(BMessage* message)
 
 		case B_MOUSE_WHEEL_CHANGED:
 		{
-			float dy = message->FindFloat("be:wheel_delta_y");
-			if (dy > 0.1)
+			if (!fSwitchOnWheel)
+				break;
+
+			float deltaY = message->FindFloat("be:wheel_delta_y");
+			if (deltaY > 0.1)
 				activate_workspace(current_workspace() + 1);
-			else if (dy < -0.1)
+			else if (deltaY < -0.1)
 				activate_workspace(current_workspace() - 1);
 			break;
 		}
@@ -525,7 +554,13 @@ WorkspacesView::MessageReceived(BMessage* message)
 			// since HasItem() locks up we just remove directly.
 			BDeskbar deskbar;
 			// we shouldn't do this here actually, but it works for now...
-			deskbar.RemoveItem (kDeskbarItemName);
+			deskbar.RemoveItem(kDeskbarItemName);
+			break;
+		}
+
+		case kMsgToggleSwitchOnWheel:
+		{
+			fSwitchOnWheel = !fSwitchOnWheel;
 			break;
 		}
 
@@ -548,11 +583,19 @@ WorkspacesView::MouseMoved(BPoint where, uint32 transit,
 
 	where = ConvertToScreen(where);
 	BScreen screen(window);
-	BRect frame = screen.Frame();
-	if (where.x == frame.left || where.x == frame.right
-		|| where.y == frame.top || where.y == frame.bottom) {
+	BRect screenFrame = screen.Frame();
+	BRect windowFrame = window->Frame();
+	float tabHeight = window->GetTabHeight();
+	float borderWidth = window->GetBorderWidth();
+
+	if (where.x == screenFrame.left || where.x == screenFrame.right
+			|| where.y == screenFrame.top || where.y == screenFrame.bottom) {
 		// cursor is on screen edge
-		if (window->Frame().Contains(where))
+
+		// Stretch frame to also accept mouse moves over the window borders
+		windowFrame.InsetBy(-borderWidth, -(tabHeight + borderWidth));
+
+		if (windowFrame.Contains(where))
 			window->Activate();
 	}
 }
@@ -583,7 +626,12 @@ WorkspacesView::MouseDown(BPoint where)
 		B_UTF8_ELLIPSIS), new BMessage(kMsgChangeCount));
 	menu->AddItem(changeItem);
 
-	WorkspacesWindow* window = dynamic_cast<WorkspacesWindow*>(Window());
+	BMenuItem* switchItem = new BMenuItem(B_TRANSLATE("Switch on mouse wheel"),
+		new BMessage(kMsgToggleSwitchOnWheel));
+	menu->AddItem(switchItem);
+	switchItem->SetMarked(fSwitchOnWheel);
+
+	WorkspacesWindow *window = dynamic_cast<WorkspacesWindow*>(Window());
 	if (window != NULL) {
 		// inside Workspaces app
 		BMenuItem* item;
@@ -596,8 +644,9 @@ WorkspacesView::MouseDown(BPoint where)
 		menu->AddItem(item = new BMenuItem(B_TRANSLATE("Show window border"),
 			new BMessage(kMsgToggleBorder)));
 		if (window->Look() == B_TITLED_WINDOW_LOOK
-			|| window->Look() == B_MODAL_WINDOW_LOOK)
+			|| window->Look() == B_MODAL_WINDOW_LOOK) {
 			item->SetMarked(true);
+		}
 
 		menu->AddSeparatorItem();
 		menu->AddItem(item = new BMenuItem(B_TRANSLATE("Always on top"),
@@ -642,28 +691,98 @@ WorkspacesView::MouseDown(BPoint where)
 	}
 
 	changeItem->SetTarget(this);
+	switchItem->SetTarget(this);
+
 	ConvertToScreen(&where);
 	menu->Go(where, true, true, true);
 }
 
 
-//	#pragma mark -
+void
+WorkspacesView::SetSwitchOnWheel(bool enable)
+{
+	if (enable == fSwitchOnWheel)
+		return;
+
+	fSwitchOnWheel = enable;
+}
+
+
+//	#pragma mark - WorkspacesWindow
 
 
 WorkspacesWindow::WorkspacesWindow(WorkspacesSettings *settings)
 	:
-	BWindow(settings->WindowFrame(), B_TRANSLATE_SYSTEM_NAME("Workspaces"), 
+	BWindow(settings->WindowFrame(), B_TRANSLATE_SYSTEM_NAME("Workspaces"),
 		B_TITLED_WINDOW_LOOK, B_NORMAL_WINDOW_FEEL,
-		B_AVOID_FRONT | B_WILL_ACCEPT_FIRST_CLICK, B_ALL_WORKSPACES),
- 	fSettings(settings),
- 	fAutoRaising(false)
+		B_AVOID_FRONT | B_WILL_ACCEPT_FIRST_CLICK | B_CLOSE_ON_ESCAPE,
+		B_ALL_WORKSPACES),
+	fSettings(settings),
+	fWorkspacesView(NULL)
 {
-	AddChild(new WorkspacesView(Bounds()));
+	// Turn window decor on to grab decor widths.
+	BMessage windowSettings;
+	float borderWidth = 0;
+
+	SetLook(B_TITLED_WINDOW_LOOK);
+	if (GetDecoratorSettings(&windowSettings) == B_OK) {
+		BRect tabFrame = windowSettings.FindRect("tab frame");
+		borderWidth = windowSettings.FindFloat("border width");
+		fTabHeight = tabFrame.Height();
+		fBorderWidth = borderWidth;
+	}
+
+	if (!fSettings->SettingsLoaded()) {
+		// No settings, compute a reasonable default frame.
+		// We aim for previews at 10% of actual screen size, and matching the
+		// aspect ratio. We then scale that down, until it fits the screen.
+		// Finally, we put the window on the bottom right of the screen so the
+		// auto-raise mode can be used.
+
+		BScreen screen;
+
+		float screenWidth = screen.Frame().Width();
+		float screenHeight = screen.Frame().Height();
+		float aspectRatio = screenWidth / screenHeight;
+
+		uint32 columns, rows;
+		BPrivate::get_workspaces_layout(&columns, &rows);
+
+		// default size of ~1/10 of screen width
+		float workspaceWidth = screenWidth / 10;
+		float workspaceHeight = workspaceWidth / aspectRatio;
+
+		float width = floor(workspaceWidth * columns);
+		float height = floor(workspaceHeight * rows);
+
+		// If you have too many workspaces to fit on the screen, shrink until
+		// they fit.
+		while (width + 2 * borderWidth > screenWidth
+				|| height + 2 * borderWidth + GetTabHeight() > screenHeight) {
+			width = floor(0.95 * width);
+			height = floor(0.95 * height);
+		}
+
+		BRect frame = fSettings->ScreenFrame();
+		frame.OffsetBy(-2.0 * borderWidth, -2.0 * borderWidth);
+		frame.left = frame.right - width;
+		frame.top = frame.bottom - height;
+		ResizeTo(frame.Width(), frame.Height());
+
+		// Put it in bottom corner by default.
+		MoveTo(screenWidth - frame.Width() - borderWidth,
+			screenHeight - frame.Height() - borderWidth);
+
+		fSettings->SetWindowFrame(frame);
+	}
 
 	if (!fSettings->HasBorder())
 		SetLook(B_NO_BORDER_WINDOW_LOOK);
 	else if (!fSettings->HasTitle())
 		SetLook(B_MODAL_WINDOW_LOOK);
+
+	fWorkspacesView = new WorkspacesView(Bounds());
+	AddChild(fWorkspacesView);
 
 	if (fSettings->AlwaysOnTop())
 		SetFeel(B_FLOATING_ALL_WINDOW_FEEL);
@@ -737,15 +856,25 @@ WorkspacesWindow::Zoom(BPoint origin, float width, float height)
 	width = floor(workspaceWidth * columns);
 	height = floor(workspaceHeight * rows);
 
-	float tabHeight = Frame().top - DecoratorFrame().top;
-
-	while (width + 2 * kScreenBorderOffset > screenWidth
-		|| height + 2 * kScreenBorderOffset + tabHeight > screenHeight) {
+	while (width + 2 * GetScreenBorderOffset() > screenWidth
+		|| height + 2 * GetScreenBorderOffset() + GetTabHeight()
+			> screenHeight) {
 		width = floor(0.95 * width);
 		height = floor(0.95 * height);
 	}
 
 	ResizeTo(width, height);
+
+	if (fSettings->AutoRaising()) {
+		// The auto-raising mode makes sense only if the window is positionned
+		// exactly in the bottom-right corner. If the setting is enabled, move
+		// the window there.
+		origin = screen.Frame().RightBottom();
+		origin.x -= GetScreenBorderOffset() + width;
+		origin.y -= GetScreenBorderOffset() + height;
+
+		MoveTo(origin);
+	}
 }
 
 
@@ -796,8 +925,7 @@ WorkspacesWindow::MessageReceived(BMessage *message)
 			else
 				SetLook(B_MODAL_WINDOW_LOOK);
 
-			// No matter what the setting for title, 
-			// we must force the border on
+			// No matter what the setting for title, we must force the border on
 			fSettings->SetHasBorder(true);
 			fSettings->SetHasTitle(enable);
 			break;
@@ -826,9 +954,11 @@ WorkspacesWindow::MessageReceived(BMessage *message)
 		case kMsgToggleLiveInDeskbar:
 		{
 			BDeskbar deskbar;
-			if (deskbar.HasItem (kDeskbarItemName))
-				deskbar.RemoveItem (kDeskbarItemName);
+			if (deskbar.HasItem(kDeskbarItemName))
+				deskbar.RemoveItem(kDeskbarItemName);
 			else {
+				fWorkspacesView->_SaveSettings();
+					// save "switch on wheel" setting for replicant to load
 				entry_ref ref;
 				be_roster->FindApp(kSignature, &ref);
 				deskbar.AddItem(&ref);
@@ -854,10 +984,6 @@ WorkspacesWindow::QuitRequested()
 void
 WorkspacesWindow::SetAutoRaise(bool enable)
 {
-	if (enable == fAutoRaising)
-		return;
-
-	fAutoRaising = enable;
 	fSettings->SetAutoRaising(enable);
 
 	if (enable)
@@ -867,7 +993,7 @@ WorkspacesWindow::SetAutoRaise(bool enable)
 }
 
 
-//	#pragma mark -
+//	#pragma mark - WorkspacesApp
 
 
 WorkspacesApp::WorkspacesApp()
@@ -967,10 +1093,21 @@ WorkspacesApp::ArgvReceived(int32 argc, char **argv)
 }
 
 
-BView* instantiate_deskbar_item()
+void
+WorkspacesApp::ReadyToRun()
+{
+	fWindow->Show();
+}
+
+
+//	#pragma mark -
+
+
+BView*
+instantiate_deskbar_item(float maxWidth, float maxHeight)
 {
 	// Calculate the correct size of the Deskbar replicant first
-	
+
 	BScreen screen;
 	float screenWidth = screen.Frame().Width();
 	float screenHeight = screen.Frame().Height();
@@ -978,15 +1115,14 @@ BView* instantiate_deskbar_item()
 	uint32 columns, rows;
 	BPrivate::get_workspaces_layout(&columns, &rows);
 
-	// ╔═╤═╕ A Deskbar replicant can be 16px tall and 129px wide at most.
-	// ║ │ │ We use 1px for the top and left borders (shown as double)
-	// ╟─┼─┤ and divide the remainder equally. However, we keep in mind
-	// ║ │ │ that the actual width and height of each workspace is smaller
-	// ╙─┴─┘ by 1px, because of bottom/right borders (shown as single).
+	// We use 1px for the top and left borders (shown as double)
+	// and divide the remainder equally. However, we keep in mind
+	// that the actual width and height of each workspace is smaller
+	// by 1px, because of bottom/right borders (shown as single).
 	// When calculating workspace width, we must ensure that the assumed
 	// actual workspace height is not negative. Zero is OK.
 
-	float height = 16;
+	float height = maxHeight;
 	float rowHeight = floor((height - 1) / rows);
 	if (rowHeight < 1)
 		rowHeight = 1;
@@ -994,17 +1130,10 @@ BView* instantiate_deskbar_item()
 	float columnWidth = floor((rowHeight - 1) * aspectRatio) + 1;
 
 	float width = columnWidth * columns + 1;
-	if (width > 129)
-		width = 129;
+	if (width > maxWidth)
+		width = maxWidth;
 
 	return new WorkspacesView(BRect (0, 0, width - 1, height - 1), false);
-}
-
-
-void
-WorkspacesApp::ReadyToRun()
-{
-	fWindow->Show();
 }
 
 

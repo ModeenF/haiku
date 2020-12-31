@@ -48,7 +48,7 @@ gfx_conv_yuv410p_ycbcr422_c(AVFrame *in, AVFrame *out, int width, int height)
 				| ((v & 0x0FF) << 24));
 			b = (long)(((y1 & 0x0FF0000) >> 16) | ((u& 0x0FF) << 8)
 				| ((y1 & 0x0FF000000) >> 8) | ((v & 0x0FF) << 24));
-			c = (long)(y2 & 0x0FF | ((u& 0x0FF00)) | ((y2 & 0x0FF00) << 8)
+			c = (long)((y2 & 0x0FF) | (u & 0x0FF00) | ((y2 & 0x0FF00) << 8)
 				| ((v & 0x0FF00) << 16));
 			d = (long)(((y2 & 0x0FF0000) >> 16) | ((u& 0x0FF00))
 				| ((y2 & 0x0FF000000) >> 8) | ((v & 0x0FF00) << 16));
@@ -113,13 +113,13 @@ gfx_conv_yuv420p_ycbcr422_c(AVFrame *in, AVFrame *out, int width, int height)
 			y2 = *pi++;
 			u = *pi2++;
 			v = *pi3++;
-			a = (long)(y1 & 0x0FF | ((u& 0x0FF) << 8) | ((y1 & 0x0FF00) << 8)
+			a = (long)((y1 & 0x0FF) | ((u & 0x0FF) << 8) | ((y1 & 0x0FF00) << 8)
 				| ((v & 0x0FF) << 24));
-			b = (long)(((y1 & 0x0FF0000) >> 16) | ((u& 0x0FF00))
+			b = (long)(((y1 & 0x0FF0000) >> 16) | ((u & 0x0FF00))
 				| ((y1 & 0x0FF000000) >> 8) | ((v & 0x0FF00) << 16));
-			c = (long)(y2 & 0x0FF | ((u& 0x0FF0000) >> 8)
+			c = (long)((y2 & 0x0FF) | ((u & 0x0FF0000) >> 8)
 				| ((y2 & 0x0FF00) << 8) | ((v & 0x0FF0000) << 8));
-			d = (long)(((y2 & 0x0FF0000) >> 16) | ((u& 0x0FF000000) >> 16)
+			d = (long)(((y2 & 0x0FF0000) >> 16) | ((u & 0x0FF000000) >> 16)
 				| ((y2 & 0x0FF000000) >> 8) | ((v & 0x0FF000000)));
 
 			*(p++) = a;
@@ -272,7 +272,7 @@ gfx_conv_YCbCr422_RGB32_c(AVFrame *in, AVFrame *out, int width, int height)
 
 		uvIndex = 0;
 
-		for (uint32 j=0; j < width; j+=2) {
+		for (int32 j = 0; j < width; j += 2) {
 			rgbBase[j] = YUV444TORGBA8888(yBase[j], uBase[uvIndex],
 				vBase[uvIndex]);
 			rgbBase[j + 1] = YUV444TORGBA8888(yBase[j + 1], uBase[uvIndex],
@@ -294,4 +294,28 @@ gfx_conv_YCbCr422_RGB32_c(AVFrame *in, AVFrame *out, int width, int height)
 			width * 4);
 	}
 
+}
+
+
+void
+gfx_conv_GBRP_RGB32_c(AVFrame *in, AVFrame *out, int width, int height)
+{
+	uint8 *bBase = (uint8 *)in->data[0];
+	uint8 *gBase = (uint8 *)in->data[1];
+	uint8 *rBase = (uint8 *)in->data[2];
+
+	uint32 *rgbBase = (uint32 *)out->data[0];
+
+	for (int32 i = 0; i < height; i++) {
+
+		for (int32 j = 0; j < width; j ++) {
+			rgbBase[j] = gBase[j] | (bBase[j] << 8) | (rBase[j] << 16);
+		}
+
+		bBase += in->linesize[0];
+		gBase += in->linesize[1];
+		rBase += in->linesize[2];
+
+		rgbBase += out->linesize[0] / 4;
+	}
 }

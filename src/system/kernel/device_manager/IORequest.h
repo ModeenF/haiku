@@ -25,7 +25,7 @@
 										   allocations won't fail */
 #define B_DELETE_IO_REQUEST		0x04	/* delete request when finished */
 
-struct DMABuffer;
+class DMABuffer;
 struct IOOperation;
 
 typedef struct IOOperation io_operation;
@@ -40,6 +40,7 @@ public:
 			bool				IsUser() const { return fUser; }
 
 			void				SetVecs(generic_size_t firstVecOffset,
+									generic_size_t lastVecSize,
 									const generic_io_vec* vecs, uint32 count,
 									generic_size_t length, uint32 flags);
 
@@ -85,8 +86,8 @@ private:
 };
 
 
-class IORequest;
-class IORequestOwner;
+struct IORequest;
+struct IORequestOwner;
 
 
 class IORequestChunk {
@@ -219,10 +220,11 @@ struct IORequest : IORequestChunk, DoublyLinkedListLinkImpl<IORequest> {
 			status_t			Init(off_t offset, const generic_io_vec* vecs,
 									size_t count, generic_size_t length,
 									bool write, uint32 flags)
-									{ return Init(offset, 0, vecs, count,
+									{ return Init(offset, 0, 0, vecs, count,
 										length, write, flags); }
 			status_t			Init(off_t offset,
 									generic_size_t firstVecOffset,
+									generic_size_t lastVecSize,
 									const generic_io_vec* vecs, size_t count,
 									generic_size_t length, bool write,
 									uint32 flags);

@@ -80,8 +80,7 @@ struct Volume::VNode {
 protected:	// should be private, but gcc 2.95.3 issues a warning
 	~VNode()
 	{
-		if (fileCache != NULL)
-		{
+		if (fileCache != NULL) {
 			ERROR(("VNode %" B_PRId64 " still has a file cache!\n", id));
 			file_cache_delete(fileCache);
 		}
@@ -2180,8 +2179,11 @@ Volume::Read(void* _node, void* cookie, off_t pos, void* buffer,
 		|| reply->bytesRead > bufferSize) {
 		return B_BAD_DATA;
 	}
-	if (reply->bytesRead > 0)
-		memcpy(buffer, readBuffer, reply->bytesRead);
+	if (reply->bytesRead > 0
+		&& user_memcpy(buffer, readBuffer, reply->bytesRead) < B_OK) {
+		return B_BAD_ADDRESS;
+	}
+
 	*bytesRead = reply->bytesRead;
 	_SendReceiptAck(port);
 	return error;
@@ -2880,8 +2882,10 @@ Volume::ReadAttr(void* _node, void* cookie, off_t pos,
 		|| reply->bytesRead > bufferSize) {
 		return B_BAD_DATA;
 	}
-	if (reply->bytesRead > 0)
-		memcpy(buffer, readBuffer, reply->bytesRead);
+	if (reply->bytesRead > 0
+		&& user_memcpy(buffer, readBuffer, reply->bytesRead) < B_OK) {
+		return B_BAD_ADDRESS;
+	}
 	*bytesRead = reply->bytesRead;
 	_SendReceiptAck(port);
 	return error;
@@ -4518,7 +4522,7 @@ PRINT(("Volume::_PutAllPendingVNodes()\n"));
 
 	MutexLocker locker(fLock);
 
-	if (!fVNodeCountingEnabled)	{
+	if (!fVNodeCountingEnabled) {
 		PRINT(("Volume::_PutAllPendingVNodes() failed: vnode counting "
 			"disabled\n"));
 		return USERLAND_IOCTL_VNODE_COUNTING_DISABLED;

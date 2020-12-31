@@ -1,6 +1,8 @@
 SubDir HAIKU_TOP src add-ons media plugins ape_reader ;
 
 UsePrivateHeaders media ;
+UsePrivateHeaders [ FDirName media experimental ] ;
+
 SubDirHdrs [ FDirName $(SUBDIR) ../LibMonkeysAudio ] ;
 
 SubDirHdrs [ FDirName $(SUBDIR) LibMonkeysAudio ] ;
@@ -12,7 +14,7 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 		Addon [ MultiArchDefaultGristFiles ape_reader ] :
 			APEReader.cpp
 			: [ MultiArchDefaultGristFiles libMonkeysAudio.a MAClib.a ]
-			be media [ TargetLibsupc++ ]
+			be media shared [ TargetLibsupc++ ]
 		;
 	}
 }

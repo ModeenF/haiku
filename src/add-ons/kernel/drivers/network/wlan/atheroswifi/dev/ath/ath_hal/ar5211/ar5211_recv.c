@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: ISC
+ *
  * Copyright (c) 2002-2008 Sam Leffler, Errno Consulting
  * Copyright (c) 2002-2006 Atheros Communications, Inc.
  *
@@ -14,7 +16,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/dev/ath/ath_hal/ar5211/ar5211_recv.c 326695 2017-12-08 15:57:29Z pfg $
  */
 #include "opt_ah.h"
 
@@ -30,8 +32,10 @@
  * Get the RXDP.
  */
 uint32_t
-ar5211GetRxDP(struct ath_hal *ah)
+ar5211GetRxDP(struct ath_hal *ah, HAL_RX_QUEUE qtype)
 {
+
+	HALASSERT(qtype == HAL_RX_QUEUE_HP);
 	return OS_REG_READ(ah, AR_RXDP);
 }
 
@@ -39,8 +43,10 @@ ar5211GetRxDP(struct ath_hal *ah)
  * Set the RxDP.
  */
 void
-ar5211SetRxDP(struct ath_hal *ah, uint32_t rxdp)
+ar5211SetRxDP(struct ath_hal *ah, uint32_t rxdp, HAL_RX_QUEUE qtype)
 {
+
+	HALASSERT(qtype == HAL_RX_QUEUE_HP);
 	OS_REG_WRITE(ah, AR_RXDP, rxdp);
 	HALASSERT(OS_REG_READ(ah, AR_RXDP) == rxdp);
 }

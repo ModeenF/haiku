@@ -20,7 +20,8 @@
 
 const usb_serial_device kFTDIDevices[] = {
 	{VENDOR_FTDI, 0x8372, "FTDI 8U100AX serial converter"},
-	{VENDOR_FTDI, 0x6001, "FTDI 8U232AM serial converter"}
+	{VENDOR_FTDI, 0x6001, "FTDI 8U232AM serial converter"},
+	{VENDOR_FTDI, 0x6015, "FTDI FT231X serial converter"}
 };
 
 #define FTDI_BUFFER_SIZE		64
@@ -37,6 +38,7 @@ virtual	status_t				ResetDevice();
 
 virtual	status_t				SetLineCoding(usb_cdc_line_coding *coding);
 virtual	status_t				SetControlLineState(uint16 state);
+virtual	status_t				SetHardwareFlowControl(bool enable);
 
 virtual	void					OnRead(char **buffer, size_t *numBytes);
 virtual	void					OnWrite(const char *buffer, size_t *numBytes,

@@ -1,6 +1,6 @@
 /*
  * Copyright 2001-2011 Haiku, Inc. All Rights Reserved.
- * Distributed under the terms of the Haiku License.
+ * Distributed under the terms of the MIT License.
  */
 #ifndef _PTHREAD_H_
 #define _PTHREAD_H_
@@ -80,10 +80,12 @@ extern "C" {
 	{ PTHREAD_MUTEX_RECURSIVE, 0, -42, -1, 0 }
 #define PTHREAD_COND_INITIALIZER	\
 	{ 0, -42, NULL, 0, 0 }
+#define PTHREAD_RWLOCK_INITIALIZER	\
+	{ 0, -1, {{0}} }
 
 /* mutex functions */
 extern int pthread_mutex_destroy(pthread_mutex_t *mutex);
-extern int pthread_mutex_getprioceiling(pthread_mutex_t *mutex,
+extern int pthread_mutex_getprioceiling(const pthread_mutex_t *mutex,
 	int *_priorityCeiling);
 extern int pthread_mutex_init(pthread_mutex_t *mutex,
 	const pthread_mutexattr_t *attr);
@@ -97,13 +99,13 @@ extern int pthread_mutex_unlock(pthread_mutex_t *mutex);
 
 /* mutex attribute functions */
 extern int pthread_mutexattr_destroy(pthread_mutexattr_t *mutexAttr);
-extern int pthread_mutexattr_getprioceiling(pthread_mutexattr_t *mutexAttr,
+extern int pthread_mutexattr_getprioceiling(const pthread_mutexattr_t *mutexAttr,
 	int *_priorityCeiling);
-extern int pthread_mutexattr_getprotocol(pthread_mutexattr_t *mutexAttr,
+extern int pthread_mutexattr_getprotocol(const pthread_mutexattr_t *mutexAttr,
 	int *_protocol);
-extern int pthread_mutexattr_getpshared(pthread_mutexattr_t *mutexAttr,
+extern int pthread_mutexattr_getpshared(const pthread_mutexattr_t *mutexAttr,
 	int *_processShared);
-extern int pthread_mutexattr_gettype(pthread_mutexattr_t *mutexAttr,
+extern int pthread_mutexattr_gettype(const pthread_mutexattr_t *mutexAttr,
 	int *_type);
 extern int pthread_mutexattr_init(pthread_mutexattr_t *mutexAttr);
 extern int pthread_mutexattr_setprioceiling(pthread_mutexattr_t *mutexAttr,
@@ -113,6 +115,20 @@ extern int pthread_mutexattr_setprotocol(pthread_mutexattr_t *mutexAttr,
 extern int pthread_mutexattr_setpshared(pthread_mutexattr_t *mutexAttr,
 	int processShared);
 extern int pthread_mutexattr_settype(pthread_mutexattr_t *mutexAttr, int type);
+
+/* barrier functions */
+extern int pthread_barrier_init(pthread_barrier_t *barrier,
+	const pthread_barrierattr_t *attr, unsigned count);
+extern int pthread_barrier_destroy(pthread_barrier_t *barrier);
+extern int pthread_barrier_wait(pthread_barrier_t *barrier);
+
+/* barrier attribute functions */
+extern int pthread_barrierattr_destroy(pthread_barrierattr_t *attr);
+extern int pthread_barrierattr_getpshared(const pthread_barrierattr_t *attr,
+	int *shared);
+extern int pthread_barrierattr_init(pthread_barrierattr_t *attr);
+extern int pthread_barrierattr_setpshared(pthread_barrierattr_t *attr,
+	int shared);
 
 /* condition variable functions */
 extern int pthread_cond_destroy(pthread_cond_t *cond);
@@ -193,6 +209,11 @@ extern int pthread_attr_getguardsize(const pthread_attr_t *attr,
 	size_t *guardsize);
 extern int pthread_attr_setguardsize(pthread_attr_t *attr, size_t guardsize);
 
+extern int pthread_attr_getstack(const pthread_attr_t *attr,
+	void **stackaddr, size_t *stacksize);
+extern int pthread_attr_setstack(pthread_attr_t *attr, void *stackaddr,
+	size_t stacksize);
+
 #if 0   /* Unimplemented attribute functions: */
 
 /* [TPS] */
@@ -204,25 +225,14 @@ extern int pthread_attr_getschedpolicy(const pthread_attr_t *attr,
 	int *policy);
 extern int pthread_attr_setschedpolicy(pthread_attr_t *attr, int policy);
 
-/* [TSA] */
-extern int pthread_attr_getstackaddr(const pthread_attr_t *attr,
-	void **stackaddr);
-extern int pthread_attr_setstackaddr(pthread_attr_t *attr, void *stackaddr);
-
-/* [TSA TSS] */
-extern int pthread_attr_getstack(const pthread_attr_t *attr,
-	void **stackaddr, size_t *stacksize);
-extern int pthread_attr_setstack(pthread_attr_t *attr, void *stackaddr, size_t stacksize);
-
 #endif	/* 0 */
-
 
 /* thread functions */
 extern int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
 	void *(*start_routine)(void*), void *arg);
 extern int pthread_detach(pthread_t thread);
 extern int pthread_equal(pthread_t t1, pthread_t t2);
-extern void pthread_exit(void *value_ptr);
+extern void pthread_exit(void *value_ptr) __attribute__ ((noreturn));
 extern int pthread_join(pthread_t thread, void **_value);
 extern pthread_t pthread_self(void);
 extern int pthread_getconcurrency(void);

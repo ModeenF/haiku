@@ -6,7 +6,7 @@
 #include <Alert.h>
 #include <Button.h>
 #include <Catalog.h>
-#include <GroupLayoutBuilder.h>
+#include <LayoutBuilder.h>
 #include <ListView.h>
 #include <ListItem.h>
 #include <MessageRunner.h>
@@ -101,8 +101,6 @@ InquiryPanel::InquiryPanel(BRect frame, LocalDevice* lDevice)
 	fLocalDevice(lDevice)
 
 {
-	SetLayout(new BGroupLayout(B_HORIZONTAL));
-
 	fScanProgress = new BStatusBar("status",
 		B_TRANSLATE("Scanning progress"), "");
 	activeColor = fScanProgress->BarColor();
@@ -141,10 +139,7 @@ InquiryPanel::InquiryPanel(BRect frame, LocalDevice* lDevice)
 		fDiscoveryAgent = fLocalDevice->GetDiscoveryAgent();
 		fDiscoveryListener = new PanelDiscoveryListener(this);
 
-
 		SetTitle((const char*)(fLocalDevice->GetFriendlyName().String()));
-
-
 	} else {
 		fMessage->SetText(B_TRANSLATE("There isn't any Bluetooth LocalDevice "
 			"registered on the system."));
@@ -154,21 +149,17 @@ InquiryPanel::InquiryPanel(BRect frame, LocalDevice* lDevice)
 	fRetrieveMessage = new BMessage(kMsgRetrieve);
 	fSecondsMessage = new BMessage(kMsgSecond);
 
-
-	AddChild(BGroupLayoutBuilder(B_VERTICAL, 10)
+	BLayoutBuilder::Group<>(this, B_VERTICAL, 10)
+		.SetInsets(15)
 		.Add(fMessage)
-		.Add(BSpaceLayoutItem::CreateVerticalStrut(5))
-		.Add(fScanProgress)
-		.Add(BSpaceLayoutItem::CreateVerticalStrut(5))
+		.Add(fScanProgress, 10)
 		.Add(fScrollView)
-		.Add(BSpaceLayoutItem::CreateVerticalStrut(5))
-		.Add(BGroupLayoutBuilder(B_HORIZONTAL, 10)
+		.AddGroup(B_HORIZONTAL, 10)
 			.Add(fAddButton)
 			.AddGlue()
 			.Add(fInquiryButton)
-		)
-		.SetInsets(15, 25, 15, 15)
-	);
+		.End()
+	.End();
 }
 
 
@@ -223,7 +214,8 @@ InquiryPanel::MessageReceived(BMessage* message)
 			fRemoteList->MakeEmpty();
 			fScanProgress->Reset();
 			fScanProgress->SetTo(1);
-			fScanProgress->SetTrailingText(B_TRANSLATE("Starting scan..."));
+			fScanProgress->SetTrailingText(B_TRANSLATE("Starting scan"
+				B_UTF8_ELLIPSIS));
 			fScanProgress->SetBarColor(activeColor);
 
 			fAddButton->SetEnabled(false);
@@ -243,7 +235,8 @@ InquiryPanel::MessageReceived(BMessage* message)
 			fRetrieving = true;
 			labelPlaced = false;
 			fScanProgress->SetTo(100);
-			fScanProgress->SetTrailingText(B_TRANSLATE("Retrieving names..."));
+			fScanProgress->SetTrailingText(B_TRANSLATE("Retrieving names"
+				B_UTF8_ELLIPSIS));
 			BMessageRunner::StartSending(fMessenger, fRetrieveMessage, 1000000, 1);
 
 		break;
@@ -259,7 +252,7 @@ InquiryPanel::MessageReceived(BMessage* message)
 				BString seconds("");
 				seconds << (int)(timer - scanningTime);
 
-				elapsedTime.ReplaceFirst("%1", seconds.String()); 
+				elapsedTime.ReplaceFirst("%1", seconds.String());
 				fScanProgress->SetTrailingText(elapsedTime.String());
 
 				scanningTime = scanningTime + 1;
@@ -276,8 +269,8 @@ InquiryPanel::MessageReceived(BMessage* message)
 
 						labelPlaced = true;
 						BString progressText(B_TRANSLATE("Retrieving name of %1"));
-							
-						BString namestr;						
+
+						BString namestr;
 						namestr << bdaddrUtils::ToString(fDiscoveryAgent
 							->RetrieveDevices(0).ItemAt(retrievalIndex)
 							->GetBluetoothAddress());
@@ -290,10 +283,10 @@ InquiryPanel::MessageReceived(BMessage* message)
 						((DeviceListItem*)fRemoteList->ItemAt(retrievalIndex))
 							->SetDevice((BluetoothDevice*) fDiscoveryAgent
 							->RetrieveDevices(0).ItemAt(retrievalIndex));
-        				fRemoteList->InvalidateItem(retrievalIndex);
+						fRemoteList->InvalidateItem(retrievalIndex);
 
-        				retrievalIndex++;
-        				labelPlaced = false;
+						retrievalIndex++;
+						labelPlaced = false;
 					}
 
 					BMessageRunner::StartSending(fMessenger, fRetrieveMessage, 500000, 1);

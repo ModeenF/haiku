@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: ISC
+ *
  * Copyright (c) 2002-2009 Sam Leffler, Errno Consulting
  * Copyright (c) 2005-2006 Atheros Communications, Inc.
  * All rights reserved.
@@ -15,7 +17,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/dev/ath/ath_hal/ah_regdomain/ah_rd_domains.h 326695 2017-12-08 15:57:29Z pfg $
  */
 
 #ifndef	__AH_REGDOMAIN_DOMAINS_H__
@@ -240,6 +242,17 @@ static REG_DOMAIN regDomains[] = {
 	 .chan11a_dyn_turbo	= BM3(T1_5200_5240, T1_5280_5280, T1_5765_5805),
 	 .chan11a_half		= BM3(F7_5180_5240, F7_5260_5320, F9_5745_5825),
 	 .chan11a_quarter	= BM3(F8_5180_5240, F8_5260_5320,F10_5745_5825),
+	},
+
+	{.regDmnEnum		= FCC6,
+	 .conformanceTestLimit	= FCC,
+	 .chan11a		= BM5(F8_5180_5240, F5_5260_5320, F1_5500_5580, F2_5660_5720, F6_5745_5825),
+	 .chan11a_turbo		= BM3(T7_5210_5210, T3_5250_5290, T2_5760_5800),
+	 .chan11a_dyn_turbo	= BM4(T7_5200_5200, T1_5240_5240, T2_5280_5280, T1_5765_5805),
+#if 0
+	 .chan11a_half		= BM3(F7_5180_5240, F7_5260_5320, F9_5745_5825),
+	 .chan11a_quarter	= BM3(F8_5180_5240, F8_5260_5320,F10_5745_5825),
+#endif
 	},
 
 	{.regDmnEnum		= MKK1,
@@ -721,6 +734,31 @@ static REG_DOMAIN regDomains[] = {
 	 .dfsMask		= DFS_FCC3 | DFS_ETSI,
 	 .pscan			= PSCAN_WWR,
 	 .flags			= DISALLOW_ADHOC_11A,
+	 .chan11a		= BM4(W1_5260_5320,
+				      W1_5180_5240,
+				      W1_5745_5825,
+				      W1_5500_5700),
+	 .chan11b		= BM7(W1_2412_2412,
+				      W1_2437_2442,
+				      W1_2462_2462,
+				      W1_2472_2472,
+				      W1_2417_2432,
+				      W1_2447_2457,
+				      W1_2467_2467),
+	 .chan11g		= BM7(WG1_2412_2412,
+				      WG1_2437_2442,
+				      WG1_2462_2462,
+				      WG1_2472_2472,
+				      WG1_2417_2432,
+				      WG1_2447_2457,
+				      WG1_2467_2467),
+	 .chan11g_turbo		= BM1(T3_2437_2437)},
+
+	{.regDmnEnum		= WORC_WORLD,
+	 .conformanceTestLimit	= NO_CTL,
+	 .dfsMask		= DFS_FCC3 | DFS_ETSI,
+	 .pscan			= PSCAN_WWR,
+	 .flags			= ADHOC_PER_11D,
 	 .chan11a		= BM4(W1_5260_5320,
 				      W1_5180_5240,
 				      W1_5745_5825,

@@ -33,6 +33,7 @@
 #include <package/hpkg/PackageDataReader.h>
 
 #include <AutoDeleter.h>
+#include <AutoDeleterPosix.h>
 #include <RangeArray.h>
 
 #include <package/hpkg/HPKGDefsPrivate.h>
@@ -467,7 +468,7 @@ PackageWriterImpl::Init(const char* fileName,
 		return _Init(NULL, false, fileName, parameters);
 	} catch (status_t error) {
 		return error;
-	} catch (std::bad_alloc) {
+	} catch (std::bad_alloc&) {
 		fListener->PrintError("Out of memory!\n");
 		return B_NO_MEMORY;
 	}
@@ -482,7 +483,7 @@ PackageWriterImpl::Init(BPositionIO* file, bool keepFile,
 		return _Init(file, keepFile, NULL, parameters);
 	} catch (status_t error) {
 		return error;
-	} catch (std::bad_alloc) {
+	} catch (std::bad_alloc&) {
 		fListener->PrintError("Out of memory!\n");
 		return B_NO_MEMORY;
 	}
@@ -574,7 +575,7 @@ PackageWriterImpl::AddEntry(const char* fileName, int fd)
 		return _RegisterEntry(fileName, fd);
 	} catch (status_t error) {
 		return error;
-	} catch (std::bad_alloc) {
+	} catch (std::bad_alloc&) {
 		fListener->PrintError("Out of memory!\n");
 		return B_NO_MEMORY;
 	}
@@ -614,7 +615,7 @@ PackageWriterImpl::Finish()
 		return _Finish();
 	} catch (status_t error) {
 		return error;
-	} catch (std::bad_alloc) {
+	} catch (std::bad_alloc&) {
 		fListener->PrintError("Out of memory!\n");
 		return B_NO_MEMORY;
 	}
@@ -631,7 +632,7 @@ PackageWriterImpl::Recompress(BPositionIO* inputFile)
 		return _Recompress(inputFile);
 	} catch (status_t error) {
 		return error;
-	} catch (std::bad_alloc) {
+	} catch (std::bad_alloc&) {
 		fListener->PrintError("Out of memory!\n");
 		return B_NO_MEMORY;
 	}
@@ -1138,7 +1139,7 @@ PackageWriterImpl::_UpdateCheckEntryCollisions(Attribute* parentAttribute,
 
 		// first we check for colliding node attributes, though
 		if (DIR* attrDir = fs_fopen_attr_dir(fd)) {
-			CObjectDeleter<DIR, int> attrDirCloser(attrDir, fs_close_attr_dir);
+			AttrDirCloser attrDirCloser(attrDir);
 
 			while (dirent* entry = fs_read_attr_dir(attrDir)) {
 				attr_info attrInfo;
@@ -1184,7 +1185,7 @@ PackageWriterImpl::_UpdateCheckEntryCollisions(Attribute* parentAttribute,
 			close(clonedFD);
 			throw status_t(errno);
 		}
-		CObjectDeleter<DIR, int> dirCloser(dir, closedir);
+		DirCloser dirCloser(dir);
 
 		while (dirent* entry = readdir(dir)) {
 			// skip "." and ".."
@@ -1525,7 +1526,7 @@ PackageWriterImpl::_AddEntry(int dirFD, Entry* entry, const char* fileName,
 
 	// add attributes
 	if (DIR* attrDir = fs_fopen_attr_dir(fd)) {
-		CObjectDeleter<DIR, int> attrDirCloser(attrDir, fs_close_attr_dir);
+		AttrDirCloser attrDirCloser(attrDir);
 
 		while (dirent* entry = fs_read_attr_dir(attrDir)) {
 			attr_info attrInfo;
@@ -1586,7 +1587,7 @@ PackageWriterImpl::_AddDirectoryChildren(Entry* entry, int fd, char* pathBuffer)
 			close(clonedFD);
 			throw status_t(errno);
 		}
-		CObjectDeleter<DIR, int> dirCloser(dir, closedir);
+		DirCloser dirCloser(dir);
 
 		while (dirent* entry = readdir(dir)) {
 			// skip "." and ".."

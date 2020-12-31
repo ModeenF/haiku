@@ -203,18 +203,9 @@ InterfaceView::_Update(bool updateWirelessNetworks)
 	bool isWireless = device.IsWireless();
 	bool disabled = (fInterface.Flags() & IFF_UP) == 0;
 
-	if (fInterface.HasLink()) {
-		if (isWireless) {
-			// TODO!
-			BString network = "---";
-			network.Prepend(" (");
-			network.Prepend(B_TRANSLATE("connected"));
-			network.Append(")");
-			fStatusField->SetText(network.String());
-		} else {
-			fStatusField->SetText(B_TRANSLATE("connected"));
-		}
-	} else
+	if (fInterface.HasLink())
+		fStatusField->SetText(B_TRANSLATE("connected"));
+	else
 		fStatusField->SetText(B_TRANSLATE("disconnected"));
 
 	BNetworkAddress hardwareAddress;
@@ -263,6 +254,23 @@ InterfaceView::_Update(bool updateWirelessNetworks)
 		wireless_network network;
 		int32 count = 0;
 		cookie = 0;
+		if ((fPulseCount % 15) == 0
+				&& device.GetNextNetwork(cookie, network) != B_OK) {
+			// We don't seem to know of any networks, and it's been long
+			// enough since the last scan, so trigger one to try and
+			// find some networks.
+			device.Scan(false, false);
+
+			// We don't want to block for the full length of the scan, but
+			// 50ms is often more than enough to find at least one network,
+			// and the increase in perceived QoS to the user of not seeing
+			// "no wireless networks" if we can avoid it is great enough
+			// to merit such a wait. It's only just over ~4 vertical
+			// retraces, anyway.
+			snooze(50 * 1000);
+		}
+
+		cookie = 0;
 		while (device.GetNextNetwork(cookie, network) == B_OK) {
 			BMessage* message = new BMessage(kMsgJoinNetwork);
 
@@ -296,7 +304,8 @@ InterfaceView::_Update(bool updateWirelessNetworks)
 	}
 
 	//fRenegotiateButton->SetEnabled(!disabled);
-	fToggleButton->SetLabel(disabled ? "Enable" : "Disable");
+	fToggleButton->SetLabel(disabled
+		? B_TRANSLATE("Enable") : B_TRANSLATE("Disable"));
 
 	return B_OK;
 }

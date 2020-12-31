@@ -92,6 +92,19 @@ MediaTrackVideoSupplier::ReadFrame(void* buffer, bigtime_t* performanceTime,
 	if (!buffer)
 		return B_BAD_VALUE;
 
+	// Hack for single frame video (cover art). Media player really wants a
+	// video track and will not seek in the middle of a video frame. So we
+	// pretend to be a 25fps stream and keep rendering the same frame over
+	// and over again.
+	if (fVideoTrack->CountFrames() < 2) {
+		static int already = false;
+		if (already) {
+			wasCached = true;
+			return B_OK;
+		}
+		already = true;
+	}
+
 	status_t ret = B_OK;
 	if (format.display.format
 			!= fFormat.u.raw_video.display.format
@@ -112,11 +125,9 @@ MediaTrackVideoSupplier::ReadFrame(void* buffer, bigtime_t* performanceTime,
 	media_header mediaHeader;
 	ret = fVideoTrack->ReadFrames(buffer, &frameCount, &mediaHeader);
 
-	if (ret < B_OK) {
-		if (ret != B_LAST_BUFFER_ERROR) {
-			fprintf(stderr, "MediaTrackVideoSupplier::ReadFrame() - "
-				"error while reading frame of track: %s\n", strerror(ret));
-		}
+	if (ret < B_OK && ret != B_LAST_BUFFER_ERROR) {
+		fprintf(stderr, "MediaTrackVideoSupplier::ReadFrame() - "
+			"error while reading frame of track: %s\n", strerror(ret));
 	} else
 		fPerformanceTime = mediaHeader.start_time;
 
@@ -137,6 +148,8 @@ delete bitmap;
 }
 #endif // DEBUG_DECODED_FRAME
 
+	if (ret == B_LAST_BUFFER_ERROR && fVideoTrack->CountFrames() < 2)
+		return B_OK;
 	return ret;
 }
 
@@ -146,6 +159,9 @@ MediaTrackVideoSupplier::FindKeyFrameForFrame(int64* frame)
 {
 	if (!fVideoTrack)
 		return B_NO_INIT;
+
+	if (fVideoTrack->CountFrames() < 2)
+		return B_OK;
 
 //int64 wantedFrame = *frame;
 	status_t ret = fVideoTrack->FindKeyFrameForFrame(frame,
@@ -161,7 +177,10 @@ MediaTrackVideoSupplier::SeekToTime(bigtime_t* performanceTime)
 	if (!fVideoTrack)
 		return B_NO_INIT;
 
-bigtime_t _performanceTime = *performanceTime;
+	if (fVideoTrack->CountFrames() < 2)
+		return B_OK;
+
+	bigtime_t _performanceTime = *performanceTime;
 	status_t ret = fVideoTrack->FindKeyFrameForTime(performanceTime,
 		B_MEDIA_SEEK_CLOSEST_BACKWARD);
 	if (ret < B_OK)
@@ -186,6 +205,9 @@ MediaTrackVideoSupplier::SeekToFrame(int64* frame)
 {
 	if (!fVideoTrack)
 		return B_NO_INIT;
+
+	if (fVideoTrack->CountFrames() < 2)
+		return B_OK;
 
 	int64 wantFrame = *frame;
 
@@ -268,7 +290,7 @@ status_t
 MediaTrackVideoSupplier::_SwitchFormat(color_space format, uint32 bytesPerRow)
 {
 	// get the encoded format
-	memset(&fFormat, 0, sizeof(media_format));
+	fFormat.Clear();
 	status_t ret = fVideoTrack->EncodedFormat(&fFormat);
 	if (ret < B_OK) {
 		printf("MediaTrackVideoSupplier::_SwitchFormat() - "
@@ -349,7 +371,7 @@ MediaTrackVideoSupplier::_SetDecodedFormat(uint32 width, uint32 height,
 {
 	// specifiy the decoded format. we derive this information from
 	// the encoded format (width & height).
-	memset(&fFormat, 0, sizeof(media_format));
+	fFormat.Clear();
 //	fFormat.u.raw_video.last_active = height - 1;
 //	fFormat.u.raw_video.orientation = B_VIDEO_TOP_LEFT_RIGHT;
 //	fFormat.u.raw_video.pixel_width_aspect = 1;

@@ -1,6 +1,8 @@
 SubDir HAIKU_TOP src build libpackage ;
 
-UsePrivateBuildHeaders kernel package shared storage support ;
+UsePrivateBuildHeaders kernel package shared libroot storage support ;
+
+UseHeaders [ FDirName $(HAIKU_TOP) headers os net ] : true ;
 
 SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src kits package ] ;
 SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src kits package hpkg ] ;
@@ -75,12 +77,6 @@ HPKG_SOURCES =
 	ReaderImplBaseV1.cpp
 ;
 
-# TODO: remove this hack once gcc2 has -iquote implemented
-if $(HOST_PLATFORM) = haiku_host &&  $(HOST_GCC_VERSION[1]) < 3 {
-	local locations = common/non-packaged common system ;
-	SourceHdrs FetchFileJob.cpp : /boot/$(locations)/develop/headers/curl ;
-}
-
 # locate the library
 MakeLocate libpackage_build.so : $(HOST_BUILD_COMPATIBILITY_LIB_DIR) ;
 
@@ -137,7 +133,7 @@ BuildPlatformSharedLibrary libpackage_build.so
 	SolverRepository.cpp
 	SolverResult.cpp
 	:
-	libshared_build.a $(HOST_LIBBE) curl $(HOST_LIBSTDC++)
+	libshared_build.a $(HOST_LIBBE) $(HOST_LIBSTDC++)
 ;
 
 HaikuSubInclude solver ;

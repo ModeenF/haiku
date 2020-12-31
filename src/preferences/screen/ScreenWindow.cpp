@@ -212,29 +212,51 @@ ScreenWindow::ScreenWindow(ScreenSettings* settings)
 
 	// box on the left with workspace count and monitor view
 
-	BBox* screenBox = new BBox("screen box");
-	BGroupLayout* layout = new BGroupLayout(B_VERTICAL, B_USE_SMALL_SPACING);
-	layout->SetInsets(B_USE_DEFAULT_SPACING, B_USE_DEFAULT_SPACING,
-		B_USE_DEFAULT_SPACING, B_USE_DEFAULT_SPACING);
-	screenBox->SetLayout(layout);
+	fScreenBox = new BBox("screen box");
+	BGroupView* groupView = new BGroupView(B_VERTICAL, B_USE_SMALL_SPACING);
+	fScreenBox->AddChild(groupView);
+	fScreenBox->SetLabel("placeholder");
+		// Needed for layouting, will be replaced with screen name/size
+	groupView->GroupLayout()->SetInsets(B_USE_DEFAULT_SPACING,
+		B_USE_DEFAULT_SPACING, B_USE_DEFAULT_SPACING, B_USE_DEFAULT_SPACING);
 
-	fMonitorInfo = new BStringView("monitor info", "");
-	fMonitorInfo->SetAlignment(B_ALIGN_CENTER);
-	screenBox->AddChild(fMonitorInfo);
-
-	fDeviceInfo = new BStringView("monitor info", "");
+	fDeviceInfo = new BStringView("device info", "");
 	fDeviceInfo->SetAlignment(B_ALIGN_CENTER);
-	screenBox->AddChild(fDeviceInfo);
+	groupView->AddChild(fDeviceInfo);
 
 	float scaling = std::max(1.0f, be_plain_font->Size() / 12.0f);
 	fMonitorView = new MonitorView(BRect(0.0, 0.0, 80.0 * scaling,
 			80.0 * scaling), "monitor", screen.Frame().IntegerWidth() + 1,
 		screen.Frame().IntegerHeight() + 1);
-	screenBox->AddChild(fMonitorView);
+	fMonitorView->SetToolTip(B_TRANSLATE("Set background" B_UTF8_ELLIPSIS));
+	groupView->AddChild(fMonitorView);
 
-	BStringView* workspaces = new BStringView("workspaces",
-		B_TRANSLATE("Workspaces"));
-	workspaces->SetAlignment(B_ALIGN_CENTER);
+	// brightness slider
+	fBrightnessSlider = new BSlider("brightness", B_TRANSLATE("Brightness:"),
+		NULL, 0, 255, B_HORIZONTAL);
+	groupView->AddChild(fBrightnessSlider);
+
+	if (screen.GetBrightness(&fOriginalBrightness) == B_OK) {
+		fBrightnessSlider->SetModificationMessage(
+			new BMessage(SLIDER_BRIGHTNESS_MSG));
+		fBrightnessSlider->SetValue(fOriginalBrightness * 255);
+	} else {
+		// The driver does not support changing the brightness,
+		// so hide the slider
+		fBrightnessSlider->Hide();
+		fOriginalBrightness = -1;
+	}
+
+	// box on the left below the screen box with workspaces
+
+	BBox* workspacesBox = new BBox("workspaces box");
+	workspacesBox->SetLabel(B_TRANSLATE("Workspaces"));
+
+	BGroupLayout* workspacesLayout = new BGroupLayout(B_VERTICAL);
+	workspacesLayout->SetInsets(B_USE_DEFAULT_SPACING,
+		be_control_look->DefaultItemSpacing() * 2, B_USE_DEFAULT_SPACING,
+		B_USE_DEFAULT_SPACING);
+	workspacesBox->SetLayout(workspacesLayout);
 
 	fColumnsControl = new BSpinner("columns", B_TRANSLATE("Columns:"),
 		new BMessage(kMsgWorkspaceColumnsChanged));
@@ -252,25 +274,29 @@ ScreenWindow::ScreenWindow(ScreenSettings* settings)
 	fColumnsControl->SetValue(columns);
 	fRowsControl->SetValue(rows);
 
-	screenBox->AddChild(BLayoutBuilder::Group<>()
+	workspacesBox->AddChild(BLayoutBuilder::Group<>()
 		.AddGroup(B_VERTICAL, B_USE_SMALL_SPACING)
-			.Add(workspaces)
-			.AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
-				// columns
-				.Add(fColumnsControl->CreateLabelLayoutItem(), 0, 0)
-				.Add(fColumnsControl->CreateTextViewLayoutItem(), 1, 0)
-				// rows
-				.Add(fRowsControl->CreateLabelLayoutItem(), 0, 1)
-				.Add(fRowsControl->CreateTextViewLayoutItem(), 1, 1)
+			.AddGroup(B_HORIZONTAL, 0)
+				.AddGlue()
+				.AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
+					// columns
+					.Add(fColumnsControl->CreateLabelLayoutItem(), 0, 0)
+					.Add(fColumnsControl->CreateTextViewLayoutItem(), 1, 0)
+					// rows
+					.Add(fRowsControl->CreateLabelLayoutItem(), 0, 1)
+					.Add(fRowsControl->CreateTextViewLayoutItem(), 1, 1)
+					.End()
+				.AddGlue()
 				.End()
 			.End()
 		.View());
 
-	fBackgroundsButton = new BButton("BackgroundsButton",
-		B_TRANSLATE("Set background" B_UTF8_ELLIPSIS),
-		new BMessage(BUTTON_LAUNCH_BACKGROUNDS_MSG));
-	fBackgroundsButton->SetFontSize(be_plain_font->Size() * 0.9);
-	screenBox->AddChild(fBackgroundsButton);
+	// put workspaces slider in a vertical group with a half space above so
+	// if hidden you won't see the extra space.
+	BView* workspacesView = BLayoutBuilder::Group<>(B_VERTICAL, 0)
+		.AddStrut(B_USE_HALF_ITEM_SPACING)
+		.Add(workspacesBox)
+		.View();
 
 	// box on the right with screen resolution, etc.
 
@@ -526,10 +552,14 @@ ScreenWindow::ScreenWindow(ScreenSettings* settings)
 	BLayoutBuilder::Group<>(this, B_VERTICAL, B_USE_DEFAULT_SPACING)
 		.AddGroup(B_HORIZONTAL)
 			.AddGroup(B_VERTICAL, 0, 1)
-				.AddStrut(floorf(controlsBox->TopBorderOffset()) - 1)
-				.Add(screenBox)
+				.AddStrut(floorf(controlsBox->TopBorderOffset()
+					- fScreenBox->TopBorderOffset()))
+				.Add(fScreenBox)
+				.Add(workspacesView)
 				.End()
-			.Add(controlsBox, 2)
+			.AddGroup(B_VERTICAL, 0, 1)
+				.Add(controlsBox, 2)
+				.End()
 			.End()
 		.AddGroup(B_HORIZONTAL, B_USE_DEFAULT_SPACING)
 			.Add(fRevertButton)
@@ -719,7 +749,8 @@ ScreenWindow::_UpdateRefreshControl()
 		if (item->Message()->FindFloat("refresh") == fSelected.refresh) {
 			item->SetMarked(true);
 			// "Other" items only contains a refresh rate when active
-			fOtherRefresh->SetLabel(B_TRANSLATE("Other" B_UTF8_ELLIPSIS));
+			if (fOtherRefresh != NULL)
+				fOtherRefresh->SetLabel(B_TRANSLATE("Other" B_UTF8_ELLIPSIS));
 			return;
 		}
 	}
@@ -1117,6 +1148,11 @@ ScreenWindow::MessageReceived(BMessage* message)
 			_UpdateWorkspaceButtons();
 
 			fScreenMode.Revert();
+
+			BScreen screen(this);
+			screen.SetBrightness(fOriginalBrightness);
+			fBrightnessSlider->SetValue(fOriginalBrightness * 255);
+
 			_UpdateActiveMode();
 			break;
 		}
@@ -1130,6 +1166,18 @@ ScreenWindow::MessageReceived(BMessage* message)
 			fModified = true;
 			_UpdateActiveMode();
 			break;
+
+		case UPDATE_DESKTOP_COLOR_MSG:
+			PostMessage(message, fMonitorView);
+			break;
+
+		case SLIDER_BRIGHTNESS_MSG:
+		{
+			BScreen screen(this);
+			screen.SetBrightness(message->FindInt32("be:value") / 255.f);
+			_CheckApplyEnabled();
+			break;
+		}
 
 		default:
 			BWindow::MessageReceived(message);
@@ -1210,8 +1258,13 @@ ScreenWindow::_CheckApplyEnabled()
 	uint32 rows;
 	BPrivate::get_workspaces_layout(&columns, &rows);
 
+	BScreen screen(this);
+	float brightness = -1;
+	screen.GetBrightness(&brightness);
+
 	fRevertButton->SetEnabled(columns != fOriginalWorkspacesColumns
 		|| rows != fOriginalWorkspacesRows
+		|| brightness != fOriginalBrightness
 		|| fSelected != fOriginal);
 }
 
@@ -1238,13 +1291,9 @@ ScreenWindow::_UpdateMonitor()
 		snprintf(text, sizeof(text), "%s%s%s %g\"", info.vendor,
 			info.name[0] ? " " : "", info.name, diagonalInches);
 
-		fMonitorInfo->SetText(text);
-
-		if (fMonitorInfo->IsHidden(fMonitorInfo))
-			fMonitorInfo->Show();
+		fScreenBox->SetLabel(text);
 	} else {
-		if (!fMonitorInfo->IsHidden(fMonitorInfo))
-			fMonitorInfo->Hide();
+		fScreenBox->SetLabel(B_TRANSLATE("Display info"));
 	}
 
 	// Add info about the graphics device

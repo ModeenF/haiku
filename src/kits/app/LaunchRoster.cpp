@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 Haiku, Inc. All rights reserved.
+ * Copyright 2015-2017 Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -167,6 +167,25 @@ BLaunchRoster::Target(const char* name, const BMessage* data,
 
 
 status_t
+BLaunchRoster::StopTarget(const char* name, bool force)
+{
+	if (name == NULL)
+		return B_BAD_VALUE;
+
+	BMessage request(B_STOP_LAUNCH_TARGET);
+	status_t status = request.AddInt32("user", getuid());
+	if (status == B_OK)
+		status = request.AddString("target", name);
+	if (status == B_OK)
+		status = request.AddBool("force", force);
+	if (status != B_OK)
+		return status;
+
+	return _SendRequest(request);
+}
+
+
+status_t
 BLaunchRoster::Start(const char* name)
 {
 	if (name == NULL)
@@ -319,11 +338,29 @@ BLaunchRoster::GetJobInfo(const char* name, BMessage& info)
 }
 
 
+status_t
+BLaunchRoster::GetLog(BMessage& info)
+{
+	return _GetLog(NULL, info);
+}
+
+
+status_t
+BLaunchRoster::GetLog(const BMessage& filter, BMessage& info)
+{
+	return _GetLog(&filter, info);
+}
+
+
 void
 BLaunchRoster::_InitMessenger()
 {
+#ifdef TEST_MODE
+	port_id daemonPort = find_port(B_LAUNCH_DAEMON_PORT_NAME);
+#else
 	// find the launch_daemon port
 	port_id daemonPort = BPrivate::get_launch_daemon_port();
+#endif
 	port_info info;
 	if (daemonPort >= 0 && get_port_info(daemonPort, &info) == B_OK) {
 		BMessenger::Private(fMessenger).SetTo(info.team, daemonPort,
@@ -386,6 +423,20 @@ BLaunchRoster::_GetInfo(uint32 what, const char* name, BMessage& info)
 	status_t status = request.AddInt32("user", getuid());
 	if (status == B_OK)
 		status = request.AddString("name", name);
+	if (status != B_OK)
+		return status;
+
+	return _SendRequest(request, info);
+}
+
+
+status_t
+BLaunchRoster::_GetLog(const BMessage* filter, BMessage& info)
+{
+	BMessage request(B_GET_LAUNCH_LOG);
+	status_t status = request.AddInt32("user", getuid());
+	if (status == B_OK && filter != NULL)
+		status = request.AddMessage("filter", filter);
 	if (status != B_OK)
 		return status;
 

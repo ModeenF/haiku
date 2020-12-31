@@ -97,8 +97,8 @@ public:
 	};
 
 public:
-	char*					name;
 	area_id					id;
+	char					name[B_OS_NAME_LENGTH];
 	uint32					protection;
 	uint16					wiring;
 
@@ -148,9 +148,9 @@ protected:
 			status_t			Init(const char* name, uint32 allocationFlags);
 
 protected:
-			friend class VMAddressSpace;
-			friend class VMKernelAddressSpace;
-			friend class VMUserAddressSpace;
+			friend struct VMAddressSpace;
+			friend struct VMKernelAddressSpace;
+			friend struct VMUserAddressSpace;
 
 protected:
 			void				SetBase(addr_t base)	{ fBase = base; }

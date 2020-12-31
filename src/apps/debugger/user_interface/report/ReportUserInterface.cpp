@@ -1,5 +1,5 @@
 /*
- * Copyright 2015, Rene Gollent, rene@gollent.com.
+ * Copyright 2015-2016, Rene Gollent, rene@gollent.com.
  * Distributed under the terms of the MIT License.
  */
 
@@ -81,6 +81,15 @@ void
 ReportUserInterface::Terminate()
 {
 	fTerminating = true;
+}
+
+
+UserInterface*
+ReportUserInterface::Clone() const
+{
+	// the report interface does not support cloning, since
+	// it won't ever be asked to interactively restart.
+	return NULL;
 }
 
 
@@ -228,6 +237,11 @@ ReportUserInterface::ThreadStateChanged(const Team::ThreadEvent& event)
 void
 ReportUserInterface::DebugReportChanged(const Team::DebugReportEvent& event)
 {
-	printf("Debug report saved to %s\n", event.GetReportPath());
+	if (event.GetFinalStatus() == B_OK)
+		printf("Debug report saved to %s\n", event.GetReportPath());
+	else {
+		fprintf(stderr, "Failed to write debug report: %s\n", strerror(
+				event.GetFinalStatus()));
+	}
 	release_sem(fReportSemaphore);
 }

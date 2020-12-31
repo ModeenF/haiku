@@ -1,21 +1,31 @@
 /*
  * Copyright (c) 1998-2007 Matthijs Hollemans
- * All rights reserved. Distributed under the terms of the MIT License.
+ * Copyright (c) 2008-2017, Haiku Inc.
+ * Distributed under the terms of the MIT license.
+ *
+ * Authors:
+ *      Matthijs Holleman
+ *      Stephan Aßmus <superstippi@gmx.de>
+ *      Philippe Houdoin
  */
-
 
 #include "Grepper.h"
 
+#include <errno.h>
 #include <new>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/select.h>
+#include <sys/time.h>
 
 #include <Catalog.h>
 #include <Directory.h>
+#include <image.h>
 #include <List.h>
 #include <Locale.h>
 #include <NodeInfo.h>
+#include <OS.h>
 #include <Path.h>
 #include <UTF8.h>
 
@@ -26,13 +36,10 @@
 #define B_TRANSLATION_CONTEXT "Grepper"
 
 
+const char* kEOFTag = "//EOF";
+
+
 using std::nothrow;
-
-// TODO: stippi: Check if this is a the best place to maintain a global
-// list of files and folders for node monitoring. It should probably monitor
-// every file that was grepped, as well as every visited (sub) folder.
-// For the moment I don't know the life cycle of the Grepper object.
-
 
 char*
 strdup_to_utf8(uint32 encode, const char* src, int32 length)
@@ -85,12 +92,13 @@ Grepper::Grepper(const char* pattern, const Model* model,
 		const BHandler* target, FileIterator* iterator)
 	: fPattern(NULL),
 	  fTarget(target),
-	  fEscapeText(model->fEscapeText),
+	  fRegularExpression(model->fRegularExpression),
 	  fCaseSensitive(model->fCaseSensitive),
 	  fEncoding(model->fEncoding),
 
 	  fIterator(iterator),
-	  fThreadId(-1),
+	  fRunnerThreadId(-1),
+	  fXargsInput(-1),
 	  fMustQuit(false)
 {
 	if (fEncoding > 0) {
@@ -125,23 +133,23 @@ Grepper::Start()
 	Cancel();
 
 	fMustQuit = false;
-	fThreadId = spawn_thread(
-		_SpawnThread, "_GrepperThread", B_NORMAL_PRIORITY, this);
+	fRunnerThreadId = spawn_thread(
+		_SpawnRunnerThread, "Grep runner", B_NORMAL_PRIORITY, this);
 
-	resume_thread(fThreadId);
+	resume_thread(fRunnerThreadId);
 }
 
 
 void
 Grepper::Cancel()
 {
-	if (fThreadId < 0)
+	if (fRunnerThreadId < 0)
 		return;
 
 	fMustQuit = true;
 	int32 exitValue;
-	wait_for_thread(fThreadId, &exitValue);
-	fThreadId = -1;
+	wait_for_thread(fRunnerThreadId, &exitValue);
+	fRunnerThreadId = -1;
 }
 
 
@@ -149,52 +157,42 @@ Grepper::Cancel()
 
 
 int32
-Grepper::_SpawnThread(void* cookie)
+Grepper::_SpawnWriterThread(void* cookie)
 {
 	Grepper* self = static_cast<Grepper*>(cookie);
-	return self->_GrepperThread();
+	return self->_WriterThread();
 }
 
 
 int32
-Grepper::_GrepperThread()
+Grepper::_WriterThread()
 {
 	BMessage message;
+	char fileName[B_PATH_NAME_LENGTH*2];
+	int count = 0;
+	bigtime_t lastProgressReportTime = 0, now;
 
-	char fileName[B_PATH_NAME_LENGTH];
-	char tempString[B_PATH_NAME_LENGTH];
-	char command[B_PATH_NAME_LENGTH + 32];
-
-	BPath tempFile;
-	sprintf(fileName, "/tmp/SearchText%" B_PRId32, fThreadId);
-	tempFile.SetTo(fileName);
+	printf("paths_writer started.\n");
 
 	while (!fMustQuit && fIterator->GetNextName(fileName)) {
-
-		message.MakeEmpty();
-		message.what = MSG_REPORT_FILE_NAME;
-		message.AddString("filename", fileName);
-		fTarget.SendMessage(&message);
-
-		message.MakeEmpty();
-		message.what = MSG_REPORT_RESULT;
-		message.AddString("filename", fileName);
-
 		BEntry entry(fileName);
 		entry_ref ref;
 		entry.GetRef(&ref);
-		message.AddRef("ref", &ref);
-
 		if (!entry.Exists()) {
-			if (fIterator->NotifyNegatives())
+			if (fIterator->NotifyNegatives()) {
+				message.MakeEmpty();
+				message.what = MSG_REPORT_RESULT;
+				message.AddString("filename", fileName);
+				message.AddRef("ref", &ref);
 				fTarget.SendMessage(&message);
+			}
 			continue;
 		}
 
-		if (!_EscapeSpecialChars(fileName, B_PATH_NAME_LENGTH)) {
+		if (!_EscapeSpecialChars(fileName, sizeof(fileName))) {
+			char tempString[B_PATH_NAME_LENGTH + 32];
 			sprintf(tempString, B_TRANSLATE("%s: Not enough room to escape "
 				"the filename."), fileName);
-
 			message.MakeEmpty();
 			message.what = MSG_REPORT_ERROR;
 			message.AddString("error", tempString);
@@ -202,46 +200,290 @@ Grepper::_GrepperThread()
 			continue;
 		}
 
-		sprintf(command, "grep -hn %s %s \"%s\" > \"%s\"",
-			fCaseSensitive ? "" : "-i", fPattern, fileName, tempFile.Path());
+		count++;
 
-		int res = system(command);
+		// file exists, send it to xargs
+		write(fXargsInput, fileName, strlen(fileName));
+		write(fXargsInput, "\n", 1);
 
-		if (res == 0 || res == 1) {
-			FILE *results = fopen(tempFile.Path(), "r");
-
-			if (results != NULL) {
-				while (fgets(tempString, B_PATH_NAME_LENGTH, results) != 0) {
-					if (fEncoding > 0) {
-						char* tempdup = strdup_to_utf8(fEncoding, tempString,
-							strlen(tempString));
-						message.AddString("text", tempdup);
-						free(tempdup);
-					} else
-						message.AddString("text", tempString);
-				}
-
-				if (message.HasString("text") || fIterator->NotifyNegatives())
-					fTarget.SendMessage(&message);
-
-				fclose(results);
-				continue;
-			}
+		now = system_time();
+		// to avoid message flood,
+		// report progress no more than 20 times per second
+		if (now - lastProgressReportTime > 50000) {
+			message.MakeEmpty();
+			message.what = MSG_REPORT_FILE_NAME;
+			message.AddString("filename", fileName);
+			fTarget.SendMessage(&message);
+			lastProgressReportTime = now;
 		}
-
-		sprintf(tempString, B_TRANSLATE("%s: There was a problem running grep."), fileName);
-
-		message.MakeEmpty();
-		message.what = MSG_REPORT_ERROR;
-		message.AddString("error", tempString);
-		fTarget.SendMessage(&message);
 	}
 
-	// We wait with removing the temporary file until after the
-	// entire search has finished, to prevent a lot of flickering
-	// if the Tracker window for /tmp/ might be open.
+	write(fXargsInput, kEOFTag, strlen(kEOFTag));
+	write(fXargsInput, "\n", 1);
+	close(fXargsInput);
 
-	remove(tempFile.Path());
+	printf("paths_writer stopped (%d paths).\n", count);
+
+	return 0;
+}
+
+
+int32
+Grepper::_SpawnRunnerThread(void* cookie)
+{
+	Grepper* self = static_cast<Grepper*>(cookie);
+	return self->_RunnerThread();
+}
+
+
+int32
+Grepper::_RunnerThread()
+{
+	BMessage message;
+	char fileName[B_PATH_NAME_LENGTH];
+
+	const char* argv[32];
+	int argc = 0;
+	argv[argc++] = "xargs";
+
+	// can't use yet the --null mode due to pipe issue
+	// the xargs stdin input pipe closure is not detected
+	// by xargs. Instead, we use eof-string mode
+
+	// argv[argc++] = "--null";
+	argv[argc++] = "-E";
+	argv[argc++] = kEOFTag;
+
+	// Enable parallel mode
+	// Retrieve cpu count for to parallel xargs via -P argument
+	char cpuCount[8];
+	system_info sys_info;
+	get_system_info(&sys_info);
+	snprintf(cpuCount, sizeof(cpuCount), "%" B_PRIu32, sys_info.cpu_count);
+	argv[argc++] = "-P";
+	argv[argc++] = cpuCount;
+
+	// grep command driven by xargs dispatcher
+	argv[argc++] = "grep";
+	argv[argc++] = "-n"; // need matching line(s) number(s)
+	argv[argc++] = "-H"; // need filename prefix
+	if (! fCaseSensitive)
+		argv[argc++] = "-i";
+	if (! fRegularExpression)
+		argv[argc++] = "-F";	 // no a regexp: force fixed string,
+	// Add double dash argument to tell grep
+	// it's the end of commands options
+	argv[argc++] = "--";
+	argv[argc++] = fPattern;
+	argv[argc] = NULL;
+
+	// prepare xargs to run with stdin, stdout and stderr pipes
+
+	int oldStdIn, oldStdOut, oldStdErr;
+	oldStdIn  = dup(STDIN_FILENO);
+	oldStdOut = dup(STDOUT_FILENO);
+	oldStdErr = dup(STDERR_FILENO);
+
+	int fds[2];
+	if (pipe(fds) != 0) {
+		message.MakeEmpty();
+		message.what = MSG_REPORT_ERROR;
+		message.AddString("error",
+			B_TRANSLATE("Failed to open input pipe!"));
+		fTarget.SendMessage(&message);
+		return 0;
+	}
+	dup2(fds[0], STDIN_FILENO);
+	close(fds[0]);
+	fXargsInput = fds[1];	// write to in, appears on command's stdin
+
+	if (pipe(fds) != 0) {
+		close(fXargsInput);
+		message.MakeEmpty();
+		message.what = MSG_REPORT_ERROR;
+		message.AddString("error",
+			B_TRANSLATE("Failed to open output pipe!"));
+		fTarget.SendMessage(&message);
+		return 0;
+	}
+	dup2(fds[1], STDOUT_FILENO);
+	close(fds[1]);
+	int out = fds[0]; // read from out, taken from command's stdout
+
+	if (pipe(fds) != 0) {
+		close(fXargsInput);
+		close(out);
+		message.MakeEmpty();
+		message.what = MSG_REPORT_ERROR;
+		message.AddString("error",
+			B_TRANSLATE("Failed to open errors pipe!"));
+		fTarget.SendMessage(&message);
+		return 0;
+	}
+	dup2(fds[1], STDERR_FILENO);
+	close(fds[1]);
+	int err = fds[0]; // read from err, taken from command's stderr
+
+	// "load" xargs tool
+	thread_id xargsThread = load_image(argc, argv,
+		const_cast<const char**>(environ));
+	// xargsThread is suspended after loading
+
+	// restore our previous stdin, stdout and stderr
+	close(STDIN_FILENO);
+	dup(oldStdIn);
+	close(oldStdIn);
+	close(STDOUT_FILENO);
+	dup(oldStdOut);
+	close(oldStdOut);
+	close(STDERR_FILENO);
+	dup(oldStdErr);
+	close(oldStdErr);
+
+	if (xargsThread < B_OK) {
+		close(fXargsInput);
+		close(out);
+		close(err);
+		message.MakeEmpty();
+		message.what = MSG_REPORT_ERROR;
+		message.AddString("error",
+			B_TRANSLATE("Failed to start xargs program!"));
+		fTarget.SendMessage(&message);
+		return 0;
+	}
+
+	// Listen on xargs's stdout and stderr via select()
+	printf("Running: ");
+	for (int i = 0; i < argc; i++) {
+		printf("%s ", argv[i]);
+	}
+	printf("\n");
+
+	int fdl[2] = { out, err };
+	int maxfd = 0;
+	for (int i = 0; i < 2; i++) {
+		if (maxfd < fdl[i])
+			maxfd = fdl[i];
+	}
+
+	fd_set readSet;
+	struct timeval timeout = { 0, 100000 };
+	char line[B_PATH_NAME_LENGTH * 2];
+
+	FILE* output = fdopen(out, "r");
+	FILE* errors = fdopen(err, "r");
+
+	char currentFileName[B_PATH_NAME_LENGTH];
+	currentFileName[0] = '\0';
+	bool canReadOutput, canReadErrors;
+	canReadOutput = canReadErrors = true;
+
+	thread_id writerThread = spawn_thread(_SpawnWriterThread,
+		"Grep writer", B_LOW_PRIORITY, this);
+	set_thread_priority(xargsThread, B_LOW_PRIORITY);
+
+	// we're ready, let's go!
+	resume_thread(xargsThread);
+	resume_thread(writerThread);
+
+	while (!fMustQuit && (canReadOutput || canReadErrors)) {
+		FD_ZERO(&readSet);
+		if (canReadOutput) {
+			FD_SET(out, &readSet);
+		}
+		if (canReadErrors) {
+			FD_SET(err, &readSet);
+		}
+
+		int result = select(maxfd + 1, &readSet, NULL, NULL, &timeout);
+		if (result == -1 && errno == EINTR)
+			continue;
+		if (result == 0) {
+			// timeout, but meanwhile fMustQuit was changed maybe...
+			continue;
+		}
+		if (result < 0) {
+			perror("select():");
+			message.MakeEmpty();
+			message.what = MSG_REPORT_ERROR;
+			message.AddString("error", strerror(errno));
+			fTarget.SendMessage(&message);
+			break;
+		}
+
+		if (canReadOutput && FD_ISSET(out, &readSet)) {
+			if (fgets(line, sizeof(line), output) != NULL) {
+				// parse grep output
+				int lineNumber = -1;
+				int textPos = -1;
+				sscanf(line, "%[^\n:]:%d:%n", fileName, &lineNumber, &textPos);
+				// printf("sscanf(\"%s\") -> %s %d %d\n", line, fileName,
+				//		lineNumber, textPos);
+				if (textPos > 0) {
+					if (strcmp(fileName, currentFileName) != 0) {
+						fTarget.SendMessage(&message);
+
+						strncpy(currentFileName, fileName,
+							sizeof(currentFileName));
+
+						message.MakeEmpty();
+						message.what = MSG_REPORT_RESULT;
+						message.AddString("filename", fileName);
+
+						BEntry entry(fileName);
+						entry_ref ref;
+						entry.GetRef(&ref);
+						message.AddRef("ref", &ref);
+					}
+
+					char* text = &line[strlen(fileName)+1];
+					// printf("[%s] %s", fileName, text);
+					if (fEncoding > 0) {
+						char* tempdup = strdup_to_utf8(fEncoding, text,
+							strlen(text));
+						message.AddString("text", tempdup);
+						free(tempdup);
+					} else {
+						message.AddString("text", text);
+					}
+					message.AddInt32("line", lineNumber);
+				}
+			} else {
+				canReadOutput = false;
+			}
+		}
+		if (canReadErrors && FD_ISSET(err, &readSet)) {
+			if (fgets(line, sizeof(line), errors) != NULL) {
+				// printf("ERROR: %s", line);
+				if (message.HasString("text"))
+					fTarget.SendMessage(&message);
+				currentFileName[0] = '\0';
+
+				message.MakeEmpty();
+				message.what = MSG_REPORT_ERROR;
+				message.AddString("error", line);
+				fTarget.SendMessage(&message);
+			} else {
+				canReadErrors = false;
+			}
+		}
+	}
+
+	// send last pending message, if any
+	if (message.HasString("text"))
+		fTarget.SendMessage(&message);
+
+	printf("Done.\n");
+	fclose(output);
+	fclose(errors);
+
+	close(out);
+	close(err);
+
+	fMustQuit = true;
+	int32 exitValue;
+	wait_for_thread(xargsThread, &exitValue);
+	wait_for_thread(writerThread, &exitValue);
 
 	message.MakeEmpty();
 	message.what = MSG_SEARCH_FINISHED;
@@ -257,52 +499,7 @@ Grepper::_SetPattern(const char* src)
 	if (src == NULL)
 		return;
 
-	if (!fEscapeText) {
-		fPattern = strdup(src);
-		return;
-	}
-
-	// We will simply guess the size of the memory buffer
-	// that we need. This should always be large enough.
-	fPattern = (char*)malloc((strlen(src) + 1) * 3 * sizeof(char));
-	if (fPattern == NULL)
-		return;
-
-	const char* srcPtr = src;
-	char* dstPtr = fPattern;
-
-	// Put double quotes around the pattern, so separate
-	// words are considered to be part of a single string.
-	*dstPtr++ = '"';
-
-	while (*srcPtr != '\0') {
-		char c = *srcPtr++;
-
-		// Put a backslash in front of characters
-		// that should be escaped.
-		if ((c == '.')  || (c == ',')
-			||  (c == '[')  || (c == ']')
-			||  (c == '?')  || (c == '*')
-			||  (c == '+')  || (c == '-')
-			||  (c == ':')  || (c == '^')
-			||  (c == '"')	|| (c == '`')) {
-			*dstPtr++ = '\\';
-		} else if ((c == '\\') || (c == '$')) {
-			// Some characters need to be escaped
-			// with *three* backslashes in a row.
-			*dstPtr++ = '\\';
-			*dstPtr++ = '\\';
-			*dstPtr++ = '\\';
-		}
-
-		// Note: we do not have to escape the
-		// { } ( ) < > and | characters.
-
-		*dstPtr++ = c;
-	}
-
-	*dstPtr++ = '"';
-	*dstPtr = '\0';
+	fPattern = strdup(src);
 }
 
 
@@ -314,7 +511,9 @@ Grepper::_EscapeSpecialChars(char* buffer, ssize_t bufferSize)
 	uint32 len = strlen(copy);
 	bool result = true;
 	for (uint32 count = 0; count < len; ++count) {
-		if (copy[count] == '"' || copy[count] == '$')
+		if (copy[count] == '\'' || copy[count] == '\\'
+			|| copy[count] == ' ' || copy[count] == '\n'
+			|| copy[count] == '"')
 			*buffer++ = '\\';
 		if (buffer - start == bufferSize - 1) {
 			result = false;
@@ -326,4 +525,3 @@ Grepper::_EscapeSpecialChars(char* buffer, ssize_t bufferSize)
 	free(copy);
 	return result;
 }
-

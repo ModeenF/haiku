@@ -593,7 +593,7 @@ private:
 ShutdownProcess::ShutdownProcess(TRoster* roster, EventQueue* eventQueue)
 	:
 	BLooper("shutdown process"),
-	EventMaskWatcher(BMessenger(this), B_REQUEST_QUIT),
+	EventMaskWatcher(BMessenger(this), B_REQUEST_QUIT | B_REQUEST_LAUNCHED),
 	fWorkerLock("worker lock"),
 	fRequest(NULL),
 	fRoster(roster),
@@ -769,6 +769,26 @@ ShutdownProcess::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case B_SOME_APP_LAUNCHED:
+		{
+			// get the team
+			team_id team;
+			if (message->FindInt32("be:team", &team) != B_OK) {
+				// should not happen
+				return;
+			}
+
+			PRINT("ShutdownProcess::MessageReceived(): B_SOME_APP_LAUNCHED: %"
+				B_PRId32 "\n", team);
+
+			// add the user app info to the respective list
+			{
+				BAutolock _(fWorkerLock);
+				fRoster->AddAppInfo(fUserApps, team);
+			}
+			break;
+		}
+
 		case MSG_PHASE_TIMED_OUT:
 		{
 			// get the phase the event is intended for
@@ -840,11 +860,11 @@ ShutdownProcess::MessageReceived(BMessage* message)
 			if (open) {
 				PRINT("B_REG_TEAM_DEBUGGER_ALERT: insert %" B_PRId32 "\n",
 					team);
-				fDebuggedTeams.insert(team);
+				fDebuggedTeams.Add(team);
 			} else {
 				PRINT("B_REG_TEAM_DEBUGGER_ALERT: remove %" B_PRId32 "\n",
 					team);
-				fDebuggedTeams.erase(team);
+				fDebuggedTeams.Remove(team);
 				_PushEvent(DEBUG_EVENT, -1, fCurrentPhase);
 			}
 			break;
@@ -987,11 +1007,7 @@ ShutdownProcess::_AddShutdownWindowApps(AppInfoList& infos)
 		}
 
 		// get the application icons
-#ifdef __HAIKU__
 		color_space format = B_RGBA32;
-#else
-		color_space format = B_CMAP8;
-#endif
 
 		// mini icon
 		BBitmap* miniIcon = new(nothrow) BBitmap(BRect(0, 0, 15, 15), format);
@@ -1275,18 +1291,13 @@ ShutdownProcess::_WorkerDoShutdown()
 			throw_error(B_SHUTDOWN_CANCELLED);
 	}
 
-	// tell TRoster not to accept new applications anymore
-	fRoster->SetShuttingDown(true);
-
 	fWorkerLock.Lock();
-
 	// get a list of all applications to shut down and sort them
 	status_t status = fRoster->GetShutdownApps(fUserApps, fSystemApps,
 		fBackgroundApps, fVitalSystemApps);
 	if (status  != B_OK) {
 		fWorkerLock.Unlock();
 		fRoster->RemoveWatcher(this);
-		fRoster->SetShuttingDown(false);
 		return;
 	}
 
@@ -1308,8 +1319,15 @@ ShutdownProcess::_WorkerDoShutdown()
 
 	// phase 1: terminate the user apps
 	_SetPhase(USER_APP_TERMINATION_PHASE);
-	_QuitApps(fUserApps, false);
-	_WaitForDebuggedTeams();
+
+	// since, new apps can still be launched, loop until all are gone
+	if (!fUserApps.IsEmpty()) {
+		_QuitApps(fUserApps, false);
+		_WaitForDebuggedTeams();
+	}
+
+	// tell TRoster not to accept new applications anymore
+	fRoster->SetShuttingDown(true);
 
 	// phase 2: terminate the system apps
 	_SetPhase(SYSTEM_APP_TERMINATION_PHASE);
@@ -1358,13 +1376,10 @@ ShutdownProcess::_WorkerDoShutdown()
 
 	// either there's no GUI or reboot failed: we enter the kernel debugger
 	// instead
-#ifdef __HAIKU__
-// TODO: Introduce the syscall.
-//	while (true) {
-//		_kern_kernel_debugger("The system is shut down. It's now safe to turn "
-//			"off the computer.");
-//	}
-#endif
+	while (true) {
+		_kern_kernel_debugger("The system is shut down. It's now safe to turn "
+			"off the computer.");
+	}
 }
 
 
@@ -1655,16 +1670,11 @@ ShutdownProcess::_QuitNonApps()
 	int32 cookie = 0;
 	team_info teamInfo;
 	while (get_next_team_info(&cookie, &teamInfo) == B_OK) {
-		if (fVitalSystemApps.find(teamInfo.team) == fVitalSystemApps.end()) {
+		if (!fVitalSystemApps.Contains(teamInfo.team)) {
 			PRINT("  sending team %" B_PRId32 " TERM signal\n", teamInfo.team);
 
-			#ifdef __HAIKU__
-				// Note: team ID == team main thread ID under Haiku
-				send_signal(teamInfo.team, SIGTERM);
-			#else
-				// We don't want to do this when testing under R5, since it
-				// would kill all teams besides our app server and registrar.
-			#endif
+			// Note: team ID == team main thread ID under Haiku
+			send_signal(teamInfo.team, SIGTERM);
 		}
 	}
 
@@ -1676,15 +1686,10 @@ ShutdownProcess::_QuitNonApps()
 	// iterate through the remaining teams and kill them
 	cookie = 0;
 	while (get_next_team_info(&cookie, &teamInfo) == B_OK) {
-		if (fVitalSystemApps.find(teamInfo.team) == fVitalSystemApps.end()) {
+		if (!fVitalSystemApps.Contains(teamInfo.team)) {
 			PRINT("  killing team %" B_PRId32 "\n", teamInfo.team);
 
-			#ifdef __HAIKU__
-				kill_team(teamInfo.team);
-			#else
-				// We don't want to do this when testing under R5, since it
-				// would kill all teams besides our app server and registrar.
-			#endif
+			kill_team(teamInfo.team);
 		}
 	}
 
@@ -1700,7 +1705,7 @@ ShutdownProcess::_QuitBlockingApp(AppInfoList& list, team_id team,
 	bool modal = false;
 	{
 		BAutolock _(fWorkerLock);
-		if (fDebuggedTeams.find(team) != fDebuggedTeams.end())
+		if (fDebuggedTeams.Contains(team))
 			debugged = true;
 	}
 	if (!debugged)
@@ -1848,7 +1853,7 @@ ShutdownProcess::_WaitForDebuggedTeams()
 	PRINT("ShutdownProcess::_WaitForDebuggedTeams()\n");
 	{
 		BAutolock _(fWorkerLock);
-		if (fDebuggedTeams.empty())
+		if (fDebuggedTeams.Size() == 0)
 			return;
 	}
 
@@ -1867,7 +1872,7 @@ ShutdownProcess::_WaitForDebuggedTeams()
 			throw_error(B_SHUTDOWN_CANCELLED);
 
 		BAutolock _(fWorkerLock);
-		if (fDebuggedTeams.empty()) {
+		if (fDebuggedTeams.Size() == 0) {
 			PRINT("  out empty");
 			return;
 		}

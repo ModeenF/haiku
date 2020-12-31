@@ -35,11 +35,12 @@ struct root_device_softc {
 };
 
 enum {
-	DEVICE_OPEN			= 1 << 0,
+	DEVICE_OPEN		= 1 << 0,
 	DEVICE_CLOSED		= 1 << 1,
 	DEVICE_NON_BLOCK	= 1 << 2,
 	DEVICE_DESC_ALLOCED	= 1 << 3,
-	DEVICE_ATTACHED		= 1 << 4
+	DEVICE_ATTACHED		= 1 << 4,
+	DEVICE_SOFTC_SET	= 1 << 5  // Set through device_set_softc().
 };
 
 
@@ -75,13 +76,9 @@ void uninit_callout(void);
 
 device_t find_root_device(int);
 
-/* busdma_machdep.c */
-void init_bounce_pages(void);
-void uninit_bounce_pages(void);
-
 void driver_printf(const char *format, ...)
 	__attribute__ ((format (__printf__, 1, 2)));
-void driver_vprintf(const char *format, va_list vl);
+int driver_vprintf(const char *format, va_list vl);
 
 void device_sprintf_name(device_t dev, const char *format, ...)
 	__attribute__ ((format (__printf__, 2, 3)));

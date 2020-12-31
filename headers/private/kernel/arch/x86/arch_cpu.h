@@ -1,4 +1,5 @@
 /*
+ * Copyright 2018, Jérôme Duval, jerome.duval@gmail.com.
  * Copyright 2002-2009, Axel Dörfler, axeld@pinc-software.de.
  * Copyright 2012, Alex Smith, alex@alex-smith.me.uk.
  * Distributed under the terms of the MIT License.
@@ -16,6 +17,8 @@
 
 #include <arch_thread_types.h>
 
+#include <arch/x86/arch_altcodepatch.h>
+#include <arch/x86/arch_cpuasm.h>
 #include <arch/x86/descriptors.h>
 
 #ifdef __x86_64__
@@ -32,12 +35,18 @@
 
 // MSR registers (possibly Intel specific)
 #define IA32_MSR_TSC					0x10
+#define IA32_MSR_PLATFORM_ID			0x17
 #define IA32_MSR_APIC_BASE				0x1b
-
+#define IA32_MSR_SPEC_CTRL				0x48
+#define IA32_MSR_PRED_CMD				0x49
+#define IA32_MSR_UCODE_WRITE			0x79	// IA32_BIOS_UPDT_TRIG
+#define IA32_MSR_UCODE_REV				0x8b	// IA32_BIOS_SIGN_ID
 #define IA32_MSR_PLATFORM_INFO			0xce
 #define IA32_MSR_MPERF					0xe7
 #define IA32_MSR_APERF					0xe8
 #define IA32_MSR_MTRR_CAPABILITIES		0xfe
+#define IA32_MSR_ARCH_CAPABILITIES		0x10a
+#define IA32_MSR_FLUSH_CMD				0x10b
 #define IA32_MSR_SYSENTER_CS			0x174
 #define IA32_MSR_SYSENTER_ESP			0x175
 #define IA32_MSR_SYSENTER_EIP			0x176
@@ -49,8 +58,13 @@
 #define IA32_MSR_MTRR_PHYSICAL_BASE_0	0x200
 #define IA32_MSR_MTRR_PHYSICAL_MASK_0	0x201
 
-#define IA32_MSR_EFER					0xc0000080
+// MSR SPEC CTRL bits
+#define IA32_MSR_SPEC_CTRL_IBRS			(1 << 0)
+#define IA32_MSR_SPEC_CTRL_STIBP		(1 << 1)
+#define IA32_MSR_SPEC_CTRL_SSBD			(1 << 2)
 
+// MSR PRED CMD bits
+#define IA32_MSR_PRED_CMD_IBPB			(1 << 0)
 
 // MSR APIC BASE bits
 #define IA32_MSR_APIC_BASE_BSP			0x00000100
@@ -62,6 +76,16 @@
 // reference
 #define IA32_MSR_EFER_SYSCALL			(1 << 0)
 #define IA32_MSR_EFER_NX				(1 << 11)
+
+// MSR ARCH CAPABILITIES bits
+#define IA32_MSR_ARCH_CAP_RDCL_NO			(1 << 0)
+#define IA32_MSR_ARCH_CAP_IBRS_ALL			(1 << 1)
+#define IA32_MSR_ARCH_CAP_RSBA				(1 << 2)
+#define IA32_MSR_ARCH_CAP_SKIP_L1D_VMENTRY	(1 << 3)
+#define IA32_MSR_ARCH_CAP_SSB_NO			(1 << 4)
+
+// MSR FLUSH CMD bits
+#define IA32_MSR_L1D_FLUSH			(1 << 1)
 
 // X2APIC MSRs.
 #define IA32_MSR_APIC_ID					0x00000802
@@ -86,15 +110,46 @@
 #define IA32_MSR_XSS						0x00000da0
 
 // x86_64 MSRs.
+#define IA32_MSR_EFER					0xc0000080
 #define IA32_MSR_STAR					0xc0000081
 #define IA32_MSR_LSTAR					0xc0000082
+#define IA32_MSR_CSTAR					0xc0000083
 #define IA32_MSR_FMASK					0xc0000084
 #define IA32_MSR_FS_BASE				0xc0000100
 #define IA32_MSR_GS_BASE				0xc0000101
 #define IA32_MSR_KERNEL_GS_BASE			0xc0000102
+#define IA32_MSR_TSC_AUX				0xc0000103
 
 // K8 MSR registers
 #define K8_MSR_IPM						0xc0010055
+
+// Hardware P-States MSR registers §14.4.1
+// reference https://software.intel.com/content/dam/develop/public/us/en/documents/253669-sdm-vol-3b.pdf
+#define IA32_MSR_PM_ENABLE				0x00000770
+#define IA32_MSR_HWP_CAPABILITIES		0x00000771
+#define IA32_MSR_HWP_REQUEST_PKG		0x00000772
+#define IA32_MSR_HWP_INTERRUPT			0x00000773
+#define IA32_MSR_HWP_REQUEST			0x00000774
+#define IA32_MSR_HWP_STATUS				0x00000777
+
+// IA32_MSR_HWP_CAPABILITIES bits §14.4.3
+#define	IA32_HWP_CAPS_HIGHEST_PERFORMANCE(x)	(((x) >> 0) & 0xff)
+#define	IA32_HWP_CAPS_GUARANTEED_PERFORMANCE(x)	(((x) >> 8) & 0xff)
+#define	IA32_HWP_CAPS_EFFICIENT_PERFORMANCE(x)	(((x) >> 16) & 0xff)
+#define	IA32_HWP_CAPS_LOWEST_PERFORMANCE(x)		(((x) >> 24) & 0xff)
+
+// IA32_MSR_HWP_REQUEST bits §14.4.4.1
+#define	IA32_HWP_REQUEST_MINIMUM_PERFORMANCE			(0xffULL << 0)
+#define	IA32_HWP_REQUEST_MAXIMUM_PERFORMANCE			(0xffULL << 8)
+#define	IA32_HWP_REQUEST_DESIRED_PERFORMANCE			(0xffULL << 16)
+#define	IA32_HWP_REQUEST_ENERGY_PERFORMANCE_PREFERENCE	(0xffULL << 24)
+#define	IA32_HWP_REQUEST_ACTIVITY_WINDOW				(0x3ffULL << 32)
+#define	IA32_HWP_REQUEST_PACKAGE_CONTROL				(1ULL << 42)
+#define	IA32_HWP_REQUEST_ACTIVITY_WINDOW_VALID			(1ULL << 59)
+#define	IA32_HWP_REQUEST_EPP_VALID 						(1ULL << 60)
+#define	IA32_HWP_REQUEST_DESIRED_VALID					(1ULL << 61)
+#define	IA32_HWP_REQUEST_MAXIMUM_VALID					(1ULL << 62)
+#define	IA32_HWP_REQUEST_MINIMUM_VALID					(1ULL << 63)
 
 // x86 features from cpuid eax 1, edx register
 // reference http://www.intel.com/Assets/en_US/PDF/appnote/241618.pdf (Table 5-5)
@@ -176,6 +231,7 @@
 #define IA32_FEATURE_AMD_EXT_NX			(1 << 20) // no execute bit
 #define IA32_FEATURE_AMD_EXT_MMXEXT		(1 << 22) // mmx extensions
 #define IA32_FEATURE_AMD_EXT_FFXSR		(1 << 25) // fast FXSAVE/FXRSTOR
+#define IA32_FEATURE_AMD_EXT_PDPE1GB	(1 << 26) // Gibibyte pages
 #define IA32_FEATURE_AMD_EXT_RDTSCP		(1 << 27) // rdtscp instruction
 #define IA32_FEATURE_AMD_EXT_LONG		(1 << 29) // long mode
 #define IA32_FEATURE_AMD_EXT_3DNOWEXT	(1 << 30) // 3DNow! extensions
@@ -185,6 +241,7 @@
 // available on Intel processors
 #define IA32_FEATURES_INTEL_EXT			(IA32_FEATURE_AMD_EXT_SYSCALL		\
 											| IA32_FEATURE_AMD_EXT_NX		\
+											| IA32_FEATURE_AMD_EXT_PDPE1GB	\
 											| IA32_FEATURE_AMD_EXT_RDTSCP	\
 											| IA32_FEATURE_AMD_EXT_LONG)
 
@@ -193,25 +250,109 @@
 #define IA32_FEATURE_INTERRUPT_MWAIT	(1 << 1)
 
 // x86 defined features from cpuid eax 6, eax register
-// reference http://www.intel.com/Assets/en_US/PDF/appnote/241618.pdf (Table 5-11)
-#define IA32_FEATURE_DTS	(1 << 0) //Digital Thermal Sensor
-#define IA32_FEATURE_ITB	(1 << 1) //Intel Turbo Boost Technology
-#define IA32_FEATURE_ARAT	(1 << 2) //Always running APIC Timer
-#define IA32_FEATURE_PLN	(1 << 4) //Power Limit Notification
-#define IA32_FEATURE_ECMD	(1 << 5) //Extended Clock Modulation Duty
-#define IA32_FEATURE_PTM	(1 << 6) //Package Thermal Management
+// reference https://software.intel.com/content/dam/develop/public/us/en/documents/253666-sdm-vol-2a.pdf (Table 3-8)
+#define IA32_FEATURE_DTS	(1 << 0) // Digital Thermal Sensor
+#define IA32_FEATURE_ITB	(1 << 1) // Intel Turbo Boost Technology
+#define IA32_FEATURE_ARAT	(1 << 2) // Always running APIC Timer
+#define IA32_FEATURE_PLN	(1 << 4) // Power Limit Notification
+#define IA32_FEATURE_ECMD	(1 << 5) // Extended Clock Modulation Duty
+#define IA32_FEATURE_PTM	(1 << 6) // Package Thermal Management
+#define IA32_FEATURE_HWP	(1 << 7) // Hardware P-states
+#define IA32_FEATURE_HWP_NOTIFY	(1 << 8) // HWP Notification
+#define IA32_FEATURE_HWP_ACTWIN	(1 << 9) // HWP Activity Window
+#define IA32_FEATURE_HWP_EPP	(1 << 10) // HWP Energy Performance Preference
+#define IA32_FEATURE_HWP_PLR	(1 << 11) // HWP Package Level Request
+#define IA32_FEATURE_HDC	(1 << 13) // Hardware Duty Cycling
+#define IA32_FEATURE_TBMT3	(1 << 14) // Turbo Boost Max Technology 3.0
+#define IA32_FEATURE_HWP_CAP	(1 << 15) // HWP Capabilities
+#define IA32_FEATURE_HWP_PECI	(1 << 16) // HWP PECI override
+#define IA32_FEATURE_HWP_FLEX	(1 << 17) // Flexible HWP
+#define IA32_FEATURE_HWP_FAST	(1 << 18) // Fast access for HWP_REQUEST MSR
+#define IA32_FEATURE_HW_FEEDBACK	(1 << 19) // HW_FEEDBACK*, PACKAGE_THERM*
+#define IA32_FEATURE_HWP_IGNIDL	(1 << 20) // Ignore Idle Logical Processor HWP
 
 // x86 defined features from cpuid eax 6, ecx register
 // reference http://www.intel.com/Assets/en_US/PDF/appnote/241618.pdf (Table 5-11)
-#define IA32_FEATURE_APERFMPERF	(1 << 0) //IA32_APERF, IA32_MPERF
-#define IA32_FEATURE_EPB	(1 << 3) //IA32_ENERGY_PERF_BIAS
+#define IA32_FEATURE_APERFMPERF	(1 << 0) // IA32_APERF, IA32_MPERF
+#define IA32_FEATURE_EPB	(1 << 3) // IA32_ENERGY_PERF_BIAS
+
+// x86 features from cpuid eax 7, ebx register
+// reference http://www.intel.com/Assets/en_US/PDF/appnote/241618.pdf (Table 3-8)
+#define IA32_FEATURE_TSC_ADJUST	(1 << 1) // IA32_TSC_ADJUST MSR supported
+#define IA32_FEATURE_SGX		(1 << 2) // Software Guard Extensions
+#define IA32_FEATURE_BMI1		(1 << 3) // Bit Manipulation Instruction Set 1
+#define IA32_FEATURE_HLE		(1 << 4) // Hardware Lock Elision
+#define IA32_FEATURE_AVX2		(1 << 5) // Advanced Vector Extensions 2
+#define IA32_FEATURE_SMEP		(1 << 7) // Supervisor-Mode Execution Prevention
+#define IA32_FEATURE_BMI2		(1 << 8) // Bit Manipulation Instruction Set 2
+#define IA32_FEATURE_ERMS		(1 << 9) // Enhanced REP MOVSB/STOSB
+#define IA32_FEATURE_INVPCID	(1 << 10) // INVPCID instruction
+#define IA32_FEATURE_RTM		(1 << 11) // Transactional Synchronization Extensions
+#define IA32_FEATURE_CQM		(1 << 12) // Platform Quality of Service Monitoring
+#define IA32_FEATURE_MPX		(1 << 14) // Memory Protection Extensions
+#define IA32_FEATURE_RDT_A		(1 << 15) // Resource Director Technology Allocation
+#define IA32_FEATURE_AVX512F	(1 << 16) // AVX-512 Foundation
+#define IA32_FEATURE_AVX512DQ	(1 << 17) // AVX-512 Doubleword and Quadword Instructions
+#define IA32_FEATURE_RDSEED		(1 << 18) // RDSEED instruction
+#define IA32_FEATURE_ADX		(1 << 19) // ADX (Multi-Precision Add-Carry Instruction Extensions)
+#define IA32_FEATURE_SMAP		(1 << 20) // Supervisor Mode Access Prevention
+#define IA32_FEATURE_AVX512IFMA	(1 << 21) // AVX-512 Integer Fused Multiply-Add Instructions
+#define IA32_FEATURE_PCOMMIT	(1 << 22) // PCOMMIT instruction
+#define IA32_FEATURE_CLFLUSHOPT	(1 << 23) // CLFLUSHOPT instruction
+#define IA32_FEATURE_CLWB		(1 << 24) // CLWB instruction
+#define IA32_FEATURE_INTEL_PT	(1 << 25) // Intel Processor Trace
+#define IA32_FEATURE_AVX512PF	(1 << 26) // AVX-512 Prefetch Instructions
+#define IA32_FEATURE_AVX512ER	(1 << 27) // AVX-512 Exponential and Reciprocal Instructions
+#define IA32_FEATURE_AVX512CD	(1 << 28) // AVX-512 Conflict Detection Instructions
+#define IA32_FEATURE_SHA_NI		(1 << 29) // SHA extensions
+#define IA32_FEATURE_AVX512BW	(1 << 30) // AVX-512 Byte and Word Instructions
+#define IA32_FEATURE_AVX512VI	(1 << 31) // AVX-512 Vector Length Extensions
+
+// x86 features from cpuid eax 7, ecx register
+// reference http://www.intel.com/Assets/en_US/PDF/appnote/241618.pdf (Table 3-8)
+// https://en.wikipedia.org/wiki/CPUID#EAX=7,_ECX=0:_Extended_Features
+#define IA32_FEATURE_AVX512VMBI		(1 << 1) // AVX-512 Vector Bit Manipulation Instructions
+#define IA32_FEATURE_UMIP			(1 << 2) // User-mode Instruction Prevention
+#define IA32_FEATURE_PKU			(1 << 3) // Memory Protection Keys for User-mode pages
+#define IA32_FEATURE_OSPKE			(1 << 4) // PKU enabled by OS
+#define IA32_FEATURE_AVX512VMBI2	(1 << 6) // AVX-512 Vector Bit Manipulation Instructions 2
+#define IA32_FEATURE_GFNI			(1 << 8) // Galois Field instructions
+#define IA32_FEATURE_VAES			(1 << 9) // AES instruction set (VEX-256/EVEX)
+#define IA32_FEATURE_VPCLMULQDQ		(1 << 10) // CLMUL instruction set (VEX-256/EVEX)
+#define IA32_FEATURE_AVX512_VNNI	(1 << 11) // AVX-512 Vector Neural Network Instructions
+#define IA32_FEATURE_AVX512_BITALG	(1 << 12) // AVX-512 BITALG instructions
+#define IA32_FEATURE_AVX512_VPOPCNTDQ (1 << 14) // AVX-512 Vector Population Count D/Q
+#define IA32_FEATURE_LA57			(1 << 16) // 5-level page tables
+#define IA32_FEATURE_RDPID			(1 << 22) // RDPID Instruction
+#define IA32_FEATURE_SGX_LC			(1 << 30) // SGX Launch Configuration
+
+// x86 features from cpuid eax 7, edx register
+// https://en.wikipedia.org/wiki/CPUID#EAX=7,_ECX=0:_Extended_Features
+#define IA32_FEATURE_AVX512_4VNNIW	(1 << 2) // AVX-512 4-register Neural Network Instructions
+#define IA32_FEATURE_AVX512_4FMAPS	(1 << 3) // AVX-512 4-register Multiply Accumulation Single precision
+#define IA32_FEATURE_IBRS			(1 << 26)	// IBRS / IBPB Speculation Control
+#define IA32_FEATURE_STIBP			(1 << 27)	// STIBP Speculation Control
+#define IA32_FEATURE_L1D_FLUSH		(1 << 28)	// L1D_FLUSH supported
+#define IA32_FEATURE_ARCH_CAPABILITIES	(1 << 29)	// IA32_ARCH_CAPABILITIES MSR
+#define IA32_FEATURE_SSBD			(1 << 31)	// Speculative Store Bypass Disable
+
+// x86 features from cpuid eax 0xd, ecx 1, eax register
+// reference http://www.intel.com/Assets/en_US/PDF/appnote/241618.pdf (Table 3-8)
+#define IA32_FEATURE_XSAVEOPT		(1 << 0) // XSAVEOPT Instruction
+#define IA32_FEATURE_XSAVEC			(1 << 1) // XSAVEC and compacted XRSTOR
+#define IA32_FEATURE_XGETBV1		(1 << 2) // XGETBV with ECX=1 Instruction
+#define IA32_FEATURE_XSAVES			(1 << 3) // XSAVES and XRSTORS Instruction
 
 // x86 defined features from cpuid eax 0x80000007, edx register
 #define IA32_FEATURE_INVARIANT_TSC		(1 << 8)
 
-// cr4 flags
-#define IA32_CR4_PAE					(1UL << 5)
-#define IA32_CR4_GLOBAL_PAGES			(1UL << 7)
+// x86 defined features from cpuid eax 0x80000008, ebx register
+#define IA32_FEATURE_CLZERO			(1 << 0)	// CLZERO instruction
+#define IA32_FEATURE_IBPB			(1 << 12)	// IBPB Support only (no IBRS)
+#define IA32_FEATURE_AMD_SSBD		(1 << 24)	// Speculative Store Bypass Disable
+#define IA32_FEATURE_VIRT_SSBD		(1 << 25)	// Virtualized Speculative Store Bypass Disable
+#define IA32_FEATURE_AMD_SSB_NO		(1 << 26)	// Speculative Store Bypass is fixed in hardware
+
 
 // Memory type ranges
 #define IA32_MTR_UNCACHED				0
@@ -236,7 +377,7 @@
 #define X86_EFLAGS_NESTED_TASK					0x00004000
 #define X86_EFLAGS_RESUME						0x00010000
 #define X86_EFLAGS_V86_MODE						0x00020000
-#define X86_EFLAGS_ALIGNMENT_CHECK				0x00040000
+#define X86_EFLAGS_ALIGNMENT_CHECK				0x00040000	// also SMAP status
 #define X86_EFLAGS_VIRTUAL_INTERRUPT			0x00080000
 #define X86_EFLAGS_VIRTUAL_INTERRUPT_PENDING	0x00100000
 #define X86_EFLAGS_ID							0x00200000
@@ -250,9 +391,49 @@
 #define CR0_FPU_EMULATION		(1UL << 2)
 #define CR0_MONITOR_FPU			(1UL << 1)
 
+// Control Register CR4 flags §2.5
+// https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-3a-part-1-manual.pdf
+#define IA32_CR4_VME			(1UL << 0)
+#define IA32_CR4_PVI			(1UL << 1)
+#define IA32_CR4_TSD			(1UL << 2)
+#define IA32_CR4_DE				(1UL << 3)
+#define IA32_CR4_PSE			(1UL << 4)
+#define IA32_CR4_PAE			(1UL << 5)
+#define IA32_CR4_MCE			(1UL << 6)
+#define IA32_CR4_GLOBAL_PAGES	(1UL << 7)
+#define IA32_CR4_PCE			(1UL << 8)
 #define CR4_OS_FXSR				(1UL << 9)
 #define CR4_OS_XMM_EXCEPTION	(1UL << 10)
+#define IA32_CR4_UMIP			(1UL << 11)
+#define IA32_CR4_LA57			(1UL << 12)
+#define IA32_CR4_VMXE			(1UL << 13)
+#define IA32_CR4_SMXE			(1UL << 14)
+#define IA32_CR4_FSGSBASE		(1UL << 16)
+#define IA32_CR4_PCIDE			(1UL << 17)
+#define IA32_CR4_OSXSAVE		(1UL << 18)
+#define IA32_CR4_SMEP			(1UL << 20)
+#define IA32_CR4_SMAP			(1UL << 21)
+#define IA32_CR4_PKE			(1UL << 22)
 
+// Extended Control Register XCR0 flags §13.3
+// https://software.intel.com/content/dam/develop/public/us/en/documents/253665-sdm-vol-1.pdf
+#define IA32_XCR0_X87			(1UL << 0)
+#define IA32_XCR0_SSE			(1UL << 1)
+#define IA32_XCR0_AVX			(1UL << 2)
+#define IA32_XCR0_BNDREG		(1UL << 3)
+#define IA32_XCR0_BNDCSR		(1UL << 4)
+#define IA32_XCR0_OPMASK		(1UL << 5)
+#define IA32_XCR0_ZMM_HI256		(1UL << 6)
+#define IA32_XCR0_HI16_ZMM		(1UL << 7)
+#define IA32_XCR0_PT			(1UL << 8)
+#define IA32_XCR0_PKRU			(1UL << 9)
+
+// page fault error codes (http://wiki.osdev.org/Page_Fault)
+#define PGFAULT_P						0x01	// Protection violation
+#define PGFAULT_W						0x02	// Write
+#define PGFAULT_U						0x04	// Usermode
+#define PGFAULT_RSVD					0x08	// Reserved bits
+#define PGFAULT_I						0x10	// Instruction fetch
 
 // iframe types
 #define IFRAME_TYPE_SYSCALL				0x1
@@ -294,7 +475,12 @@ enum x86_feature_type {
 	FEATURE_5_ECX,			// cpuid eax=5, ecx register
 	FEATURE_6_EAX,          // cpuid eax=6, eax registers
 	FEATURE_6_ECX,          // cpuid eax=6, ecx registers
+	FEATURE_7_EBX,          // cpuid eax=7, ebx registers
+	FEATURE_7_ECX,          // cpuid eax=7, ecx registers
+	FEATURE_7_EDX,          // cpuid eax=7, edx registers
 	FEATURE_EXT_7_EDX,		// cpuid eax=0x80000007, edx register
+	FEATURE_EXT_8_EBX,		// cpuid eax=0x80000008, ebx register
+	FEATURE_D_1_EAX,		// cpuid eax=0xd, ecx=1, eax register
 
 	FEATURE_NUM
 };
@@ -309,6 +495,7 @@ enum x86_vendors {
 	VENDOR_RISE,
 	VENDOR_TRANSMETA,
 	VENDOR_NSC,
+	VENDOR_HYGON,
 
 	VENDOR_NUM,
 	VENDOR_UNKNOWN,
@@ -327,6 +514,7 @@ typedef struct arch_cpu_info {
 	int					stepping;
 	int					model;
 	int					extended_model;
+	uint32				patch_level;
 
 	uint32				logical_apic_id;
 
@@ -344,97 +532,35 @@ typedef struct arch_cpu_info {
 } arch_cpu_info;
 
 
-#define nop() __asm__ ("nop"::)
+// Reference Intel SDM Volume 3 9.11 "Microcode Update Facilities"
+// https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-3a-part-1-manual.pdf
+// 9.11.1 Table 9-7. Microcode Update Field Definitions
+struct intel_microcode_header {
+	uint32 header_version;
+	uint32 update_revision;
+	uint32 date;
+	uint32 processor_signature;
+	uint32 checksum;
+	uint32 loader_revision;
+	uint32 processor_flags;
+	uint32 data_size;
+	uint32 total_size;
+	uint32 reserved[3];
+};
 
-#define x86_read_cr0() ({ \
-	size_t _v; \
-	__asm__("mov	%%cr0,%0" : "=r" (_v)); \
-	_v; \
-})
 
-#define x86_write_cr0(value) \
-	__asm__("mov	%0,%%cr0" : : "r" (value))
+struct intel_microcode_extended_signature_header {
+	uint32 extended_signature_count;
+	uint32 extended_checksum;
+	uint32 reserved[3];
+};
 
-#define x86_read_cr2() ({ \
-	size_t _v; \
-	__asm__("mov	%%cr2,%0" : "=r" (_v)); \
-	_v; \
-})
 
-#define x86_read_cr3() ({ \
-	size_t _v; \
-	__asm__("mov	%%cr3,%0" : "=r" (_v)); \
-	_v; \
-})
-
-#define x86_write_cr3(value) \
-	__asm__("mov	%0,%%cr3" : : "r" (value))
-
-#define x86_read_cr4() ({ \
-	size_t _v; \
-	__asm__("mov	%%cr4,%0" : "=r" (_v)); \
-	_v; \
-})
-
-#define x86_write_cr4(value) \
-	__asm__("mov	%0,%%cr4" : : "r" (value))
-
-#define x86_read_dr3() ({ \
-	size_t _v; \
-	__asm__("mov	%%dr3,%0" : "=r" (_v)); \
-	_v; \
-})
-
-#define x86_write_dr3(value) \
-	__asm__("mov	%0,%%dr3" : : "r" (value))
-
-#define invalidate_TLB(va) \
-	__asm__("invlpg (%0)" : : "r" (va))
-
-#define wbinvd() \
-	__asm__("wbinvd")
-
-#define out8(value,port) \
-	__asm__ ("outb %%al,%%dx" : : "a" (value), "d" (port))
-
-#define out16(value,port) \
-	__asm__ ("outw %%ax,%%dx" : : "a" (value), "d" (port))
-
-#define out32(value,port) \
-	__asm__ ("outl %%eax,%%dx" : : "a" (value), "d" (port))
-
-#define in8(port) ({ \
-	uint8 _v; \
-	__asm__ volatile ("inb %%dx,%%al" : "=a" (_v) : "d" (port)); \
-	_v; \
-})
-
-#define in16(port) ({ \
-	uint16 _v; \
-	__asm__ volatile ("inw %%dx,%%ax":"=a" (_v) : "d" (port)); \
-	_v; \
-})
-
-#define in32(port) ({ \
-	uint32 _v; \
-	__asm__ volatile ("inl %%dx,%%eax":"=a" (_v) : "d" (port)); \
-	_v; \
-})
-
-#define out8_p(value,port) \
-	__asm__ ("outb %%al,%%dx\n" \
-		"\tjmp 1f\n" \
-		"1:\tjmp 1f\n" \
-		"1:" : : "a" (value), "d" (port))
-
-#define in8_p(port) ({ \
-	uint8 _v; \
-	__asm__ volatile ("inb %%dx,%%al\n" \
-		"\tjmp 1f\n" \
-		"1:\tjmp 1f\n" \
-		"1:" : "=a" (_v) : "d" (port)); \
-	_v; \
-})
+struct intel_microcode_extended_signature {
+	uint32 processor_signature;
+	uint32 processor_flags;
+	uint32 checksum;
+};
 
 
 extern void (*gCpuIdleFunc)(void);
@@ -453,6 +579,8 @@ void __x86_setup_system_time(uint64 conversionFactor,
 void __x86_setup_system_time(uint32 conversionFactor,
 	uint32 conversionFactorNsecs, bool conversionFactorNsecsShift);
 #endif
+
+status_t __x86_patch_errata_percpu(int cpu);
 
 void x86_userspace_thread_exit(void);
 void x86_end_userspace_thread_exit(void);

@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: ISC
+ *
  * Copyright (c) 2008-2009 Sam Leffler, Errno Consulting
  * Copyright (c) 2008 Atheros Communications, Inc.
  *
@@ -14,7 +16,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/dev/ath/ath_hal/ar9002/ar9285.c 326695 2017-12-08 15:57:29Z pfg $
  */
 #include "opt_ah.h"
 
@@ -77,3 +79,11 @@ ar9285RfAttach(struct ath_hal *ah, HAL_STATUS *status)
 
 	return AH_TRUE;
 }
+
+static HAL_BOOL
+ar9285RfProbe(struct ath_hal *ah)
+{
+	return (AR_SREV_KITE(ah));
+}
+
+AH_RF(RF9285, ar9285RfProbe, ar9285RfAttach);

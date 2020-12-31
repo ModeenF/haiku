@@ -14,6 +14,7 @@
 #include <Bitmap.h>
 #include <Catalog.h>
 #include <IconUtils.h>
+#include <LaunchRoster.h>
 #include <Locale.h>
 #include <MediaNode.h>
 #include <MediaRoster.h>
@@ -27,8 +28,9 @@
 
 #include "AddOnManager.h"
 #include "DataExchange.h"
-#include "debug.h"
+#include "MediaDebug.h"
 #include "MediaMisc.h"
+#include "MediaRosterEx.h"
 
 
 #define META_DATA_MAX_SIZE			(16 << 20)
@@ -781,7 +783,7 @@ media_format::SpecializeTo(const media_format* otherFormat)
 status_t
 media_format::SetMetaData(const void* data, size_t size)
 {
-	if (!data || size < 0 || size > META_DATA_MAX_SIZE)
+	if (!data || size > META_DATA_MAX_SIZE)
 		return B_BAD_VALUE;
 
 	void* new_addr;
@@ -830,17 +832,34 @@ media_format::MetaDataSize() const
 }
 
 
-media_format::media_format()
+void
+media_format::Unflatten(const char *flatBuffer)
+{
+	// TODO: we should not!!! make flat copies of media_format
+	memcpy(this, flatBuffer, sizeof(*this));
+	meta_data = NULL;
+	meta_data_area = B_BAD_VALUE;
+}
+
+
+void
+media_format::Clear()
 {
 	memset(this, 0x00, sizeof(*this));
+	meta_data = NULL;
 	meta_data_area = B_BAD_VALUE;
+}
+
+
+media_format::media_format()
+{
+	this->Clear();
 }
 
 
 media_format::media_format(const media_format& other)
 {
-	memset(this, 0x00, sizeof(*this));
-	meta_data_area = B_BAD_VALUE;
+	this->Clear();
 	*this = other;
 }
 
@@ -1268,13 +1287,13 @@ progress_shutdown(int stage,
 			string = B_TRANSLATE("Stopping media server" B_UTF8_ELLIPSIS);
 			break;
 		case 20:
-			string = B_TRANSLATE("Telling media_addon_server to quit.");
+			string = B_TRANSLATE("Waiting for media_server to quit.");
 			break;
 		case 40:
-			string = B_TRANSLATE("Waiting for media_server to quit.");
+			string = B_TRANSLATE("Telling media_addon_server to quit.");
 			break;
 		case 50:
-			string = B_TRANSLATE("Waiting for media_server to quit.");
+			string = B_TRANSLATE("Waiting for media_addon_server to quit.");
 			break;
 		case 70:
 			string = B_TRANSLATE("Cleaning up.");
@@ -1296,63 +1315,74 @@ shutdown_media_server(bigtime_t timeout,
 	bool (*progress)(int stage, const char* message, void* cookie),
 	void* cookie)
 {
+	BLaunchRoster launchRoster;
+	launchRoster.StopTarget(B_MEDIA_SERVER_SIGNATURE);
+
 	BMessage msg(B_QUIT_REQUESTED);
-	BMessage reply;
-	status_t err;
+	status_t err = B_MEDIA_SYSTEM_FAILURE;
+	bool shutdown = false;
+
+	BMediaRoster* roster = BMediaRoster::Roster(&err);
+	if (roster == NULL || err != B_OK)
+		return err;
+
+	if (progress == NULL && roster->Lock()) {
+		MediaRosterEx(roster)->EnableLaunchNotification(true, true);
+		roster->Unlock();
+	}
 
 	if ((err = msg.AddBool("be:_user_request", true)) != B_OK)
 		return err;
 
-	if (be_roster->IsRunning(B_MEDIA_SERVER_SIGNATURE)) {
-		BMessenger messenger(B_MEDIA_SERVER_SIGNATURE);
+	team_id mediaServer = be_roster->TeamFor(B_MEDIA_SERVER_SIGNATURE);
+	team_id addOnServer = be_roster->TeamFor(B_MEDIA_ADDON_SERVER_SIGNATURE);
+
+	if (mediaServer != B_ERROR) {
+		BMessage reply;
+		BMessenger messenger(B_MEDIA_SERVER_SIGNATURE, mediaServer);
 		progress_shutdown(10, progress, cookie);
 
 		err = messenger.SendMessage(&msg, &reply, 2000000, 2000000);
-		if (err != B_OK)
+		reply.FindBool("_shutdown", &shutdown);
+		if (err == B_TIMED_OUT || shutdown == false) {
+			if (messenger.IsValid())
+				kill_team(mediaServer);
+		} else if (err != B_OK)
 			return err;
 
-		int32 rv;
-		if (reply.FindInt32("error", &rv) == B_OK && rv != B_OK)
-			return rv;
-	}
-
-	if (be_roster->IsRunning(B_MEDIA_ADDON_SERVER_SIGNATURE)) {
-		BMessenger messenger(B_MEDIA_ADDON_SERVER_SIGNATURE);
 		progress_shutdown(20, progress, cookie);
 
-		err = messenger.SendMessage(&msg, &reply, 2000000, 2000000);
-		if (err != B_OK)
-			return err;
-
 		int32 rv;
 		if (reply.FindInt32("error", &rv) == B_OK && rv != B_OK)
 			return rv;
 	}
 
-	if (be_roster->IsRunning(B_MEDIA_SERVER_SIGNATURE)) {
+	if (addOnServer != B_ERROR) {
+		shutdown = false;
+		BMessage reply;
+		BMessenger messenger(B_MEDIA_ADDON_SERVER_SIGNATURE, addOnServer);
 		progress_shutdown(40, progress, cookie);
-		snooze(200000);
-	}
 
-	if (be_roster->IsRunning(B_MEDIA_ADDON_SERVER_SIGNATURE)) {
-		progress_shutdown(50, progress, cookie);
-		snooze(200000);
-	}
+		// The media_server usually shutdown the media_addon_server,
+		// if not let's do something.
+		if (messenger.IsValid()) {
+			err = messenger.SendMessage(&msg, &reply, 2000000, 2000000);
+			reply.FindBool("_shutdown", &shutdown);
+			if (err == B_TIMED_OUT || shutdown == false) {
+				if (messenger.IsValid())
+					kill_team(addOnServer);
+			} else if (err != B_OK)
+				return err;
 
-	progress_shutdown(70, progress, cookie);
-	snooze(1000000);
+			progress_shutdown(50, progress, cookie);
 
-	if (be_roster->IsRunning(B_MEDIA_SERVER_SIGNATURE)) {
-		kill_team(be_roster->TeamFor(B_MEDIA_SERVER_SIGNATURE));
-	}
-
-	if (be_roster->IsRunning(B_MEDIA_ADDON_SERVER_SIGNATURE)) {
-		kill_team(be_roster->TeamFor(B_MEDIA_ADDON_SERVER_SIGNATURE));
+			int32 rv;
+			if (reply.FindInt32("error", &rv) == B_OK && rv != B_OK)
+				return rv;
+		}
 	}
 
 	progress_shutdown(100, progress, cookie);
-	snooze(1000000);
-
 	return B_OK;
 }
 
@@ -1400,44 +1430,38 @@ launch_media_server(bigtime_t timeout,
 	if (BMediaRoster::IsRunning())
 		return B_ALREADY_RUNNING;
 
+	status_t err = B_MEDIA_SYSTEM_FAILURE;
+	BMediaRoster* roster = BMediaRoster::Roster(&err);
+	if (roster == NULL || err != B_OK)
+		return err;
+
+	if (progress == NULL && roster->Lock()) {
+		MediaRosterEx(roster)->EnableLaunchNotification(true, true);
+		roster->Unlock();
+	}
+
 	// The media_server crashed
 	if (be_roster->IsRunning(B_MEDIA_ADDON_SERVER_SIGNATURE)) {
 		progress_startup(10, progress, cookie);
 		kill_team(be_roster->TeamFor(B_MEDIA_ADDON_SERVER_SIGNATURE));
-		snooze(1000000);
 	}
 
 	// The media_addon_server crashed
 	if (be_roster->IsRunning(B_MEDIA_SERVER_SIGNATURE)) {
 		progress_startup(20, progress, cookie);
 		kill_team(be_roster->TeamFor(B_MEDIA_SERVER_SIGNATURE));
-		snooze(1000000);
 	}
 
 	progress_startup(50, progress, cookie);
 
-	status_t err = be_roster->Launch(B_MEDIA_SERVER_SIGNATURE);
-	if (err != B_OK)
-		return err;
-
-	err = B_MEDIA_SYSTEM_FAILURE;
-	for (int i = 0; i < 15; i++) {
-		snooze(2000000);
-
-		BMessage msg(1); // this is a hack
-		BMessage reply;
-		BMessenger messenger(B_MEDIA_ADDON_SERVER_SIGNATURE);
-
-		if (messenger.IsValid()) {
-			messenger.SendMessage(&msg, &reply, 2000000, 2000000);
-			err = B_OK;
-			progress_startup(100, progress, cookie);
-			break;
-		}
-	}
+	err = BLaunchRoster().Start(B_MEDIA_SERVER_SIGNATURE);
 
 	if (err != B_OK)
 		progress_startup(90, progress, cookie);
+	else if (progress != NULL) {
+		progress_startup(100, progress, cookie);
+		err = B_OK;
+	}
 
 	return err;
 }

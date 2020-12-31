@@ -44,6 +44,7 @@ All rights reserved.
 #include <Debug.h>
 #include <Directory.h>
 #include <FindDirectory.h>
+#include <GridView.h>
 #include <Locale.h>
 #include <MenuBar.h>
 #include <MenuField.h>
@@ -129,6 +130,17 @@ key_down_filter(BMessage* message, BHandler** handler, BMessageFilter* filter)
 
 	int32 modifier = 0;
 	message->FindInt32("modifiers", &modifier);
+
+	if (modifier & B_COMMAND_KEY && key == B_UP_ARROW) {
+		filter->Looper()->PostMessage(kOpenParentDir);
+		return B_SKIP_MESSAGE;
+	}
+
+	if (modifier & B_COMMAND_KEY && key == 'w') {
+		filter->Looper()->PostMessage(kCancelButton);
+		return B_SKIP_MESSAGE;
+	}
+
 	if (!modifier && key == B_ESCAPE) {
 		if (view->ActivePose())
 			view->CommitActivePose(false);
@@ -234,6 +246,13 @@ TFilePanel::TFilePanel(file_panel_mode mode, BMessenger* target,
 	fBorderedView = new BorderedView;
 	CreatePoseView(model);
 	fBorderedView->GroupLayout()->SetInsets(1);
+
+	fPoseContainer = new BGridView(0.0, 0.0);
+	fPoseContainer->GridLayout()->AddView(fBorderedView, 0, 1);
+
+	fCountContainer = new BGroupView(B_HORIZONTAL, 0);
+	fPoseContainer->GridLayout()->AddView(fCountContainer, 0, 2);
+
 	fPoseView->SetRefFilter(filter);
 	if (!fIsSavePanel)
 		fPoseView->SetMultipleSelection(multipleSelection);
@@ -552,6 +571,13 @@ TFilePanel::SetClientObject(BFilePanel* panel)
 }
 
 
+bool
+TFilePanel::IsOpenButtonAlwaysEnabled() const
+{
+	return !fIsSavePanel && (fNodeFlavors & B_DIRECTORY_NODE) != 0;
+}
+
+
 void
 TFilePanel::AdjustButton()
 {
@@ -613,7 +639,7 @@ TFilePanel::AdjustButton()
 	}
 
 	button->SetLabel(buttonText.String());
-	button->SetEnabled(enabled);
+	button->SetEnabled(IsOpenButtonAlwaysEnabled() || enabled);
 }
 
 
@@ -716,16 +742,17 @@ TFilePanel::Init(const BMessage*)
 		fButtonText.SetTo(B_TRANSLATE("Open"));
 
 	// Add PoseView
-	fBorderedView->SetName("PoseView");
-	fBorderedView->SetResizingMode(B_FOLLOW_ALL);
+	PoseView()->SetName("ActualPoseView");
+	fPoseContainer->SetName("PoseView");
+	fPoseContainer->SetResizingMode(B_FOLLOW_ALL);
 	fBorderedView->EnableBorderHighlight(true);
 
 	rect = windRect;
 	rect.OffsetTo(10, fDirMenuField->Frame().bottom + 10);
-	rect.bottom = windRect.bottom - 60;
-	rect.right -= B_V_SCROLL_BAR_WIDTH + 20;
-	fBorderedView->MoveTo(rect.LeftTop());
-	fBorderedView->ResizeTo(rect.Width(), rect.Height());
+	rect.bottom = windRect.bottom - 46;
+	rect.right -= 20;
+	fPoseContainer->MoveTo(rect.LeftTop());
+	fPoseContainer->ResizeTo(rect.Width(), rect.Height());
 
 	PoseView()->AddScrollBars();
 	PoseView()->SetDragEnabled(false);
@@ -734,28 +761,10 @@ TFilePanel::Init(const BMessage*)
 	PoseView()->SetSelectionChangedHook(true);
 	PoseView()->DisableSaveLocation();
 
-	// horizontal
-	rect = fBorderedView->Frame();
-	rect.top = rect.bottom;
-	rect.bottom = rect.top + (float)B_H_SCROLL_BAR_HEIGHT;
-	PoseView()->HScrollBar()->MoveTo(rect.LeftTop());
-	PoseView()->HScrollBar()->ResizeTo(rect.Size());
-	PoseView()->HScrollBar()->SetResizingMode(B_FOLLOW_LEFT_RIGHT | B_FOLLOW_BOTTOM);
-	fBackView->AddChild(PoseView()->HScrollBar());
-
-	// vertical
-	rect = fBorderedView->Frame();
-	rect.left = rect.right;
-	rect.right = rect.left + (float)B_V_SCROLL_BAR_WIDTH;
-	PoseView()->VScrollBar()->MoveTo(rect.LeftTop());
-	PoseView()->VScrollBar()->ResizeTo(rect.Size());
-	PoseView()->VScrollBar()->SetResizingMode(B_FOLLOW_TOP_BOTTOM | B_FOLLOW_RIGHT);
-	fBackView->AddChild(PoseView()->VScrollBar());
-
 	if (fIsSavePanel)
-		fBackView->AddChild(fBorderedView, fTextControl);
+		fBackView->AddChild(fPoseContainer, fTextControl);
 	else
-		fBackView->AddChild(fBorderedView);
+		fBackView->AddChild(fPoseContainer);
 
 	AddShortcut('W', B_COMMAND_KEY, new BMessage(kCancelButton));
 	AddShortcut('H', B_COMMAND_KEY, new BMessage(kSwitchToHome));
@@ -798,7 +807,7 @@ TFilePanel::Init(const BMessage*)
 		B_FOLLOW_RIGHT + B_FOLLOW_BOTTOM);
 	fBackView->AddChild(cancel_button);
 
-	if (!fIsSavePanel)
+	if (!fIsSavePanel && (fNodeFlavors & B_DIRECTORY_NODE) == 0)
 		default_button->SetEnabled(false);
 
 	default_button->MakeDefault(true);
@@ -899,28 +908,7 @@ TFilePanel::RestoreState()
 	}
 
 	// Finish UI creation now that the PoseView is initialized
-	fBorderedView->GroupLayout()->AddView(0, fPoseView->TitleView());
-
-	BRect rect(fBorderedView->Frame());
-	rect.right = rect.left + kCountViewWidth;
-	rect.top = rect.bottom + 1;
-	rect.bottom = rect.top + PoseView()->HScrollBar()->Bounds().Height() - 1;
-	PoseView()->CountView()->MoveTo(rect.LeftTop());
-	PoseView()->CountView()->ResizeTo(rect.Size());
-	PoseView()->CountView()->SetResizingMode(B_FOLLOW_LEFT | B_FOLLOW_BOTTOM);
-	fBackView->AddChild(PoseView()->CountView(), fBorderedView);
-
-	PoseView()->HScrollBar()->MoveBy(kCountViewWidth + 1, 0);
-	PoseView()->HScrollBar()->ResizeBy(-kCountViewWidth - 1, 0);
-
-	// The Be Book states that the BTitleView will have a name of "TitleView",
-	// and so some apps will try to grab it by that name and move it around.
-	// They don't need to, because resizing "PoseView" (really the BorderedView)
-	// will resize the BTitleView as well. So just create a dummy view here
-	// so that they don't get NULL when trying to find the view.
-	BView* dummyTitleView = new BView(BRect(), "TitleView", B_FOLLOW_NONE, 0);
-	fBackView->AddChild(dummyTitleView);
-	dummyTitleView->Hide();
+	InitLayout();
 }
 
 
@@ -1641,9 +1629,9 @@ TFilePanel::HandleOpenButton()
 		}
 	}
 
-	// don't do anything unless there are items selected
-    // message->fMessage->message from here to end
 	if (selection->CountItems()) {
+			// there are items selected
+			// message->fMessage->message from here to end
 		BMessage message(*fMessage);
 		// go through selection and add appropriate items
 		for (int32 index = 0; index < selection->CountItems(); index++) {
@@ -1658,6 +1646,10 @@ TFilePanel::HandleOpenButton()
 			}
 		}
 
+		OpenSelectionCommon(&message);
+	} else if (IsOpenButtonAlwaysEnabled()) {
+		BMessage message(*fMessage);
+		message.AddRef("refs", TargetModel()->EntryRef());
 		OpenSelectionCommon(&message);
 	}
 }
@@ -1727,12 +1719,12 @@ BFilePanelPoseView::StopWatching()
 bool
 BFilePanelPoseView::FSNotification(const BMessage* message)
 {
-	if (IsDesktopView()) {
-		// Pretty much copied straight from DesktopPoseView.
-		// Would be better if the code could be shared somehow.
-		switch (message->FindInt32("opcode")) {
-			case B_DEVICE_MOUNTED:
-			{
+	switch (message->FindInt32("opcode")) {
+		case B_DEVICE_MOUNTED:
+		{
+			if (IsDesktopView()) {
+				// Pretty much copied straight from DesktopPoseView.
+				// Would be better if the code could be shared somehow.
 				dev_t device;
 				if (message->FindInt32("new device", &device) != B_OK)
 					break;
@@ -1749,6 +1741,21 @@ BFilePanelPoseView::FSNotification(const BMessage* message)
 						|| settings.MountSharedVolumesOntoDesktop())) {
 					// place an icon for the volume onto the desktop
 					CreateVolumePose(&volume, true);
+				}
+			}
+			break;
+		}
+
+		case B_DEVICE_UNMOUNTED:
+		{
+			dev_t device;
+			if (message->FindInt32("device", &device) == B_OK) {
+				if (TargetModel() != NULL
+					&& TargetModel()->NodeRef()->device == device) {
+					// Volume currently shown in this file panel
+					// disappeared, reset location to home directory
+					BMessage message(kSwitchToHome);
+					MessageReceived(&message);
 				}
 			}
 			break;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2009, Haiku, Inc.
+ * Copyright 2009-2019, Haiku, Inc.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -28,27 +28,49 @@
 #include <new>
 
 
+#ifdef CLIENT_COMPILE
+#define TRACE_ALWAYS(x...)		printf("RemoteMessage: " x)
+#else
+#define TRACE_ALWAYS(x...)		debug_printf("RemoteMessage: " x)
+#endif
+
+#define TRACE(x...)				/*TRACE_ALWAYS(x)*/
+#define TRACE_ERROR(x...)		TRACE_ALWAYS(x)
+
+
 status_t
 RemoteMessage::NextMessage(uint16& code)
 {
 	if (fDataLeft > 0) {
 		// discard remainder of message
 		int32 readSize = fSource->Read(NULL, fDataLeft);
-		if (readSize < 0)
+		if (readSize < 0) {
+			TRACE_ERROR("failed to read from source: %s\n", strerror(readSize));
 			return readSize;
+		}
 	}
 
 	static const uint32 kHeaderSize = sizeof(uint16) + sizeof(uint32);
 
 	fDataLeft = kHeaderSize;
-	Read(code);
-	uint32 dataLeft;
-	status_t result = Read(dataLeft);
-	if (result != B_OK)
+	status_t result = Read(code);
+	if (result != B_OK) {
+		TRACE_ERROR("failed to read message code: %s\n", strerror(result));
 		return result;
+	}
 
-	if (dataLeft < kHeaderSize)
+	uint32 dataLeft;
+	result = Read(dataLeft);
+	if (result != B_OK) {
+		TRACE_ERROR("failed to read message length: %s\n", strerror(result));
+		return result;
+	}
+
+	if (dataLeft < kHeaderSize) {
+		TRACE_ERROR("message claims %" B_PRIu32 " bytes, needed at least %"
+			B_PRIu32 " for the header\n", dataLeft, kHeaderSize);
 		return B_ERROR;
+	}
 
 	fDataLeft = dataLeft - kHeaderSize;
 	fCode = code;
@@ -92,7 +114,7 @@ RemoteMessage::AddBitmap(const ServerBitmap& bitmap, bool minimal)
 void
 RemoteMessage::AddFont(const ServerFont& font)
 {
-	Add(font.Direction());
+	Add((uint8)font.Direction());
 	Add((uint8)font.Encoding());
 	Add(font.Flags());
 	Add((uint8)font.Spacing());
@@ -154,7 +176,7 @@ RemoteMessage::AddBitmap(const BBitmap& bitmap)
 	Add(bounds.IntegerWidth() + 1);
 	Add(bounds.IntegerHeight() + 1);
 	Add(bitmap.BytesPerRow());
-	Add(bitmap.ColorSpace());
+	Add((uint32)bitmap.ColorSpace());
 	Add(bitmap.Flags());
 
 	uint32 bitsLength = bitmap.BitsLength();
@@ -173,7 +195,7 @@ RemoteMessage::AddBitmap(const BBitmap& bitmap)
 void
 RemoteMessage::AddGradient(const BGradient& gradient)
 {
-	Add(gradient.GetType());
+	Add((uint32)gradient.GetType());
 
 	switch (gradient.GetType()) {
 		case BGradient::TYPE_NONE:
@@ -251,6 +273,24 @@ RemoteMessage::AddGradient(const BGradient& gradient)
 		Add(stop->color);
 		Add(stop->offset);
 	}
+}
+
+
+void
+RemoteMessage::AddTransform(const BAffineTransform& transform)
+{
+	bool isIdentity = transform.IsIdentity();
+	Add(isIdentity);
+
+	if (isIdentity)
+		return;
+
+	Add(transform.sx);
+	Add(transform.shy);
+	Add(transform.shx);
+	Add(transform.sy);
+	Add(transform.tx);
+	Add(transform.ty);
 }
 
 
@@ -345,10 +385,11 @@ RemoteMessage::ReadBitmap(BBitmap** _bitmap, bool minimal,
 status_t
 RemoteMessage::ReadFontState(BFont& font)
 {
-	uint8 encoding, spacing;
+	uint8 direction;
+	uint8 encoding;
+	uint8 spacing;
 	uint16 face;
 	uint32 flags, familyAndStyle;
-	font_direction direction;
 	float falseBoldWidth, rotation, shear, size;
 
 	Read(direction);
@@ -502,14 +543,38 @@ RemoteMessage::ReadGradient(BGradient** _gradient)
 
 		Read(color);
 		result = Read(offset);
-		if (result != B_OK)
+		if (result != B_OK) {
+			delete gradient;
 			return result;
+		}
 
 		gradient->AddColor(color, offset);
 	}
 
 	*_gradient = gradient;
 	return B_OK;
+}
+
+
+status_t
+RemoteMessage::ReadTransform(BAffineTransform& transform)
+{
+	bool isIdentity;
+	status_t result = Read(isIdentity);
+	if (result != B_OK)
+		return result;
+
+	if (isIdentity) {
+		transform = BAffineTransform();
+		return B_OK;
+	}
+
+	Read(transform.sx);
+	Read(transform.shy);
+	Read(transform.shx);
+	Read(transform.sy);
+	Read(transform.tx);
+	return Read(transform.ty);
 }
 
 

@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -111,6 +111,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #include "acpi.h"
@@ -210,10 +246,10 @@ AcpiEvGpeInitialize (
         /* Install GPE Block 0 */
 
         Status = AcpiEvCreateGpeBlock (AcpiGbl_FadtGpeDevice,
-                    AcpiGbl_FADT.XGpe0Block.Address,
-                    AcpiGbl_FADT.XGpe0Block.SpaceId,
-                    RegisterCount0, 0,
-                    AcpiGbl_FADT.SciInterrupt, &AcpiGbl_GpeFadtBlocks[0]);
+            AcpiGbl_FADT.XGpe0Block.Address,
+            AcpiGbl_FADT.XGpe0Block.SpaceId,
+            RegisterCount0, 0,
+            AcpiGbl_FADT.SciInterrupt, &AcpiGbl_GpeFadtBlocks[0]);
 
         if (ACPI_FAILURE (Status))
         {
@@ -250,11 +286,11 @@ AcpiEvGpeInitialize (
             /* Install GPE Block 1 */
 
             Status = AcpiEvCreateGpeBlock (AcpiGbl_FadtGpeDevice,
-                        AcpiGbl_FADT.XGpe1Block.Address,
-                        AcpiGbl_FADT.XGpe1Block.SpaceId,
-                        RegisterCount1,
-                        AcpiGbl_FADT.Gpe1Base,
-                        AcpiGbl_FADT.SciInterrupt, &AcpiGbl_GpeFadtBlocks[1]);
+                AcpiGbl_FADT.XGpe1Block.Address,
+                AcpiGbl_FADT.XGpe1Block.SpaceId,
+                RegisterCount1,
+                AcpiGbl_FADT.Gpe1Base,
+                AcpiGbl_FADT.SciInterrupt, &AcpiGbl_GpeFadtBlocks[1]);
 
             if (ACPI_FAILURE (Status))
             {
@@ -267,7 +303,7 @@ AcpiEvGpeInitialize (
              * space. However, GPE0 always starts at GPE number zero.
              */
             GpeNumberMax = AcpiGbl_FADT.Gpe1Base +
-                            ((RegisterCount1 * ACPI_GPE_REGISTER_WIDTH) - 1);
+                ((RegisterCount1 * ACPI_GPE_REGISTER_WIDTH) - 1);
         }
     }
 
@@ -347,9 +383,9 @@ AcpiEvUpdateGpes (
             WalkInfo.GpeDevice = GpeBlock->Node;
 
             Status = AcpiNsWalkNamespace (ACPI_TYPE_METHOD,
-                        WalkInfo.GpeDevice, ACPI_UINT32_MAX,
-                        ACPI_NS_WALK_NO_UNLOCK, AcpiEvMatchGpeMethod,
-                        NULL, &WalkInfo, NULL);
+                WalkInfo.GpeDevice, ACPI_UINT32_MAX,
+                ACPI_NS_WALK_NO_UNLOCK, AcpiEvMatchGpeMethod,
+                NULL, &WalkInfo, NULL);
             if (ACPI_FAILURE (Status))
             {
                 ACPI_EXCEPTION ((AE_INFO, Status,
@@ -364,7 +400,7 @@ AcpiEvUpdateGpes (
 
     if (WalkInfo.Count)
     {
-        ACPI_INFO ((AE_INFO, "Enabled %u new GPEs", WalkInfo.Count));
+        ACPI_INFO (("Enabled %u new GPEs", WalkInfo.Count));
     }
 
     (void) AcpiUtReleaseMutex (ACPI_MTX_EVENTS);
@@ -408,7 +444,9 @@ AcpiEvMatchGpeMethod (
     ACPI_NAMESPACE_NODE     *MethodNode = ACPI_CAST_PTR (ACPI_NAMESPACE_NODE, ObjHandle);
     ACPI_GPE_WALK_INFO      *WalkInfo = ACPI_CAST_PTR (ACPI_GPE_WALK_INFO, Context);
     ACPI_GPE_EVENT_INFO     *GpeEventInfo;
+    ACPI_STATUS             Status;
     UINT32                  GpeNumber;
+    UINT8                   TempGpeNumber;
     char                    Name[ACPI_NAME_SIZE + 1];
     UINT8                   Type;
 
@@ -467,8 +505,8 @@ AcpiEvMatchGpeMethod (
 
     /* 4) The last two characters of the name are the hex GPE Number */
 
-    GpeNumber = strtoul (&Name[2], NULL, 16);
-    if (GpeNumber == ACPI_UINT32_MAX)
+    Status = AcpiUtAsciiToHexByte (&Name[2], &TempGpeNumber);
+    if (ACPI_FAILURE (Status))
     {
         /* Conversion failed; invalid method, just ignore it */
 
@@ -480,6 +518,7 @@ AcpiEvMatchGpeMethod (
 
     /* Ensure that we have a valid GPE number for this GPE block */
 
+    GpeNumber = (UINT32) TempGpeNumber;
     GpeEventInfo = AcpiEvLowGetGpeInfo (GpeNumber, WalkInfo->GpeBlock);
     if (!GpeEventInfo)
     {
@@ -502,7 +541,7 @@ AcpiEvMatchGpeMethod (
     }
 
     if (ACPI_GPE_DISPATCH_TYPE (GpeEventInfo->Flags) ==
-            ACPI_GPE_DISPATCH_METHOD)
+        ACPI_GPE_DISPATCH_METHOD)
     {
         /*
          * If there is already a method, ignore this method. But check

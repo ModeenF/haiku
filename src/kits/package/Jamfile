@@ -1,9 +1,12 @@
 SubDir HAIKU_TOP src kits package ;
 
+AddResources libpackage.so : libpackage.rdef ;
+
 UsePrivateHeaders
 	app
 	kernel
 	shared
+	libroot
 	storage
 	support
 	;
@@ -60,17 +63,13 @@ HPKG_SOURCES =
 local architectureObject ;
 for architectureObject in [ MultiArchSubDirSetup ] {
 	on $(architectureObject) {
-		UseBuildFeatureHeaders curl ;
-
+		if [ FIsBuildFeatureEnabled zstd ] {
+			SubDirC++Flags -DZSTD_ENABLED ;
+		}
 		SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src kits package hpkg ] ;
 		SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src kits package hpkg v1 ] ;
 		SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src kits package manager ] ;
 		SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src kits package solver ] ;
-
-		Includes [ FGristFiles FetchFileJob.cpp ]
-			: [ BuildFeatureAttribute curl : headers ] ;
-		Includes [ FGristFiles InitTerminateLibPackage.cpp ]
-			: [ BuildFeatureAttribute curl : headers ] ;
 
 		SharedLibrary [ MultiArchDefaultGristFiles libpackage.so ]
 			:
@@ -85,7 +84,6 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			DownloadFileRequest.cpp
 			DropRepositoryRequest.cpp
 			FetchFileJob.cpp
-			InitTerminateLibPackage.cpp
 			InstallationLocationInfo.cpp
 			Job.cpp
 			PackageInfo.cpp
@@ -129,11 +127,22 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			SolverResult.cpp
 			:
 			shared
-			be
-			[ BuildFeatureAttribute curl : library ]
+			bnetapi
+			be localestub
 			[ TargetLibstdc++ ]
+			$(TARGET_NETWORK_LIBS)
 			;
 	}
 }
+
+
+SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src kits package manager ] ;
+
+DoCatalogs libpackage.so :
+	x-vnd.Haiku-libpackage
+	:
+	PackageManager.cpp
+	RefreshRepositoryRequest.cpp
+;
 
 HaikuSubInclude solver ;

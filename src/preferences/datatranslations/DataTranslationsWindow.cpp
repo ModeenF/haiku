@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014, Haiku, Inc.
+ * Copyright 2002-2017, Haiku, Inc.
  * Distributed under the terms of the MIT license.
  *
  * Authors:
@@ -13,6 +13,8 @@
 #include "DataTranslationsWindow.h"
 
 #include <algorithm>
+
+#include <math.h>
 #include <stdio.h>
 
 #include <Alert.h>
@@ -32,6 +34,7 @@
 #include <ScrollView.h>
 #include <String.h>
 #include <StringView.h>
+#include <SupportDefs.h>
 #include <TextView.h>
 #include <TranslationDefs.h>
 #include <TranslatorRoster.h>
@@ -52,9 +55,10 @@ const uint32 kMsgSelectedTranslator = 'trsl';
 
 DataTranslationsWindow::DataTranslationsWindow()
 	:
-	BWindow(BRect(0, 0, 550, 350), B_TRANSLATE_SYSTEM_NAME("DataTranslations"),
-		B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS | B_NOT_ZOOMABLE
-		| B_NOT_RESIZABLE | B_AUTO_UPDATE_SIZE_LIMITS),
+	BWindow(BRect(0.0f, 0.0f, 597.0f, 368.0f),
+		B_TRANSLATE_SYSTEM_NAME("DataTranslations"),
+		B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS | B_NOT_RESIZABLE
+			| B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS),
 	fRelease(NULL)
 {
 	MoveTo(DataTranslationsSettings::Instance()->WindowCorner());
@@ -149,27 +153,33 @@ DataTranslationsWindow::_ShowConfigView(int32 id)
 
 	BTranslatorRoster* roster = BTranslatorRoster::Default();
 
-	if (fConfigView) {
+	if (fConfigView != NULL) {
 		fRightBox->RemoveChild(fConfigView);
 		delete fConfigView;
 		fConfigView = NULL;
+		fInfoText = NULL;
 		if (fRelease != NULL) {
 			fRelease->Release();
 			fRelease = NULL;
 		}
 	}
 
-	BMessage emptyMsg;
-	BRect rect(0, 0, 200, 233);
-	status_t ret = roster->MakeConfigurationView(id, &emptyMsg,
+	BMessage emptyMessage;
+	BRect rect(0.0f, 0.0f, 200.0f, 233.0f);
+	status_t result = roster->MakeConfigurationView(id, &emptyMessage,
 		&fConfigView, &rect);
 
-	if (ret != B_OK)
-		return ret;
+	if (result != B_OK)
+		return result;
 
 	fConfigView->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 		// force config views to all have the same color
 	fRightBox->AddChild(fConfigView);
+
+	// for default 12pt font size: 597 ≈ (0.85 * 12 * 49)
+	fConfigView->SetExplicitMinSize(
+		BSize(ceilf(be_control_look->DefaultItemSpacing() * 49)
+			- fTranslatorListView->Frame().Width(), B_SIZE_UNSET));
 
 	// Make sure the translator's image doesn't get unloaded while we are still
 	// showing a config view whose code is in the image
@@ -182,15 +192,15 @@ DataTranslationsWindow::_ShowConfigView(int32 id)
 void
 DataTranslationsWindow::_ShowInfoView()
 {
-	if (fConfigView) {
+	if (fConfigView != NULL) {
 		fRightBox->RemoveChild(fConfigView);
 		delete fConfigView;
 		fConfigView = NULL;
+		fInfoText = NULL;
 		if (fRelease != NULL) {
 			fRelease->Release();
 			fRelease = NULL;
 		}
-
 	}
 
 	fInfoText = new BTextView("info text");
@@ -209,6 +219,11 @@ DataTranslationsWindow::_ShowInfoView()
 	group->GroupLayout()->SetInsets(spacing, spacing, spacing, spacing);
 	fRightBox->AddChild(group);
 	fConfigView = group;
+
+	fConfigView->SetExplicitMinSize(
+		BSize(ceilf(spacing * be_plain_font->Size() * 0.7)
+			- fTranslatorListView->Frame().Width(),
+			ceilf(spacing * be_plain_font->Size() * 0.4)));
 }
 
 
@@ -232,7 +247,7 @@ DataTranslationsWindow::_SetupViews()
 	// Box around the config and info panels
 	fRightBox = new BBox("Right_Side");
 	fRightBox->SetExplicitAlignment(BAlignment(B_ALIGN_USE_FULL_WIDTH,
-			B_ALIGN_USE_FULL_HEIGHT));
+		B_ALIGN_USE_FULL_HEIGHT));
 
 	// Add the translator icon view
 	fIconView = new IconView();
@@ -250,11 +265,15 @@ DataTranslationsWindow::_SetupViews()
 	BLayoutBuilder::Group<>(this, B_HORIZONTAL)
 		.SetInsets(B_USE_WINDOW_SPACING)
 		.Add(scrollView, 3)
-		.AddGrid(B_USE_DEFAULT_SPACING, B_USE_DEFAULT_SPACING, 6)
-			.SetInsets(0, 0, 0, 0)
-			.Add(fRightBox, 0, 0, 3, 1)
-			.Add(fIconView, 0, 1)
-			.Add(fButton, 2, 1);
+		.AddGroup(B_VERTICAL)
+			.Add(fRightBox)
+			.AddGroup(B_HORIZONTAL)
+				.Add(fIconView)
+				.AddGlue()
+				.Add(fButton)
+				.End()
+			.End()
+		.End();
 
 	fTranslatorListView->MakeFocus();
 	_ShowInfoView();
@@ -280,15 +299,36 @@ DataTranslationsWindow::_ShowInfoAlert(int32 id)
 	int32 version = 0;
 	_GetTranslatorInfo(id, name, info, version, path);
 
+	const char* labels[] = { B_TRANSLATE("Name:"), B_TRANSLATE("Version:"),
+		B_TRANSLATE("Info:"), B_TRANSLATE("Path:"), NULL };
+	int offsets[4];
+
 	BString message;
+	BString temp;
+
+	offsets[0] = 0;
+	temp.SetToFormat("%s %s\n", labels[0], name);
+
+	message.Append(temp);
+
+	offsets[1] = message.Length();
 	// Convert the version number into a readable format
-	snprintf(message.LockBuffer(2048), 2048,
-		B_TRANSLATE("Name: %s \nVersion: %ld.%ld.%ld\n\n"
-			"Info:\n%s\n\nPath:\n%s\n"),
-		name, B_TRANSLATION_MAJOR_VERSION(version),
+	temp.SetToFormat("%s %" B_PRId32 ".%" B_PRId32 ".%" B_PRId32 "\n\n", labels[1],
+		B_TRANSLATION_MAJOR_VERSION(version),
 		B_TRANSLATION_MINOR_VERSION(version),
-		B_TRANSLATION_REVISION_VERSION(version), info, path.Path());
-	message.UnlockBuffer();
+		B_TRANSLATION_REVISION_VERSION(version));
+
+	message.Append(temp);
+
+	offsets[2] = message.Length();
+	temp.SetToFormat("%s\n%s\n\n", labels[2], info);
+
+	message.Append(temp);
+
+	offsets[3] = message.Length();
+	temp.SetToFormat("%s %s\n", labels[3], path.Path());
+
+	message.Append(temp);
 
 	BAlert* alert = new BAlert(B_TRANSLATE("Info"), message.String(),
 		B_TRANSLATE("OK"));
@@ -300,11 +340,8 @@ DataTranslationsWindow::_ShowInfoAlert(int32 id)
 	view->GetFont(&font);
 	font.SetFace(B_BOLD_FACE);
 
-	const char* labels[] = { B_TRANSLATE("Name:"), B_TRANSLATE("Version:"),
-		B_TRANSLATE("Info:"), B_TRANSLATE("Path:"), NULL };
 	for (int32 i = 0; labels[i]; i++) {
-		int32 index = message.FindFirst(labels[i]);
-		view->SetFontAndColor(index, index + strlen(labels[i]), &font);
+		view->SetFontAndColor(offsets[i], offsets[i] + strlen(labels[i]), &font);
 	}
 
 	alert->SetFlags(alert->Flags() | B_CLOSE_ON_ESCAPE);
@@ -361,19 +398,21 @@ DataTranslationsWindow::MessageReceived(BMessage* message)
 
 		case B_COLORS_UPDATED:
 		{
-			if (fInfoText == NULL
-				|| fInfoText->Parent() == NULL)
+			if (fInfoText == NULL || fInfoText->Parent() == NULL)
 				break;
 
 			rgb_color color;
-			if (message->FindColor(ui_color_name(B_PANEL_TEXT_COLOR), &color) == B_OK)
+			if (message->FindColor(ui_color_name(B_PANEL_TEXT_COLOR), &color)
+					== B_OK) {
 				fInfoText->SetFontAndColor(be_plain_font, B_FONT_ALL, &color);
+			}
 			break;
 		}
 
 		case B_TRANSLATOR_ADDED:
 		{
-			int32 index = 0, id;
+			int32 index = 0;
+			int32 id;
 			while (message->FindInt32("translator_id", index++, &id) == B_OK) {
 				const char* name;
 				const char* info;
@@ -389,7 +428,8 @@ DataTranslationsWindow::MessageReceived(BMessage* message)
 
 		case B_TRANSLATOR_REMOVED:
 		{
-			int32 index = 0, id;
+			int32 index = 0;
+			int32 id;
 			while (message->FindInt32("translator_id", index++, &id) == B_OK) {
 				for (int32 i = 0; i < fTranslatorListView->CountItems(); i++) {
 					TranslatorItem* item = fTranslatorListView->TranslatorAt(i);

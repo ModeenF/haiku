@@ -9,7 +9,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -112,6 +112,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #include "acpi.h"
@@ -119,6 +155,7 @@
 #include "amlcode.h"
 #include "acdispat.h"
 #include "acinterp.h"
+#include "acdebug.h"
 
 #define _COMPONENT          ACPI_DISPATCHER
         ACPI_MODULE_NAME    ("dscontrol")
@@ -191,10 +228,14 @@ AcpiDsExecBeginControlOp (
          * Save a pointer to the predicate for multiple executions
          * of a loop
          */
-        ControlState->Control.AmlPredicateStart = WalkState->ParserState.Aml - 1;
-        ControlState->Control.PackageEnd = WalkState->ParserState.PkgEnd;
-        ControlState->Control.Opcode = Op->Common.AmlOpcode;
-
+        ControlState->Control.AmlPredicateStart =
+            WalkState->ParserState.Aml - 1;
+        ControlState->Control.PackageEnd =
+            WalkState->ParserState.PkgEnd;
+        ControlState->Control.Opcode =
+            Op->Common.AmlOpcode;
+        ControlState->Control.LoopTimeout = AcpiOsGetTimer () +
+           (UINT64) (AcpiGbl_MaxLoopIterations * ACPI_100NSEC_PER_SEC);
 
         /* Push the control state on this walk's control stack */
 
@@ -287,15 +328,15 @@ AcpiDsExecEndControlOp (
             /* Predicate was true, the body of the loop was just executed */
 
             /*
-             * This loop counter mechanism allows the interpreter to escape
-             * possibly infinite loops. This can occur in poorly written AML
-             * when the hardware does not respond within a while loop and the
-             * loop does not implement a timeout.
+             * This infinite loop detection mechanism allows the interpreter
+             * to escape possibly infinite loops. This can occur in poorly
+             * written AML when the hardware does not respond within a while
+             * loop and the loop does not implement a timeout.
              */
-            ControlState->Control.LoopCount++;
-            if (ControlState->Control.LoopCount > AcpiGbl_MaxLoopIterations)
+            if (ACPI_TIME_AFTER (AcpiOsGetTimer (),
+                    ControlState->Control.LoopTimeout))
             {
-                Status = AE_AML_INFINITE_LOOP;
+                Status = AE_AML_LOOP_TIMEOUT;
                 break;
             }
 
@@ -304,7 +345,8 @@ AcpiDsExecEndControlOp (
              * another time
              */
             Status = AE_CTRL_PENDING;
-            WalkState->AmlLastWhile = ControlState->Control.AmlPredicateStart;
+            WalkState->AmlLastWhile =
+                ControlState->Control.AmlPredicateStart;
             break;
         }
 
@@ -348,7 +390,8 @@ AcpiDsExecEndControlOp (
              * an arg or local), resolve it now because it may
              * cease to exist at the end of the method.
              */
-            Status = AcpiExResolveToValue (&WalkState->Operands [0], WalkState);
+            Status = AcpiExResolveToValue (
+                &WalkState->Operands [0], WalkState);
             if (ACPI_FAILURE (Status))
             {
                 return (Status);
@@ -377,11 +420,15 @@ AcpiDsExecEndControlOp (
              * Allow references created by the Index operator to return
              * unchanged.
              */
-            if ((ACPI_GET_DESCRIPTOR_TYPE (WalkState->Results->Results.ObjDesc[0]) == ACPI_DESC_TYPE_OPERAND) &&
-                ((WalkState->Results->Results.ObjDesc [0])->Common.Type == ACPI_TYPE_LOCAL_REFERENCE) &&
-                ((WalkState->Results->Results.ObjDesc [0])->Reference.Class != ACPI_REFCLASS_INDEX))
+            if ((ACPI_GET_DESCRIPTOR_TYPE (WalkState->Results->Results.ObjDesc[0]) ==
+                    ACPI_DESC_TYPE_OPERAND) &&
+                ((WalkState->Results->Results.ObjDesc [0])->Common.Type ==
+                    ACPI_TYPE_LOCAL_REFERENCE) &&
+                ((WalkState->Results->Results.ObjDesc [0])->Reference.Class !=
+                    ACPI_REFCLASS_INDEX))
             {
-                Status = AcpiExResolveToValue (&WalkState->Results->Results.ObjDesc [0], WalkState);
+                Status = AcpiExResolveToValue (
+                    &WalkState->Results->Results.ObjDesc [0], WalkState);
                 if (ACPI_FAILURE (Status))
                 {
                     return (Status);
@@ -399,9 +446,9 @@ AcpiDsExecEndControlOp (
                 AcpiUtRemoveReference (WalkState->Operands [0]);
             }
 
-            WalkState->Operands [0]     = NULL;
-            WalkState->NumOperands      = 0;
-            WalkState->ReturnDesc       = NULL;
+            WalkState->Operands[0] = NULL;
+            WalkState->NumOperands = 0;
+            WalkState->ReturnDesc = NULL;
         }
 
 
@@ -420,22 +467,14 @@ AcpiDsExecEndControlOp (
 
         break;
 
-    case AML_BREAK_POINT_OP:
+    case AML_BREAKPOINT_OP:
 
-        /*
-         * Set the single-step flag. This will cause the debugger (if present)
-         * to break to the console within the AML debugger at the start of the
-         * next AML instruction.
-         */
-        ACPI_DEBUGGER_EXEC (
-            AcpiGbl_CmSingleStep = TRUE);
-        ACPI_DEBUGGER_EXEC (
-            AcpiOsPrintf ("**break** Executed AML BreakPoint opcode\n"));
+        AcpiDbSignalBreakPoint (WalkState);
 
         /* Call to the OSL in case OS wants a piece of the action */
 
         Status = AcpiOsSignal (ACPI_SIGNAL_BREAKPOINT,
-                    "Executed AML Breakpoint opcode");
+            "Executed AML Breakpoint opcode");
         break;
 
     case AML_BREAK_OP:
@@ -459,7 +498,8 @@ AcpiDsExecEndControlOp (
 
         /* Was: WalkState->AmlLastWhile = WalkState->ControlState->Control.AmlPredicateStart; */
 
-        WalkState->AmlLastWhile = WalkState->ControlState->Control.PackageEnd;
+        WalkState->AmlLastWhile =
+            WalkState->ControlState->Control.PackageEnd;
 
         /* Return status depending on opcode */
 

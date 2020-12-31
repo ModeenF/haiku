@@ -78,6 +78,8 @@ static struct console_desc {
 
 int32 api_version = B_CUR_DRIVER_API_VERSION;
 
+static int32 sOpenMask;
+
 
 static inline void
 update_cursor(struct console_desc *console, int x, int y)
@@ -659,6 +661,9 @@ _console_write(struct console_desc *console, const void *buffer, size_t length)
 static status_t
 console_open(const char *name, uint32 flags, void **cookie)
 {
+	if (atomic_or(&sOpenMask, 1) == 1)
+		return B_BUSY;
+
 	*cookie = &sConsole;
 
 	status_t status = get_module(sConsole.module_name, (module_info **)&sConsole.module);
@@ -676,6 +681,8 @@ console_freecookie(void *cookie)
 		put_module(sConsole.module_name);
 		sConsole.module = NULL;
 	}
+
+	atomic_and(&sOpenMask, ~1);
 
 	return B_OK;
 }
@@ -701,7 +708,8 @@ static status_t
 console_write(void *cookie, off_t pos, const void *buffer, size_t *_length)
 {
 	struct console_desc *console = (struct console_desc *)cookie;
-	ssize_t written;
+	ssize_t written = 0;
+	status_t status = B_OK;
 
 #if 0
 {
@@ -720,16 +728,27 @@ console_write(void *cookie, off_t pos, const void *buffer, size_t *_length)
 	mutex_lock(&console->lock);
 
 	update_cursor(console, -1, -1); // hide it
-	written = _console_write(console, buffer, *_length);
+
+	size_t bytesLeft = *_length;
+	const char *str = (const char*)buffer;
+	while (bytesLeft > 0) {
+		char localBuffer[512];
+		size_t chunkSize = min_c(sizeof(localBuffer), bytesLeft);
+		if (user_memcpy(localBuffer, str, chunkSize) < B_OK) {
+			status = B_BAD_ADDRESS;
+			break;
+		}
+		written += _console_write(console, localBuffer, chunkSize);
+		str += chunkSize;
+		bytesLeft -= chunkSize;
+	}
 	update_cursor(console, console->x, console->y);
 
 	mutex_unlock(&console->lock);
 
-	if (written >= 0) {
+	if (status == B_OK)
 		*_length = written;
-		return B_OK;
-	}
-	return written;
+	return status;
 }
 
 

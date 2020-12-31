@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: ISC
+ *
  * Copyright (c) 2002-2009 Sam Leffler, Errno Consulting
  * Copyright (c) 2002-2008 Atheros Communications, Inc.
  *
@@ -14,7 +16,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/dev/ath/ath_hal/ar5212/ar2413.c 326695 2017-12-08 15:57:29Z pfg $
  */
 #include "opt_ah.h"
 
@@ -367,9 +369,9 @@ ar2413getGainBoundariesAndPdadcsForPowers(struct ath_hal *ah, uint16_t channel,
 	 * change pwr_I_0 to signed 5-bits.
 	 */
 	int16_t Pmin_t2[MAX_NUM_PDGAINS_PER_CHANNEL];
-	/* to accomodate -ve power levels later on. */
+	/* to accommodate -ve power levels later on. */
 	int16_t Pmax_t2[MAX_NUM_PDGAINS_PER_CHANNEL];
-	/* to accomodate -ve power levels later on */
+	/* to accommodate -ve power levels later on */
 	uint16_t numVpd = 0;
 	uint16_t Vpd_step;
 	int16_t tmpVal ; 

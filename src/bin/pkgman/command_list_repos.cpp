@@ -43,7 +43,7 @@ static const char* const kLongUsage =
 
 
 DEFINE_COMMAND(ListReposCommand, "list-repos", kShortUsage, kLongUsage,
-	kCommandCategoryRepositories)
+	COMMAND_CATEGORY_REPOSITORIES)
 
 
 int
@@ -104,6 +104,7 @@ ListReposCommand::Execute(int argc, const char* const* argv)
 			repoConfig.IsUserSpecific() ? "[User]" : "      ",
 			repoConfig.Name().String());
 		printf("\t\tbase-url:  %s\n", repoConfig.BaseURL().String());
+		printf("\t\tidentifier: %s\n", repoConfig.Identifier().String());
 		printf("\t\tpriority:  %u\n", repoConfig.Priority());
 
 		if (verbose) {
@@ -118,8 +119,10 @@ ListReposCommand::Execute(int argc, const char* const* argv)
 						repoCache.Info().Architecture()]);
 				printf("\t\tpkg-count: %" B_PRIu32 "\n",
 					repoCache.CountPackages());
-				printf("\t\torig-url:  %s\n",
-					repoCache.Info().OriginalBaseURL().String());
+				printf("\t\tbase-url:  %s\n",
+					repoCache.Info().BaseURL().String());
+				printf("\t\tidentifier:  %s\n",
+					repoCache.Info().Identifier().String());
 				printf("\t\torig-prio: %u\n", repoCache.Info().Priority());
 			} else
 				printf("\t\t<no repository cache found>\n");

@@ -90,7 +90,7 @@ SerialDevice::Init()
 		+ fInterruptBufferSize;
 	fBufferArea = create_area("usb_serial:buffers_area", (void **)&fReadBuffer,
 		B_ANY_KERNEL_ADDRESS, ROUNDUP(totalBuffers, B_PAGE_SIZE), B_CONTIGUOUS,
-		B_READ_AREA | B_WRITE_AREA);
+		B_KERNEL_READ_AREA | B_KERNEL_WRITE_AREA);
 	if (fBufferArea < 0)
 		return fBufferArea;
 
@@ -161,8 +161,8 @@ SerialDevice::SetModes(struct termios *tios)
 	uint8 baud = tios->c_cflag & CBAUD;
 	int32 speed = baud_index_to_speed(baud);
 	if (speed < 0) {
-		baud = B19200;
-		speed = 19200;
+		baud = CBAUD;
+		speed = tios->c_ospeed;
 	}
 
 	// update our master config in full
@@ -179,6 +179,8 @@ SerialDevice::SetModes(struct termios *tios)
 
 	// update the termios of the device side
 	gTTYModule->tty_control(fDeviceTTYCookie, TCSETA, &config, sizeof(termios));
+
+	SetHardwareFlowControl((tios->c_cflag & CRTSCTS) != 0);
 
 	usb_cdc_line_coding lineCoding;
 	lineCoding.speed = speed;
@@ -210,6 +212,9 @@ SerialDevice::SetModes(struct termios *tios)
 bool
 SerialDevice::Service(struct tty *tty, uint32 op, void *buffer, size_t length)
 {
+	if (!fDeviceOpen)
+		return false;
+
 	if (tty != fMasterTTY)
 		return false;
 
@@ -269,6 +274,7 @@ SerialDevice::Service(struct tty *tty, uint32 op, void *buffer, size_t length)
 		case TTYOSTART:
 		case TTYOSYNC:
 		case TTYSETBREAK:
+		case TTYFLUSH:
 			TRACE("TTY other\n");
 			return true;
 	}
@@ -451,6 +457,7 @@ SerialDevice::Close()
 
 	fStopThreads = true;
 	fInputStopped = false;
+	fDeviceOpen = false;
 
 	if (!fDeviceRemoved) {
 		gUSBModule->cancel_queued_transfers(fReadPipe);
@@ -471,7 +478,10 @@ SerialDevice::Close()
 	gTTYModule->tty_destroy(fMasterTTY);
 	gTTYModule->tty_destroy(fSlaveTTY);
 
-	fDeviceOpen = false;
+	fMasterTTY = NULL;
+	fSlaveTTY = NULL;
+	fSystemTTYCookie = NULL;
+	fDeviceTTYCookie = NULL;
 	return B_OK;
 }
 
@@ -521,7 +531,7 @@ status_t
 SerialDevice::SetLineCoding(usb_cdc_line_coding *coding)
 {
 	// default implementation - does nothing
-	return B_OK;
+	return B_NOT_SUPPORTED;
 }
 
 
@@ -529,7 +539,15 @@ status_t
 SerialDevice::SetControlLineState(uint16 state)
 {
 	// default implementation - does nothing
-	return B_OK;
+	return B_NOT_SUPPORTED;
+}
+
+
+status_t
+SerialDevice::SetHardwareFlowControl(bool enable)
+{
+	// default implementation - does nothing
+	return B_NOT_SUPPORTED;
 }
 
 

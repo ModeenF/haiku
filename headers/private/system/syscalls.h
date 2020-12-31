@@ -10,6 +10,7 @@
 #include <DiskDeviceDefs.h>
 #include <elf_private.h>
 #include <image.h>
+#include <image_defs.h>
 #include <OS.h>
 
 #include <signal.h>
@@ -140,7 +141,7 @@ extern status_t		_kern_kill_team(team_id team);
 extern team_id		_kern_get_current_team();
 extern status_t		_kern_wait_for_team(team_id team, status_t *_returnCode);
 extern pid_t		_kern_wait_for_child(thread_id child, uint32 flags,
-						siginfo_t* info);
+						siginfo_t* info, team_usage_info* usageInfo);
 extern status_t		_kern_exec(const char *path, const char* const* flatArgs,
 						size_t flatArgsSize, int32 argCount, int32 envCount,
 						mode_t umask);
@@ -223,7 +224,8 @@ extern status_t		_kern_set_signal_stack(const stack_t *newStack,
 						stack_t *oldStack);
 
 // image functions
-extern image_id		_kern_register_image(image_info *info, size_t size);
+extern image_id		_kern_register_image(extended_image_info *info,
+						size_t size);
 extern status_t		_kern_unregister_image(image_id id);
 extern void			_kern_image_relocated(image_id id);
 extern void			_kern_loading_app_failed(status_t error);
@@ -336,6 +338,7 @@ extern status_t		_kern_lock_node(int fd);
 extern status_t		_kern_unlock_node(int fd);
 extern status_t		_kern_get_next_fd_info(team_id team, uint32 *_cookie,
 						struct fd_info *info, size_t infoSize);
+extern status_t		_kern_preallocate(int fd, off_t offset, off_t length);
 
 // socket functions
 extern int			_kern_socket(int family, int type, int protocol);
@@ -445,6 +448,9 @@ extern status_t		_kern_memory_advice(void *address, size_t size,
 extern status_t		_kern_get_memory_properties(team_id teamID,
 						const void *address, uint32* _protected, uint32* _lock);
 
+extern status_t		_kern_mlock(const void* address, size_t size);
+extern status_t		_kern_munlock(const void* address, size_t size);
+
 /* kernel port functions */
 extern port_id		_kern_create_port(int32 queue_length, const char *name);
 extern status_t		_kern_close_port(port_id id);
@@ -547,7 +553,7 @@ extern void			_kern_clear_caches(void *address, size_t length,
 extern bool			_kern_cpu_enabled(int32 cpu);
 extern status_t		_kern_set_cpu_enabled(int32 cpu, bool enabled);
 
-#if defined(__INTEL__) || defined(__x86_64__)
+#if defined(__i386__) || defined(__x86_64__)
 // our only x86 only syscall
 extern status_t		_kern_get_cpuid(cpuid_info *info, uint32 eax, uint32 cpu);
 #endif
@@ -615,7 +621,8 @@ extern status_t		_kern_initialize_partition(partition_id partitionID,
 						int32* changeCounter, const char* diskSystemName,
 						const char* name, const char* parameters);
 extern status_t		_kern_uninitialize_partition(partition_id partitionID,
-						int32* changeCounter);
+						int32* changeCounter, partition_id parentID,
+						int32* parentChangeCounter);
 extern status_t		_kern_create_child_partition(partition_id partitionID,
 						int32* changeCounter, off_t offset, off_t size,
 						const char* type, const char* name,

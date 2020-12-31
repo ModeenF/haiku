@@ -1,7 +1,7 @@
-/* 
-** Copyright 2003, Marcus Overhagen. All rights reserved.
-** Distributed under the terms of the Haiku License.
-*/
+/*
+ * Copyright 2003, Marcus Overhagen. All rights reserved.
+ * Distributed under the terms of the MIT License.
+ */
 
 
 #include <SupportDefs.h>
@@ -108,7 +108,7 @@ atomic_get64(int64 *value)
 
 #endif	/* ATOMIC64_FUNCS_ARE_SYSCALLS */
 
-#ifdef __ARM__
+#if defined(__arm__) && !defined(__clang__)
 
 /* GCC compatibility: libstdc++ needs this one.
  * TODO: Update libstdc++ and drop this.

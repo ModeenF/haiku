@@ -1,12 +1,6 @@
 SubDir HAIKU_TOP src add-ons media media-add-ons opensound ;
 
-SetSubDirSupportedPlatformsBeOSCompatible ;
-
-UsePrivateHeaders media ;
-
-if $(TARGET_PLATFORM) != haiku {
-	SubDirC++Flags -fmultiple-symbol-spaces -D_ZETA_TS_FIND_DIR_=1 ;
-}
+UsePrivateHeaders audio shared ;
 
 local architectureObject ;
 for architectureObject in [ MultiArchSubDirSetup ] {

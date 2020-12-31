@@ -22,6 +22,7 @@
 #include <LayoutUtils.h>
 #include <Message.h>
 #include <PropertyInfo.h>
+#include <StringList.h>
 #include <View.h>
 #include <Window.h>
 
@@ -43,7 +44,8 @@ static property_info sPropertyList[] = {
 		NULL, 0,
 		{ B_INT32_TYPE }
 	},
-	{}
+
+	{ 0 }
 };
 
 
@@ -54,7 +56,7 @@ BStringView::BStringView(BRect frame, const char* name, const char* text,
 	fText(text ? strdup(text) : NULL),
 	fTruncation(B_NO_TRUNCATION),
 	fAlign(B_ALIGN_LEFT),
-	fPreferredSize(text ? StringWidth(text) : 0.0, -1)
+	fPreferredSize(text ? _StringWidth(text) : 0.0, -1)
 {
 }
 
@@ -65,7 +67,7 @@ BStringView::BStringView(const char* name, const char* text, uint32 flags)
 	fText(text ? strdup(text) : NULL),
 	fTruncation(B_NO_TRUNCATION),
 	fAlign(B_ALIGN_LEFT),
-	fPreferredSize(text ? StringWidth(text) : 0.0, -1)
+	fPreferredSize(text ? _StringWidth(text) : 0.0, -1)
 {
 }
 
@@ -128,16 +130,26 @@ BStringView::Archive(BMessage* data, bool deep) const
 void
 BStringView::AttachedToWindow()
 {
-	if (HasDefaultColors()) {
-		AdoptParentColors();
+	if (HasDefaultColors())
 		SetHighUIColor(B_PANEL_TEXT_COLOR);
+
+	BView* parent = Parent();
+
+	if (parent != NULL) {
+		float tint = B_NO_TINT;
+		color_which which = parent->ViewUIColor(&tint);
+
+		if (which != B_NO_COLOR) {
+			SetViewUIColor(which, tint);
+			SetLowUIColor(which, tint);
+		} else {
+			SetViewColor(parent->ViewColor());
+			SetLowColor(ViewColor());
+		}
 	}
 
-	if (ViewColor() == B_TRANSPARENT_COLOR) {
-		SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-		SetLowUIColor(B_PANEL_BACKGROUND_COLOR);
-		SetHighUIColor(B_PANEL_TEXT_COLOR);
-	}
+	if (ViewColor() == B_TRANSPARENT_COLOR)
+		AdoptSystemColors();
 }
 
 
@@ -262,36 +274,41 @@ BStringView::Draw(BRect updateRect)
 
 	BRect bounds = Bounds();
 
-	const char* text = fText;
-	float width = fPreferredSize.width;
-	BString truncated;
-	if (fTruncation != B_NO_TRUNCATION && width > bounds.Width()) {
-		// The string needs to be truncated
-		// TODO: we should cache this
-		truncated = fText;
-		TruncateString(&truncated, fTruncation, bounds.Width());
-		text = truncated.String();
-		width = StringWidth(text);
+	BStringList lines;
+	BString(fText).Split("\n", false, lines);
+	for (int i = 0; i < lines.CountStrings(); i++) {
+		const char* text = lines.StringAt(i).String();
+		float width = StringWidth(text);
+		BString truncated;
+		if (fTruncation != B_NO_TRUNCATION && width > bounds.Width()) {
+			// The string needs to be truncated
+			// TODO: we should cache this
+			truncated = lines.StringAt(i);
+			TruncateString(&truncated, fTruncation, bounds.Width());
+			text = truncated.String();
+			width = StringWidth(text);
+		}
+
+		float y = (bounds.top + bounds.bottom - ceilf(fontHeight.descent))
+			- ceilf(fontHeight.ascent + fontHeight.descent + fontHeight.leading)
+				* (lines.CountStrings() - i - 1);
+		float x;
+		switch (fAlign) {
+			case B_ALIGN_RIGHT:
+				x = bounds.Width() - width;
+				break;
+
+			case B_ALIGN_CENTER:
+				x = (bounds.Width() - width) / 2.0;
+				break;
+
+			default:
+				x = 0.0;
+				break;
+		}
+
+		DrawString(text, BPoint(x, y));
 	}
-
-	float y = (bounds.top + bounds.bottom - ceilf(fontHeight.ascent)
-		- ceilf(fontHeight.descent)) / 2.0 + ceilf(fontHeight.ascent);
-	float x;
-	switch (fAlign) {
-		case B_ALIGN_RIGHT:
-			x = bounds.Width() - width;
-			break;
-
-		case B_ALIGN_CENTER:
-			x = (bounds.Width() - width) / 2.0;
-			break;
-
-		default:
-			x = 0.0;
-			break;
-	}
-
-	DrawString(text, BPoint(x, y));
 }
 
 
@@ -380,7 +397,7 @@ BStringView::SetText(const char* text)
 	free(fText);
 	fText = text ? strdup(text) : NULL;
 
-	float newStringWidth = StringWidth(fText);
+	float newStringWidth = _StringWidth(fText);
 	if (fPreferredSize.width != newStringWidth) {
 		fPreferredSize.width = newStringWidth;
 		InvalidateLayout();
@@ -465,7 +482,7 @@ BStringView::SetFont(const BFont* font, uint32 mask)
 {
 	BView::SetFont(font, mask);
 
-	fPreferredSize.width = StringWidth(fText);
+	fPreferredSize.width = _StringWidth(fText);
 
 	Invalidate();
 	InvalidateLayout();
@@ -574,13 +591,38 @@ BStringView::_ValidatePreferredSize()
 		font_height fontHeight;
 		GetFontHeight(&fontHeight);
 
+		int32 lines = 1;
+		char* temp = fText ? strchr(fText, '\n') : NULL;
+		while (temp != NULL) {
+			temp = strchr(temp + 1, '\n');
+			lines++;
+		};
+
 		fPreferredSize.height = ceilf(fontHeight.ascent + fontHeight.descent
-			+ fontHeight.leading);
+			+ fontHeight.leading) * lines;
 
 		ResetLayoutInvalidation();
 	}
 
 	return fPreferredSize;
+}
+
+
+float
+BStringView::_StringWidth(const char* text)
+{
+	if(text == NULL)
+		return 0.0f;
+
+	float maxWidth = 0.0f;
+	BStringList lines;
+	BString(fText).Split("\n", false, lines);
+	for (int i = 0; i < lines.CountStrings(); i++) {
+		float width = StringWidth(lines.StringAt(i));
+		if (maxWidth < width)
+			maxWidth = width;
+	}
+	return maxWidth;
 }
 
 

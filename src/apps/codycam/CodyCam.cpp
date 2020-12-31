@@ -1,3 +1,10 @@
+/*
+ * Copyright 1998-1999 Be, Inc. All Rights Reserved.
+ * Copyright 2003-2019 Haiku, Inc. All rights reserved.
+ * Distributed under the terms of the MIT License.
+ */
+
+
 #include "CodyCam.h"
 
 #include <stdio.h>
@@ -23,6 +30,7 @@
 #include <TextControl.h>
 #include <TimeSource.h>
 #include <TranslationUtils.h>
+#include <TranslatorFormats.h>
 
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "CodyCam"
@@ -126,7 +134,8 @@ CodyCam::ReadyToRun()
 {
 	fWindow = new VideoWindow(
 		(const char*) B_TRANSLATE_SYSTEM_NAME("CodyCam"), B_TITLED_WINDOW,
-		B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS, &fPort);
+		B_NOT_ZOOMABLE | B_NOT_V_RESIZABLE
+		| B_AUTO_UPDATE_SIZE_LIMITS, &fPort);
 
 	if (_SetUpNodes() != B_OK)
 		fWindow->ToggleMenuOnOff();
@@ -146,7 +155,7 @@ CodyCam::QuitRequested()
 
 
 void
-CodyCam::MessageReceived(BMessage *message)
+CodyCam::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
 		case msg_start:
@@ -223,8 +232,8 @@ CodyCam::_SetUpNodes()
 	INFO("CodyCam acquiring VideoInput node\n");
 	status = fMediaRoster->GetVideoInput(&fProducerNode);
 	if (status != B_OK) {
-		fWindow->ErrorAlert(B_TRANSLATE("Cannot find a video source. You need "
-			"a webcam to use CodyCam."), status);
+		fWindow->ErrorAlert(B_TRANSLATE("Cannot find a video source.\n"
+			"You need a webcam to use CodyCam."), status);
 		return status;
 	}
 
@@ -232,7 +241,7 @@ CodyCam::_SetUpNodes()
 	fVideoConsumer = new VideoConsumer("CodyCam",
 		((VideoWindow*)fWindow)->VideoView(),
 		((VideoWindow*)fWindow)->StatusLine(), NULL, 0);
-	if (!fVideoConsumer) {
+	if (fVideoConsumer == NULL) {
 		fWindow->ErrorAlert(B_TRANSLATE("Cannot create a video window"),
 			B_ERROR);
 		return B_ERROR;
@@ -253,8 +262,8 @@ CodyCam::_SetUpNodes()
 		&cnt, B_MEDIA_RAW_VIDEO);
 	if (status != B_OK || cnt < 1) {
 		status = B_RESOURCE_UNAVAILABLE;
-		fWindow->ErrorAlert(B_TRANSLATE("Cannot find an available video stream"),
-			status);
+		fWindow->ErrorAlert(
+			B_TRANSLATE("Cannot find an available video stream"), status);
 		return status;
 	}
 
@@ -368,7 +377,7 @@ void
 CodyCam::_TearDownNodes()
 {
 	CALL("CodyCam::_TearDownNodes\n");
-	if (!fMediaRoster)
+	if (fMediaRoster == NULL)
 		return;
 
 	if (fVideoConsumer) {
@@ -451,13 +460,21 @@ VideoWindow::VideoWindow(const char* title, window_type type,
 	_BuildCaptureControls();
 
 	BBox* box = new BBox("box");
+	BGroupLayout* layout = new BGroupLayout(B_VERTICAL);
+	box->SetLayout(layout);
+	layout->SetInsets(2, 2, 2, 2);
 	box->AddChild(fVideoView);
+	box->AddChild(fErrorView);
 
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.Add(menuBar)
 		.AddGroup(B_VERTICAL)
 			.SetInsets(B_USE_WINDOW_SPACING)
-			.Add(box)
+			.AddGroup(B_HORIZONTAL)
+				.AddGlue()
+				.Add(box)
+				.AddGlue()
+			.End()
 			.AddGroup(B_HORIZONTAL, B_USE_DEFAULT_SPACING)
 				.Add(fCaptureSetupBox)
 				.Add(fFtpSetupBox)
@@ -488,7 +505,7 @@ void
 VideoWindow::MessageReceived(BMessage* message)
 {
 	BControl* control = NULL;
-	message->FindPointer((const char*)"source", (void **)&control);
+	message->FindPointer((const char*)"source", (void**)&control);
 
 	switch (message->what) {
 		case msg_filename:
@@ -506,7 +523,7 @@ VideoWindow::MessageReceived(BMessage* message)
 				FTPINFO("never\n");
 				fFtpInfo.rate = (bigtime_t)(B_INFINITE_TIMEOUT);
 			} else {
-				FTPINFO("%ld seconds\n", (long)seconds);
+				FTPINFO("%" B_PRId32 " seconds\n", seconds);
 				fFtpInfo.rate = (bigtime_t)(seconds * 1000000LL);
 			}
 			break;
@@ -592,22 +609,24 @@ void
 VideoWindow::_BuildCaptureControls()
 {
 	// a view to hold the video image
-	fVideoView = new BTextView("");
+	fVideoView = new BView("Video preview", B_WILL_DRAW);
 	fVideoView->SetExplicitMinSize(BSize(VIDEO_SIZE_X, VIDEO_SIZE_Y));
 	fVideoView->SetExplicitMaxSize(BSize(VIDEO_SIZE_X, VIDEO_SIZE_Y));
-	fVideoView->MakeEditable(false);
-	fVideoView->MakeResizable(false);
-	fVideoView->MakeSelectable(false);
-	fVideoView->SetAlignment(B_ALIGN_CENTER);
-	fVideoView->SetInsets(0, VIDEO_SIZE_Y / 3, 0 , 0);
+
+	fErrorView = new BTextView("error");
+	fErrorView->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
 
 	// Capture controls
+	BGridLayout* controlsLayout = new BGridLayout(B_USE_DEFAULT_SPACING,
+		B_USE_SMALL_SPACING);
+	controlsLayout->SetInsets(B_USE_SMALL_SPACING);
+
+	BView* controlView = new BView("Controls", B_SUPPORTS_LAYOUT, NULL);
+	controlView->SetLayout(controlsLayout);
+
 	fCaptureSetupBox = new BBox("Capture Controls", B_WILL_DRAW);
 	fCaptureSetupBox->SetLabel(B_TRANSLATE("Capture controls"));
-
-	BGridLayout *controlsLayout = new BGridLayout(B_USE_DEFAULT_SPACING, 0);
-	controlsLayout->SetInsets(10, 15, 5, 5);
-	fCaptureSetupBox->SetLayout(controlsLayout);
+	fCaptureSetupBox->AddChild(controlView);
 
 	// file name
 	fFileName = new BTextControl("File Name", B_TRANSLATE("File name:"),
@@ -616,7 +635,8 @@ VideoWindow::_BuildCaptureControls()
 
 	// format menu
 	fImageFormatMenu = new BPopUpMenu(B_TRANSLATE("Image Format Menu"));
-	BTranslationUtils::AddTranslationItems(fImageFormatMenu, B_TRANSLATOR_BITMAP);
+	BTranslationUtils::AddTranslationItems(fImageFormatMenu,
+		B_TRANSLATOR_BITMAP);
 	fImageFormatMenu->SetTargetForItems(this);
 
 	if (fImageFormatSettings->Value()
@@ -651,26 +671,35 @@ VideoWindow::_BuildCaptureControls()
 		.Add(BSpaceLayoutItem::CreateGlue(), 0, 3, 2, 1);
 
 	// FTP setup box
+	BGridLayout* ftpLayout = new BGridLayout(B_USE_DEFAULT_SPACING,
+		B_USE_SMALL_SPACING);
+	ftpLayout->SetInsets(B_USE_SMALL_SPACING);
+
+	BView* outputView = new BView("Output", B_SUPPORTS_LAYOUT, NULL);
+	outputView->SetLayout(ftpLayout);
+
 	fFtpSetupBox = new BBox("FTP Setup", B_WILL_DRAW);
 	fFtpSetupBox->SetLabel(B_TRANSLATE("Output"));
+	fFtpSetupBox->AddChild(outputView);
+	float minWidth = be_plain_font->StringWidth(
+		"The server label plus ftp.reasonably.com");
+	fFtpSetupBox->SetExplicitMinSize(BSize(minWidth, B_SIZE_UNSET));
+	fFtpSetupBox->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
 
 	fUploadClientMenu = new BPopUpMenu(B_TRANSLATE("Send to" B_UTF8_ELLIPSIS));
 	for (int i = 0; i < kUploadClientsCount; i++) {
-		BMessage *m = new BMessage(msg_upl_client);
+		BMessage* m = new BMessage(msg_upl_client);
 		m->AddInt32("client", i);
 		fUploadClientMenu->AddItem(new BMenuItem(kUploadClients[i], m));
 	}
 
 	fUploadClientMenu->SetTargetForItems(this);
 	fUploadClientMenu->FindItem(fUploadClientSetting->Value())->SetMarked(true);
+
 	fUploadClientSelector = new BMenuField("UploadClient", NULL,
 		fUploadClientMenu);
 
 	fUploadClientSelector->SetLabel(B_TRANSLATE("Type:"));
-
-	BGridLayout *ftpLayout = new BGridLayout(B_USE_DEFAULT_SPACING, 0);
-	ftpLayout->SetInsets(10, 15, 5, 5);
-	fFtpSetupBox->SetLayout(ftpLayout);
 
 	fServerName = new BTextControl("Server", B_TRANSLATE("Server:"),
 		fServerSetting->Value(), new BMessage(msg_server));
@@ -695,6 +724,7 @@ VideoWindow::_BuildCaptureControls()
 		new BMessage(msg_passiveftp));
 	fPassiveFtp->SetTarget(this);
 	fPassiveFtp->SetValue(fPassiveFtpSetting->Value());
+	fPassiveFtp->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
 
 	BLayoutBuilder::Grid<>(ftpLayout)
 		.AddMenuField(fUploadClientSelector, 0, 0)
@@ -706,6 +736,7 @@ VideoWindow::_BuildCaptureControls()
 
 	fStatusLine = new BStringView("Status Line",
 		B_TRANSLATE("Waiting" B_UTF8_ELLIPSIS));
+	fStatusLine->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
 }
 
 
@@ -734,7 +765,15 @@ void
 VideoWindow::ErrorAlert(const char* message, status_t err)
 {
 	Lock();
-	fVideoView->SetText(message);
+	fErrorView->SetText(message);
+	fErrorView->MakeEditable(false);
+	fErrorView->MakeSelectable(false);
+	fErrorView->SetWordWrap(true);
+	fErrorView->SetAlignment(B_ALIGN_CENTER);
+	fErrorView->SetExplicitMinSize(BSize(VIDEO_SIZE_X, VIDEO_SIZE_Y));
+	fErrorView->SetExplicitMaxSize(BSize(VIDEO_SIZE_X, VIDEO_SIZE_Y));
+	fErrorView->Show();
+	fVideoView->Hide();
 	Unlock();
 
 	printf("%s\n%s [%" B_PRIx32 "]", message, strerror(err), err);
@@ -813,7 +852,8 @@ VideoWindow::_QuitSettings()
 	fFilenameSetting->ValueChanged(fFileName->Text());
 	fImageFormatSettings->ValueChanged(fImageFormatMenu->FindMarked()->Label());
 	fCaptureRateSetting->ValueChanged(fCaptureRateMenu->FindMarked()->Label());
-	fUploadClientSetting->ValueChanged(fUploadClientMenu->FindMarked()->Label());
+	fUploadClientSetting->ValueChanged(
+		fUploadClientMenu->FindMarked()->Label());
 
 	fSettings->SaveSettings();
 	delete fSettings;
@@ -887,6 +927,7 @@ ControlWindow::MessageReceived(BMessage* message)
 
 		default:
 			BWindow::MessageReceived(message);
+			break;
 	}
 }
 
@@ -902,9 +943,9 @@ ControlWindow::QuitRequested()
 //	#pragma mark -
 
 
-int main() {
+int main()
+{
 	CodyCam app;
 	app.Run();
 	return 0;
 }
-

@@ -11,6 +11,7 @@
 
 #include <new>
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -42,8 +43,7 @@ BNetworkCookie::BNetworkCookie(const char* name, const char* value,
 
 	SetDomain(url.Host());
 
-	if (url.Protocol() == "file" && url.Host().Length() == 0)
-	{
+	if (url.Protocol() == "file" && url.Host().Length() == 0) {
 		SetDomain("localhost");
 			// make sure cookies set from a file:// URL are stored somewhere.
 	}
@@ -110,8 +110,7 @@ BNetworkCookie::ParseCookieString(const BString& string, const BUrl& url)
 	SetPath(_DefaultPathForUrl(url));
 	SetDomain(url.Host());
 	fHostOnly = true;
-	if (url.Protocol() == "file" && url.Host().Length() == 0)
-	{
+	if (url.Protocol() == "file" && url.Host().Length() == 0) {
 		fDomain = "localhost";
 			// make sure cookies set from a file:// URL are stored somewhere.
 			// not going through SetDomain as it requires at least one '.'
@@ -279,7 +278,14 @@ BNetworkCookie&
 BNetworkCookie::SetMaxAge(int32 maxAge)
 {
 	BDateTime expiration = BDateTime::CurrentDateTime(B_LOCAL_TIME);
-	expiration.SetTime_t(expiration.Time_t() + maxAge);
+
+	// Compute the expiration date (watch out for overflows)
+	int64_t date = expiration.Time_t();
+	date += (int64_t)maxAge;
+	if (date > INT_MAX)
+		date = INT_MAX;
+
+	expiration.SetTime_t(date);
 
 	return SetExpirationDate(expiration);
 }

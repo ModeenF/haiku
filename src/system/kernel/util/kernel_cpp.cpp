@@ -22,7 +22,7 @@
 #ifdef _LOADER_MODE
 #	define panic printf
 #	define dprintf printf
-#	define kernel_debugger printf
+#	define kernel_debugger(x) printf("%s", x)
 #endif
 
 
@@ -31,11 +31,21 @@
 
 // ... it doesn't seem to work with this symbol at least.
 #ifndef USING_LIBGCC
-#	if __GNUC__ >= 3
+#	if __GNUC__ >= 6 || defined(__clang__)
+const std::nothrow_t std::nothrow = std::nothrow_t{ };
+#	elif __GNUC__ >= 3
 const std::nothrow_t std::nothrow = {};
 #	else
 const nothrow_t std::nothrow = {};
 #	endif
+#endif
+
+#if __cplusplus >= 201402L
+#define _THROW(x)
+#define _NOEXCEPT noexcept
+#else
+#define _THROW(x) throw (x)
+#define _NOEXCEPT throw ()
 #endif
 
 const mynothrow_t mynothrow = {};
@@ -74,7 +84,7 @@ __cxa_finalize(void* dsoHandle)
 // full C++ support in the kernel
 #if (defined(_KERNEL_MODE) || defined(_LOADER_MODE))
 void *
-operator new(size_t size) throw (std::bad_alloc)
+operator new(size_t size) _THROW(std::bad_alloc)
 {
 	// we don't actually throw any exceptions, but we have to
 	// keep the prototype as specified in <new>, or else GCC 3
@@ -84,52 +94,71 @@ operator new(size_t size) throw (std::bad_alloc)
 
 
 void *
-operator new[](size_t size) throw (std::bad_alloc)
+operator new[](size_t size)
 {
 	return malloc(size);
 }
 
 
 void *
-operator new(size_t size, const std::nothrow_t &) throw ()
+operator new(size_t size, const std::nothrow_t &) _NOEXCEPT
 {
 	return malloc(size);
 }
 
 
 void *
-operator new[](size_t size, const std::nothrow_t &) throw ()
+operator new[](size_t size, const std::nothrow_t &) _NOEXCEPT
 {
 	return malloc(size);
 }
 
 
 void *
-operator new(size_t size, const mynothrow_t &) throw ()
+operator new(size_t size, const mynothrow_t &) _NOEXCEPT
 {
 	return malloc(size);
 }
 
 
 void *
-operator new[](size_t size, const mynothrow_t &) throw ()
+operator new[](size_t size, const mynothrow_t &) _NOEXCEPT
 {
 	return malloc(size);
 }
 
 
 void
-operator delete(void *ptr) throw ()
+operator delete(void *ptr) _NOEXCEPT
 {
 	free(ptr);
 }
 
 
 void
-operator delete[](void *ptr) throw ()
+operator delete[](void *ptr) _NOEXCEPT
 {
 	free(ptr);
 }
+
+
+#if __cplusplus >= 201402L
+
+void
+operator delete(void* ptr, std::size_t) _NOEXCEPT
+{
+	free(ptr);
+}
+
+
+void
+operator delete[](void* ptr, std::size_t) _NOEXCEPT
+{
+	free(ptr);
+}
+
+#endif
+
 
 #ifndef _BOOT_MODE
 
@@ -352,7 +381,8 @@ extern "C"
 void
 abort()
 {
-	panic("abort() called!");
+	while (true)
+		panic("abort() called!");
 }
 
 
@@ -374,6 +404,7 @@ extern "C"
 void
 exit(int status)
 {
-	panic("exit() called with status code = %d!", status);
+	while (true)
+		panic("exit() called with status code = %d!", status);
 }
 

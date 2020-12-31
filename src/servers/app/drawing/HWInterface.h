@@ -9,6 +9,7 @@
 #define HW_INTERFACE_H
 
 
+#include <AutoDeleter.h>
 #include <Accelerant.h>
 #include <GraphicsCard.h>
 #include <List.h>
@@ -17,6 +18,8 @@
 #include <Region.h>
 
 #include <video_overlay.h>
+
+#include <new>
 
 #include "IntRect.h"
 #include "MultiLocker.h"
@@ -44,7 +47,11 @@ public:
 								HWInterfaceListener();
 	virtual						~HWInterfaceListener();
 
-	virtual	void				FrameBufferChanged() = 0;
+	virtual	void				FrameBufferChanged() {};
+		// Informs a downstream DrawingEngine of a changed framebuffer.
+
+	virtual	void				ScreenChanged(HWInterface* interface) {};
+		// Informs an upstream client of a changed screen configuration.
 };
 
 
@@ -105,6 +112,9 @@ public:
 	virtual uint32				DPMSMode() = 0;
 	virtual uint32				DPMSCapabilities() = 0;
 
+	virtual status_t			SetBrightness(float) = 0;
+	virtual status_t			GetBrightness(float*) = 0;
+
 	virtual status_t			GetAccelerantPath(BString& path);
 	virtual status_t			GetDriverPath(BString& path);
 
@@ -158,7 +168,7 @@ public:
 	virtual	bool				IsDoubleBuffered() const;
 
 	// Invalidate is used for scheduling an area for updating
-	virtual	status_t			InvalidateRegion(BRegion& region);
+	virtual	status_t			InvalidateRegion(const BRegion& region);
 	virtual	status_t			Invalidate(const BRect& frame);
 	// while as CopyBackToFront() actually performs the operation
 	// either directly or asynchronously by the UpdateQueue thread
@@ -200,10 +210,10 @@ protected:
 
 			IntRect				_CursorFrame() const;
 			void				_RestoreCursorArea() const;
-			void				_AdoptDragBitmap(const ServerBitmap* bitmap,
-									const BPoint& offset);
+			void				_AdoptDragBitmap();
 
 			void				_NotifyFrameBufferChanged();
+			void				_NotifyScreenChanged();
 
 	static	bool				_IsValidMode(const display_mode& mode);
 
@@ -216,7 +226,7 @@ protected:
 				{
 					bpr = width * 4;
 					if (bpr > 0 && height > 0)
-						buffer = new uint8[bpr * height];
+						buffer = new(std::nothrow) uint8[bpr * height];
 					else
 						buffer = NULL;
 					left = 0;
@@ -240,13 +250,17 @@ protected:
 				bool			cursor_hidden;
 			};
 
-			buffer_clip*		fCursorAreaBackup;
+			ObjectDeleter<buffer_clip>
+								fCursorAreaBackup;
 	mutable	BLocker				fFloatingOverlaysLock;
 
-			ServerCursor*		fCursor;
-			const ServerBitmap*	fDragBitmap;
+			ServerCursorReference
+								fCursor;
+			BReference<ServerBitmap>
+								fDragBitmap;
 			BPoint				fDragBitmapOffset;
-			ServerCursor*		fCursorAndDragBitmap;
+			ServerCursorReference
+								fCursorAndDragBitmap;
 			bool				fCursorVisible;
 			bool				fCursorObscured;
 			bool				fHardwareCursorEnabled;
@@ -258,7 +272,8 @@ protected:
 			int					fVGADevice;
 
 private:
-			UpdateQueue*		fUpdateExecutor;
+			ObjectDeleter<UpdateQueue>
+								fUpdateExecutor;
 
 			BList				fListeners;
 };

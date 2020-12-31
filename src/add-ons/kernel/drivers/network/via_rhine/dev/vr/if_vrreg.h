@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (c) 1997, 1998
  *	Bill Paul <wpaul@ctr.columbia.edu>.  All rights reserved.
  *
@@ -29,7 +31,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/dev/vr/if_vrreg.h 325966 2017-11-18 14:26:50Z pfg $
  */
 
 /*
@@ -738,6 +740,7 @@ struct vr_softc {
 #ifdef DEVICE_POLLING
 	int			rxcycles;
 #endif
+	struct task		vr_inttask;
 };
 
 #define	VR_LOCK(_sc)		mtx_lock(&(_sc)->vr_mtx)

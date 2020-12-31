@@ -126,8 +126,8 @@ public:
 
 	virtual void				SelectionChanged();
 
-	virtual bool				InitiateDrag(BPoint point, int32 itemIndex,
-									bool initialySelected);
+	virtual bool				InitiateDrag(BPoint where, int32 index,
+									bool wasSelected);
 
 			void				SortItems(int (*cmp)(const void*,
 									const void*));
@@ -171,7 +171,7 @@ private:
 			void				_FixupScrollBar();
 			void				_InvalidateFrom(int32 index);
 			status_t			_PostMessage(BMessage* message);
-			void				_FontChanged();
+			void				_UpdateItems();
 			int32				_RangeCheck(int32 index);
 			bool				_Select(int32 index, bool extend);
 			bool				_Select(int32 from, int32 to, bool extend);

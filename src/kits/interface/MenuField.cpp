@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2013, Haiku, Inc.
+ * Copyright 2006-2016 Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -13,21 +13,23 @@
 #include <MenuField.h>
 
 #include <algorithm>
+
 #include <stdio.h>
 	// for printf in TRACE
 #include <stdlib.h>
 #include <string.h>
 
 #include <AbstractLayoutItem.h>
+#include <Archivable.h>
 #include <BMCPrivate.h>
 #include <ControlLook.h>
 #include <LayoutUtils.h>
 #include <MenuBar.h>
 #include <MenuItem.h>
+#include <MenuItemPrivate.h>
 #include <MenuPrivate.h>
 #include <Message.h>
 #include <MessageFilter.h>
-#include <Thread.h>
 #include <Window.h>
 
 #include <binary_compatibility/Interface.h>
@@ -161,6 +163,7 @@ struct BMenuField::LayoutData {
 
 // #pragma mark - MouseDownFilter
 
+namespace {
 
 class MouseDownFilter : public BMessageFilter
 {
@@ -190,11 +193,12 @@ MouseDownFilter::Filter(BMessage* message, BHandler** target)
 	return message->what == B_MOUSE_DOWN ? B_SKIP_MESSAGE : B_DISPATCH_MESSAGE;
 }
 
+};
+
+
 
 // #pragma mark - BMenuField
 
-
-using BPrivate::MenuPrivate;
 
 BMenuField::BMenuField(BRect frame, const char* name, const char* label,
 	BMenu* menu, uint32 resizingMode, uint32 flags)
@@ -300,6 +304,7 @@ BMenuField::BMenuField(BMessage* data)
 
 	if (!BUnarchiver::IsArchiveManaged(data))
 		_InitMenuBar(data);
+
 	unarchiver.Finish();
 }
 
@@ -428,7 +433,20 @@ void
 BMenuField::AttachedToWindow()
 {
 	CALLED();
-	AdoptParentColors();
+
+	// Our low color must match the parent's view color.
+	if (Parent() != NULL) {
+		AdoptParentColors();
+
+		float tint = B_NO_TINT;
+		color_which which = ViewUIColor(&tint);
+
+		if (which == B_NO_COLOR)
+			SetLowColor(ViewColor());
+		else
+			SetLowUIColor(which, tint);
+	} else
+		AdoptSystemColors();
 }
 
 
@@ -469,8 +487,7 @@ BMenuField::MouseDown(BPoint where)
 		if (fMouseDownFilter->Looper() == NULL)
 			Window()->AddCommonFilter(fMouseDownFilter);
 
-		MouseDownThread<BMenuField>::TrackMouse(this, &BMenuField::_DoneTracking,
-			&BMenuField::_Track);
+		SetMouseEventMask(B_POINTER_EVENTS, B_NO_POINTER_HISTORY);
 	}
 }
 
@@ -542,6 +559,7 @@ BMenuField::MouseMoved(BPoint point, uint32 code, const BMessage* message)
 void
 BMenuField::MouseUp(BPoint where)
 {
+	Window()->RemoveCommonFilter(fMouseDownFilter);
 	BView::MouseUp(where);
 }
 
@@ -1065,10 +1083,10 @@ BMenuField::_DrawLabel(BRect updateRect)
 		flags |= BControlLook::B_DISABLED;
 
 	// save the current low color
-	const rgb_color lowColor = LowColor();
+	PushState();
 	rgb_color textColor;
 
-	MenuPrivate menuPrivate(fMenuBar);
+	BPrivate::MenuPrivate menuPrivate(fMenuBar);
 	if (menuPrivate.State() != MENU_STATE_CLOSED) {
 		// highlight the background of the label grey (like BeOS R5)
 		SetLowColor(ui_color(B_MENU_SELECTED_BACKGROUND_COLOR));
@@ -1076,13 +1094,13 @@ BMenuField::_DrawLabel(BRect updateRect)
 		FillRect(fillRect, B_SOLID_LOW);
 		textColor = ui_color(B_MENU_SELECTED_ITEM_TEXT_COLOR);
 	} else
-		textColor = ui_color(B_MENU_ITEM_TEXT_COLOR);
+		textColor = ui_color(B_PANEL_TEXT_COLOR);
 
 	be_control_look->DrawLabel(this, label, rect, updateRect, LowColor(), flags,
 		BAlignment(fAlign, B_ALIGN_MIDDLE), &textColor);
 
 	// restore the previous low color
-	SetLowColor(lowColor);
+	PopState();
 }
 
 
@@ -1194,9 +1212,6 @@ BMenuField::_InitMenuBar(BMenu* menu, BRect frame, bool fixedSize)
 {
 	CALLED();
 
-	fMenu = menu;
-	InitMenu(menu);
-
 	if ((Flags() & B_SUPPORTS_LAYOUT) != 0) {
 		fMenuBar = new _BMCMenuBar_(this);
 	} else {
@@ -1223,7 +1238,9 @@ BMenuField::_InitMenuBar(BMenu* menu, BRect frame, bool fixedSize)
 	}
 
 	AddChild(fMenuBar);
-	fMenuBar->AddItem(menu);
+
+	_AddMenu(menu);
+
 	fMenuBar->SetFont(be_plain_font);
 }
 
@@ -1244,7 +1261,7 @@ BMenuField::_InitMenuBar(const BMessage* archive)
 			// this is normally done in InitObject2()
 	}
 
-	fMenu = fMenuBar->SubmenuAt(0);
+	_AddMenu(fMenuBar->SubmenuAt(0));
 
 	bool disable;
 	if (archive->FindBool("_disable", &disable) == B_OK)
@@ -1255,6 +1272,62 @@ BMenuField::_InitMenuBar(const BMessage* archive)
 	_BMCMenuBar_* menuBar = dynamic_cast<_BMCMenuBar_*>(fMenuBar);
 	if (menuBar != NULL)
 		menuBar->TogglePopUpMarker(dmark);
+}
+
+
+void
+BMenuField::_AddMenu(BMenu* menu)
+{
+	if (menu == NULL || fMenuBar == NULL)
+		return;
+
+	fMenu = menu;
+	InitMenu(menu);
+
+	BMenuItem* item = NULL;
+	if (!menu->IsRadioMode() || (item = menu->FindMarked()) == NULL) {
+		// find the first enabled non-seperator item
+		int32 itemCount = menu->CountItems();
+		for (int32 i = 0; i < itemCount; i++) {
+			item = menu->ItemAt((int32)i);
+			if (item == NULL || !item->IsEnabled()
+				|| dynamic_cast<BSeparatorItem*>(item) != NULL) {
+				item = NULL;
+				continue;
+			}
+			break;
+		}
+	}
+
+	if (item == NULL) {
+		fMenuBar->AddItem(menu);
+		return;
+	}
+
+	// build an empty copy of item
+
+	BMessage data;
+	status_t result = item->Archive(&data, false);
+	if (result != B_OK) {
+		fMenuBar->AddItem(menu);
+		return;
+	}
+
+	BArchivable* object = instantiate_object(&data);
+	if (object == NULL) {
+		fMenuBar->AddItem(menu);
+		return;
+	}
+
+	BMenuItem* newItem = static_cast<BMenuItem*>(object);
+
+	// unset parameters
+	BPrivate::MenuItemPrivate newMenuItemPrivate(newItem);
+	newMenuItemPrivate.Uninstall();
+
+	// set the menu
+	newMenuItemPrivate.SetSubmenu(menu);
+	fMenuBar->AddItem(newItem);
 }
 
 
@@ -1330,19 +1403,6 @@ float
 BMenuField::_MenuBarWidth() const
 {
 	return Bounds().Width() - (_MenuBarOffset() + kVMargin);
-}
-
-
-void
-BMenuField::_DoneTracking(BPoint point)
-{
-	Window()->RemoveCommonFilter(fMouseDownFilter);
-}
-
-
-void
-BMenuField::_Track(BPoint point, uint32)
-{
 }
 
 
@@ -1617,4 +1677,3 @@ B_IF_GCC_2(InvalidateLayout__10BMenuFieldb, _ZN10BMenuField16InvalidateLayoutEb)
 
 	field->Perform(PERFORM_CODE_LAYOUT_INVALIDATED, &data);
 }
-

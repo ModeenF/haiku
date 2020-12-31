@@ -12,12 +12,16 @@
 #include <stdio.h>
 #include <sys/sockio.h>
 
+#include <Looper.h>
 #include <Messenger.h>
 
 #include <AutoDeleter.h>
 #include <NetServer.h>
+#include <NetworkNotifications.h>
 
 extern "C" {
+#	include <compat/sys/cdefs.h>
+#	include <compat/sys/ioccom.h>
 #	include <net80211/ieee80211_ioctl.h>
 }
 
@@ -38,6 +42,9 @@ struct ie_data {
 	uint8	length;
 	uint8	data[1];
 };
+
+
+// #pragma mark - private functions (code shared with net_server)
 
 
 static status_t
@@ -64,6 +71,30 @@ get_80211(const char* name, int32 type, void* data, int32& length)
 }
 
 
+static status_t
+set_80211(const char* name, int32 type, void* data,
+	int32 length = 0, int32 value = 0)
+{
+	int socket = ::socket(AF_INET, SOCK_DGRAM, 0);
+	if (socket < 0)
+		return errno;
+
+	FileDescriptorCloser closer(socket);
+
+	struct ieee80211req ireq;
+	strlcpy(ireq.i_name, name, IF_NAMESIZE);
+	ireq.i_type = type;
+	ireq.i_val = value;
+	ireq.i_len = length;
+	ireq.i_data = data;
+
+	if (ioctl(socket, SIOCS80211, &ireq, sizeof(struct ieee80211req)) < 0)
+		return errno;
+
+	return B_OK;
+}
+
+
 template<typename T> status_t
 do_request(T& request, const char* name, int option)
 {
@@ -76,6 +107,24 @@ do_request(T& request, const char* name, int option)
 	strlcpy(((struct ifreq&)request).ifr_name, name, IF_NAMESIZE);
 
 	if (ioctl(socket, option, &request, sizeof(T)) < 0)
+		return errno;
+
+	return B_OK;
+}
+
+
+template<> status_t
+do_request<ieee80211req>(ieee80211req& request, const char* name, int option)
+{
+	int socket = ::socket(AF_INET, SOCK_DGRAM, 0);
+	if (socket < 0)
+		return errno;
+
+	FileDescriptorCloser closer(socket);
+
+	strlcpy(((struct ieee80211req&)request).i_name, name, IFNAMSIZ);
+
+	if (ioctl(socket, option, &request, sizeof(request)) < 0)
 		return errno;
 
 	return B_OK;
@@ -647,19 +696,113 @@ BNetworkDevice::IsWireless()
 
 
 status_t
+BNetworkDevice::Control(int option, void* request)
+{
+	switch (IFM_TYPE(Media())) {
+		case IFM_ETHER:
+			return do_request(*reinterpret_cast<ifreq*>(request),
+				&fName[0], option);
+
+		case IFM_IEEE80211:
+			return do_request(*reinterpret_cast<ieee80211req*>(request),
+				&fName[0], option);
+
+		default:
+			return B_ERROR;
+	}
+}
+
+
+status_t
 BNetworkDevice::Scan(bool wait, bool forceRescan)
 {
-#if 0
-	if (index == 0) {
-		struct ieee80211_scan_req request;
-		memset(&request, 0, sizeof(request));
-		request.sr_flags = IEEE80211_IOC_SCAN_ACTIVE | IEEE80211_IOC_SCAN_ONCE
-			| IEEE80211_IOC_SCAN_NOJOIN;
-		request.sr_duration = IEEE80211_IOC_SCAN_FOREVER;
-		set_80211(Name(), IEEE80211_IOC_SCAN_REQ, NULL);
+	// Network status listener for change notifications
+	class ScanListener : public BLooper {
+	public:
+		ScanListener(BString iface)
+			:
+			fInterface(iface)
+		{
+			start_watching_network(B_WATCH_NETWORK_WLAN_CHANGES, this);
+		}
+		virtual ~ScanListener()
+		{
+			stop_watching_network(this);
+		}
+
+	protected:
+		virtual void MessageReceived(BMessage *message)
+		{
+			if (message->what != B_NETWORK_MONITOR) {
+				BLooper::MessageReceived(message);
+				return;
+			}
+
+			BString interfaceName;
+			if (message->FindString("interface", &interfaceName) != B_OK)
+				return;
+			// See comment in AutoconfigLooper::_NetworkMonitorNotification
+			// for the reason as to why we use FindFirst instead of ==.
+			if (fInterface.FindFirst(interfaceName) < 0)
+				return;
+			if (message->FindInt32("opcode") != B_NETWORK_WLAN_SCANNED)
+				return;
+
+			Lock();
+			Quit();
+		}
+
+	private:
+		BString fInterface;
+	};
+
+	ScanListener* listener = NULL;
+	if (wait)
+		listener = new ScanListener(Name());
+
+	// Trigger the scan
+	struct ieee80211_scan_req request;
+	memset(&request, 0, sizeof(request));
+	request.sr_flags = IEEE80211_IOC_SCAN_ACTIVE
+		| IEEE80211_IOC_SCAN_BGSCAN
+		| IEEE80211_IOC_SCAN_NOPICK
+		| IEEE80211_IOC_SCAN_ONCE
+		| (forceRescan ? IEEE80211_IOC_SCAN_FLUSH : 0);
+	request.sr_duration = IEEE80211_IOC_SCAN_FOREVER;
+	request.sr_nssid = 0;
+
+	status_t status = set_80211(Name(), IEEE80211_IOC_SCAN_REQ, &request,
+		sizeof(request));
+
+	// If there are no VAPs running, the net80211 layer will return ENXIO.
+	// Try to bring up the interface (which should start a VAP) and try again.
+	if (status == ENXIO) {
+		struct ieee80211req dummy;
+		status = set_80211(Name(), IEEE80211_IOC_HAIKU_COMPAT_WLAN_UP, &dummy,
+			sizeof(dummy));
+		if (status != B_OK)
+			return status;
+
+		status = set_80211(Name(), IEEE80211_IOC_SCAN_REQ, &request,
+			sizeof(request));
 	}
-#endif
-	return B_ERROR;
+
+	// If there is already a scan currently running, it's probably an "infinite"
+	// one, which we of course don't want to wait for. So just return immediately
+	// if that's the case.
+	if (status == EINPROGRESS) {
+		delete listener;
+		return B_OK;
+	}
+
+	if (!wait || status != B_OK) {
+		delete listener;
+		return status;
+	}
+
+	while (wait_for_thread(listener->Run(), NULL) == B_INTERRUPTED)
+		;
+	return B_OK;
 }
 
 

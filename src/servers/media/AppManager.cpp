@@ -37,7 +37,7 @@
 #include <OS.h>
 #include <Roster.h>
 
-#include <debug.h>
+#include <MediaDebug.h>
 #include <MediaMisc.h>
 
 #include "BufferManager.h"
@@ -147,6 +147,17 @@ AppManager::Dump()
 	}
 
 	printf("AppManager: list end\n");
+}
+
+
+void
+AppManager::NotifyRosters()
+{
+	BAutolock lock(this);
+
+	AppMap::iterator iterator = fMap.begin();
+	for (; iterator != fMap.end(); iterator++)
+		iterator->second.SendMessage(MEDIA_SERVER_ALIVE);
 }
 
 

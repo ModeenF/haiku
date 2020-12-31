@@ -1,6 +1,6 @@
 /*
  * Copyright 2009, Ingo Weinhold, ingo_weinhold@gmx.de.
- * Copyright 2010-2015, Rene Gollent, rene@gollent.com.
+ * Copyright 2010-2017, Rene Gollent, rene@gollent.com.
  * Distributed under the terms of the MIT License.
  */
 #ifndef TEAM_WINDOW_H
@@ -9,6 +9,8 @@
 
 #include <String.h>
 #include <Window.h>
+
+#include <util/OpenHashTable.h>
 
 #include "BreakpointsView.h"
 #include "Function.h"
@@ -83,6 +85,14 @@ private:
 		ACTIVE_SOURCE_BREAKPOINT
 	};
 
+	struct ThreadStackFrameSelectionKey;
+	struct ThreadStackFrameSelectionEntry;
+	struct ThreadStackFrameSelectionEntryHashDefinition;
+
+	typedef BOpenHashTable<ThreadStackFrameSelectionEntryHashDefinition>
+		ThreadStackFrameSelectionInfoTable;
+
+
 private:
 	// ThreadListView::Listener
 	virtual	void				ThreadSelectionChanged(::Thread* thread);
@@ -154,6 +164,8 @@ private:
 									const Team::WatchpointEvent& event);
 	virtual void				DebugReportChanged(
 									const Team::DebugReportEvent& event);
+	virtual void				CoreFileChanged(
+									const Team::CoreFileChangedEvent& event);
 
 
 	// Function::Listener
@@ -171,7 +183,8 @@ private:
 			void				_SetActiveStackFrame(StackFrame* frame);
 			void				_SetActiveBreakpoint(
 									UserBreakpoint* breakpoint);
-			void				_SetActiveFunction(FunctionInstance* function);
+			void				_SetActiveFunction(FunctionInstance* function,
+									bool searchForFrame = true);
 			void				_SetActiveSourceCode(SourceCode* sourceCode);
 			void				_UpdateCpuState();
 			void				_UpdateRunButtons();
@@ -209,6 +222,8 @@ private:
 			Image*				fActiveImage;
 			StackTrace*			fActiveStackTrace;
 			StackFrame*			fActiveStackFrame;
+			ThreadStackFrameSelectionInfoTable*
+								fThreadSelectionInfoTable;
 			UserBreakpoint*		fActiveBreakpoint;
 			FunctionInstance*	fActiveFunction;
 			SourceCode*			fActiveSourceCode;

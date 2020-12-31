@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016, Haiku, Inc. All Rights Reserved.
+ * Copyright 2015-2018, Haiku, Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -18,14 +18,20 @@
 
 namespace BPrivate {
 
+
 #define kLaunchDaemonSignature "application/x-vnd.Haiku-launch_daemon"
-#define B_LAUNCH_DAEMON_PORT_NAME "system:launch_daemon"
+#ifdef TEST_MODE
+#	define B_LAUNCH_DAEMON_PORT_NAME "test:launch_daemon"
+#else
+#	define B_LAUNCH_DAEMON_PORT_NAME "system:launch_daemon"
+#endif
 
 
 // Message constants
 enum {
 	B_GET_LAUNCH_DATA			= 'lnda',
 	B_LAUNCH_TARGET				= 'lntg',
+	B_STOP_LAUNCH_TARGET		= 'lnst',
 	B_LAUNCH_JOB				= 'lnjo',
 	B_ENABLE_LAUNCH_JOB			= 'lnje',
 	B_STOP_LAUNCH_JOB			= 'lnsj',
@@ -39,6 +45,7 @@ enum {
 	B_GET_LAUNCH_JOBS			= 'lngj',
 	B_GET_LAUNCH_TARGET_INFO	= 'lntI',
 	B_GET_LAUNCH_JOB_INFO		= 'lnjI',
+	B_GET_LAUNCH_LOG			= 'lnLL',
 };
 
 

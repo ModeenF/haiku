@@ -35,6 +35,7 @@
 #include <StringView.h>
 #include <TextControl.h>
 
+#include "KeyboardLayoutNames.h"
 #include "KeyboardLayoutView.h"
 #include "KeymapApplication.h"
 #include "KeymapListItem.h"
@@ -72,6 +73,8 @@ static const char* kDeadKeyTriggerNone = "<none>";
 static const char* kCurrentKeymapName = "(Current)";
 static const char* kDefaultKeymapName = "US-International";
 
+static const float kDefaultHeight = 440;
+static const float kDefaultWidth = 1000;
 
 static int
 compare_key_list_items(const void* a, const void* b)
@@ -81,12 +84,24 @@ compare_key_list_items(const void* a, const void* b)
 	return BLocale::Default()->StringCompare(item1->Text(), item2->Text());
 }
 
-
 KeymapWindow::KeymapWindow()
 	:
-	BWindow(BRect(80, 50, 650, 300), B_TRANSLATE_SYSTEM_NAME("Keymap"),
-		B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS)
+	BWindow(BRect(80, 50, kDefaultWidth, kDefaultHeight),
+		B_TRANSLATE_SYSTEM_NAME("Keymap"), B_TITLED_WINDOW,
+		B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS)
 {
+	// If the window doesn't fit the screen, make it smaller but keep the
+	// aspect ratio
+	BScreen screen(this);
+	display_mode mode;
+	status_t status = screen.GetMode(&mode);
+	if(status == B_OK && (mode.virtual_width <= kDefaultWidth
+			|| mode.virtual_height <= kDefaultHeight)) {
+		float width = mode.virtual_width - 64;
+		ResizeTo(mode.virtual_width - 64,
+			width * kDefaultHeight / kDefaultWidth);
+	}
+
 	fKeyboardLayoutView = new KeyboardLayoutView("layout");
 	fKeyboardLayoutView->SetKeymap(&fCurrentMap);
 	fKeyboardLayoutView->SetExplicitMinSize(BSize(B_SIZE_UNSET, 192));
@@ -133,11 +148,16 @@ KeymapWindow::KeymapWindow()
 	path.Append("Keymap");
 
 	entry_ref ref;
-	get_ref_for_path(path.Path(), &ref);
-
-	BDirectory userKeymapsDir(&ref);
-	if (userKeymapsDir.InitCheck() != B_OK)
-		create_directory(path.Path(), S_IRWXU | S_IRWXG | S_IRWXO);
+	BEntry entry(path.Path(), true); // follow symlink
+	BDirectory userKeymapsDir(&entry);
+	if (userKeymapsDir.InitCheck() != B_OK
+		&& create_directory(path.Path(), S_IRWXU | S_IRWXG | S_IRWXO)
+			== B_OK) {
+		get_ref_for_path(path.Path(), &ref);
+	} else if (entry.InitCheck() == B_OK)
+		entry.GetRef(&ref);
+	else
+		get_ref_for_path(path.Path(), &ref);
 
 	BMessenger messenger(this);
 	fOpenPanel = new BFilePanel(B_OPEN_PANEL, &messenger, &ref,
@@ -146,13 +166,12 @@ KeymapWindow::KeymapWindow()
 		B_FILE_NODE, false, NULL);
 
 	BRect windowFrame;
-	BString keyboardLayout;
-	_LoadSettings(windowFrame, keyboardLayout);
-	_SetKeyboardLayout(keyboardLayout.String());
-
-	ResizeTo(windowFrame.Width(), windowFrame.Height());
-	MoveTo(windowFrame.LeftTop());
-	MoveOnScreen();
+	if (_LoadSettings(windowFrame) == B_OK) {
+		ResizeTo(windowFrame.Width(), windowFrame.Height());
+		MoveTo(windowFrame.LeftTop());
+		MoveOnScreen();
+	} else
+		CenterOnScreen();
 
 	// TODO: this might be a bug in the interface kit, but scrolling to
 	// selection does not correctly work unless the window is shown.
@@ -301,7 +320,12 @@ KeymapWindow::MessageReceived(BMessage* message)
 			KeymapListItem* item
 				= static_cast<KeymapListItem*>(listView->ItemAt(index));
 			if (item != NULL) {
-				fCurrentMap.Load(item->EntryRef());
+				status_t status = fCurrentMap.Load(item->EntryRef());
+				if (status != B_OK) {
+					listView->RemoveItem(item);
+					break;
+				}
+
 				fAppliedMap = fCurrentMap;
 				fKeyboardLayoutView->SetKeymap(&fCurrentMap);
 				_UseKeymap();
@@ -657,16 +681,17 @@ KeymapWindow::_AddKeyboardLayoutMenu(BMenu* menu, BDirectory directory)
 		BDirectory subdirectory;
 		subdirectory.SetTo(&ref);
 		if (subdirectory.InitCheck() == B_OK) {
-			BMenu* submenu = new BMenu(B_TRANSLATE_NOCOLLECT(ref.name));
+			BMenu* submenu = new BMenu(B_TRANSLATE_NOCOLLECT_ALL((ref.name),
+				"KeyboardLayoutNames", NULL));
 
 			_AddKeyboardLayoutMenu(submenu, subdirectory);
-			menu->AddItem(submenu);
+			menu->AddItem(submenu, (int32)0);
 		} else {
 			BMessage* message = new BMessage(kChangeKeyboardLayout);
 
 			message->AddRef("ref", &ref);
-			menu->AddItem(new BMenuItem(B_TRANSLATE_NOCOLLECT(ref.name),
-				message));
+			menu->AddItem(new BMenuItem(B_TRANSLATE_NOCOLLECT_ALL((ref.name),
+				"KeyboardLayoutNames", NULL), message), (int32)0);
 		}
 	}
 }
@@ -916,7 +941,9 @@ KeymapWindow::_FillSystemMaps()
 	if (directory.SetTo(path.Path()) == B_OK) {
 		while (directory.GetNextRef(&ref) == B_OK) {
 			fSystemListView->AddItem(
-				new KeymapListItem(ref, B_TRANSLATE_NOCOLLECT(ref.name)));
+				new KeymapListItem(ref,
+					B_TRANSLATE_NOCOLLECT_ALL((ref.name),
+					"KeymapNames", NULL)));
 		}
 	}
 
@@ -1008,8 +1035,9 @@ KeymapWindow::_SelectCurrentMap(BListView* view)
 		return false;
 
 	for (int32 i = 0; i < view->CountItems(); i++) {
-		BStringItem* current = dynamic_cast<BStringItem *>(view->ItemAt(i));
-		if (current != NULL && fCurrentMapName == current->Text()) {
+		KeymapListItem* current =
+			static_cast<KeymapListItem *>(view->ItemAt(i));
+		if (current != NULL && fCurrentMapName == current->EntryRef().name) {
 			view->Select(i);
 			view->ScrollToSelection();
 			return true;
@@ -1047,7 +1075,7 @@ KeymapWindow::_GetSettings(BFile& file, int mode) const
 
 
 status_t
-KeymapWindow::_LoadSettings(BRect& windowFrame, BString& keyboardLayout)
+KeymapWindow::_LoadSettings(BRect& windowFrame)
 {
 	BScreen screen(this);
 
@@ -1061,8 +1089,6 @@ KeymapWindow::_LoadSettings(BRect& windowFrame, BString& keyboardLayout)
 	windowFrame.right *= scaling;
 	windowFrame.bottom *= scaling;
 
-	keyboardLayout = "";
-
 	BFile file;
 	status_t status = _GetSettings(file, B_READ_ONLY);
 	if (status == B_OK) {
@@ -1070,10 +1096,13 @@ KeymapWindow::_LoadSettings(BRect& windowFrame, BString& keyboardLayout)
 		status = settings.Unflatten(&file);
 		if (status == B_OK) {
 			BRect frame;
-			if (settings.FindRect("window frame", &frame) == B_OK)
+			status = settings.FindRect("window frame", &frame);
+			if (status == B_OK)
 				windowFrame = frame;
 
-			settings.FindString("keyboard layout", &keyboardLayout);
+			const char* layoutPath;
+			if (settings.FindString("keyboard layout", &layoutPath) == B_OK)
+				_SetKeyboardLayout(layoutPath);
 		}
 	}
 
@@ -1118,9 +1147,11 @@ KeymapWindow::_GetMarkedKeyboardLayoutPath(BMenu* menu)
 			continue;
 
 		BMenu* submenu = item->Submenu();
-		if (submenu != NULL)
-			return _GetMarkedKeyboardLayoutPath(submenu);
-		else {
+		if (submenu != NULL) {
+			path = _GetMarkedKeyboardLayoutPath(submenu);
+			if (path.InitCheck() == B_OK)
+				return path;
+		} else {
 			if (item->IsMarked()
 				&& item->Message()->FindRef("ref", &ref) == B_OK) {
 				path.SetTo(&ref);

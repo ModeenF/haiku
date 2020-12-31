@@ -24,7 +24,7 @@
 #define OFF_MAX			LLONG_MAX
 #define OFF_MIN			LLONG_MIN
 
-#define ARG_MAX			 		(32768)
+#define ARG_MAX			 		(128 * 1024)
 #define ATEXIT_MAX			 	(32)
 #define CHILD_MAX				(1024)
 #define IOV_MAX					(1024)
@@ -38,19 +38,19 @@
 #define NAME_MAX				(256)
 #define NGROUPS_MAX		 		(32)
 #define OPEN_MAX				(128)
-#define PAGE_SIZE				(4096)
 #define PAGESIZE				(4096)
 #define PATH_MAX				(1024)
+#define PIPE_BUF				(4 * 1024)
 #define PIPE_MAX				(512)
 #define PTHREAD_KEYS_MAX		256
-#define PTHREAD_STACK_MIN		(2 * PAGE_SIZE)
+#define PTHREAD_STACK_MIN		(2 * PAGESIZE)
 #define SSIZE_MAX		  		__HAIKU_SADDR_MAX
 #define TTY_NAME_MAX			(256)
 #define TZNAME_MAX		  		(32)
 #define	SYMLINK_MAX				(1024)
 #define	SYMLOOP_MAX				(16)
 
-#define _POSIX_ARG_MAX	  		(32768)
+#define _POSIX_ARG_MAX	  		(128 * 1024)
 #define _POSIX_CHILD_MAX		(1024)
 #define _POSIX_HOST_NAME_MAX	(255)
 #define _POSIX_LINK_MAX	 		(1)
@@ -72,8 +72,19 @@
 #define _POSIX_CLOCKRES_MIN		20000000
 #define _POSIX_TIMER_MAX		32
 #define _POSIX_DELAYTIMER_MAX	32
+#define _POSIX_SEM_NSEMS_MAX	(256)
 
 #define _POSIX2_LINE_MAX		(2048)
+
+#ifdef _XOPEN_SOURCE
+/* The XSI name for PAGESIZE, with extra underscore included. Only define if
+ * _XOPEN_SOURCE was requested, otherwise it could conflict with the application.
+ */
+#define PAGE_SIZE				PAGESIZE
+/* XSI extension: Default process priority. This is used by the implementation
+ * of getpriority(), setpriority() and nice(). */
+#define NZERO					20
+#endif
 
 /* _GCC_LIMITS_H_ is defined by GCC's internal limits.h to avoid
  * collisions with any defines in this file.

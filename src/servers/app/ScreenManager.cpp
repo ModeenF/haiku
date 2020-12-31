@@ -15,7 +15,6 @@
 #include "ServerConfig.h"
 
 #include "RemoteHWInterface.h"
-#include "HTML5HWInterface.h"
 
 #include <Autolock.h>
 #include <Entry.h>
@@ -35,6 +34,35 @@ using std::nothrow;
 
 
 ScreenManager* gScreenManager;
+
+
+class ScreenChangeListener : public HWInterfaceListener {
+public:
+								ScreenChangeListener(ScreenManager& manager,
+									Screen* screen);
+
+private:
+virtual	void					ScreenChanged(HWInterface* interface);
+
+			ScreenManager&		fManager;
+			Screen*				fScreen;
+};
+
+
+ScreenChangeListener::ScreenChangeListener(ScreenManager& manager,
+	Screen* screen)
+	:
+	fManager(manager),
+	fScreen(screen)
+{
+}
+
+
+void
+ScreenChangeListener::ScreenChanged(HWInterface* interface)
+{
+	fManager.ScreenChanged(fScreen);
+}
 
 
 ScreenManager::ScreenManager()
@@ -57,7 +85,6 @@ ScreenManager::~ScreenManager()
 	for (int32 i = 0; i < fScreenList.CountItems(); i++) {
 		screen_item* item = fScreenList.ItemAt(i);
 
-		delete item->screen;
 		delete item;
 	}
 }
@@ -71,7 +98,7 @@ ScreenManager::ScreenAt(int32 index) const
 
 	screen_item* item = fScreenList.ItemAt(index);
 	if (item != NULL)
-		return item->screen;
+		return item->screen.Get();
 
 	return NULL;
 }
@@ -99,35 +126,30 @@ ScreenManager::AcquireScreens(ScreenOwner* owner, int32* wishList,
 	for (int32 i = 0; i < fScreenList.CountItems(); i++) {
 		screen_item* item = fScreenList.ItemAt(i);
 
-		if (item->owner == NULL && list.AddItem(item->screen)) {
+		if (item->owner == NULL && list.AddItem(item->screen.Get())) {
 			item->owner = owner;
 			added++;
 		}
 	}
 
-#if TEST_MODE == 0 && !defined(__x86_64__)
 	if (added == 0 && target != NULL) {
 		// there's a specific target screen we want to initialize
 		// TODO: right now we only support remote screens, but we could
 		// also target specific accelerants to support other graphics cards
 		HWInterface* interface;
-		/*
-		if (strncmp(target, "vnc:", 4) == 0)
-			interface = new(nothrow) VNCHWInterface(target);
-		else*/
-		if (strncmp(target, "html5:", 6) == 0)
-			interface = new(nothrow) HTML5HWInterface(target);
-		else
-			interface = new(nothrow) RemoteHWInterface(target);
+#ifdef HAIKU_TARGET_PLATFORM_LIBBE_TEST
+		interface = new(nothrow) ViewHWInterface();
+#else
+		interface = new(nothrow) RemoteHWInterface(target);
+#endif
 		if (interface != NULL) {
 			screen_item* item = _AddHWInterface(interface);
-			if (item != NULL && list.AddItem(item->screen)) {
+			if (item != NULL && list.AddItem(item->screen.Get())) {
 				item->owner = owner;
 				added++;
 			}
 		}
 	}
-#endif // TEST_MODE == 0
 
 	return added > 0 ? B_OK : B_ENTRY_NOT_FOUND;
 }
@@ -144,9 +166,22 @@ ScreenManager::ReleaseScreens(ScreenList& list)
 		for (int32 j = 0; j < list.CountItems(); j++) {
 			Screen* screen = list.ItemAt(j);
 
-			if (item->screen == screen)
+			if (item->screen.Get() == screen)
 				item->owner = NULL;
 		}
+	}
+}
+
+
+void
+ScreenManager::ScreenChanged(Screen* screen)
+{
+	BAutolock locker(this);
+
+	for (int32 i = 0; i < fScreenList.CountItems(); i++) {
+		screen_item* item = fScreenList.ItemAt(i);
+		if (item->screen.Get() == screen)
+			item->owner->ScreenChanged(screen);
 	}
 }
 
@@ -193,11 +228,19 @@ ScreenManager::_AddHWInterface(HWInterface* interface)
 
 	if (screen->Initialize() >= B_OK) {
 		screen_item* item = new(nothrow) screen_item;
+
 		if (item != NULL) {
-			item->screen = screen;
+			item->screen.SetTo(screen);
 			item->owner = NULL;
-			if (fScreenList.AddItem(item))
-				return item;
+			item->listener.SetTo(
+				new(nothrow) ScreenChangeListener(*this, screen));
+			if (item->listener.Get() != NULL
+				&& interface->AddListener(item->listener.Get())) {
+				if (fScreenList.AddItem(item))
+					return item;
+
+				interface->RemoveListener(item->listener.Get());
+			}
 
 			delete item;
 		}

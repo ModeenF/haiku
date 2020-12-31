@@ -4,7 +4,7 @@
 <head>
 <!-- 
  *
- * Copyright 2008-2015, Haiku. All rights reserved.
+ * Copyright 2008-2017, Haiku. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -16,6 +16,7 @@
 	<meta name="robots" content="all" />
 	<meta name="robots" content="all" />
 	<title>Applications</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<link rel="stylesheet" type="text/css" href="../Haiku-doc.css" />
 </head>
 <body>
@@ -27,23 +28,27 @@
 <div class="nav">
 <div class="inner">
 <ul class="lang-menu">
-<li class="now"><img src="../images/flags/gb.png" alt="" /> English</li>
-<li><a href="../fr/applications.html"><img src="../images/flags/fr.png" alt="" />Français</a></li>
-<li><a href="../de/applications.html"><img src="../images/flags/de.png" alt="" />Deutsch</a></li>
-<li><a href="../it/applications.html"><img src="../images/flags/it.png" alt="" />Italiano</a></li>
-<li><a href="../ru/applications.html"><img src="../images/flags/ru.png" alt="" />Русский</a></li>
-<li><a href="../es/applications.html"><img src="../images/flags/es.png" alt="" />Español</a></li>
-<li><a href="../sv_SE/applications.html"><img src="../images/flags/sv_SE.png" alt="" />Svenska</a></li>
-<li><a href="../jp/applications.html"><img src="../images/flags/jp.png" alt="" />日本語</a></li>
-<li><a href="../uk/applications.html"><img src="../images/flags/uk.png" alt="" />Українська</a></li>
-<li><a href="../zh_CN/applications.html"><img src="../images/flags/zh_CN.png" alt="" /> 中文 ［中文］</a></li>
-<li><a href="../pt_PT/applications.html"><img src="../images/flags/pt_PT.png" alt="" />Português</a></li>
-<li><a href="../fi/applications.html"><img src="../images/flags/fi.png" alt="" />Suomi</a></li>
-<li><a href="../sk/applications.html"><img src="../images/flags/sk.png" alt="" />Slovenčina</a></li>
-<li><a href="../hu/applications.html"><img src="../images/flags/hu.png" alt="" />Magyar</a></li>
-<li><a href="../pt_BR/applications.html"><img src="../images/flags/pt_BR.png" alt="" />Português (Brazil)</a></li>
-<li><a href="../ca/applications.html"><img src="../images/flags/ca.png" alt="" />Català</a></li>
-<li><a href="../pl/applications.html"><img src="../images/flags/pl.png" alt="" />Polski</a></li>
+<li class="now">English&nbsp;<span class="dropdown-caret">&#9660;</span></li>
+<li><a href="../id/applications.html">Bahasa Indonesia</a></li>
+<li><a href="../ca/applications.html">Català</a></li>
+<li><a href="../de/applications.html">Deutsch</a></li>
+<li><a href="../es/applications.html">Español</a></li>
+<li><a href="../fr/applications.html">Français</a></li>
+<li><a href="../fur/applications.html">Furlan</a></li>
+<li><a href="../it/applications.html">Italiano</a></li>
+<li><a href="../hu/applications.html">Magyar</a></li>
+<li><a href="../pl/applications.html">Polski</a></li>
+<li><a href="../pt_PT/applications.html">Português</a></li>
+<li><a href="../pt_BR/applications.html">Português (Brazil)</a></li>
+<li><a href="../ro/applications.html">Română</a></li>
+<li><a href="../sk/applications.html">Slovenčina</a></li>
+<li><a href="../fi/applications.html">Suomi</a></li>
+<li><a href="../sv_SE/applications.html">Svenska</a></li>
+<li><a href="../tr/applications.html">Türkçe</a></li>
+<li><a href="../zh_CN/applications.html"> 中文 ［中文］</a></li>
+<li><a href="../ru/applications.html">Русский</a></li>
+<li><a href="../uk/applications.html">Українська</a></li>
+<li><a href="../jp/applications.html">日本語</a></li>
 </ul>
 <span>
  «  <a href="workshop-filetypes+attributes.html">Workshop</a> 
@@ -58,12 +63,12 @@
 <h1>Applications</h1>
 
 <p>Before diving into all the applications that come with Haiku, let's have a more detailed look at how to install and uninstall programs. The most convenient way to find, install, update and uninstall applications is via Haiku's package management system. However, since Haiku is largely binary and source compatible to its ancestor BeOS, you might find older archives (.zip and .pkg) that can still be installed as well.</p>
-<div class="box-info">Below you'll always find the <tt>/system/</tt> hierarchy of the mentioned. If you intend to install packages only for a single user (once Haiku becomes multi-user aware), you should use the mirrored filesystem hierarchy under home: <tt>~/config/</tt>. See topic <a href="filesystem-layout.html">Filesystem layout</a> for more information.</div>
+<div class="box-info">Below you'll always find the <tt>/system/</tt> hierarchy mentioned. If you intend to install packages only for a single user (once Haiku becomes multi-user aware), you should use the mirrored filesystem hierarchy under home: <tt>~/config/</tt>. See topic <a href="filesystem-layout.html">Filesystem layout</a> for more information.</div>
 
 <h2>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="hpkg" name="hpkg">Haiku packages (.hpkg)</a></h2>
-<p>The simplest way is to use <a href="applications/haikudepot.html">HaikuDepot</a> to find, download and automatically install and uninstall a package. If you have downloaded a package from somewhere else — maybe because it's not (yet) in a public repository — just double-click it to open in HaikuDepot and install from there.</p>
+<p>The simplest way is to use <a href="applications/haikudepot.html">HaikuDepot</a> to find, download and automatically install and uninstall a package. If you have downloaded a package from somewhere else — maybe because it's not (yet) in a public repository — just double-click it to open in HaikuDepot and install from there.</p>
 <p>You'll find the newly installed application in <tt>/system/apps/</tt> or, in case of a commandline application, in <tt>/system/bin/</tt>. All other files the program depends upon (libraries, data, add-ons, etc.) appear automatically in the right locations in the filesystem.</p>
 <p>Topics <a href="deskbar.html">Deskbar</a> or <a href="desktop-applets/launchbox.html">LaunchBox</a> describe how to add shortcuts to your newly installed application.</p>
 <div class="box-info">By the way, although you can unpack a .hpkg file like any other archive, this is not what the package mangement is doing when you're installing a package. The underlying filesystem only appears to spread files in their respective folders, there's no physical moving around taking place. This is why installing/uninstalling is so very fast and clean.</div>
@@ -116,7 +121,7 @@
 		<td valign="top">A player for all supported audio/video files.</td></tr>
 	<tr><td style="width:24px;"><img src="../images/apps-images/midiplayer-icon_16.png" alt="icon" width="16" height="16" /></td><td><a href="applications/midiplayer.html">MidiPlayer</a></td><td> </td>
 		<td valign="top">A player for MIDI files.</td></tr>
-	<tr><td style="width:24px;"><img src="../images/apps-images/packageinstaller-icon_16.png" alt="icon" width="16" height="16" /></td><td><a href="applications/packageinstaller.html">PackageInstaller</a></td><td> </td>
+	<tr><td style="width:24px;"><img src="../images/apps-images/packageinstaller-icon_16.png" alt="icon" width="16" height="16" /></td><td><a href="applications/packageinstaller.html">LegacyPackageInstaller</a></td><td> </td>
 		<td valign="top">Installer for BeOS packages in PKG format.</td></tr>
 	<tr><td style="width:24px;"><img src="../images/apps-images/people-icon_16.png" alt="icon" width="16" height="16" /></td><td><a href="applications/people.html">People</a></td><td> </td>
 		<td valign="top">A contact manager.</td></tr>
@@ -126,6 +131,8 @@
 		<td valign="top">A tool to take screenshots.</td></tr>
 	<tr><td style="width:24px;"><img src="../images/apps-images/showimage-icon_16.png" alt="icon" width="16" height="16" /></td><td><a href="applications/showimage.html">ShowImage</a></td><td> </td>
 		<td valign="top">A simple image viewer.</td></tr>
+	<tr><td style="width:24px;"><img src="../images/apps-images/softwareupdater-icon_16.png" alt="icon" width="16" height="16" /></td><td><a href="applications/softwareupdater.html">SoftwareUpdater</a></td><td> </td>
+		<td valign="top">A tool to update software packages and Haiku itself.</td></tr>
 	<tr><td style="width:24px;"><img src="../images/apps-images/soundrecorder-icon_16.png" alt="icon" width="16" height="16" /></td><td><a href="applications/soundrecorder.html">SoundRecorder</a></td><td> </td>
 		<td valign="top"><span style="color:silver">A tool to record audio from line-in or a microphone. [<i>still missing</i>]</span></td></tr>
 	<tr><td style="width:24px;"><img src="../images/apps-images/stylededit-icon_16.png" alt="icon" width="16" height="16" /></td><td><a href="applications/stylededit.html">StyledEdit</a></td><td> </td>

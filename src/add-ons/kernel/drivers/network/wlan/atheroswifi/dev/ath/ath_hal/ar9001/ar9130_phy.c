@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: ISC
+ *
  * Copyright (c) 2011 Adrian Chadd, Xenion Pty Ltd
  * Copyright (c) 2010 Atheros Communications, Inc.
  *
@@ -14,7 +16,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/dev/ath/ath_hal/ar9001/ar9130_phy.c 326695 2017-12-08 15:57:29Z pfg $
  */
 #include "opt_ah.h"
 
@@ -33,6 +35,9 @@ ar9130InitPLL(struct ath_hal *ah, const struct ieee80211_channel *chan)
 
 	uint32_t pll;
 
+	/*
+	 * XXX TODO: support half/quarter rates
+	 */
 	if (chan && IEEE80211_IS_CHAN_5GHZ(chan))
 		pll = 0x1450;
 	else

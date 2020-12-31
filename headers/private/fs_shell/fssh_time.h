@@ -9,8 +9,13 @@
 #include "fssh_defs.h"
 
 
-typedef int32_t fssh_clock_t;
+#if defined(__i386__) && !defined(__x86_64__)
 typedef int32_t fssh_time_t;
+#else
+typedef int64_t fssh_time_t;
+#endif
+
+typedef int32_t fssh_clock_t;
 typedef int32_t fssh_suseconds_t;
 typedef uint32_t fssh_useconds_t;
 
@@ -45,15 +50,14 @@ struct fssh_tm {
 };
 
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* special timezone support */
 extern char *fssh_tzname[2];
 extern int 	fssh_daylight;
 extern long	fssh_timezone;
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 extern fssh_clock_t		fssh_clock(void);
 extern double			fssh_difftime(fssh_time_t time1, fssh_time_t time2);

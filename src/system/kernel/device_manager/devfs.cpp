@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2012, Axel Dörfler, axeld@pinc-software.de.
+ * Copyright 2002-2016, Axel Dörfler, axeld@pinc-software.de.
  * Distributed under the terms of the MIT License.
  *
  * Copyright 2001-2002, Travis Geiselbrecht. All rights reserved.
@@ -35,6 +35,7 @@
 #include <util/AutoLock.h>
 #include <vfs.h>
 #include <vm/vm.h>
+#include <wait_for_objects.h>
 
 #include "BaseDevice.h"
 #include "FileDevice.h"
@@ -193,6 +194,15 @@ current_timespec()
 	tv.tv_sec = time / 1000000;
 	tv.tv_nsec = (time % 1000000) * 1000;
 	return tv;
+}
+
+
+static ino_t
+get_parent_id(struct devfs_vnode* vnode)
+{
+	if (vnode->parent != NULL)
+		return vnode->parent->id;
+	return -1;
 }
 
 
@@ -378,7 +388,7 @@ devfs_insert_in_dir(struct devfs_vnode* dir, struct devfs_vnode* vnode,
 	if (notify) {
 		notify_entry_created(sDeviceFileSystem->id, dir->id, vnode->name,
 			vnode->id);
-		notify_stat_changed(sDeviceFileSystem->id, dir->id,
+		notify_stat_changed(sDeviceFileSystem->id, get_parent_id(dir), dir->id,
 			B_STAT_MODIFICATION_TIME);
 	}
 	return B_OK;
@@ -407,8 +417,8 @@ devfs_remove_from_dir(struct devfs_vnode* dir, struct devfs_vnode* removeNode,
 			if (notify) {
 				notify_entry_removed(sDeviceFileSystem->id, dir->id, vnode->name,
 					vnode->id);
-				notify_stat_changed(sDeviceFileSystem->id, dir->id,
-					B_STAT_MODIFICATION_TIME);
+				notify_stat_changed(sDeviceFileSystem->id, get_parent_id(dir),
+					dir->id, B_STAT_MODIFICATION_TIME);
 			}
 			return B_OK;
 		}
@@ -1175,10 +1185,11 @@ devfs_read_link(fs_volume* _volume, fs_vnode* _link, char* buffer,
 	if (!S_ISLNK(link->stream.type))
 		return B_BAD_VALUE;
 
-	if (link->stream.u.symlink.length < *_bufferSize)
-		*_bufferSize = link->stream.u.symlink.length;
+	memcpy(buffer, link->stream.u.symlink.path, min_c(*_bufferSize,
+		link->stream.u.symlink.length));
 
-	memcpy(buffer, link->stream.u.symlink.path, *_bufferSize);
+	*_bufferSize = link->stream.u.symlink.length;
+
 	return B_OK;
 }
 
@@ -1543,8 +1554,12 @@ devfs_select(fs_volume* _volume, fs_vnode* _vnode, void* _cookie,
 		return B_NOT_ALLOWED;
 
 	// If the device has no select() hook, notify select() now.
-	if (!vnode->stream.u.dev.device->HasSelect())
-		return notify_select_event((selectsync*)sync, event);
+	if (!vnode->stream.u.dev.device->HasSelect()) {
+		if (!SELECT_TYPE_IS_OUTPUT_ONLY(event))
+			return notify_select_event((selectsync*)sync, event);
+		else
+			return B_OK;
+	}
 
 	return vnode->stream.u.dev.device->Select(cookie->device_cookie, event,
 		(selectsync*)sync);
@@ -1833,7 +1848,7 @@ devfs_write_stat(fs_volume* _volume, fs_vnode* _vnode, const struct stat* stat,
 	if (statMask & B_STAT_CREATION_TIME)
 		vnode->creation_time = stat->st_crtim;
 
-	notify_stat_changed(fs->id, vnode->id, statMask);
+	notify_stat_changed(fs->id, get_parent_id(vnode), vnode->id, statMask);
 	return B_OK;
 }
 
@@ -2081,8 +2096,8 @@ devfs_rename_partition(const char* devicePath, const char* oldName,
 
 	notify_entry_moved(sDeviceFileSystem->id, device->parent->id, oldName,
 		device->parent->id, newName, node->id);
-	notify_stat_changed(sDeviceFileSystem->id, device->parent->id,
-		B_STAT_MODIFICATION_TIME);
+	notify_stat_changed(sDeviceFileSystem->id, get_parent_id(device->parent),
+		device->parent->id, B_STAT_MODIFICATION_TIME);
 
 	return B_OK;
 }

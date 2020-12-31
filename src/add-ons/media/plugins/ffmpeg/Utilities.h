@@ -1,6 +1,7 @@
 /*
  * Copyright 2009, Stephan Aßmus <superstippi@gmx.de>
  * Copyright 2014, Colin Günther <coling@gmx.de>
+ * Copyright 2018, Dario Casalinuovo
  * All rights reserved. Distributed under the terms of the GNU L-GPL license.
  */
 #ifndef UTILITIES_H
@@ -13,6 +14,7 @@
 
 
 #include <assert.h>
+#include <stdio.h>
 
 #include <GraphicsDefs.h>
 
@@ -43,17 +45,19 @@ inline void
 ConvertAVCodecContextToVideoAspectWidthAndHeight(AVCodecContext& contextIn,
 	uint16& pixelWidthAspectOut, uint16& pixelHeightAspectOut)
 {
-	assert(contextIn.sample_aspect_ratio.num >= 0);
-	assert(contextIn.sample_aspect_ratio.den > 0);
-	assert(contextIn.width > 0);
-	assert(contextIn.height > 0);
+	if (contextIn.width <= 0 || contextIn.height <= 0) {
+		fprintf(stderr, "Cannot compute video aspect ratio correctly\n");
+		pixelWidthAspectOut = 1;
+		pixelHeightAspectOut = 1;
+		return;
+	}
 
-	// The following code is based on code originally located in
-	// AVFormatReader::Stream::Init() and thus should be copyrighted to Stephan
-	// Aßmus
+	assert(contextIn.sample_aspect_ratio.num >= 0);
+
 	AVRational pixelAspectRatio;
 
-	if (contextIn.sample_aspect_ratio.num == 0) {
+	if (contextIn.sample_aspect_ratio.num == 0
+		|| contextIn.sample_aspect_ratio.den == 0) {
 		// AVCodecContext doesn't contain a video aspect ratio, so calculate it
 		// ourselve based solely on the video dimensions
 		av_reduce(&pixelAspectRatio.num, &pixelAspectRatio.den, contextIn.width,
@@ -68,6 +72,44 @@ ConvertAVCodecContextToVideoAspectWidthAndHeight(AVCodecContext& contextIn,
 	av_reduce(&pixelAspectRatio.num, &pixelAspectRatio.den,
 		contextIn.width * contextIn.sample_aspect_ratio.num,
 		contextIn.height * contextIn.sample_aspect_ratio.den,
+		1024 * 1024);
+
+	pixelWidthAspectOut = static_cast<int16>(pixelAspectRatio.num);
+	pixelHeightAspectOut = static_cast<int16>(pixelAspectRatio.den);
+}
+
+
+inline void
+ConvertAVCodecParametersToVideoAspectWidthAndHeight(AVCodecParameters& parametersIn,
+	uint16& pixelWidthAspectOut, uint16& pixelHeightAspectOut)
+{
+	if (parametersIn.width <= 0 || parametersIn.height <= 0) {
+		fprintf(stderr, "Cannot compute video aspect ratio correctly\n");
+		pixelWidthAspectOut = 1;
+		pixelHeightAspectOut = 1;
+		return;
+	}
+
+	assert(parametersIn.sample_aspect_ratio.num >= 0);
+
+	AVRational pixelAspectRatio;
+
+	if (parametersIn.sample_aspect_ratio.num == 0
+		|| parametersIn.sample_aspect_ratio.den == 0) {
+		// AVCodecContext doesn't contain a video aspect ratio, so calculate it
+		// ourselve based solely on the video dimensions
+		av_reduce(&pixelAspectRatio.num, &pixelAspectRatio.den, parametersIn.width,
+			parametersIn.height, 1024 * 1024);
+
+		pixelWidthAspectOut = static_cast<int16>(pixelAspectRatio.num);
+		pixelHeightAspectOut = static_cast<int16>(pixelAspectRatio.den);
+		return;
+	}
+
+	// AVCodecContext contains a video aspect ratio, so use it
+	av_reduce(&pixelAspectRatio.num, &pixelAspectRatio.den,
+		parametersIn.width * parametersIn.sample_aspect_ratio.num,
+		parametersIn.height * parametersIn.sample_aspect_ratio.den,
 		1024 * 1024);
 
 	pixelWidthAspectOut = static_cast<int16>(pixelAspectRatio.num);
@@ -99,10 +141,16 @@ inline void
 ConvertVideoAspectWidthAndHeightToAVCodecContext(uint16 pixelWidthAspectIn,
 	uint16 pixelHeightAspectIn, AVCodecContext& contextInOut)
 {
+	if (contextInOut.width <= 0 || contextInOut.height <= 0) {
+		fprintf(stderr, "Cannot compute video aspect ratio correctly\n");
+		// We can't do anything, set the aspect ratio to 'ignore'.
+		contextInOut.sample_aspect_ratio.num = 0;
+		contextInOut.sample_aspect_ratio.den = 1;
+		return;
+	}
+
 	assert(pixelWidthAspectIn > 0);
 	assert(pixelHeightAspectIn > 0);
-	assert(contextInOut.width > 0);
-	assert(contextInOut.height > 0);
 
 	AVRational pureVideoDimensionAspectRatio;
 	av_reduce(&pureVideoDimensionAspectRatio.num,
@@ -140,13 +188,14 @@ CalculateBytesPerRowWithColorSpaceAndVideoWidth(color_space colorSpace, int vide
 	assert(videoWidth >= 0);
 
 	const uint32 kBytesPerRowUnknown = 0;
-	size_t bytesPerPixel;
+	size_t pixelChunk;
 	size_t rowAlignment;
+	size_t pixelsPerChunk;
 
-	if (get_pixel_size_for(colorSpace, &bytesPerPixel, &rowAlignment, NULL) != B_OK)
+	if (get_pixel_size_for(colorSpace, &pixelChunk, &rowAlignment, &pixelsPerChunk) != B_OK)
 		return kBytesPerRowUnknown;
 
-	uint32 bytesPerRow = bytesPerPixel * videoWidth;
+	uint32 bytesPerRow = pixelChunk * videoWidth / pixelsPerChunk;
 	uint32 numberOfUnalignedBytes = bytesPerRow % rowAlignment;
 
 	if (numberOfUnalignedBytes == 0)
@@ -177,8 +226,12 @@ CalculateBytesPerRowWithColorSpaceAndVideoWidth(color_space colorSpace, int vide
 inline void
 ConvertAVCodecContextToVideoFrameRate(AVCodecContext& contextIn, float& frameRateOut)
 {
-	// assert that av_q2d(contextIn.time_base) > 0 and computable
-	assert(contextIn.time_base.num > 0);
+	// A framerate of 0 is allowed for single-frame "video" (cover art, for
+	// example)
+	if (contextIn.time_base.num == 0)
+		frameRateOut = 0.0f;
+
+	// assert that we can compute something
 	assert(contextIn.time_base.den > 0);
 
 	// The following code is based on private get_fps() function of FFmpeg's

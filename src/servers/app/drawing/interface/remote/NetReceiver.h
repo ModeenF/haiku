@@ -8,23 +8,30 @@
 #ifndef NET_RECEIVER_H
 #define NET_RECEIVER_H
 
+#include <AutoDeleter.h>
 #include <OS.h>
 #include <SupportDefs.h>
 
 class BNetEndpoint;
 class StreamingRingBuffer;
 
+typedef status_t (*NewConnectionCallback)(void *cookie, BNetEndpoint &endpoint);
+
+
 class NetReceiver {
 public:
-								NetReceiver(BNetEndpoint *listener,
-									StreamingRingBuffer *target);
+								NetReceiver(BNetEndpoint *endpoint,
+									StreamingRingBuffer *target,
+									NewConnectionCallback callback = NULL,
+									void *newConnectionCookie = NULL);
 								~NetReceiver();
 
-		BNetEndpoint *			Endpoint() { return fEndpoint; }
+		BNetEndpoint *			Endpoint() { return fEndpoint.Get(); }
 
 private:
 static	int32					_NetworkReceiverEntry(void *data);
-		status_t				_NetworkReceiver();
+		status_t				_Listen();
+		status_t				_Transfer();
 
 		BNetEndpoint *			fListener;
 		StreamingRingBuffer *	fTarget;
@@ -32,7 +39,11 @@ static	int32					_NetworkReceiverEntry(void *data);
 		thread_id				fReceiverThread;
 		bool					fStopThread;
 
-		BNetEndpoint *			fEndpoint;
+		NewConnectionCallback	fNewConnectionCallback;
+		void *					fNewConnectionCookie;
+
+		ObjectDeleter<BNetEndpoint>
+								fEndpoint;
 };
 
 #endif // NET_RECEIVER_H

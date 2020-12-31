@@ -17,7 +17,8 @@
 
 
 class BMessageRunner;
-class dhcp_message;
+struct dhcp_message;
+struct socket_timeout;
 
 
 enum dhcp_state {
@@ -55,10 +56,8 @@ private:
 			status_t			_SendMessage(int socket, dhcp_message& message,
 									const BNetworkAddress& address) const;
 			dhcp_state			_CurrentState() const;
-			void				_ResetTimeout(int socket, dhcp_state& state,
-									time_t& timeout, uint32& tries);
 			bool				_TimeoutShift(int socket, dhcp_state& state,
-									time_t& timeout, uint32& tries);
+									socket_timeout& timeout);
 			void				_RestartLease(bigtime_t lease);
 
 	static	BString				_AddressToString(const uint8* data);

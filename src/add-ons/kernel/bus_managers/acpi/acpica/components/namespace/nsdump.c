@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -112,6 +112,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #include "acpi.h"
@@ -172,7 +208,7 @@ AcpiNsGetMaxDepth (
 void
 AcpiNsPrintPathname (
     UINT32                  NumSegments,
-    char                    *Pathname)
+    const char              *Pathname)
 {
     UINT32                  i;
 
@@ -212,6 +248,9 @@ AcpiNsPrintPathname (
 }
 
 
+#ifdef ACPI_OBSOLETE_FUNCTIONS
+/* Not used at this time, perhaps later */
+
 /*******************************************************************************
  *
  * FUNCTION:    AcpiNsDumpPathname
@@ -231,7 +270,7 @@ AcpiNsPrintPathname (
 void
 AcpiNsDumpPathname (
     ACPI_HANDLE             Handle,
-    char                    *Msg,
+    const char              *Msg,
     UINT32                  Level,
     UINT32                  Component)
 {
@@ -252,6 +291,7 @@ AcpiNsDumpPathname (
     AcpiOsPrintf ("\n");
     return_VOID;
 }
+#endif
 
 
 /*******************************************************************************
@@ -312,6 +352,7 @@ AcpiNsDumpOneObject (
     }
 
     Type = ThisNode->Type;
+    Info->Count++;
 
     /* Check if the owner matches */
 
@@ -331,7 +372,8 @@ AcpiNsDumpOneObject (
 
         if (Type > ACPI_TYPE_LOCAL_MAX)
         {
-            ACPI_WARNING ((AE_INFO, "Invalid ACPI Object Type 0x%08X", Type));
+            ACPI_WARNING ((AE_INFO,
+                "Invalid ACPI Object Type 0x%08X", Type));
         }
 
         AcpiOsPrintf ("%4.4s", AcpiUtGetNodeName (ThisNode));
@@ -340,7 +382,7 @@ AcpiNsDumpOneObject (
     /* Now we can print out the pertinent information */
 
     AcpiOsPrintf (" %-12s %p %2.2X ",
-            AcpiUtGetTypeName (Type), ThisNode, ThisNode->OwnerId);
+        AcpiUtGetTypeName (Type), ThisNode, ThisNode->OwnerId);
 
     DbgLevel = AcpiDbgLevel;
     AcpiDbgLevel = 0;
@@ -427,7 +469,7 @@ AcpiNsDumpOneObject (
             if (ObjDesc->Common.Flags & AOPOBJ_DATA_VALID)
             {
                 AcpiOsPrintf ("Len %.2X",
-                            ObjDesc->Buffer.Length);
+                    ObjDesc->Buffer.Length);
 
                 /* Dump some of the buffer */
 
@@ -450,7 +492,7 @@ AcpiNsDumpOneObject (
         case ACPI_TYPE_STRING:
 
             AcpiOsPrintf ("Len %.2X ", ObjDesc->String.Length);
-            AcpiUtPrintString (ObjDesc->String.Pointer, 32);
+            AcpiUtPrintString (ObjDesc->String.Pointer, 80);
             AcpiOsPrintf ("\n");
             break;
 
@@ -608,9 +650,9 @@ AcpiNsDumpOneObject (
 
     /* If there is an attached object, display it */
 
-    DbgLevel     = AcpiDbgLevel;
+    DbgLevel = AcpiDbgLevel;
     AcpiDbgLevel = 0;
-    ObjDesc      = AcpiNsGetAttachedObject (ThisNode);
+    ObjDesc = AcpiNsGetAttachedObject (ThisNode);
     AcpiDbgLevel = DbgLevel;
 
     /* Dump attached objects */
@@ -637,14 +679,18 @@ AcpiNsDumpOneObject (
 
             if (ObjType > ACPI_TYPE_LOCAL_MAX)
             {
-                AcpiOsPrintf ("(Pointer to ACPI Object type %.2X [UNKNOWN])\n",
+                AcpiOsPrintf (
+                    "(Pointer to ACPI Object type %.2X [UNKNOWN])\n",
                     ObjType);
+
                 BytesToDump = 32;
             }
             else
             {
-                AcpiOsPrintf ("(Pointer to ACPI Object type %.2X [%s])\n",
+                AcpiOsPrintf (
+                    "(Pointer to ACPI Object type %.2X [%s])\n",
                     ObjType, AcpiUtGetTypeName (ObjType));
+
                 BytesToDump = sizeof (ACPI_OPERAND_OBJECT);
             }
 
@@ -674,7 +720,8 @@ AcpiNsDumpOneObject (
              */
             BytesToDump = ObjDesc->String.Length;
             ObjDesc = (void *) ObjDesc->String.Pointer;
-            AcpiOsPrintf ( "(Buffer/String pointer %p length %X)\n",
+
+            AcpiOsPrintf ("(Buffer/String pointer %p length %X)\n",
                 ObjDesc, BytesToDump);
             ACPI_DUMP_BUFFER (ObjDesc, BytesToDump);
             goto Cleanup;
@@ -770,14 +817,16 @@ AcpiNsDumpObjects (
         return;
     }
 
+    Info.Count = 0;
     Info.DebugLevel = ACPI_LV_TABLES;
     Info.OwnerId = OwnerId;
     Info.DisplayType = DisplayType;
 
     (void) AcpiNsWalkNamespace (Type, StartHandle, MaxDepth,
-                ACPI_NS_WALK_NO_UNLOCK | ACPI_NS_WALK_TEMP_NODES,
-                AcpiNsDumpOneObject, NULL, (void *) &Info, NULL);
+        ACPI_NS_WALK_NO_UNLOCK | ACPI_NS_WALK_TEMP_NODES,
+        AcpiNsDumpOneObject, NULL, (void *) &Info, NULL);
 
+    AcpiOsPrintf ("\nNamespace node count: %u\n\n", Info.Count);
     (void) AcpiUtReleaseMutex (ACPI_MTX_NAMESPACE);
 }
 
@@ -826,7 +875,7 @@ AcpiNsDumpOneObjectPath (
         return (AE_OK);
     }
 
-    Pathname = AcpiNsGetExternalPathname (Node);
+    Pathname = AcpiNsGetNormalizedPathname (Node, TRUE);
 
     PathIndent = 1;
     if (Level <= MaxLevel)
@@ -912,14 +961,14 @@ AcpiNsDumpObjectPaths (
     /* Get the max depth of the namespace tree, for formatting later */
 
     (void) AcpiNsWalkNamespace (Type, StartHandle, MaxDepth,
-                ACPI_NS_WALK_NO_UNLOCK | ACPI_NS_WALK_TEMP_NODES,
-                AcpiNsGetMaxDepth, NULL, (void *) &MaxLevel, NULL);
+        ACPI_NS_WALK_NO_UNLOCK | ACPI_NS_WALK_TEMP_NODES,
+        AcpiNsGetMaxDepth, NULL, (void *) &MaxLevel, NULL);
 
     /* Now dump the entire namespace */
 
     (void) AcpiNsWalkNamespace (Type, StartHandle, MaxDepth,
-                ACPI_NS_WALK_NO_UNLOCK | ACPI_NS_WALK_TEMP_NODES,
-                AcpiNsDumpOneObjectPath, NULL, (void *) &MaxLevel, NULL);
+        ACPI_NS_WALK_NO_UNLOCK | ACPI_NS_WALK_TEMP_NODES,
+        AcpiNsDumpOneObjectPath, NULL, (void *) &MaxLevel, NULL);
 
     (void) AcpiUtReleaseMutex (ACPI_MTX_NAMESPACE);
 }
@@ -990,7 +1039,8 @@ AcpiNsDumpTables (
          * If the name space has not been initialized,
          * there is nothing to dump.
          */
-        ACPI_DEBUG_PRINT ((ACPI_DB_TABLES, "namespace not initialized!\n"));
+        ACPI_DEBUG_PRINT ((ACPI_DB_TABLES,
+            "namespace not initialized!\n"));
         return_VOID;
     }
 
@@ -1003,7 +1053,7 @@ AcpiNsDumpTables (
     }
 
     AcpiNsDumpObjects (ACPI_TYPE_ANY, ACPI_DISPLAY_OBJECTS, MaxDepth,
-            ACPI_OWNER_ID_MAX, SearchHandle);
+        ACPI_OWNER_ID_MAX, SearchHandle);
     return_VOID;
 }
 #endif

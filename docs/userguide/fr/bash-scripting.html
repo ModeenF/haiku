@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en-US" xml:lang="en-US">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="fr" xml:lang="fr">
 <head>
 <!-- 
  *
@@ -10,14 +10,16 @@
  * Authors:
  *		Humdinger <humdingerb@gmail.com>
  * Translators:
- *		Vincent Duvert
+ *		Humdinger
  *		Loïc
+ *		Vincent Duvert
  *
 -->
 	<meta http-equiv="content-type" content="text/html; charset=utf-8" />
 	<meta http-equiv="Content-Style-Type" content="text/css" />
 	<meta name="robots" content="all" />
 	<title>Bash et les scripts</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<link rel="stylesheet" type="text/css" href="../Haiku-doc.css" />
 </head>
 <body>
@@ -29,23 +31,27 @@
 <div class="nav">
 <div class="inner">
 <ul class="lang-menu">
-<li class="now"><img src="../images/flags/fr.png" alt="" /> Français</li>
-<li><a href="../de/bash-scripting.html"><img src="../images/flags/de.png" alt="" />Deutsch</a></li>
-<li><a href="../it/bash-scripting.html"><img src="../images/flags/it.png" alt="" />Italiano</a></li>
-<li><a href="../ru/bash-scripting.html"><img src="../images/flags/ru.png" alt="" />Русский</a></li>
-<li><a href="../es/bash-scripting.html"><img src="../images/flags/es.png" alt="" />Español</a></li>
-<li><a href="../sv_SE/bash-scripting.html"><img src="../images/flags/sv_SE.png" alt="" />Svenska</a></li>
-<li><a href="../jp/bash-scripting.html"><img src="../images/flags/jp.png" alt="" />日本語</a></li>
-<li><a href="../uk/bash-scripting.html"><img src="../images/flags/uk.png" alt="" />Українська</a></li>
-<li><a href="../zh_CN/bash-scripting.html"><img src="../images/flags/zh_CN.png" alt="" /> 中文 ［中文］</a></li>
-<li><a href="../pt_PT/bash-scripting.html"><img src="../images/flags/pt_PT.png" alt="" />Português</a></li>
-<li><a href="../fi/bash-scripting.html"><img src="../images/flags/fi.png" alt="" />Suomi</a></li>
-<li><a href="../sk/bash-scripting.html"><img src="../images/flags/sk.png" alt="" />Slovenčina</a></li>
-<li><a href="../hu/bash-scripting.html"><img src="../images/flags/hu.png" alt="" />Magyar</a></li>
-<li><a href="../pt_BR/bash-scripting.html"><img src="../images/flags/pt_BR.png" alt="" />Português (Brazil)</a></li>
-<li><a href="../ca/bash-scripting.html"><img src="../images/flags/ca.png" alt="" />Català</a></li>
-<li><a href="../pl/bash-scripting.html"><img src="../images/flags/pl.png" alt="" />Polski</a></li>
-<li><a href="../en/bash-scripting.html"><img src="../images/flags/gb.png" alt="" />English</a></li>
+<li class="now">Français&nbsp;<span class="dropdown-caret">&#9660;</span></li>
+<li><a href="../id/bash-scripting.html">Bahasa Indonesia</a></li>
+<li><a href="../ca/bash-scripting.html">Català</a></li>
+<li><a href="../de/bash-scripting.html">Deutsch</a></li>
+<li><a href="../en/bash-scripting.html">English</a></li>
+<li><a href="../es/bash-scripting.html">Español</a></li>
+<li><a href="../fur/bash-scripting.html">Furlan</a></li>
+<li><a href="../it/bash-scripting.html">Italiano</a></li>
+<li><a href="../hu/bash-scripting.html">Magyar</a></li>
+<li><a href="../pl/bash-scripting.html">Polski</a></li>
+<li><a href="../pt_PT/bash-scripting.html">Português</a></li>
+<li><a href="../pt_BR/bash-scripting.html">Português (Brazil)</a></li>
+<li><a href="../ro/bash-scripting.html">Română</a></li>
+<li><a href="../sk/bash-scripting.html">Slovenčina</a></li>
+<li><a href="../fi/bash-scripting.html">Suomi</a></li>
+<li><a href="../sv_SE/bash-scripting.html">Svenska</a></li>
+<li><a href="../tr/bash-scripting.html">Türkçe</a></li>
+<li><a href="../zh_CN/bash-scripting.html"> 中文 ［中文］</a></li>
+<li><a href="../ru/bash-scripting.html">Русский</a></li>
+<li><a href="../uk/bash-scripting.html">Українська</a></li>
+<li><a href="../jp/bash-scripting.html">日本語</a></li>
 </ul>
 <span>
  «  <a href="preferences.html">Préférences</a> 
@@ -66,7 +72,9 @@ Les scripts peuvent aussi bien être utilisés pour simplement exécuter quelque
 <h2>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="bash" name="bash">Le Bash</a></h2>
-<p>Etant donné que les scripts dépendent naturellement du <i>shell</i> (interpréteur de commandes) qui les exécute, vous devriez d'abord vous familiariser avec le shell Bash qui est fourni avec Haiku. Celui-ci étant très utilisé, de nombreuses ressources sont disponibles en ligne. Par exemple, vous pouvez consulter ce document de Johan Jansson : <a href="http://www.beforever.com/bashtut.htm" class="printurl">Introduction to bash - a tutorial for bash under BeOS</a> (en anglais).</p>
+<p>Comme les scripts dépendent évidemment beaucoup du shell qui les interprète, vous devez d'abord vous familiariser avec le BASH qui est utilisé par le Haiku. Il y a beaucoup de ressources en ligne car c'est un shell largement utilisé.
+<a href="https://web.archive.org/web/20011205095723/http://www.beforever.com/bashtut.htm" class="printurl">Introduction à bash - un tutoriel pour bash sous BeOS</a> de Johan Jansson est un document intéressant. (en anglais)<br />
+Le livre <a href="https://www.gnu.org/software/bash/manual/bash.pdf" class="printurl">Bash Reference Manual (PDF, 720 KiB)</a> vous permettra d'entrer dans les détails.</p>
 
 <h2>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
@@ -75,13 +83,13 @@ Les scripts peuvent aussi bien être utilisés pour simplement exécuter quelque
 
 <h2>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a><a id="user-scripts" name="user-scripts">Les scripts dans Haiku</a></h2>
-<p>Le système Haiku lui-même utilise un certain nombre de scripts. Les procédures de démarrage et d'arrêt sont gérés par ces derniers. Vous pouvez compléter ces processus à l'aide de scripts utilisateur.<br />
-Si les scripts mentionnés n'existent pas, vous devrez les créer vous-même. Sinon, ajoutez simplement les commandes que vous souhaitez à l'endroit désiré.</p>
+<p>Précédemment, le système Haiku utilisait un système  de démarrage basé sur des scripts. Dorénavant, il utilise les services de <a href="https://dev.haiku-os.org/wiki/LaunchDaemon">launch_daemon</a>. Néanmoins, l'utilisateur peut toujours compléter ce système avec ses scripts personnalisés.
+Si ces scripts n'existent pas déjà, vous devrez les créer vous-même. Sinon, ajoutez simplement les commandes que vous souhaitez à l'endroit où vous désirez qu'elles soient exécutées.</p>
 
 <h3>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="userbootscript" name="userbootscript">Le script de démarrage UserBootscript</a></h3>
-<p><span class="path">/boot/home/config/boot/UserBootscript</span> sera exécuté après que le système ait terminé son processus de démarrage.
+<p><span class="path">/boot/home/config/settings/boot/UserBootscript</span> sera exécuté après que le système ait terminé son processus de démarrage.
 Par exemple, vous pouvez demander le lancement automatique de certains programmes à chaque démarrage :</p>
 <pre># Start LaunchBox
 /boot/system/apps/LaunchBox &amp;
@@ -90,17 +98,16 @@ Par exemple, vous pouvez demander le lancement automatique de certains programme
 /boot/system/apps/Workspaces &amp;</pre>
 <p>N'oubliez pas de terminer la commande par un "<tt>&amp;</tt>" (ce qui lance le processus concerné en tâche de fond), sinon le script restera bloqué jusqu'à ce que la commande se termine (c'est à dire quand le programme lancé sera fermé).</p>
 
-<p>Une autre manière de faire ceci est de placer des liens vers les applications à lancer dans le dossier <span class="path">/boot/home/config/boot/launch</span>. Ceci peut être fait en effectuant un clic droit sur l'application que vous voulez lancer automatiquement, en choisissant <span class="menu">Create Link</span> (créer un lien) et en <a href="tracker.html#navigating">allant</a> jusqu'au dossier mentionné.</p>
+<p>Une autre manière de faire ceci est de placer des liens vers les applications à lancer dans le dossier <span class="path">/boot/home/config/settings/boot/launch</span>. Ceci peut être fait en effectuant un clic droit sur l'application que vous voulez lancer automatiquement, en choisissant <span class="menu">Create Link</span> (créer un lien) et en <a href="tracker.html#navigating">allant</a> jusqu'au dossier mentionné.</p>
+
+<h3><a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
+<a id="usershutdownscript" name="usershutdownscript">Le script d'arrêt UserShutdownScript - <i>ne fonctionne pas encore</i></a></h3>
+<p><span class="path">/boot/home/config/settings/boot/UserShutdownScript</span> sera exécuté au début du processus d'arrêt. Si ce script renvoie une valeur de retour non nulle, l'arrêt sera annulé.</p>
 
 <h3>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
-<a id="usershutdownscript" name="usershutdownscript">Le script d'arrêt UserShutdownScript</a></h3>
-<p><span class="path">/boot/home/config/boot/UserShutdownScript</span> sera exécuté au début du processus d'arrêt. Si ce script renvoie une valeur de retour non nulle, l'arrêt sera annulé.</p>
-
-<h3>
-<a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
-<a id="usershutdownfinishscript" name="usershutdownfinishscript">Le script de fin d'arrêt UserShutdownFinishScript</a></h3>
-<p><span class="path">/boot/home/config/boot/UserShutdownFinishScript</span> sera exécuté à la fin du processus d'arrêt. Veuillez noter que la majorité des services du système auront déjà été arrêtés à ce stade.</p>
+<a id="usershutdownfinishscript" name="usershutdownfinishscript">Le script de fin d'arrêt UserShutdownFinishScript - <i>ne fonctionne pas encore</i></a></h3>
+<p><span class="path">/boot/home/config/settings/boot/UserShutdownFinishScript</span> sera exécuté à la fin du processus d'arrêt. Veuillez noter que la majorité des services du système auront déjà été arrêtés à ce stade.</p>
 
 </div>
 </div>

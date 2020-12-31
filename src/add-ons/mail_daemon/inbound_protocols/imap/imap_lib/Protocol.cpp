@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2015, Haiku Inc. All Rights Reserved.
+ * Copyright 2010-2016, Haiku Inc. All Rights Reserved.
  * Copyright 2010 Clemens Zeidler. All rights reserved.
  *
  * Distributed under the terms of the MIT License.
@@ -166,8 +166,7 @@ Protocol::GetFolders(FolderList& folders, BString& separator)
 		FolderEntry entry;
 		entry.folder = allFolders.StringAt(i);
 		for (int32 j = 0; j < subscribedFolders.CountStrings(); j++) {
-			if (entry.folder == subscribedFolders.StringAt(j)
-				|| entry.folder.ICompare("INBOX") == 0) {
+			if (entry.folder == subscribedFolders.StringAt(j)) {
 				entry.subscribed = true;
 				break;
 			}
@@ -355,6 +354,8 @@ Protocol::HandleResponse(Command* command, bigtime_t timeout,
 			}
 		} catch (ParseException& exception) {
 			printf("Error during parsing: %s\n", exception.Message());
+		} catch (StreamException& exception) {
+			return exception.Status();
 		}
 
 		if (fOngoingCommands.size() == 0)

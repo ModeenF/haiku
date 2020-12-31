@@ -1,15 +1,3 @@
-# Overridden to allow spaces in file names.
-actions Chmod1
-{
-	$(CHMOD) "$(MODE)" "$(1)"
-}
-
-# Overridden to allow spaces in file names.
-actions piecemeal together existing Clean
-{
-	$(RM) "$(>)"
-}
-
 #-------------------------------------------------------------------------------
 # Link rule/action are overwritten as they don't handle linking files who's name
 # contain spaces very well. Also adds resources and version to executable.
@@ -59,7 +47,7 @@ rule Link
 # rid of the attributes. When using the generic attribute emulation, which
 # uses separate files, we need to remove the target explicitely first, so that
 # the attributes won't be "leaked".
-if $(HOST_PLATFORM_BEOS_COMPATIBLE) || $(HAIKU_HOST_USE_XATTR) = 1 {
+if $(HAIKU_HOST_USE_XATTR) = 1 {
 	actions Link bind NEEDLIBS LINK_BEGIN_GLUE LINK_END_GLUE VERSION_SCRIPT
 	{
 		$(LINK) $(LINKFLAGS) -o "$(1)" $(UNDEFS) "$(LINK_BEGIN_GLUE)" "$(2)" \
@@ -128,14 +116,14 @@ rule Object
 	# handle #includes for source: Jam scans for headers with
 	# the regexp pattern $(HDRSCAN) and then invokes $(HDRRULE)
 	# with the scanned file as the target and the found headers
-	# as the sources.  HDRSEARCH is the value of SEARCH used for
-	# the found header files.  Finally, if jam must deal with
+	# as the sources. HDRSEARCH is the value of SEARCH used for
+	# the found header files. Finally, if jam must deal with
 	# header files of the same name in different directories,
 	# they can be distinguished with HDRGRIST.
 
 	# $(SEARCH_SOURCE:E) is where cc first looks for #include
-	# "foo.h" files.  If the source file is in a distant directory,
-	# look there.  Else, look in "" (the current directory).
+	# "foo.h" files. If the source file is in a distant directory,
+	# look there. Else, look in "" (the current directory).
 
 	HDRRULE on $(>) = HdrRule ;
 	HDRSCAN on $(>) = $(HDRPATTERN) ;
@@ -150,35 +138,35 @@ rule Object
 
 	switch $(>:S)
 	{
-	    case .asm : As $(<) : $(>) ;
-	    case .nasm : AssembleNasm $(<) : $(>) ;
-	    case .c :	Cc $(<) : $(>) ;
-	    case .C :	C++ $(<) : $(>) ;
-	    case .cc :	C++ $(<) : $(>) ;
-	    case .cpp : C++ $(<) : $(>) ;
-	    case .f :	Fortran $(<) : $(>) ;
-	    case .l :	if [ on $(2) return $(GENERATE_C++) ] {
-	    				InheritPlatform $(<:S=.cpp) : $(1) ;
+		case .asm : As $(<) : $(>) ;
+		case .nasm : AssembleNasm $(<) : $(>) ;
+		case .c :	Cc $(<) : $(>) ;
+		case .C :	C++ $(<) : $(>) ;
+		case .cc :	C++ $(<) : $(>) ;
+		case .cpp : C++ $(<) : $(>) ;
+		case .f :	Fortran $(<) : $(>) ;
+		case .l :	if [ on $(2) return $(GENERATE_C++) ] {
+						InheritPlatform $(<:S=.cpp) : $(1) ;
 						C++ $(<) : $(<:S=.cpp) ;
 						Lex $(<:S=.cpp) : $(>) ;
 					} else {
-	    				InheritPlatform $(<:S=.c) : $(1) ;
+						InheritPlatform $(<:S=.c) : $(1) ;
 						Cc $(<) : $(<:S=.c) ;
 						Lex $(<:S=.c) : $(>) ;
 					}
 		case *.o :	return ;
-	    case .s :	As $(<) : $(>) ;
-	    case .S :	As $(<) : $(>) ;
-	    case .y :	if [ on $(2) return $(GENERATE_C++) ] {
-	    				InheritPlatform $(1:S=.cpp) $(1:S=.hpp) : $(1) ;
+		case .s :	As $(<) : $(>) ;
+		case .S :	As $(<) : $(>) ;
+		case .y :	if [ on $(2) return $(GENERATE_C++) ] {
+						InheritPlatform $(1:S=.cpp) $(1:S=.hpp) : $(1) ;
 						C++ $(1) : $(1:S=.cpp) ;
 						Yacc $(1:S=.cpp) $(1:S=.hpp) : $(2) ;
 					} else {
-	    				InheritPlatform $(1:S=.c) $(1:S=.h) : $(1) ;
+						InheritPlatform $(1:S=.c) $(1:S=.h) : $(1) ;
 						Cc $(1) : $(1:S=.c) ;
 						Yacc $(1:S=.c) $(1:S=.h) : $(2) ;
 					}
-	    case * :	UserObject $(<) : $(>) ;
+		case * :	UserObject $(<) : $(>) ;
 	}
 }
 
@@ -196,7 +184,6 @@ rule As
 		includesSeparator = $(HOST_INCLUDES_SEPARATOR) ;
 		localIncludesOption = $(HOST_LOCAL_INCLUDES_OPTION) ;
 		systemIncludesOption = $(HOST_SYSTEM_INCLUDES_OPTION) ;
-
 	} else {
 		flags = [ on $(1) return $(TARGET_ASFLAGS_$(TARGET_PACKAGING_ARCH))
 			$(ASFLAGS) ] ;
@@ -219,11 +206,9 @@ rule As
 	ASDEFS on $(<) = [ on $(<) FDefines $(DEFINES) ] ;
 }
 
-# TODO: The KERNEL_CCFLAGS were used here before. Check whether we need any
-# flags we don't have now.
 actions As
 {
-	$(CC) -c "$(2)" -O2 $(ASFLAGS) -D_ASSEMBLER $(ASDEFS) $(ASHDRS) -o "$(1)" ;
+	$(CC) -c "$(2)" -O2 $(ASFLAGS) -D_ASSEMBLER $(ASDEFS) $(ASHDRS) -o "$(1)"
 }
 
 rule Lex
@@ -302,7 +287,6 @@ rule Cc
 			includesSeparator = $(HOST_INCLUDES_SEPARATOR) ;
 			localIncludesOption = $(HOST_LOCAL_INCLUDES_OPTION) ;
 			systemIncludesOption = $(HOST_SYSTEM_INCLUDES_OPTION) ;
-
 		} else {
 			# warning flags
 			if $(WARNINGS) != 0 {
@@ -338,7 +322,7 @@ rule Cc
 
 actions Cc
 {
-	$(CC) $(CCFLAGS) -c "$(2)" $(CCDEFS) $(CCHDRS) -o "$(1)" ;
+	$(CC) $(CCFLAGS) -c "$(2)" $(CCDEFS) $(CCHDRS) -o "$(1)"
 }
 
 rule C++
@@ -380,7 +364,6 @@ rule C++
 			includesSeparator = $(HOST_INCLUDES_SEPARATOR) ;
 			localIncludesOption = $(HOST_LOCAL_INCLUDES_OPTION) ;
 			systemIncludesOption = $(HOST_SYSTEM_INCLUDES_OPTION) ;
-
 		} else {
 			# warning flags
 			if $(WARNINGS) != 0 {
@@ -416,13 +399,13 @@ rule C++
 
 actions C++
 {
-	$(C++) -c "$(2)" $(C++FLAGS) $(CCDEFS) $(CCHDRS) -o "$(1)" ;
+	$(C++) -c "$(2)" $(C++FLAGS) $(CCDEFS) $(CCHDRS) -o "$(1)"
 }
 
+# Force recreation of the archive to avoid build errors caused by
+# stale dependencies after renaming or deleting object files.
 actions together Archive
 {
-	# Force recreation of the archive to avoid build errors caused by
-	# stale dependencies after renaming or deleting object files.
 	$(RM) $(<)
 	$(AR) $(<) $(>)
 }
@@ -462,20 +445,18 @@ rule LibraryFromObjects
 
 		# library depends on its member objects
 
-		if $(KEEPOBJS)
-		{
+		if $(KEEPOBJS) {
 			LocalDepends obj : $(_s) ;
 		}
 
 		LocalDepends lib : $(_l) ;
 
-		# Set LOCATE for the library and its contents.  The bound
+		# Set LOCATE for the library and its contents. The bound
 		# value shows up as $(NEEDLIBS) on the Link actions.
 		# For compatibility, we only do this if the library doesn't
 		# already have a path.
 
-		if ! $(_l:D)
-		{
+		if ! $(_l:D) {
 			# locate the library only, if it hasn't been located yet
 			local dir = $(LOCATE[1]) ;
 			if ! $(dir) {
@@ -487,16 +468,13 @@ rule LibraryFromObjects
 			MakeLocate $(_l)($(_s:BS)) : $(dir) ;
 		}
 
-		if $(NOARSCAN)
-		{
+		if $(NOARSCAN) {
 			# If we can't scan the library to timestamp its contents,
 			# we have to just make the library depend directly on the
 			# on-disk object files.
 
 			Depends $(_l) : $(_s) ;
-		}
-		else
-		{
+		} else {
 			# If we can scan the library, we make the library depend
 			# on its members and each member depend on the on-disk
 			# object file.
@@ -510,9 +488,6 @@ rule LibraryFromObjects
 		}
 
 		LocalClean clean : $(_l) ;
-
-		# bonefish: Not needed on the supported platforms. Maybe later...
-		# if $(CRELIB) { CreLib $(_l) : $(_s[1]) ; }
 
 		Archive $(_l) : $(_s) ;
 
@@ -551,8 +526,8 @@ rule MainFromObjects
 
 	if $(_t) != $(<)
 	{
-	    Depends $(<) : $(_t) ;
-	    NotFile $(<) ;
+		Depends $(<) : $(_t) ;
+		NotFile $(<) ;
 	}
 
 	# make compiled sources a dependency of target
@@ -573,8 +548,7 @@ rule MakeLocate
 {
 	local dir = $(2[1]) ;
 
-	if $(dir)
-	{
+	if $(dir) {
 		if ! $(dir:G) {
 			dir = $(dir:G=dir) ;
 		}
@@ -582,13 +556,21 @@ rule MakeLocate
 		local target ;
 		for target in $(1) {
 			# don't relocate once located
-		    LOCATE on $(target) += $(dir:G=) ;
+			LOCATE on $(target) += $(dir:G=) ;
 			if [ on $(target) return $(LOCATE) ] = $(dir:G=) {
-			    Depends $(target) : $(dir) ;
-		    	MkDir $(dir) ;
+				Depends $(target) : $(dir) ;
+				MkDir $(dir) ;
 			}
 		}
 	}
+}
+
+# Overridden to use "-p", as Jam does not properly normalize
+# paths passed to NoUpdate, and so tries to make some directories
+# twice: once for the relative path, and once for the absolute path.
+actions MkDir1
+{
+	$(MKDIR) -p "$(<)"
 }
 
 rule MkDir
@@ -717,7 +699,7 @@ rule SubInclude
 
 	if ! $($(<[1]))
 	{
-	    Exit SubInclude $(<[1]) without prior SubDir $(<[1]) ;
+		Exit SubInclude $(<[1]) without prior SubDir $(<[1]) ;
 	}
 
 	# Set up the config variables for the subdirectory.
@@ -739,10 +721,4 @@ rule SubInclude
 
 	# restore SUBDIR_TOKENS
 	SUBDIR_TOKENS = $(oldSubDirTokens) ;
-}
-
-
-actions File
-{
-	$(CP) "$(>)" "$(<)"
 }

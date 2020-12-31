@@ -18,23 +18,27 @@ static bigtime_t sMaximumQuantumLengths[kMaximumQuantumLengthsCount];
 void
 ThreadData::_InitBase()
 {
-	fPriorityPenalty = 0;
-	fAdditionalPenalty = 0;
-	fEffectivePriority = GetPriority();
-	fBaseQuantum = sQuantumLengths[GetEffectivePriority()];
-
-	fTimeUsed = 0;
 	fStolenTime = 0;
-
-	fMeasureAvailableActiveTime = 0;
-	fLastMeasureAvailableTime = 0;
-	fMeasureAvailableTime = 0;
+	fQuantumStart = 0;
+	fLastInterruptTime = 0;
 
 	fWentSleep = 0;
 	fWentSleepActive = 0;
 
 	fEnqueued = false;
 	fReady = false;
+
+	fPriorityPenalty = 0;
+	fAdditionalPenalty = 0;
+
+	fEffectivePriority = GetPriority();
+	fBaseQuantum = sQuantumLengths[GetEffectivePriority()];
+
+	fTimeUsed = 0;
+
+	fMeasureAvailableActiveTime = 0;
+	fLastMeasureAvailableTime = 0;
+	fMeasureAvailableTime = 0;
 }
 
 
@@ -170,7 +174,7 @@ ThreadData::ChooseCoreAndCPU(CoreEntry*& targetCore, CPUEntry*& targetCPU)
 			if (fCore != NULL)
 				fCore->RemoveLoad(fNeededLoad, true);
 			targetCore->AddLoad(fNeededLoad, fLoadMeasurementEpoch, true);
-		}	
+		}
 	}
 
 	fCore = targetCore;

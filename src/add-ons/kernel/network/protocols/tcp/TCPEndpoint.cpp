@@ -18,6 +18,7 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 #include <KernelExport.h>
 #include <Select.h>
@@ -47,10 +48,12 @@
 //	- NewReno Modification to TCP's Fast Recovery, RFC 2582
 //	- Explicit Congestion Notification (ECN), RFC 3168
 //	- SYN-Cache
-//	- TCP Extensions for High Performance, RFC 1323
 //	- SACK, Selective Acknowledgment - RFC 2018, RFC 2883, RFC 3517
 //	- Forward RTO-Recovery, RFC 4138
 //	- Time-Wait hash instead of keeping sockets alive
+//
+// Things incomplete in this implementation:
+//	- TCP Extensions for High Performance, RFC 1323 - RTTM, PAWS
 
 #define PrintAddress(address) \
 	AddressString(Domain(), address, true).Data()
@@ -315,7 +318,8 @@ enum {
 	FLAG_NO_RECEIVE				= 0x04,
 	FLAG_CLOSED					= 0x08,
 	FLAG_DELETE_ON_CLOSE		= 0x10,
-	FLAG_LOCAL					= 0x20
+	FLAG_LOCAL					= 0x20,
+	FLAG_RECOVERY				= 0x40
 };
 
 
@@ -425,17 +429,23 @@ TCPEndpoint::TCPEndpoint(net_socket* socket)
 	fSendWindow(0),
 	fSendMaxWindow(0),
 	fSendMaxSegmentSize(TCP_DEFAULT_MAX_SEGMENT_SIZE),
+	fSendMaxSegments(0),
 	fSendQueue(socket->send.buffer_size),
 	fInitialSendSequence(0),
+	fPreviousHighestAcknowledge(0),
 	fDuplicateAcknowledgeCount(0),
+	fPreviousFlightSize(0),
+	fRecover(0),
 	fRoute(NULL),
 	fReceiveNext(0),
 	fReceiveMaxAdvertised(0),
 	fReceiveWindow(socket->receive.buffer_size),
 	fReceiveMaxSegmentSize(TCP_DEFAULT_MAX_SEGMENT_SIZE),
 	fReceiveQueue(socket->receive.buffer_size),
-	fRoundTripTime(TCP_INITIAL_RTT / kTimestampFactor),
-	fRoundTripDeviation(TCP_INITIAL_RTT / kTimestampFactor),
+	fSmoothedRoundTripTime(0),
+	fRoundTripVariation(0),
+	fSendTime(0),
+	fRoundTripStartSequence(0),
 	fRetransmitTimeout(TCP_INITIAL_RTT),
 	fReceivedTimestamp(0),
 	fCongestionWindow(0),
@@ -610,7 +620,7 @@ TCPEndpoint::Connect(const sockaddr* address)
 	} else if (fState == ESTABLISHED) {
 		return EISCONN;
 	} else if (fState != CLOSED)
-		return EINPROGRESS;
+		return EALREADY;
 
 	// consider destination address INADDR_ANY as INADDR_LOOPBACK
 	sockaddr_storage _address;
@@ -1141,12 +1151,6 @@ TCPEndpoint::_EnterTimeWait()
 
 	if (fState == TIME_WAIT) {
 		_CancelConnectionTimers();
-
-		if (IsLocal()) {
-			// we do not use TIME_WAIT state for local connections
-			fFlags |= FLAG_DELETE_ON_CLOSE;
-			return;
-		}
 	}
 
 	_UpdateTimeWait();
@@ -1207,10 +1211,9 @@ TCPEndpoint::_MarkEstablished()
 	fState = ESTABLISHED;
 	T(State(this));
 
-	if (gSocketModule->has_parent(socket)) {
-		gSocketModule->set_connected(socket);
+	gSocketModule->set_connected(socket);
+	if (gSocketModule->has_parent(socket))
 		release_sem_etc(fAcceptSemaphore, 1, B_DO_NOT_RESCHEDULE);
-	}
 
 	fSendCondition.NotifyAll();
 	gSocketModule->notify(socket, B_SELECT_WRITE, fSendQueue.Free());
@@ -1273,17 +1276,39 @@ TCPEndpoint::_HandleReset(status_t error)
 void
 TCPEndpoint::_DuplicateAcknowledge(tcp_segment_header &segment)
 {
-	if (++fDuplicateAcknowledgeCount < 3)
-		return;
+	if (fDuplicateAcknowledgeCount == 0)
+		fPreviousFlightSize = (fSendMax - fSendUnacknowledged).Number();
+
+	if (++fDuplicateAcknowledgeCount < 3) {
+		if (fSendQueue.Available(fSendMax) != 0  && fSendWindow != 0) {
+			fSendNext = fSendMax;
+			fCongestionWindow += fDuplicateAcknowledgeCount * fSendMaxSegmentSize;
+			_SendQueued();
+			TRACE("_DuplicateAcknowledge(): packet sent under limited transmit on receipt of dup ack");
+			fCongestionWindow -= fDuplicateAcknowledgeCount * fSendMaxSegmentSize;
+		}
+	}
 
 	if (fDuplicateAcknowledgeCount == 3) {
-		_ResetSlowStart();
-		fCongestionWindow = fSlowStartThreshold + 3 * fSendMaxSegmentSize;
-		fSendNext = segment.acknowledge;
-	} else if (fDuplicateAcknowledgeCount > 3)
-		fCongestionWindow += fSendMaxSegmentSize;
-
-	_SendQueued();
+		if ((segment.acknowledge - 1) > fRecover || (fCongestionWindow > fSendMaxSegmentSize &&
+			(fSendUnacknowledged - fPreviousHighestAcknowledge) <= 4 * fSendMaxSegmentSize)) {
+			fFlags |= FLAG_RECOVERY;
+			fRecover = fSendMax.Number() - 1;
+			fSlowStartThreshold = max_c(fPreviousFlightSize / 2, 2 * fSendMaxSegmentSize);
+			fCongestionWindow = fSlowStartThreshold + 3 * fSendMaxSegmentSize;
+			fSendNext = segment.acknowledge;
+			_SendQueued();
+			TRACE("_DuplicateAcknowledge(): packet sent under fast restransmit on the receipt of 3rd dup ack");
+		}
+	} else if (fDuplicateAcknowledgeCount > 3) {
+		uint32 flightSize = (fSendMax - fSendUnacknowledged).Number();
+		if ((fDuplicateAcknowledgeCount - 3) * fSendMaxSegmentSize <= flightSize)
+			fCongestionWindow += fSendMaxSegmentSize;
+		if (fSendQueue.Available(fSendMax) != 0) {
+			fSendNext = fSendMax;
+			_SendQueued();
+		}
+	}
 }
 
 
@@ -1390,7 +1415,14 @@ TCPEndpoint::_PrepareReceivePath(tcp_segment_header& segment)
 			fFlags &= ~FLAG_OPTION_TIMESTAMP;
 	}
 
-	fCongestionWindow = 2 * fSendMaxSegmentSize;
+	if (fSendMaxSegmentSize > 2190)
+		fCongestionWindow = 2 * fSendMaxSegmentSize;
+	else if (fSendMaxSegmentSize > 1095)
+		fCongestionWindow = 3 * fSendMaxSegmentSize;
+	else
+		fCongestionWindow = 4 * fSendMaxSegmentSize;
+
+	fSendMaxSegments = fCongestionWindow / fSendMaxSegmentSize;
 	fSlowStartThreshold = (uint32)segment.advertised_window << fSendWindowShift;
 }
 
@@ -1521,6 +1553,15 @@ TCPEndpoint::_SynchronizeSentReceive(tcp_segment_header &segment,
 int32
 TCPEndpoint::_Receive(tcp_segment_header& segment, net_buffer* buffer)
 {
+	// PAWS processing takes precedence over regular TCP acceptability check
+	if ((fFlags & FLAG_OPTION_TIMESTAMP) != 0 && (segment.flags & TCP_FLAG_RESET) == 0) {
+		if ((segment.options & TCP_HAS_TIMESTAMPS) == 0)
+			return DROP;
+		if ((int32)(fReceivedTimestamp - segment.timestamp_value) > 0
+			&& (fReceivedTimestamp - segment.timestamp_value) <= INT32_MAX)
+			return DROP | IMMEDIATE_ACKNOWLEDGE;
+	}
+
 	uint32 advertisedWindow = (uint32)segment.advertised_window
 		<< fSendWindowShift;
 	size_t segmentLength = buffer->size;
@@ -1630,6 +1671,10 @@ TCPEndpoint::_Receive(tcp_segment_header& segment, net_buffer* buffer)
 
 	int32 action = KEEP;
 
+	// immediately acknowledge out-of-order segment to trigger fast-retransmit at the sender
+	if (drop != 0)
+		action |= IMMEDIATE_ACKNOWLEDGE;
+
 	drop = (int32)(segment.sequence + buffer->size
 		- (fReceiveNext + fReceiveWindow)).Number();
 	if (drop > 0) {
@@ -1660,6 +1705,9 @@ TCPEndpoint::_Receive(tcp_segment_header& segment, net_buffer* buffer)
 	}
 #endif
 
+	if (advertisedWindow > fSendWindow)
+		action |= IMMEDIATE_ACKNOWLEDGE;
+
 	fSendWindow = advertisedWindow;
 	if (advertisedWindow > fSendMaxWindow)
 		fSendMaxWindow = advertisedWindow;
@@ -1674,24 +1722,26 @@ TCPEndpoint::_Receive(tcp_segment_header& segment, net_buffer* buffer)
 		if (fSendMax < segment.acknowledge)
 			return DROP | IMMEDIATE_ACKNOWLEDGE;
 
-		if (segment.acknowledge < fSendUnacknowledged) {
+		if (segment.acknowledge == fSendUnacknowledged) {
 			if (buffer->size == 0 && advertisedWindow == fSendWindow
-				&& (segment.flags & TCP_FLAG_FINISH) == 0) {
+				&& (segment.flags & TCP_FLAG_FINISH) == 0 && fSendUnacknowledged != fSendMax) {
 				TRACE("Receive(): duplicate ack!");
-
 				_DuplicateAcknowledge(segment);
 			}
-
+		} else if (segment.acknowledge < fSendUnacknowledged) {
 			return DROP;
 		} else {
 			// this segment acknowledges in flight data
 
 			if (fDuplicateAcknowledgeCount >= 3) {
 				// deflate the window.
-				fCongestionWindow = fSlowStartThreshold;
+				if (segment.acknowledge > fRecover) {
+					uint32 flightSize = (fSendMax - fSendUnacknowledged).Number();
+					fCongestionWindow = min_c(fSlowStartThreshold,
+						max_c(flightSize, fSendMaxSegmentSize) + fSendMaxSegmentSize);
+					fFlags &= ~FLAG_RECOVERY;
+				}
 			}
-
-			fDuplicateAcknowledgeCount = 0;
 
 			if (fSendMax == segment.acknowledge)
 				TRACE("Receive(): all inflight data ack'd!");
@@ -1849,8 +1899,10 @@ TCPEndpoint::SegmentReceived(tcp_segment_header& segment, net_buffer* buffer)
 
 	if ((fFlags & (FLAG_CLOSED | FLAG_DELETE_ON_CLOSE))
 			== (FLAG_CLOSED | FLAG_DELETE_ON_CLOSE)) {
+
 		locker.Unlock();
-		gSocketModule->release_socket(socket);
+		if (gSocketModule->release_socket(socket))
+			segmentAction |= DELETED_ENDPOINT;
 	}
 
 	return segmentAction;
@@ -1895,6 +1947,9 @@ inline bool
 TCPEndpoint::_ShouldSendSegment(tcp_segment_header& segment, uint32 length,
 	uint32 segmentMaxSize, uint32 flightSize)
 {
+	if (fState == ESTABLISHED && fSendMaxSegments == 0)
+		return false;
+
 	if (length > 0) {
 		// Avoid the silly window syndrome - we only send a segment in case:
 		// - we have a full segment to send, or
@@ -1976,6 +2031,10 @@ TCPEndpoint::_SendQueued(bool force, uint32 sendWindow)
 	}
 
 	size_t availableBytes = fReceiveQueue.Free();
+	// window size must remain same for duplicate acknowledgements
+	if (!fReceiveQueue.IsContiguous())
+		availableBytes = (fReceiveMaxAdvertised - fReceiveNext).Number();
+
 	if (fFlags & FLAG_OPTION_WINDOW_SCALE)
 		segment.advertised_window = availableBytes >> fReceiveWindowShift;
 	else
@@ -2020,22 +2079,21 @@ TCPEndpoint::_SendQueued(bool force, uint32 sendWindow)
 	} else
 		sendWindow -= consumedWindow;
 
-	if (force && sendWindow == 0 && fSendNext <= fSendQueue.LastSequence()) {
-		// send one byte of data to ask for a window update
-		// (triggered by the persist timer)
-		sendWindow = 1;
-	}
-
 	uint32 length = min_c(fSendQueue.Available(fSendNext), sendWindow);
 	bool shouldStartRetransmitTimer = fSendNext == fSendUnacknowledged;
 	bool retransmit = fSendNext < fSendMax;
+
+	if (fDuplicateAcknowledgeCount != 0) {
+		// send at most 1 SMSS of data when under limited transmit, fast transmit/recovery
+		length = min_c(length, fSendMaxSegmentSize);
+	}
 
 	do {
 		uint32 segmentMaxSize = fSendMaxSegmentSize
 			- tcp_options_length(segment);
 		uint32 segmentLength = min_c(length, segmentMaxSize);
 
-		if (fSendNext + segmentLength == fSendQueue.LastSequence()) {
+		if (fSendNext + segmentLength == fSendQueue.LastSequence() && !force) {
 			if (state_needs_finish(fState))
 				segment.flags |= TCP_FLAG_FINISH;
 			if (length > 0)
@@ -2112,6 +2170,9 @@ TCPEndpoint::_SendQueued(bool force, uint32 sendWindow)
 		fReceiveMaxAdvertised = fReceiveNext
 			+ ((uint32)segment.advertised_window << fReceiveWindowShift);
 
+		if (segmentLength != 0 && fState == ESTABLISHED)
+			--fSendMaxSegments;
+
 		status = next->module->send_routed_data(next, fRoute, buffer);
 		if (status < B_OK) {
 			gBufferModule->free(buffer);
@@ -2120,6 +2181,12 @@ TCPEndpoint::_SendQueued(bool force, uint32 sendWindow)
 			fSendMax = sendMax;
 				// restore send status
 			return status;
+		}
+
+		if (fSendTime == 0 && !retransmit
+			&& (segmentLength != 0 || (segment.flags & TCP_FLAG_SYNCHRONIZE) !=0)) {
+			fSendTime = tcp_now();
+			fRoundTripStartSequence = segment.sequence;
 		}
 
 		if (shouldStartRetransmitTimer && size > 0) {
@@ -2176,6 +2243,7 @@ TCPEndpoint::_PrepareSendPath(const sockaddr* peer)
 	fSendUnacknowledged = fInitialSendSequence;
 	fSendMax = fInitialSendSequence;
 	fSendUrgentOffset = fInitialSendSequence;
+	fRecover = fInitialSendSequence.Number();
 
 	// we are counting the SYN here
 	fSendQueue.SetInitialSequence(fSendNext + 1);
@@ -2205,21 +2273,61 @@ TCPEndpoint::_Acknowledged(tcp_segment_header& segment)
 
 	if (fSendUnacknowledged < segment.acknowledge) {
 		fSendQueue.RemoveUntil(segment.acknowledge);
+
+		uint32 bytesAcknowledged = segment.acknowledge - fSendUnacknowledged.Number();
+		fPreviousHighestAcknowledge = fSendUnacknowledged;
 		fSendUnacknowledged = segment.acknowledge;
+		uint32 flightSize = (fSendMax - fSendUnacknowledged).Number();
+		int32 expectedSamples = flightSize / (fSendMaxSegmentSize << 1);
+
+		if (fPreviousHighestAcknowledge > fSendUnacknowledged) {
+			// need to update the recover variable upon a sequence wraparound
+			fRecover = segment.acknowledge - 1;
+		}
+
+		// the acknowledgment of the SYN/ACK MUST NOT increase the size of the congestion window
+		if (fSendUnacknowledged != fInitialSendSequence) {
+			if (fCongestionWindow < fSlowStartThreshold)
+				fCongestionWindow += min_c(bytesAcknowledged, fSendMaxSegmentSize);
+			else {
+				uint32 increment = fSendMaxSegmentSize * fSendMaxSegmentSize;
+
+				if (increment < fCongestionWindow)
+					increment = 1;
+				else
+					increment /= fCongestionWindow;
+
+				fCongestionWindow += increment;
+			}
+
+			fSendMaxSegments = UINT32_MAX;
+		}
+
+		if ((fFlags & FLAG_RECOVERY) != 0) {
+			fSendNext = fSendUnacknowledged;
+			_SendQueued();
+			fCongestionWindow -= bytesAcknowledged;
+
+			if (bytesAcknowledged > fSendMaxSegmentSize)
+				fCongestionWindow += fSendMaxSegmentSize;
+
+			fSendNext = fSendMax;
+		} else
+			fDuplicateAcknowledgeCount = 0;
+
 		if (fSendNext < fSendUnacknowledged)
 			fSendNext = fSendUnacknowledged;
 
-		if (segment.options & TCP_HAS_TIMESTAMPS)
-			_UpdateRoundTripTime(tcp_diff_timestamp(segment.timestamp_reply));
-		else {
-			// TODO: Fallback to RFC 793 type estimation; This just resets
-			// any potential exponential back off that happened due to
-			// retransmits.
-			fRetransmitTimeout = TCP_INITIAL_RTT;
+		if (fFlags & FLAG_OPTION_TIMESTAMP) {
+			_UpdateRoundTripTime(tcp_diff_timestamp(segment.timestamp_reply),
+				expectedSamples > 0 ? expectedSamples : 1);
+		} else if (fSendTime != 0 && fRoundTripStartSequence < segment.acknowledge) {
+			_UpdateRoundTripTime(tcp_diff_timestamp(fSendTime), 1);
+			fSendTime = 0;
 		}
 
 		if (fSendUnacknowledged == fSendMax) {
-			TRACE("all acknowledged, cancelling retransmission timer");
+			TRACE("all acknowledged, cancelling retransmission timer.");
 			gStackModule->cancel_timer(&fRetransmitTimer);
 			T(TimerSet(this, "retransmit", -1));
 		} else {
@@ -2234,20 +2342,6 @@ TCPEndpoint::_Acknowledged(tcp_segment_header& segment)
 			fSendCondition.NotifyAll();
 			gSocketModule->notify(socket, B_SELECT_WRITE, fSendQueue.Free());
 		}
-
-		if (fCongestionWindow < fSlowStartThreshold)
-			fCongestionWindow += fSendMaxSegmentSize;
-	}
-
-	if (fCongestionWindow >= fSlowStartThreshold) {
-		uint32 increment = fSendMaxSegmentSize * fSendMaxSegmentSize;
-
-		if (increment < fCongestionWindow)
-			increment = 1;
-		else
-			increment /= fCongestionWindow;
-
-		fCongestionWindow += increment;
 	}
 
 	// if there is data left to be sent, send it now
@@ -2261,33 +2355,48 @@ TCPEndpoint::_Retransmit()
 {
 	TRACE("Retransmit()");
 
-	_ResetSlowStart();
+	if (fState < ESTABLISHED) {
+		fRetransmitTimeout = TCP_SYN_RETRANSMIT_TIMEOUT;
+		fCongestionWindow = fSendMaxSegmentSize;
+	} else {
+		_ResetSlowStart();
+		fDuplicateAcknowledgeCount = 0;
+		// Do exponential back off of the retransmit timeout
+		fRetransmitTimeout *= 2;
+		if (fRetransmitTimeout > TCP_MAX_RETRANSMIT_TIMEOUT)
+			fRetransmitTimeout = TCP_MAX_RETRANSMIT_TIMEOUT;
+	}
+
 	fSendNext = fSendUnacknowledged;
-
-	// Do exponential back off of the retransmit timeout
-	fRetransmitTimeout *= 2;
-	if (fRetransmitTimeout > TCP_MAX_RETRANSMIT_TIMEOUT)
-		fRetransmitTimeout = TCP_MAX_RETRANSMIT_TIMEOUT;
-
 	_SendQueued();
+
+	fRecover = fSendNext.Number() - 1;
+	if ((fFlags & FLAG_RECOVERY) != 0)
+		fFlags &= ~FLAG_RECOVERY;
 }
 
 
 void
-TCPEndpoint::_UpdateRoundTripTime(int32 roundTripTime)
+TCPEndpoint::_UpdateRoundTripTime(int32 roundTripTime, int32 expectedSamples)
 {
-	int32 rtt = roundTripTime;
+	if (fSmoothedRoundTripTime == 0) {
+		fSmoothedRoundTripTime = roundTripTime;
+		fRoundTripVariation = roundTripTime / 2;
+		fRetransmitTimeout = (fSmoothedRoundTripTime + max_c(100, fRoundTripVariation * 4))
+				* kTimestampFactor;
+	} else {
+		int32 delta = fSmoothedRoundTripTime - roundTripTime;
+		if (delta < 0)
+			delta = -delta;
+		fRoundTripVariation += (delta - fRoundTripVariation) / (expectedSamples * 4);
+		fSmoothedRoundTripTime += (roundTripTime - fSmoothedRoundTripTime) / (expectedSamples * 8);
+		fRetransmitTimeout = (fSmoothedRoundTripTime + max_c(100, fRoundTripVariation * 4))
+			* kTimestampFactor;
+	}
 
-	// "smooth" round trip time as per Van Jacobson
-	rtt -= fRoundTripTime / 8;
-	fRoundTripTime += rtt;
-	if (rtt < 0)
-		rtt = -rtt;
-	rtt -= fRoundTripDeviation / 4;
-	fRoundTripDeviation += rtt;
+	if (fRetransmitTimeout > TCP_MAX_RETRANSMIT_TIMEOUT)
+		fRetransmitTimeout = TCP_MAX_RETRANSMIT_TIMEOUT;
 
-	fRetransmitTimeout = ((fRoundTripTime / 4 + fRoundTripDeviation) / 2)
-		* kTimestampFactor;
 	if (fRetransmitTimeout < TCP_MIN_RETRANSMIT_TIMEOUT)
 		fRetransmitTimeout = TCP_MIN_RETRANSMIT_TIMEOUT;
 
@@ -2315,7 +2424,7 @@ TCPEndpoint::_RetransmitTimer(net_timer* timer, void* _endpoint)
 	T(TimerTriggered(endpoint, "retransmit"));
 
 	MutexLocker locker(endpoint->fLock);
-	if (!locker.IsLocked())
+	if (!locker.IsLocked() || gStackModule->is_timer_active(timer))
 		return;
 
 	endpoint->_Retransmit();
@@ -2420,7 +2529,7 @@ TCPEndpoint::Dump() const
 	kprintf("    max segment size: %" B_PRIu32 "\n", fSendMaxSegmentSize);
 	kprintf("    queue: %" B_PRIuSIZE " / %" B_PRIuSIZE "\n", fSendQueue.Used(),
 		fSendQueue.Size());
-#if DEBUG_BUFFER_QUEUE
+#if DEBUG_TCP_BUFFER_QUEUE
 	fSendQueue.Dump();
 #endif
 	kprintf("    last acknowledge sent: %" B_PRIu32 "\n",
@@ -2436,15 +2545,15 @@ TCPEndpoint::Dump() const
 	kprintf("    max segment size: %" B_PRIu32 "\n", fReceiveMaxSegmentSize);
 	kprintf("    queue: %" B_PRIuSIZE " / %" B_PRIuSIZE "\n",
 		fReceiveQueue.Available(), fReceiveQueue.Size());
-#if DEBUG_BUFFER_QUEUE
+#if DEBUG_TCP_BUFFER_QUEUE
 	fReceiveQueue.Dump();
 #endif
 	kprintf("    initial sequence: %" B_PRIu32 "\n",
 		fInitialReceiveSequence.Number());
 	kprintf("    duplicate acknowledge count: %" B_PRIu32 "\n",
 		fDuplicateAcknowledgeCount);
-	kprintf("  round trip time: %" B_PRId32 " (deviation %" B_PRId32 ")\n",
-		fRoundTripTime, fRoundTripDeviation);
+	kprintf("  smoothed round trip time: %" B_PRId32 " (deviation %" B_PRId32 ")\n",
+		fSmoothedRoundTripTime, fRoundTripVariation);
 	kprintf("  retransmit timeout: %" B_PRId64 "\n", fRetransmitTimeout);
 	kprintf("  congestion window: %" B_PRIu32 "\n", fCongestionWindow);
 	kprintf("  slow start threshold: %" B_PRIu32 "\n", fSlowStartThreshold);

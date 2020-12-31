@@ -15,6 +15,8 @@
 #include "NetSender.h"
 #include "StreamingRingBuffer.h"
 
+#include "SystemPalette.h"
+
 #include <Autolock.h>
 #include <NetEndpoint.h>
 
@@ -22,9 +24,9 @@
 #include <string.h>
 
 
-#define TRACE(x...)				/*debug_printf("RemoteHWInterface: "x)*/
-#define TRACE_ALWAYS(x...)		debug_printf("RemoteHWInterface: "x)
-#define TRACE_ERROR(x...)		debug_printf("RemoteHWInterface: "x)
+#define TRACE(x...)				/*debug_printf("RemoteHWInterface: " x)*/
+#define TRACE_ALWAYS(x...)		debug_printf("RemoteHWInterface: " x)
+#define TRACE_ERROR(x...)		debug_printf("RemoteHWInterface: " x)
 
 
 struct callback_info {
@@ -38,14 +40,11 @@ RemoteHWInterface::RemoteHWInterface(const char* target)
 	:
 	HWInterface(),
 	fTarget(target),
-	fRemoteHost(NULL),
-	fRemotePort(10900),
 	fIsConnected(false),
 	fProtocolVersion(100),
 	fConnectionSpeed(0),
 	fListenPort(10901),
-	fSendEndpoint(NULL),
-	fReceiveEndpoint(NULL),
+	fListenEndpoint(NULL),
 	fSendBuffer(NULL),
 	fReceiveBuffer(NULL),
 	fSender(NULL),
@@ -54,41 +53,31 @@ RemoteHWInterface::RemoteHWInterface(const char* target)
 	fEventStream(NULL),
 	fCallbackLocker("callback locker")
 {
-	fDisplayMode.virtual_width = 640;
-	fDisplayMode.virtual_height = 480;
-	fDisplayMode.space = B_RGB32;
+	memset(&fFallbackMode, 0, sizeof(fFallbackMode));
+	fFallbackMode.virtual_width = 640;
+	fFallbackMode.virtual_height = 480;
+	fFallbackMode.space = B_RGB32;
+	_FillDisplayModeTiming(fFallbackMode);
 
-	fRemoteHost = strdup(fTarget);
-	char *portStart = strchr(fRemoteHost, ':');
-	if (portStart != NULL) {
-		portStart[0] = 0;
-		portStart++;
-		if (sscanf(portStart, "%lu", &fRemotePort) != 1) {
-			fInitStatus = B_BAD_VALUE;
-			return;
-		}
+	fCurrentMode = fClientMode = fFallbackMode;
 
-		fListenPort = fRemotePort + 1;
+	if (sscanf(fTarget, "%" B_SCNu16, &fListenPort) != 1) {
+		fInitStatus = B_BAD_VALUE;
+		return;
 	}
 
-	fSendEndpoint = new(std::nothrow) BNetEndpoint();
-	if (fSendEndpoint == NULL) {
+	fListenEndpoint.SetTo(new(std::nothrow) BNetEndpoint());
+	if (fListenEndpoint.Get() == NULL) {
 		fInitStatus = B_NO_MEMORY;
 		return;
 	}
 
-	fReceiveEndpoint = new(std::nothrow) BNetEndpoint();
-	if (fReceiveEndpoint == NULL) {
-		fInitStatus = B_NO_MEMORY;
-		return;
-	}
-
-	fInitStatus = fReceiveEndpoint->Bind(fListenPort);
+	fInitStatus = fListenEndpoint->Bind(fListenPort);
 	if (fInitStatus != B_OK)
 		return;
 
-	fSendBuffer = new(std::nothrow) StreamingRingBuffer(16 * 1024);
-	if (fSendBuffer == NULL) {
+	fSendBuffer.SetTo(new(std::nothrow) StreamingRingBuffer(16 * 1024));
+	if (fSendBuffer.Get() == NULL) {
 		fInitStatus = B_NO_MEMORY;
 		return;
 	}
@@ -97,8 +86,8 @@ RemoteHWInterface::RemoteHWInterface(const char* target)
 	if (fInitStatus != B_OK)
 		return;
 
-	fReceiveBuffer = new(std::nothrow) StreamingRingBuffer(16 * 1024);
-	if (fReceiveBuffer == NULL) {
+	fReceiveBuffer.SetTo(new(std::nothrow) StreamingRingBuffer(16 * 1024));
+	if (fReceiveBuffer.Get() == NULL) {
 		fInitStatus = B_NO_MEMORY;
 		return;
 	}
@@ -107,28 +96,18 @@ RemoteHWInterface::RemoteHWInterface(const char* target)
 	if (fInitStatus != B_OK)
 		return;
 
-	fSender = new(std::nothrow) NetSender(fSendEndpoint, fSendBuffer);
-	if (fSender == NULL) {
+	fReceiver.SetTo(new(std::nothrow) NetReceiver(fListenEndpoint.Get(), fReceiveBuffer.Get(),
+		_NewConnectionCallback, this));
+	if (fReceiver.Get() == NULL) {
 		fInitStatus = B_NO_MEMORY;
 		return;
 	}
 
-	fReceiver = new(std::nothrow) NetReceiver(fReceiveEndpoint, fReceiveBuffer);
-	if (fReceiver == NULL) {
+	fEventStream.SetTo(new(std::nothrow) RemoteEventStream());
+	if (fEventStream.Get() == NULL) {
 		fInitStatus = B_NO_MEMORY;
 		return;
 	}
-
-	fEventStream = new(std::nothrow) RemoteEventStream();
-	if (fEventStream == NULL) {
-		fInitStatus = B_NO_MEMORY;
-		return;
-	}
-
-	fSendEndpoint->SetTimeout(3 * 1000 * 1000);
-	fInitStatus = _Connect();
-	if (fInitStatus != B_OK)
-		return;
 
 	fEventThread = spawn_thread(_EventThreadEntry, "remote event thread",
 		B_NORMAL_PRIORITY, this);
@@ -143,18 +122,16 @@ RemoteHWInterface::RemoteHWInterface(const char* target)
 
 RemoteHWInterface::~RemoteHWInterface()
 {
-	delete fReceiver;
-	delete fReceiveBuffer;
+	//TODO: check order
+	fReceiver.Unset();
+	fReceiveBuffer.Unset();
 
-	delete fSendBuffer;
-	delete fSender;
+	fSendBuffer.Unset();
+	fSender.Unset();
 
-	delete fReceiveEndpoint;
-	delete fSendEndpoint;
+	fListenEndpoint.Unset();
 
-	delete fEventStream;
-
-	free(fRemoteHost);
+	fEventStream.Unset();
 }
 
 
@@ -183,7 +160,7 @@ RemoteHWInterface::CreateDrawingEngine()
 EventStream*
 RemoteHWInterface::CreateEventStream()
 {
-	return fEventStream;
+	return fEventStream.Get();
 }
 
 
@@ -254,7 +231,7 @@ RemoteHWInterface::_EventThreadEntry(void* data)
 status_t
 RemoteHWInterface::_EventThread()
 {
-	RemoteMessage message(fReceiveBuffer, fSendBuffer);
+	RemoteMessage message(fReceiveBuffer.Get(), NULL);
 	while (true) {
 		uint16 code;
 		status_t result = message.NextMessage(code);
@@ -264,7 +241,8 @@ RemoteHWInterface::_EventThread()
 			return result;
 		}
 
-		TRACE("got message code %u with %lu bytes\n", code, message.DataLeft());
+		TRACE("got message code %" B_PRIu16 " with %" B_PRIu32 " bytes\n", code,
+			message.DataLeft());
 
 		if (code >= RP_MOUSE_MOVED && code <= RP_MODIFIERS_CHANGED) {
 			// an input event, dispatch to the event stream
@@ -273,10 +251,51 @@ RemoteHWInterface::_EventThread()
 		}
 
 		switch (code) {
+			case RP_INIT_CONNECTION:
+			{
+				RemoteMessage reply(NULL, fSendBuffer.Get());
+				reply.Start(RP_INIT_CONNECTION);
+				status_t result = reply.Flush();
+				(void)result;
+				TRACE("init connection result: %s\n", strerror(result));
+				break;
+			}
+
 			case RP_UPDATE_DISPLAY_MODE:
 			{
-				// TODO: implement, we only handle it in the context of the
-				// initial mode setup on connect
+				int32 width, height;
+				message.Read(width);
+				result = message.Read(height);
+				if (result != B_OK) {
+					TRACE_ERROR("failed to read display mode\n");
+					break;
+				}
+
+				fIsConnected = true;
+				fClientMode.virtual_width = width;
+				fClientMode.virtual_height = height;
+				_FillDisplayModeTiming(fClientMode);
+				_NotifyScreenChanged();
+				break;
+			}
+
+			case RP_GET_SYSTEM_PALETTE:
+			{
+				RemoteMessage reply(NULL, fSendBuffer.Get());
+				reply.Start(RP_GET_SYSTEM_PALETTE_RESULT);
+
+				const color_map *map = SystemColorMap();
+				uint32 count = (uint32)B_COUNT_OF(map->color_list);
+
+				reply.Add(count);
+				for (size_t i = 0; i < count; i++) {
+					const rgb_color &color = map->color_list[i];
+					reply.Add(color.red);
+					reply.Add(color.green);
+					reply.Add(color.blue);
+					reply.Add(color.alpha);
+				}
+
 				break;
 			}
 
@@ -298,49 +317,29 @@ RemoteHWInterface::_EventThread()
 
 
 status_t
-RemoteHWInterface::_Connect()
+RemoteHWInterface::_NewConnectionCallback(void *cookie, BNetEndpoint &endpoint)
 {
-	TRACE("connecting to host \"%s\" port %lu\n", fRemoteHost, fRemotePort);
-	status_t result = fSendEndpoint->Connect(fRemoteHost, (uint16)fRemotePort);
-	if (result != B_OK) {
-		TRACE_ERROR("failed to connect to host \"%s\" port %lu\n", fRemoteHost,
-			fRemotePort);
-		return result;
+	return ((RemoteHWInterface *)cookie)->_NewConnection(endpoint);
+}
+
+
+status_t
+RemoteHWInterface::_NewConnection(BNetEndpoint &endpoint)
+{
+	fSender.Unset();
+
+	fSendBuffer->MakeEmpty();
+
+	BNetEndpoint *sendEndpoint = new(std::nothrow) BNetEndpoint(endpoint);
+	if (sendEndpoint == NULL)
+		return B_NO_MEMORY;
+
+	fSender.SetTo(new(std::nothrow) NetSender(sendEndpoint, fSendBuffer.Get()));
+	if (fSender.Get() == NULL) {
+		delete sendEndpoint;
+		return B_NO_MEMORY;
 	}
 
-	RemoteMessage message(fReceiveBuffer, fSendBuffer);
-	message.Start(RP_INIT_CONNECTION);
-	message.Add(fListenPort);
-	result = message.Flush();
-	if (result != B_OK) {
-		TRACE_ERROR("failed to send init connection message\n");
-		return result;
-	}
-
-	uint16 code;
-	result = message.NextMessage(code);
-	if (result != B_OK) {
-		TRACE_ERROR("failed to read message from receiver: %s\n",
-			strerror(result));
-		return result;
-	}
-
-	TRACE("code %u with %lu bytes of data\n", code, message.DataLeft());
-	if (code != RP_UPDATE_DISPLAY_MODE) {
-		TRACE_ERROR("invalid connection init code %u\n", code);
-		return B_ERROR;
-	}
-
-	int32 width, height;
-	message.Read(width);
-	result = message.Read(height);
-	if (result != B_OK) {
-		TRACE_ERROR("failed to get initial display mode\n");
-		return result;
-	}
-
-	fDisplayMode.virtual_width = width;
-	fDisplayMode.virtual_height = height;
 	return B_OK;
 }
 
@@ -349,25 +348,24 @@ void
 RemoteHWInterface::_Disconnect()
 {
 	if (fIsConnected) {
-		RemoteMessage message(NULL, fSendBuffer);
+		RemoteMessage message(NULL, fSendBuffer.Get());
 		message.Start(RP_CLOSE_CONNECTION);
 		message.Flush();
 		fIsConnected = false;
 	}
 
-	if (fSendEndpoint != NULL)
-		fSendEndpoint->Close();
-	if (fReceiveEndpoint != NULL)
-		fReceiveEndpoint->Close();
+	if (fListenEndpoint.Get() != NULL)
+		fListenEndpoint->Close();
 }
 
 
 status_t
 RemoteHWInterface::SetMode(const display_mode& mode)
 {
-	// The display mode depends on the screen resolution of the client, we
-	// don't allow to change it.
-	return B_UNSUPPORTED;
+	TRACE("set mode: %" B_PRIu16 " %" B_PRIu16 "\n", mode.virtual_width,
+		mode.virtual_height);
+	fCurrentMode = mode;
+	return B_OK;
 }
 
 
@@ -377,8 +375,19 @@ RemoteHWInterface::GetMode(display_mode* mode)
 	if (mode == NULL || !ReadLock())
 		return;
 
-	*mode = fDisplayMode;
+	*mode = fCurrentMode;
 	ReadUnlock();
+
+	TRACE("get mode: %" B_PRIu16 " %" B_PRIu16 "\n", mode->virtual_width,
+		mode->virtual_height);
+}
+
+
+status_t
+RemoteHWInterface::GetPreferredMode(display_mode* mode)
+{
+	*mode = fClientMode;
+	return B_OK;
 }
 
 
@@ -391,9 +400,9 @@ RemoteHWInterface::GetDeviceInfo(accelerant_device_info* info)
 	info->version = fProtocolVersion;
 	info->dac_speed = fConnectionSpeed;
 	info->memory = 33554432; // 32MB
-	snprintf(info->name, sizeof(info->name), "Haiku, Inc. RemoteHWInterface");
-	snprintf(info->chipset, sizeof(info->chipset), "Haiku, Inc. Chipset");
-	snprintf(info->serial_no, sizeof(info->serial_no), fTarget);
+	strlcpy(info->name, "Haiku, Inc. RemoteHWInterface", sizeof(info->name));
+	strlcpy(info->chipset, "Haiku, Inc. Chipset", sizeof(info->chipset));
+	strlcpy(info->serial_no, fTarget, sizeof(info->serial_no));
 
 	ReadUnlock();
 	return B_OK;
@@ -413,13 +422,15 @@ RemoteHWInterface::GetModeList(display_mode** _modes, uint32* _count)
 {
 	AutoReadLocker _(this);
 
-	display_mode* modes = new(std::nothrow) display_mode[1];
+	display_mode* modes = new(std::nothrow) display_mode[2];
 	if (modes == NULL)
 		return B_NO_MEMORY;
 
-	modes[0] = fDisplayMode;
+	modes[0] = fFallbackMode;
+	modes[1] = fClientMode;
 	*_modes = modes;
-	*_count = 1;
+	*_count = 2;
+
 	return B_OK;
 }
 
@@ -428,6 +439,7 @@ status_t
 RemoteHWInterface::GetPixelClockLimits(display_mode* mode, uint32* low,
 	uint32* high)
 {
+	TRACE("get pixel clock limits unsupported\n");
 	return B_UNSUPPORTED;
 }
 
@@ -435,6 +447,7 @@ RemoteHWInterface::GetPixelClockLimits(display_mode* mode, uint32* low,
 status_t
 RemoteHWInterface::GetTimingConstraints(display_timing_constraints* constraints)
 {
+	TRACE("get timing constraints unsupported\n");
 	return B_UNSUPPORTED;
 }
 
@@ -443,7 +456,9 @@ status_t
 RemoteHWInterface::ProposeMode(display_mode* candidate, const display_mode* low,
 	const display_mode* high)
 {
-	return B_UNSUPPORTED;
+	TRACE("propose mode: %" B_PRIu16 " %" B_PRIu16 "\n",
+		candidate->virtual_width, candidate->virtual_height);
+	return B_OK;
 }
 
 
@@ -468,6 +483,20 @@ RemoteHWInterface::DPMSCapabilities()
 }
 
 
+status_t
+RemoteHWInterface::SetBrightness(float)
+{
+	return B_UNSUPPORTED;
+}
+
+
+status_t
+RemoteHWInterface::GetBrightness(float*)
+{
+	return B_UNSUPPORTED;
+}
+
+
 sem_id
 RemoteHWInterface::RetraceSemaphore()
 {
@@ -486,9 +515,9 @@ void
 RemoteHWInterface::SetCursor(ServerCursor* cursor)
 {
 	HWInterface::SetCursor(cursor);
-	RemoteMessage message(NULL, fSendBuffer);
+	RemoteMessage message(NULL, fSendBuffer.Get());
 	message.Start(RP_SET_CURSOR);
-	message.AddCursor(Cursor().Get());
+	message.AddCursor(CursorAndDragBitmap().Get());
 }
 
 
@@ -496,7 +525,7 @@ void
 RemoteHWInterface::SetCursorVisible(bool visible)
 {
 	HWInterface::SetCursorVisible(visible);
-	RemoteMessage message(NULL, fSendBuffer);
+	RemoteMessage message(NULL, fSendBuffer.Get());
 	message.Start(RP_SET_CURSOR_VISIBLE);
 	message.Add(visible);
 }
@@ -506,7 +535,7 @@ void
 RemoteHWInterface::MoveCursorTo(float x, float y)
 {
 	HWInterface::MoveCursorTo(x, y);
-	RemoteMessage message(NULL, fSendBuffer);
+	RemoteMessage message(NULL, fSendBuffer.Get());
 	message.Start(RP_MOVE_CURSOR_TO);
 	message.Add(x);
 	message.Add(y);
@@ -518,7 +547,7 @@ RemoteHWInterface::SetDragBitmap(const ServerBitmap* bitmap,
 	const BPoint& offsetFromCursor)
 {
 	HWInterface::SetDragBitmap(bitmap, offsetFromCursor);
-	RemoteMessage message(NULL, fSendBuffer);
+	RemoteMessage message(NULL, fSendBuffer.Get());
 	message.Start(RP_SET_CURSOR);
 	message.AddCursor(CursorAndDragBitmap().Get());
 }
@@ -546,9 +575,9 @@ RemoteHWInterface::IsDoubleBuffered() const
 
 
 status_t
-RemoteHWInterface::InvalidateRegion(BRegion& region)
+RemoteHWInterface::InvalidateRegion(const BRegion& region)
 {
-	RemoteMessage message(NULL, fSendBuffer);
+	RemoteMessage message(NULL, fSendBuffer.Get());
 	message.Start(RP_INVALIDATE_REGION);
 	message.AddRegion(region);
 	return B_OK;
@@ -558,7 +587,7 @@ RemoteHWInterface::InvalidateRegion(BRegion& region)
 status_t
 RemoteHWInterface::Invalidate(const BRect& frame)
 {
-	RemoteMessage message(NULL, fSendBuffer);
+	RemoteMessage message(NULL, fSendBuffer.Get());
 	message.Start(RP_INVALIDATE_RECT);
 	message.Add(frame);
 	return B_OK;
@@ -569,4 +598,16 @@ status_t
 RemoteHWInterface::CopyBackToFront(const BRect& frame)
 {
 	return B_OK;
+}
+
+
+void
+RemoteHWInterface::_FillDisplayModeTiming(display_mode &mode)
+{
+	mode.timing.pixel_clock
+		= (uint64_t)mode.virtual_width * mode.virtual_height * 60 / 1000;
+	mode.timing.h_display = mode.timing.h_sync_start = mode.timing.h_sync_end
+		= mode.timing.h_total = mode.virtual_width;
+	mode.timing.v_display = mode.timing.v_sync_start = mode.timing.v_sync_end
+		= mode.timing.v_total = mode.virtual_height;
 }

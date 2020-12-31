@@ -1,21 +1,19 @@
-1	belarusian	x-vnd.Haiku-Login	1678631300
-Error: %1	Login App		Памылка: %1
-Hide password	Login View		Схаваць пароль
-Desktop	Desktop Window		Працоўны стол
+1	belarusian	x-vnd.Haiku-Login	2683778354
 Invalid login!	Login View		Няправiльны лагiн!
---edit\tLaunch in shelf editting mode to allow customizing the desktop.\n	Login App		--edit\t Запусцiце у рэдакцыоннам ражыме для прыняцця зменаў на працоўным стале.\n
-OK	Login View		Так
-error %s\n	Desktop Window	A return message from fDesktopShelf->Save(). It can be \"B_OK\"	памылка %s\n
-Login:	Login View		Лагiн:
 Error	Login App		Памылка
-You can customize the desktop shown behind the Login application by dropping replicants onto it.\n\nWhen you are finished just quit the application (Alt-Q).	Login App		Пасля ўваходу вы можате наладзіць працоўны стол перецягваючы на яго дупліканты праграмаў.\n\nПа сканчэнні закрыйце праграму (Alt-Q).
-Unimplemented	Login App		Магчымасьць не рэалізаваная
+--edit\tLaunch in shelf editting mode to allow customizing the desktop.\n	Login App		--edit\t Запусцiце у рэдакцыоннам ражыме для прыняцця зменаў на працоўным стале.\n
 Welcome to Haiku	Login Window		Haiku вiтае Вас
-Reboot	Login View		Перазагрузка
-Login application for Haiku\nUsage:\n	Login App		Уваход у Haiku\nВыкарастанне:\n
-Info	Login App		Iнфармацыя
 Halt	Login View		Спынiць
-ValidateLogin: %s\n	Login App	A message returned from the ValidateLogin function. It can be \"B_OK\".	ПадцвердзiцьЛагiн: %s\n
-Password:	Login View		Пароль:
-OK	Login App		Так
+Login application for Haiku\nUsage:\n	Login App		Уваход у Haiku\nВыкарастанне:\n
 --nonmodal\tDo not make the window modal\n	Login App		--nonmodal\t Не рабiць вакно мадальным\n
+Desktop	Desktop Window		Працоўны стол
+Hide password	Login View		Схаваць пароль
+Reboot	Login View		Перазагрузка
+OK	Login View		Так
+Info	Login App		Iнфармацыя
+Login:	Login View		Лагiн:
+Password:	Login View		Пароль:
+Unimplemented	Login App		Магчымасьць не рэалізаваная
+OK	Login App		Так
+Error: %1	Login App		Памылка: %1
+error %s\n	Desktop Window	A return message from fDesktopShelf->Save(). It can be \"B_OK\"	памылка %s\n

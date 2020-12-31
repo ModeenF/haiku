@@ -20,7 +20,7 @@
 
 
 struct kernel_args;
-class ObjectCache;
+struct ObjectCache;
 
 
 enum {
@@ -110,6 +110,7 @@ public:
 			vm_page*			LookupPage(off_t offset);
 			void				InsertPage(vm_page* page, off_t offset);
 			void				RemovePage(vm_page* page);
+			void				MovePage(vm_page* page, off_t offset);
 			void				MovePage(vm_page* page);
 			void				MoveAllPages(VMCache* fromCache);
 
@@ -130,6 +131,11 @@ public:
 			status_t			SetMinimalCommitment(off_t commitment,
 									int priority);
 	virtual	status_t			Resize(off_t newSize, int priority);
+	virtual	status_t			Rebase(off_t newBase, int priority);
+	virtual	status_t			Adopt(VMCache* source, off_t offset, off_t size,
+									off_t newOffset);
+
+	virtual	status_t			Discard(off_t offset, off_t size);
 
 			status_t			FlushAndRemoveAllPages();
 
@@ -147,7 +153,7 @@ public:
 	virtual	bool				HasPage(off_t offset);
 
 	virtual	status_t			Read(off_t offset, const generic_io_vec *vecs,
-									size_t count,uint32 flags,
+									size_t count, uint32 flags,
 									generic_size_t *_numBytes);
 	virtual	status_t			Write(off_t offset, const generic_io_vec *vecs,
 									size_t count, uint32 flags,
@@ -210,6 +216,9 @@ private:
 
 			void				_MergeWithOnlyConsumer();
 			void				_RemoveConsumer(VMCache* consumer);
+
+			bool				_FreePageRange(VMCachePagesTree::Iterator it,
+									page_num_t* toPage);
 
 private:
 			int32				fRefCount;

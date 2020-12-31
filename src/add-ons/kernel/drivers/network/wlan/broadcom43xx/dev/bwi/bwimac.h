@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2007 The DragonFly Project.  All rights reserved.
  * 
  * This code is derived from software contributed to The DragonFly Project
@@ -32,7 +34,7 @@
  * SUCH DAMAGE.
  * 
  * $DragonFly: src/sys/dev/netif/bwi/bwimac.h,v 1.2 2008/02/15 11:15:38 sephe Exp $
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/dev/bwi/bwimac.h 326022 2017-11-20 19:36:21Z pfg $
  */
 
 #ifndef _BWI_MAC_H
@@ -57,6 +59,7 @@ void		bwi_mac_init_tpctl_11bg(struct bwi_mac *);
 void		bwi_mac_dummy_xmit(struct bwi_mac *);
 void		bwi_mac_reset_hwkeys(struct bwi_mac *);
 int		bwi_mac_config_ps(struct bwi_mac *);
+int		bwi_mac_fw_alloc(struct bwi_mac *);
 
 uint16_t	bwi_memobj_read_2(struct bwi_mac *, uint16_t, uint16_t);
 uint32_t	bwi_memobj_read_4(struct bwi_mac *, uint16_t, uint16_t);

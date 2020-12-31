@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2015 Haiku, Inc. All rights reserved.
+ * Copyright 2001-2019 Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -99,7 +99,7 @@ static property_info sViewPropInfo[] = {
 		"Directs the scripting message to the specified view.", 0
 	},
 
-	{ 0, { 0 }, { 0 }, 0, 0 }
+	{ 0 }
 };
 
 
@@ -237,7 +237,6 @@ ViewState::UpdateServerState(BPrivate::PortLink &link)
 	info.drawingMode = drawing_mode;
 	info.origin = origin;
 	info.scale = scale;
-	info.transform = transform;
 	info.lineJoin = line_join;
 	info.lineCap = line_cap;
 	info.miterLimit = miter_limit;
@@ -246,6 +245,12 @@ ViewState::UpdateServerState(BPrivate::PortLink &link)
 	info.alphaFunctionMode = alpha_function_mode;
 	info.fontAntialiasing = font_aliasing;
 	link.Attach<ViewSetStateInfo>(info);
+
+	// BAffineTransform is transmitted as a double array
+	double _transform[6];
+	if (transform.Flatten(_transform, sizeof(_transform)) != B_OK)
+		return;
+	link.Attach<double[6]>(_transform);
 
 	// we send the 'local' clipping region... if we have one...
 	// TODO: Could be optimized, but is low prio, since most views won't
@@ -302,7 +307,6 @@ ViewState::UpdateFrom(BPrivate::PortLink &link)
 	drawing_mode = info.viewStateInfo.drawingMode;
 	origin = info.viewStateInfo.origin;
 	scale = info.viewStateInfo.scale;
-	transform = info.viewStateInfo.transform;
 	line_join = info.viewStateInfo.lineJoin;
 	line_cap = info.viewStateInfo.lineCap;
 	miter_limit = info.viewStateInfo.miterLimit;
@@ -310,6 +314,14 @@ ViewState::UpdateFrom(BPrivate::PortLink &link)
 	alpha_source_mode = info.viewStateInfo.alphaSourceMode;
 	alpha_function_mode = info.viewStateInfo.alphaFunctionMode;
 	font_aliasing = info.viewStateInfo.fontAntialiasing;
+
+	// BAffineTransform is transmitted as a double array
+	double _transform[6];
+	link.Read<double[6]>(&_transform);
+	if (transform.Unflatten(B_AFFINE_TRANSFORM_TYPE, _transform,
+		sizeof(_transform)) != B_OK) {
+		return;
+	}
 
 	// read the user clipping
 	// (that's NOT the current View visible clipping but the additional
@@ -409,7 +421,7 @@ BView::BView(const char* name, uint32 flags, BLayout* layout)
 	:
 	BHandler(name)
 {
-	_InitData(BRect(0, 0, 0, 0), name, B_FOLLOW_NONE,
+	_InitData(BRect(0, 0, -1, -1), name, B_FOLLOW_NONE,
 		flags | B_SUPPORTS_LAYOUT);
 	SetLayout(layout);
 }
@@ -1038,7 +1050,8 @@ BView::SetFlags(uint32 flags)
 
 		uint32 changesFlags = flags ^ fFlags;
 		if (changesFlags & (B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE
-				| B_FRAME_EVENTS | B_SUBPIXEL_PRECISE)) {
+				| B_FRAME_EVENTS | B_SUBPIXEL_PRECISE
+				| B_TRANSPARENT_BACKGROUND)) {
 			_CheckLockAndSwitchCurrent();
 
 			fOwner->fLink->StartMessage(AS_VIEW_SET_FLAGS);
@@ -1594,8 +1607,10 @@ BView::GetMouse(BPoint* _location, uint32* _buttons, bool checkMessageQueue)
 							continue;
 						}
 					}
-					message->FindPoint("screen_where", _location);
-					message->FindInt32("buttons", (int32*)_buttons);
+					if (_location != NULL)
+						message->FindPoint("screen_where", _location);
+					if (_buttons != NULL)
+						message->FindInt32("buttons", (int32*)_buttons);
 					queue->Unlock();
 						// we need to hold the queue lock until here, because
 						// the message might still be used for something else
@@ -3103,6 +3118,38 @@ void
 BView::DrawBitmap(const BBitmap* bitmap)
 {
 	DrawBitmap(bitmap, PenLocation());
+}
+
+
+void
+BView::DrawTiledBitmapAsync(const BBitmap* bitmap, BRect viewRect,
+	BPoint phase)
+{
+	if (bitmap == NULL || fOwner == NULL || !viewRect.IsValid())
+		return;
+
+	_CheckLockAndSwitchCurrent();
+
+	ViewDrawBitmapInfo info;
+	info.bitmapToken = bitmap->_ServerToken();
+	info.options = B_TILE_BITMAP;
+	info.viewRect = viewRect;
+	info.bitmapRect = bitmap->Bounds().OffsetToCopy(phase);
+
+	fOwner->fLink->StartMessage(AS_VIEW_DRAW_BITMAP);
+	fOwner->fLink->Attach<ViewDrawBitmapInfo>(info);
+
+	_FlushIfNotInTransaction();
+}
+
+
+void
+BView::DrawTiledBitmap(const BBitmap* bitmap, BRect viewRect, BPoint phase)
+{
+	if (fOwner) {
+		DrawTiledBitmapAsync(bitmap, viewRect, phase);
+		Sync();
+	}
 }
 
 
@@ -4891,16 +4938,56 @@ BView::MessageReceived(BMessage* message)
 {
 	if (!message->HasSpecifiers()) {
 		switch (message->what) {
+			case B_INVALIDATE:
+			{
+				BRect rect;
+				if (message->FindRect("be:area", &rect) == B_OK)
+					Invalidate(rect);
+				else
+					Invalidate();
+				break;
+			}
+
+			case B_KEY_DOWN:
+			{
+				// TODO: cannot use "string" here if we support having different
+				// font encoding per view (it's supposed to be converted by
+				// BWindow::_HandleKeyDown() one day)
+				const char* string;
+				ssize_t bytes;
+				if (message->FindData("bytes", B_STRING_TYPE,
+						(const void**)&string, &bytes) == B_OK)
+					KeyDown(string, bytes - 1);
+				break;
+			}
+
+			case B_KEY_UP:
+			{
+				// TODO: same as above
+				const char* string;
+				ssize_t bytes;
+				if (message->FindData("bytes", B_STRING_TYPE,
+						(const void**)&string, &bytes) == B_OK)
+					KeyUp(string, bytes - 1);
+				break;
+			}
+
 			case B_VIEW_RESIZED:
-				// By the time the message arrives, the bounds may have
-				// changed already, that's why we don't use the values
-				// in the message itself.
-				FrameResized(fBounds.Width(), fBounds.Height());
+				FrameResized(message->GetInt32("width", 0),
+					message->GetInt32("height", 0));
 				break;
 
 			case B_VIEW_MOVED:
 				FrameMoved(fParentOffset);
 				break;
+
+			case B_MOUSE_DOWN:
+			{
+				BPoint where;
+				message->FindPoint("be:view_where", &where);
+				MouseDown(where);
+				break;
+			}
 
 			case B_MOUSE_IDLE:
 			{
@@ -4913,6 +5000,85 @@ BView::MessageReceived(BMessage* message)
 					ShowToolTip(tip);
 				else
 					BHandler::MessageReceived(message);
+				break;
+			}
+
+			case B_MOUSE_MOVED:
+			{
+				uint32 eventOptions = fEventOptions | fMouseEventOptions;
+				bool noHistory = eventOptions & B_NO_POINTER_HISTORY;
+				bool dropIfLate = !(eventOptions & B_FULL_POINTER_HISTORY);
+
+				bigtime_t eventTime;
+				if (message->FindInt64("when", (int64*)&eventTime) < B_OK)
+					eventTime = system_time();
+
+				uint32 transit;
+				message->FindInt32("be:transit", (int32*)&transit);
+				// don't drop late messages with these important transit values
+				if (transit == B_ENTERED_VIEW || transit == B_EXITED_VIEW)
+					dropIfLate = false;
+
+				// TODO: The dropping code may have the following problem: On
+				// slower computers, 20ms may just be to abitious a delay.
+				// There, we might constantly check the message queue for a
+				// newer message, not find any, and still use the only but later
+				// than 20ms message, which of course makes the whole thing
+				// later than need be. An adaptive delay would be kind of neat,
+				// but would probably use additional BWindow members to count
+				// the successful versus fruitless queue searches and the delay
+				// value itself or something similar.
+				if (noHistory
+					|| (dropIfLate && (system_time() - eventTime > 20000))) {
+					// filter out older mouse moved messages in the queue
+					BWindow* window = Window();
+					window->_DequeueAll();
+					BMessageQueue* queue = window->MessageQueue();
+					queue->Lock();
+
+					BMessage* moved;
+					for (int32 i = 0; (moved = queue->FindMessage(i)) != NULL;
+						 i++) {
+						if (moved != message && moved->what == B_MOUSE_MOVED) {
+							// there is a newer mouse moved message in the
+							// queue, just ignore the current one, the newer one
+							// will be handled here eventually
+							queue->Unlock();
+							return;
+						}
+					}
+					queue->Unlock();
+				}
+
+				BPoint where;
+				uint32 buttons;
+				message->FindPoint("be:view_where", &where);
+				message->FindInt32("buttons", (int32*)&buttons);
+
+				if (transit == B_EXITED_VIEW || transit == B_OUTSIDE_VIEW)
+					HideToolTip();
+
+				BMessage* dragMessage = NULL;
+				if (message->HasMessage("be:drag_message")) {
+					dragMessage = new BMessage();
+					if (message->FindMessage("be:drag_message", dragMessage)
+						!= B_OK) {
+						delete dragMessage;
+						dragMessage = NULL;
+					}
+				}
+
+				MouseMoved(where, transit, dragMessage);
+				delete dragMessage;
+				break;
+			}
+
+			case B_MOUSE_UP:
+			{
+				BPoint where;
+				message->FindPoint("be:view_where", &where);
+				fMouseEventOptions = 0;
+				MouseUp(where);
 				break;
 			}
 
@@ -4954,6 +5120,18 @@ BView::MessageReceived(BMessage* message)
 			case B_COLORS_UPDATED:
 			case B_FONTS_UPDATED:
 				break;
+
+			case B_SCREEN_CHANGED:
+			{
+				// propegate message to child views
+				int32 childCount = CountChildren();
+				for (int32 i = 0; i < childCount; i++) {
+					BView* view = ChildAt(i);
+					if (view != NULL)
+						view->MessageReceived(message);
+				}
+				break;
+			}
 
 			default:
 				BHandler::MessageReceived(message);

@@ -14,7 +14,7 @@ const EncoderDescription gEncoderTable[] = {
 			"MPEG-4 video",
 			"mpeg4",
 			0,
-			CODEC_ID_MPEG4,
+			AV_CODEC_ID_MPEG4,
 			{ 0 }
 		},
 		B_ANY_FORMAT_FAMILY, // TODO: Hm, actually not really /any/ family...
@@ -27,7 +27,7 @@ const EncoderDescription gEncoderTable[] = {
 			"MPEG-1 video",
 			"mpeg1video",
 			0,
-			CODEC_ID_MPEG1VIDEO,
+			AV_CODEC_ID_MPEG1VIDEO,
 			{ 0 }
 		},
 		B_MPEG_FORMAT_FAMILY,
@@ -40,7 +40,7 @@ const EncoderDescription gEncoderTable[] = {
 			"MPEG-2 video",
 			"mpeg2video",
 			0,
-			CODEC_ID_MPEG2VIDEO,
+			AV_CODEC_ID_MPEG2VIDEO,
 			{ 0 }
 		},
 		B_MPEG_FORMAT_FAMILY,
@@ -53,7 +53,7 @@ const EncoderDescription gEncoderTable[] = {
 			"Theora video",
 			"theora",
 			0,
-			CODEC_ID_THEORA,
+			AV_CODEC_ID_THEORA,
 			{ 0 }
 		},
 		B_ANY_FORMAT_FAMILY,
@@ -66,7 +66,7 @@ const EncoderDescription gEncoderTable[] = {
 			"DV (Digital Video)",
 			"dvvideo",
 			0,
-			CODEC_ID_DVVIDEO,
+			AV_CODEC_ID_DVVIDEO,
 			{ 0 }
 		},
 		B_MISC_FORMAT_FAMILY,
@@ -79,7 +79,7 @@ const EncoderDescription gEncoderTable[] = {
 			"MJPEG (Motion JPEG)",
 			"mjpeg",
 			0,
-			CODEC_ID_MJPEG,
+			AV_CODEC_ID_MJPEG,
 			{ 0 }
 		},
 		B_ANY_FORMAT_FAMILY,
@@ -94,7 +94,7 @@ const EncoderDescription gEncoderTable[] = {
 			"Free Lossless Audio Codec (FLAC)",
 			"flac",
 			0,
-			CODEC_ID_FLAC,
+			AV_CODEC_ID_FLAC,
 			{ 0 }
 		},
 		B_ANY_FORMAT_FAMILY,
@@ -107,7 +107,7 @@ const EncoderDescription gEncoderTable[] = {
 			"Advanced Audio Coding (AAC)",
 			"aac",
 			0,
-			CODEC_ID_AAC,
+			AV_CODEC_ID_AAC,
 			{ 0 }
 		},
 		B_MPEG_FORMAT_FAMILY,
@@ -133,7 +133,7 @@ const EncoderDescription gEncoderTable[] = {
 			"Dolby Digital (AC-3)",
 			"ac3",
 			0,
-			CODEC_ID_AC3,
+			AV_CODEC_ID_AC3,
 			{ 0 }
 		},
 		B_ANY_FORMAT_FAMILY,
@@ -243,37 +243,37 @@ const size_t gEncoderCount = sizeof(gEncoderTable) / sizeof(EncoderDescription);
 raw_audio_codec_id_for(const media_format& format)
 {
 	if (format.type != B_MEDIA_RAW_AUDIO)
-		return CODEC_ID_NONE;
+		return AV_CODEC_ID_NONE;
 
 	if (format.u.raw_audio.byte_order == B_MEDIA_LITTLE_ENDIAN) {
 		switch (format.u.raw_audio.format) {
 			case media_raw_audio_format::B_AUDIO_FLOAT:
-				return CODEC_ID_PCM_F32LE;
+				return AV_CODEC_ID_PCM_F32LE;
 			case media_raw_audio_format::B_AUDIO_DOUBLE:
-				return CODEC_ID_PCM_F64LE;
+				return AV_CODEC_ID_PCM_F64LE;
 			case media_raw_audio_format::B_AUDIO_INT:
-				return CODEC_ID_PCM_S32LE;
+				return AV_CODEC_ID_PCM_S32LE;
 			case media_raw_audio_format::B_AUDIO_SHORT:
-				return CODEC_ID_PCM_S16LE;
+				return AV_CODEC_ID_PCM_S16LE;
 			case media_raw_audio_format::B_AUDIO_UCHAR:
-				return CODEC_ID_PCM_U8;
+				return AV_CODEC_ID_PCM_U8;
 			default:
-				return CODEC_ID_NONE;
+				return AV_CODEC_ID_NONE;
 		}
 	} else {
 		switch (format.u.raw_audio.format) {
 			case media_raw_audio_format::B_AUDIO_FLOAT:
-				return CODEC_ID_PCM_F32BE;
+				return AV_CODEC_ID_PCM_F32BE;
 			case media_raw_audio_format::B_AUDIO_DOUBLE:
-				return CODEC_ID_PCM_F64BE;
+				return AV_CODEC_ID_PCM_F64BE;
 			case media_raw_audio_format::B_AUDIO_INT:
-				return CODEC_ID_PCM_S32BE;
+				return AV_CODEC_ID_PCM_S32BE;
 			case media_raw_audio_format::B_AUDIO_SHORT:
-				return CODEC_ID_PCM_S16BE;
+				return AV_CODEC_ID_PCM_S16BE;
 			case media_raw_audio_format::B_AUDIO_UCHAR:
-				return CODEC_ID_PCM_U8;
+				return AV_CODEC_ID_PCM_U8;
 			default:
-				return CODEC_ID_NONE;
+				return AV_CODEC_ID_NONE;
 		}
 	}
 }

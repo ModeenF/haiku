@@ -1,6 +1,6 @@
 /* General File System informations/capabilities
 **
-** Distributed under the terms of the OpenBeOS License.
+** Distributed under the terms of the MIT License.
 */
 #ifndef _FSSH_FS_INFO_H
 #define	_FSSH_FS_INFO_H
@@ -21,6 +21,7 @@
 #define FSSH_B_FS_HAS_SELF_HEALING_LINKS	0x00080000
 #define FSSH_B_FS_HAS_ALIASES				0x00100000
 #define FSSH_B_FS_SUPPORTS_NODE_MONITORING	0x00200000
+#define FSSH_B_FS_SUPPORTS_MONITOR_CHILDREN	0x00400000
 
 typedef struct fssh_fs_info {
 	fssh_dev_t	dev;								/* volume dev_t */

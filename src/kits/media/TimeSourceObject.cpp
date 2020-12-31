@@ -18,7 +18,7 @@
 #include <OS.h>
 
 #include <MediaMisc.h>
-#include <debug.h>
+#include <MediaDebug.h>
 
 #include "TimeSourceObjectManager.h"
 
@@ -28,7 +28,9 @@ TimeSourceObject::TimeSourceObject(const media_node& node)
 	BMediaNode("some timesource object", node.node, node.kind),
 	BTimeSource(node.node)
 {
-	TRACE("TimeSourceObject::TimeSourceObject enter, id = %ld\n", node.node);
+	TRACE("TimeSourceObject::TimeSourceObject enter, id = %"
+		B_PRId32 "\n", node.node);
+
 	if (fControlPort > 0)
 		delete_port(fControlPort);
 

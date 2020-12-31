@@ -4,6 +4,7 @@
 
 
 #include <InterfaceDefs.h>
+#include <MediaIO.h>
 
 #include "APEReader.h"
 #include "MACLib.h"
@@ -216,9 +217,22 @@ TAPEReader::Sniff(int32* oStreamCount)
 	if (mSrcPIO == NULL)
 		return B_ERROR;
 
+	BMediaIO* mediaIO = dynamic_cast<BMediaIO*>(Source());
+	if (mediaIO != NULL) {
+		int32 flags = 0;
+		mediaIO->GetFlags(&flags);
+		// This plugin doesn't support streamed data.
+		// The APEHeader::FindDescriptor function always
+		// analyze the whole file to find the APE_DESCRIPTOR.
+		if ((flags & B_MEDIA_STREAMING) == true)
+			return B_ERROR;
+	}
+
+	int nFunctionRetVal = ERROR_SUCCESS;
 	mPositionBridgeIO.SetPositionIO(mSrcPIO);
-	mDecomp = CreateIAPEDecompressEx(&mPositionBridgeIO);
-	if (mDecomp == NULL)
+
+	mDecomp = CreateIAPEDecompressEx(&mPositionBridgeIO, &nFunctionRetVal);
+	if (mDecomp == NULL || nFunctionRetVal != ERROR_SUCCESS)
 		return B_ERROR;
 
 	// prepare about data

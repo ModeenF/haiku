@@ -35,9 +35,6 @@ enum {
 };
 
 
-static const float kLabelMargin = 3;
-
-
 BButton::BButton(BRect frame, const char* name, const char* label,
 	BMessage* message, uint32 resizingMode, uint32 flags)
 	:
@@ -135,7 +132,7 @@ BButton::Draw(BRect updateRect)
 	BRect rect(Bounds());
 	rgb_color background = ViewColor();
 	rgb_color base = LowColor();
-	rgb_color textColor = HighColor();
+	rgb_color textColor = ui_color(B_CONTROL_TEXT_COLOR);
 
 	uint32 flags = be_control_look->Flags(this);
 	if (_Flag(FLAG_DEFAULT))
@@ -157,7 +154,8 @@ BButton::Draw(BRect updateRect)
 	}
 
 	// always leave some room around the label
-	rect.InsetBy(kLabelMargin, kLabelMargin);
+	float labelMargin = be_control_look->DefaultLabelSpacing() / 2;
+	rect.InsetBy(labelMargin, labelMargin);
 
 	const BBitmap* icon = IconBitmap(
 		(Value() == B_CONTROL_OFF
@@ -651,7 +649,7 @@ BButton::_ValidatePreferredSize()
 			left, top, right, bottom);
 
 		// width
-		float width = left + right + 2 * kLabelMargin - 1;
+		float width = left + right + be_control_look->DefaultLabelSpacing() - 1;
 
 		const char* label = Label();
 		if (label != NULL) {
@@ -667,7 +665,7 @@ BButton::_ValidatePreferredSize()
 			width += be_control_look->DefaultLabelSpacing();
 
 		// height
-		float minHorizontalMargins = top + bottom + 2 * kLabelMargin;
+		float minHorizontalMargins = top + bottom + be_control_look->DefaultLabelSpacing();
 		float height = -1;
 
 		if (label != NULL) {

@@ -12,6 +12,7 @@
 
 #include <cpu.h>
 #include <arch/cpu.h>
+#include <arch/system_info.h>
 
 #include <string.h>
 
@@ -80,7 +81,7 @@ load_cpufreq_module()
 				} else
 					put_module(name);
 			} else
-				sCPUPerformanceModule = current; 
+				sCPUPerformanceModule = current;
 		}
 	}
 
@@ -88,6 +89,8 @@ load_cpufreq_module()
 
 	if (sCPUPerformanceModule == NULL)
 		dprintf("no valid cpufreq module found\n");
+	else
+		scheduler_update_policy();
 }
 
 
@@ -114,7 +117,7 @@ load_cpuidle_module()
 				} else
 					put_module(name);
 			} else
-				sCPUIdleModule = current; 
+				sCPUIdleModule = current;
 		}
 	}
 
@@ -168,6 +171,17 @@ cpu_get_active_time(int32 cpu)
 	} while (!release_read_seqlock(&gCPU[cpu].active_time_lock, count));
 
 	return activeTime;
+}
+
+
+uint64
+cpu_frequency(int32 cpu)
+{
+	if (cpu < 0 || cpu >= smp_get_num_cpus())
+		return 0;
+	uint64 frequency = 0;
+	arch_get_frequency(&frequency, cpu);
+	return frequency;
 }
 
 
@@ -367,6 +381,8 @@ _user_set_cpu_enabled(int32 cpu, bool enabled)
 {
 	int32 i, count;
 
+	if (geteuid() != 0)
+		return B_PERMISSION_DENIED;
 	if (cpu < 0 || cpu >= smp_get_num_cpus())
 		return B_BAD_VALUE;
 

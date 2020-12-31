@@ -46,12 +46,9 @@ extern "C" {
 #endif
 
 
-#define ROUNDUP(a, b) (((a) + ((b)-1)) & ~((b)-1))
-
-
 struct internal_intr {
 	device_t		dev;
-	driver_filter_t	filter;
+	driver_filter_t* filter;
 	driver_intr_t	*handler;
 	void			*arg;
 	int				irq;
@@ -65,18 +62,6 @@ struct internal_intr {
 static int32 intr_wrapper(void *data);
 
 
-static int
-fls(int mask)
-{
-	int bit;
-	if (mask == 0)
-		return (0);
-	for (bit = 1; mask != 1; bit++)
-		mask = (unsigned int)mask >> 1;
-	return (bit);
-}
-
-
 static area_id
 map_mem(void **virtualAddr, phys_addr_t _phy, size_t size, uint32 protection,
 	const char *name)
@@ -85,7 +70,7 @@ map_mem(void **virtualAddr, phys_addr_t _phy, size_t size, uint32 protection,
 	phys_addr_t physicalAddr = _phy - offset;
 	area_id area;
 
-	size = ROUNDUP(size + offset, B_PAGE_SIZE);
+	size = roundup(size + offset, B_PAGE_SIZE);
 	area = map_physical_memory(name, physicalAddr, size, B_ANY_KERNEL_ADDRESS,
 		protection, virtualAddr);
 	if (area < B_OK)
@@ -113,10 +98,32 @@ bus_alloc_irq_resource(device_t dev, struct resource *res)
 
 
 static int
-bus_alloc_mem_resource(device_t dev, struct resource *res, int regid)
+bus_alloc_mem_resource(device_t dev, struct resource *res, pci_info *info,
+	int bar_index)
 {
-	uint32 addr = pci_read_config(dev, regid, 4) & PCI_address_memory_32_mask;
-	uint32 size = 128 * 1024; /* XXX */
+	phys_addr_t addr = info->u.h0.base_registers[bar_index];
+	uint64 size = info->u.h0.base_register_sizes[bar_index];
+	uchar flags = info->u.h0.base_register_flags[bar_index];
+
+	// reject empty regions
+	if (size == 0)
+		return -1;
+
+	// reject I/O space
+	if ((flags & PCI_address_space) != 0)
+		return -1;
+
+	// TODO: check flags & PCI_address_prefetchable ?
+
+	if ((flags & PCI_address_type) == PCI_address_type_64) {
+		addr |= (uint64)info->u.h0.base_registers[bar_index + 1] << 32;
+		size |= (uint64)info->u.h0.base_register_sizes[bar_index + 1] << 32;
+	}
+
+	// enable this I/O resource
+	if (pci_enable_io(dev, SYS_RES_MEMORY) != 0)
+		return -1;
+
 	void *virtualAddr;
 
 	res->r_mapped_area = map_mem(&virtualAddr, addr, size, 0,
@@ -124,18 +131,50 @@ bus_alloc_mem_resource(device_t dev, struct resource *res, int regid)
 	if (res->r_mapped_area < B_OK)
 		return -1;
 
-	res->r_bustag = I386_BUS_SPACE_MEM;
+	res->r_bustag = X86_BUS_SPACE_MEM;
 	res->r_bushandle = (bus_space_handle_t)virtualAddr;
 	return 0;
 }
 
 
 static int
-bus_alloc_ioport_resource(device_t dev, struct resource *res, int regid)
+bus_alloc_ioport_resource(device_t dev, struct resource *res, pci_info *info,
+	int bar_index)
 {
-	res->r_bustag = I386_BUS_SPACE_IO;
-	res->r_bushandle = pci_read_config(dev, regid, 4) & PCI_address_io_mask;
+	uint32 size = info->u.h0.base_register_sizes[bar_index];
+	uchar flags = info->u.h0.base_register_flags[bar_index];
+
+	// reject empty regions
+	if (size == 0)
+		return -1;
+
+	// reject memory space
+	if ((flags & PCI_address_space) == 0)
+		return -1;
+
+	// enable this I/O resource
+	if (pci_enable_io(dev, SYS_RES_IOPORT) != 0)
+		return -1;
+
+	res->r_bustag = X86_BUS_SPACE_IO;
+	res->r_bushandle = info->u.h0.base_registers[bar_index];
 	return 0;
+}
+
+
+static int
+bus_register_to_bar_index(pci_info *info, int regid)
+{
+	// check the offset really is of a BAR
+	if (regid < PCI_base_registers || (regid % sizeof(uint32) != 0)
+		|| (regid >= PCI_base_registers + 6 * (int)sizeof(uint32))) {
+		return -1;
+	}
+
+	// turn offset into array index
+	regid -= PCI_base_registers;
+	regid /= sizeof(uint32);
+	return regid;
 }
 
 
@@ -170,10 +209,17 @@ bus_alloc_resource(device_t dev, int type, int *rid, unsigned long start,
 			res->r_bushandle = info->u.h0.interrupt_line + *rid - 1;
 			result = 0;
 		}
-	} else if (type == SYS_RES_MEMORY)
-		result = bus_alloc_mem_resource(dev, res, *rid);
-	else if (type == SYS_RES_IOPORT)
-		result = bus_alloc_ioport_resource(dev, res, *rid);
+	} else if (type == SYS_RES_MEMORY || type == SYS_RES_IOPORT) {
+		pci_info *info
+			= &((struct root_device_softc *)dev->root->softc)->pci_info;
+		int bar_index = bus_register_to_bar_index(info, *rid);
+		if (bar_index >= 0) {
+			if (type == SYS_RES_MEMORY)
+				result = bus_alloc_mem_resource(dev, res, info, bar_index);
+			else
+				result = bus_alloc_ioport_resource(dev, res, info, bar_index);
+		}
+	}
 
 	if (result < 0) {
 		free(res);
@@ -260,6 +306,13 @@ rman_get_rid(struct resource *res)
 }
 
 
+void*
+rman_get_virtual(struct resource *res)
+{
+	return NULL;
+}
+
+
 //	#pragma mark - Interrupt handling
 
 
@@ -275,18 +328,6 @@ intr_wrapper(void *data)
 
 	release_sem_etc(intr->sem, 1, B_DO_NOT_RESCHEDULE);
 	return intr->handling ? B_HANDLED_INTERRUPT : B_INVOKE_SCHEDULER;
-}
-
-
-static int32
-intr_fast_wrapper(void *data)
-{
-	struct internal_intr *intr = (struct internal_intr *)data;
-
-	intr->handler(intr->arg);
-
-	// We don't know if the interrupt has been handled.
-	return B_UNHANDLED_INTERRUPT;
 }
 
 
@@ -328,7 +369,7 @@ free_internal_intr(struct internal_intr *intr)
 
 int
 bus_setup_intr(device_t dev, struct resource *res, int flags,
-	driver_filter_t filter, driver_intr_t handler, void *arg, void **_cookie)
+	driver_filter_t* filter, driver_intr_t handler, void *arg, void **_cookie)
 {
 	/* TODO check MPSAFE etc */
 
@@ -352,9 +393,6 @@ bus_setup_intr(device_t dev, struct resource *res, int flags,
 	if (filter != NULL) {
 		status = install_io_interrupt_handler(intr->irq,
 			(interrupt_handler)intr->filter, intr->arg, 0);
-	} else if ((flags & INTR_FAST) != 0) {
-		status = install_io_interrupt_handler(intr->irq,
-			intr_fast_wrapper, intr, B_NO_HANDLED_INFO);
 	} else {
 		snprintf(semName, sizeof(semName), "%s intr", dev->device_name);
 
@@ -375,7 +413,7 @@ bus_setup_intr(device_t dev, struct resource *res, int flags,
 		}
 
 		status = install_io_interrupt_handler(intr->irq,
-			intr_wrapper, intr, B_NO_HANDLED_INFO);
+			intr_wrapper, intr, 0);
 	}
 
 	if (status == B_OK && res->r_bustag == 1 && gPCIx86 != NULL) {
@@ -415,6 +453,9 @@ int
 bus_teardown_intr(device_t dev, struct resource *res, void *arg)
 {
 	struct internal_intr *intr = (struct internal_intr *)arg;
+	if (intr == NULL)
+		return -1;
+
 	struct root_device_softc *root = (struct root_device_softc *)dev->root->softc;
 
 	if ((root->is_msi || root->is_msix) && gPCIx86 != NULL) {
@@ -426,13 +467,33 @@ bus_teardown_intr(device_t dev, struct resource *res, void *arg)
 	if (intr->filter != NULL) {
 		remove_io_interrupt_handler(intr->irq, (interrupt_handler)intr->filter,
 			intr->arg);
-	} else if (intr->flags & INTR_FAST) {
-		remove_io_interrupt_handler(intr->irq, intr_fast_wrapper, intr);
 	} else {
 		remove_io_interrupt_handler(intr->irq, intr_wrapper, intr);
 	}
 
 	free_internal_intr(intr);
+	return 0;
+}
+
+
+int
+bus_bind_intr(device_t dev, struct resource *res, int cpu)
+{
+	if (dev->parent == NULL)
+		return EINVAL;
+
+	// TODO
+	return 0;
+}
+
+
+int bus_describe_intr(device_t dev, struct resource *irq, void *cookie,
+	const char* fmt, ...)
+{
+	if (dev->parent == NULL)
+		return EINVAL;
+
+	// we don't really support names for interrupts
 	return 0;
 }
 
@@ -501,42 +562,6 @@ bus_generic_driver_added(device_t dev, driver_t *driver)
 }
 
 
-#define BUS_SPACE_READ(size, type, fun) \
-	type bus_space_read_##size(bus_space_tag_t tag, \
-		bus_space_handle_t handle, bus_size_t offset) \
-	{ \
-		type value; \
-		if (tag == I386_BUS_SPACE_IO) \
-			value = fun(handle + offset); \
-		else \
-			value = *(volatile type *)(handle + offset); \
-		if (tag == I386_BUS_SPACE_IO) \
-			TRACE_BUS_SPACE_RW(("bus_space_read_%s(0x%lx, 0x%lx, 0x%lx) = 0x%lx\n", \
-				#size, (uint32)tag, (uint32)handle, (uint32)offset, (uint32)value)); \
-		return value; \
-	}
-
-#define BUS_SPACE_WRITE(size, type, fun) \
-	void bus_space_write_##size(bus_space_tag_t tag, \
-		bus_space_handle_t handle, bus_size_t offset, type value) \
-	{ \
-		if (tag == I386_BUS_SPACE_IO) \
-			TRACE_BUS_SPACE_RW(("bus_space_write_%s(0x%lx, 0x%lx, 0x%lx, 0x%lx)\n", \
-				#size, (uint32)tag, (uint32)handle, (uint32)offset, (uint32)value)); \
-		if (tag == I386_BUS_SPACE_IO) \
-			fun(value, handle + offset); \
-		else \
-			*(volatile type *)(handle + offset) = value; \
-	}
-
-BUS_SPACE_READ(1, uint8_t, in8)
-BUS_SPACE_READ(2, uint16_t, in16)
-BUS_SPACE_READ(4, uint32_t, in32)
-
-BUS_SPACE_WRITE(1, uint8_t, out8)
-BUS_SPACE_WRITE(2, uint16_t, out16)
-BUS_SPACE_WRITE(4, uint32_t, out32)
-
 int
 bus_child_present(device_t child)
 {
@@ -546,6 +571,16 @@ bus_child_present(device_t child)
 
 	return bus_child_present(parent);
 }
+
+
+void
+bus_enumerate_hinted_children(device_t bus)
+{
+#if 0
+	UNIMPLEMENTED();
+#endif
+}
+
 
 
 //	#pragma mark - PCI functions
@@ -967,8 +1002,8 @@ pci_set_powerstate(device_t dev, int newPowerState)
 	}
 
 	TRACE_PCI(dev, "%s: D%i -> D%i\n", __func__, oldPowerState, newPowerState);
-	pci_write_config(dev, capabilityRegister + PCIR_POWER_STATUS, newPowerState,
-		2);
+	pci_write_config(dev, capabilityRegister + PCIR_POWER_STATUS,
+		newPowerManagementStatus, 2);
 	if (stateTransitionDelayInUs != 0)
 		snooze(stateTransitionDelayInUs);
 

@@ -8,6 +8,8 @@
 #ifndef PLAYLIST_LIST_VIEW_H
 #define PLAYLIST_LIST_VIEW_H
 
+#include <PopUpMenu.h>
+
 #include "ListViews.h"
 
 class CommandStack;
@@ -41,7 +43,7 @@ public:
 									BRect frame) const;
 
 	// PlaylistListView
-			void				RefsReceived(BMessage* message,
+			void				ItemsReceived(const BMessage* message,
 									int32 appendIndex);
 
 			void				Randomize();
@@ -63,6 +65,9 @@ private:
 			void				_SetCurrentPlaylistIndex(int32 index);
 			void				_SetPlaybackState(uint32 state);
 
+			void				_AddDropContextMenu();
+			uint32				_ShowDropContextMenu(BPoint loc);
+
 			Playlist*			fPlaylist;
 			PlaylistObserver*	fPlaylistObserver;
 
@@ -76,6 +81,8 @@ private:
 
 			font_height			fFontHeight;
 			Item*				fLastClickedItem;
+
+			BPopUpMenu*			fDropContextMenu;
 };
 
 #endif // PLAYLIST_LIST_VIEW_H

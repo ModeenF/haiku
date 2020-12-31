@@ -16,12 +16,12 @@
 #include <Locale.h>
 #include <MediaFile.h>
 #include <MediaNode.h>
+#include <MediaRecorder.h>
 #include <MediaTrack.h>
 #include <SoundPlayer.h>
 #include <Window.h>
 
 #include "DrawButton.h"
-#include "MediaRecorder.h"
 #include "ScopeView.h"
 #include "SoundListView.h"
 #include "TransportButton.h"
@@ -40,9 +40,6 @@ class SoundListView;
 class BScrollView;
 class BSlider;
 class BStringView;
-
-
-using BPrivate::media::BMediaRecorder;
 
 
 class RecorderWindow : public BWindow {
@@ -96,6 +93,7 @@ private:
 		BMediaRecorder * fRecorder;
 		BSoundPlayer * fPlayer;
 		bool fRecording;
+		bool fExternalConnection;
 		SoundListView * fSoundList;
 		BDirectory fTempDir;
 		int fTempCount;

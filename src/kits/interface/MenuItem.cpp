@@ -15,6 +15,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <algorithm>
+
 #include <Bitmap.h>
 #include <ControlLook.h>
 #include <MenuItem.h>
@@ -27,11 +29,11 @@
 #include "utf8_functions.h"
 
 
-const float kLightBGTint = (B_LIGHTEN_1_TINT + B_LIGHTEN_1_TINT + B_NO_TINT) / 3.0;
+static const float kMarkTint = 0.75f;
 
 // map control key shortcuts to drawable Unicode characters
 // cf. http://unicode.org/charts/PDF/U2190.pdf
-const char *kUTF8ControlMap[] = {
+const char* kUTF8ControlMap[] = {
 	NULL,
 	"\xe2\x86\xb8", /* B_HOME U+21B8 */
 	NULL, NULL,
@@ -40,8 +42,7 @@ const char *kUTF8ControlMap[] = {
 	NULL, NULL,
 	NULL, /* B_BACKSPACE */
 	"\xe2\x86\xb9", /* B_TAB U+21B9 */
-	"\xe2\x86\xb5", /* B_ENTER, U+21B5 */
-	//"\xe2\x8f\x8e", /* B_ENTER, U+23CE it's the official one */
+	"\xe2\x8f\x8e", /* B_ENTER, U+23CE */
 	NULL, /* B_PAGE_UP */
 	NULL, /* B_PAGE_DOWN */
 	NULL, NULL, NULL,
@@ -52,6 +53,7 @@ const char *kUTF8ControlMap[] = {
 	"\xe2\x86\x91", /* B_UP_ARROW */
 	"\xe2\x86\x93", /* B_DOWN_ARROW */
 };
+
 
 using BPrivate::MenuPrivate;
 
@@ -86,7 +88,7 @@ BMenuItem::BMenuItem(BMessage* data)
 	_InitData();
 
 	if (data->HasString("_label")) {
-		const char *string;
+		const char* string;
 
 		data->FindString("_label", &string);
 		SetLabel(string);
@@ -114,16 +116,16 @@ BMenuItem::BMenuItem(BMessage* data)
 	}
 
 	if (data->HasMessage("_msg")) {
-		BMessage *msg = new BMessage;
-		data->FindMessage("_msg", msg);
-		SetMessage(msg);
+		BMessage* message = new BMessage;
+		data->FindMessage("_msg", message);
+		SetMessage(message);
 	}
 
 	BMessage subMessage;
 	if (data->FindMessage("_submenu", &subMessage) == B_OK) {
 		BArchivable* object = instantiate_object(&subMessage);
 		if (object != NULL) {
-			BMenu* menu = dynamic_cast<BMenu *>(object);
+			BMenu* menu = dynamic_cast<BMenu*>(object);
 			if (menu != NULL)
 				_InitMenuData(menu);
 		}
@@ -144,41 +146,44 @@ BMenuItem::Instantiate(BMessage* data)
 status_t
 BMenuItem::Archive(BMessage* data, bool deep) const
 {
-	status_t ret = BArchivable::Archive(data, deep);
+	status_t status = BArchivable::Archive(data, deep);
 
-	if (ret == B_OK && fLabel)
-		ret = data->AddString("_label", Label());
+	if (status == B_OK && fLabel)
+		status = data->AddString("_label", Label());
 
-	if (ret == B_OK && !IsEnabled())
-		ret = data->AddBool("_disable", true);
+	if (status == B_OK && !IsEnabled())
+		status = data->AddBool("_disable", true);
 
-	if (ret == B_OK && IsMarked())
-		ret = data->AddBool("_marked", true);
+	if (status == B_OK && IsMarked())
+		status = data->AddBool("_marked", true);
 
-	if (ret == B_OK && fUserTrigger)
-		ret = data->AddInt32("_user_trig", fUserTrigger);
+	if (status == B_OK && fUserTrigger)
+		status = data->AddInt32("_user_trig", fUserTrigger);
 
-	if (ret == B_OK && fShortcutChar) {
-		ret = data->AddInt32("_shortcut", fShortcutChar);
-		if (ret == B_OK)
-			ret = data->AddInt32("_mods", fModifiers);
+	if (status == B_OK && fShortcutChar) {
+		status = data->AddInt32("_shortcut", fShortcutChar);
+		if (status == B_OK)
+			status = data->AddInt32("_mods", fModifiers);
 	}
 
-	if (ret == B_OK && Message())
-		ret = data->AddMessage("_msg", Message());
+	if (status == B_OK && Message() != NULL)
+		status = data->AddMessage("_msg", Message());
 
-	if (ret == B_OK && deep && fSubmenu) {
+	if (status == B_OK && deep && fSubmenu) {
 		BMessage submenu;
 		if (fSubmenu->Archive(&submenu, true) == B_OK)
-			ret = data->AddMessage("_submenu", &submenu);
+			status = data->AddMessage("_submenu", &submenu);
 	}
 
-	return ret;
+	return status;
 }
 
 
 BMenuItem::~BMenuItem()
 {
+	if (fSuper != NULL)
+		fSuper->RemoveItem(this);
+
 	free(fLabel);
 	delete fSubmenu;
 }
@@ -283,7 +288,7 @@ BMenuItem::SetShortcut(char shortcut, uint32 modifiers)
 	if (fShortcutChar != 0 && (fModifiers & B_COMMAND_KEY) && fWindow)
 		fWindow->AddShortcut(fShortcutChar, fModifiers, this);
 
-	if (fSuper) {
+	if (fSuper != NULL) {
 		fSuper->InvalidateLayout();
 
 		if (fSuper->LockLooper()) {
@@ -448,31 +453,14 @@ BMenuItem::Draw()
 	const color_which lowColor = fSuper->LowUIColor();
 	const color_which highColor = fSuper->HighUIColor();
 
-	bool enabled = IsEnabled();
-	bool selected = IsSelected();
-	bool activated = selected && (enabled || Submenu() != NULL);
+	fSuper->SetLowColor(_LowColor());
+	fSuper->SetHighColor(_HighColor());
 
-	// set low color
-	if (activated) {
-		fSuper->SetLowColor(ui_color(B_MENU_SELECTED_BACKGROUND_COLOR));
+	if (_IsActivated()) {
 		// fill in the background
-		BRect rect(Frame());
-		be_control_look->DrawMenuItemBackground(fSuper, rect, Frame(),
+		BRect frame(Frame());
+		be_control_look->DrawMenuItemBackground(fSuper, frame, frame,
 			fSuper->LowColor(), BControlLook::B_ACTIVATED);
-	} else
-		fSuper->SetLowColor(ui_color(B_MENU_BACKGROUND_COLOR));
-
-	// set high color
-	if (activated && enabled)
-		fSuper->SetHighColor(ui_color(B_MENU_SELECTED_ITEM_TEXT_COLOR));
-	else if (enabled)
-		fSuper->SetHighColor(ui_color(B_MENU_ITEM_TEXT_COLOR));
-	else {
-		rgb_color bgColor = fSuper->LowColor();
-		if (bgColor.red + bgColor.green + bgColor.blue > 128 * 3)
-			fSuper->SetHighColor(tint_color(bgColor, B_DISABLED_LABEL_TINT));
-		else
-			fSuper->SetHighColor(tint_color(bgColor, B_LIGHTEN_2_TINT));
 	}
 
 	// draw content
@@ -480,15 +468,16 @@ BMenuItem::Draw()
 	DrawContent();
 
 	// draw extra symbols
-	const menu_layout layout = MenuPrivate(fSuper).Layout();
+	MenuPrivate privateAccessor(fSuper);
+	const menu_layout layout = privateAccessor.Layout();
 	if (layout == B_ITEMS_IN_COLUMN) {
 		if (IsMarked())
 			_DrawMarkSymbol();
 
 		if (fShortcutChar)
-			_DrawShortcutSymbol();
+			_DrawShortcutSymbol(privateAccessor.HasSubmenus());
 
-		if (Submenu())
+		if (Submenu() != NULL)
 			_DrawSubmenuSymbol();
 	}
 
@@ -675,6 +664,45 @@ BMenuItem::Select(bool selected)
 }
 
 
+bool
+BMenuItem::_IsActivated()
+{
+	return IsSelected() && (IsEnabled() || fSubmenu != NULL);
+}
+
+
+rgb_color
+BMenuItem::_LowColor()
+{
+	return _IsActivated() ? ui_color(B_MENU_SELECTED_BACKGROUND_COLOR)
+		: ui_color(B_MENU_BACKGROUND_COLOR);
+}
+
+
+rgb_color
+BMenuItem::_HighColor()
+{
+	rgb_color highColor;
+
+	bool isEnabled = IsEnabled();
+	bool isSelected = IsSelected();
+
+	if (isEnabled && isSelected)
+		highColor = ui_color(B_MENU_SELECTED_ITEM_TEXT_COLOR);
+	else if (isEnabled)
+		highColor = ui_color(B_MENU_ITEM_TEXT_COLOR);
+	else {
+		rgb_color bgColor = fSuper->LowColor();
+		if (bgColor.red + bgColor.green + bgColor.blue > 128 * 3)
+			highColor = tint_color(bgColor, B_DISABLED_LABEL_TINT);
+		else
+			highColor = tint_color(bgColor, B_LIGHTEN_2_TINT);
+	}
+
+	return highColor;
+}
+
+
 void
 BMenuItem::_DrawMarkSymbol()
 {
@@ -690,7 +718,7 @@ BMenuItem::_DrawMarkSymbol()
 	BPoint center(floorf((r.left + r.right) / 2.0),
 		floorf((r.top + r.bottom) / 2.0));
 
-	float size = min_c(r.Height() - 2, r.Width());
+	float size = std::min(r.Height() - 2, r.Width());
 	r.top = floorf(center.y - size / 2 + 0.5);
 	r.bottom = floorf(center.y + size / 2 + 0.5);
 	r.left = floorf(center.x - size / 2 + 0.5);
@@ -704,6 +732,7 @@ BMenuItem::_DrawMarkSymbol()
 	arrowShape.LineTo(BPoint(center.x - size * 0.25, center.y + size));
 	arrowShape.LineTo(BPoint(center.x + size, center.y - size));
 
+	fSuper->SetHighColor(tint_color(_HighColor(), kMarkTint));
 	fSuper->SetDrawingMode(B_OP_OVER);
 	fSuper->SetPenSize(2.0);
 	// NOTE: StrokeShape() offsets the shape by the current pen position,
@@ -716,16 +745,18 @@ BMenuItem::_DrawMarkSymbol()
 
 
 void
-BMenuItem::_DrawShortcutSymbol()
+BMenuItem::_DrawShortcutSymbol(bool submenus)
 {
 	BMenu* menu = fSuper;
 	BFont font;
 	menu->GetFont(&font);
 	BPoint where = ContentLocation();
+	// Start from the right and walk our way back
 	where.x = fBounds.right - font.Size();
 
-	if (fSubmenu)
-		where.x -= fBounds.Height() - 3;
+	// Leave space for the submenu arrow if any item in the menu has a submenu
+	if (submenus)
+		where.x -= fBounds.Height() / 2;
 
 	const float ascent = MenuPrivate(fSuper).Ascent();
 	if (fShortcutChar < B_SPACE && kUTF8ControlMap[(int)fShortcutChar])
@@ -738,29 +769,29 @@ BMenuItem::_DrawShortcutSymbol()
 
 	// TODO: It would be nice to draw these taking into account the text (low)
 	// color.
-	if (fModifiers & B_COMMAND_KEY) {
-		const BBitmap *command = MenuPrivate::MenuItemCommand();
+	if ((fModifiers & B_COMMAND_KEY) != 0) {
+		const BBitmap* command = MenuPrivate::MenuItemCommand();
 		const BRect &rect = command->Bounds();
 		where.x -= rect.Width() + 1;
 		fSuper->DrawBitmap(command, where);
 	}
 
-	if (fModifiers & B_CONTROL_KEY) {
-		const BBitmap *control = MenuPrivate::MenuItemControl();
+	if ((fModifiers & B_CONTROL_KEY) != 0) {
+		const BBitmap* control = MenuPrivate::MenuItemControl();
 		const BRect &rect = control->Bounds();
 		where.x -= rect.Width() + 1;
 		fSuper->DrawBitmap(control, where);
 	}
 
-	if (fModifiers & B_OPTION_KEY) {
-		const BBitmap *option = MenuPrivate::MenuItemOption();
+	if ((fModifiers & B_OPTION_KEY) != 0) {
+		const BBitmap* option = MenuPrivate::MenuItemOption();
 		const BRect &rect = option->Bounds();
 		where.x -= rect.Width() + 1;
 		fSuper->DrawBitmap(option, where);
 	}
 
-	if (fModifiers & B_SHIFT_KEY) {
-		const BBitmap *shift = MenuPrivate::MenuItemShift();
+	if ((fModifiers & B_SHIFT_KEY) != 0) {
+		const BBitmap* shift = MenuPrivate::MenuItemShift();
 		const BRect &rect = shift->Bounds();
 		where.x -= rect.Width() + 1;
 		fSuper->DrawBitmap(shift, where);
@@ -773,36 +804,18 @@ BMenuItem::_DrawSubmenuSymbol()
 {
 	fSuper->PushState();
 
-	BRect r(fBounds);
-	float rightMargin;
-	MenuPrivate(fSuper).GetItemMargins(NULL, NULL, &rightMargin, NULL);
-	r.left = r.right - rightMargin + 3;
-	r.right -= 1;
+	float symbolSize = roundf(Frame().Height() * 2 / 3);
 
-	BPoint center(floorf((r.left + r.right) / 2.0),
-		floorf((r.top + r.bottom) / 2.0));
+	BRect rect(fBounds);
+	rect.left = rect.right - symbolSize;
 
-	float size = min_c(r.Height() - 2, r.Width());
-	r.top = floorf(center.y - size / 2 + 0.5);
-	r.bottom = floorf(center.y + size / 2 + 0.5);
-	r.left = floorf(center.x - size / 2 + 0.5);
-	r.right = floorf(center.x + size / 2 + 0.5);
+	// 14px by default, scaled with font size up to right margin - padding
+	BRect symbolRect(0, 0, symbolSize, symbolSize);
+	symbolRect.OffsetTo(BPoint(rect.left,
+		fBounds.top + (fBounds.Height() - symbolSize) / 2));
 
-	BShape arrowShape;
-	center.x += 0.5;
-	center.y += 0.5;
-	size *= 0.25;
-	float hSize = size * 0.7;
-	arrowShape.MoveTo(BPoint(center.x - hSize, center.y - size));
-	arrowShape.LineTo(BPoint(center.x + hSize, center.y));
-	arrowShape.LineTo(BPoint(center.x - hSize, center.y + size));
-
-	fSuper->SetDrawingMode(B_OP_OVER);
-	fSuper->SetPenSize(ceilf(size * 0.4));
-	// NOTE: StrokeShape() offsets the shape by the current pen position,
-	// it is not documented in the BeBook, but it is true!
-	fSuper->MovePenTo(B_ORIGIN);
-	fSuper->StrokeShape(&arrowShape);
+	be_control_look->DrawArrowShape(Menu(), symbolRect, symbolRect,
+		_HighColor(), BControlLook::B_RIGHT_ARROW, 0, kMarkTint);
 
 	fSuper->PopState();
 }

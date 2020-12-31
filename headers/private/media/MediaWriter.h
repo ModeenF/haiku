@@ -23,6 +23,8 @@ public:
 
 			status_t			InitCheck();
 
+			BDataIO*			Target() const;
+
 			void				GetFileFormatInfo(media_file_format* mfi) const;
 
 			status_t			CreateEncoder(Encoder** _encoder,

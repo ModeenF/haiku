@@ -57,8 +57,10 @@ NodePreloader::InstallNodePreloader(const char* name, BLooper* host)
 	NodePreloader* result = new NodePreloader(name);
 	{
 		AutoLock<BLooper> lock(host);
-		if (!lock)
+		if (!lock) {
+			delete result;
 			return NULL;
+		}
 
 		host->AddHandler(result);
 	}
@@ -165,7 +167,7 @@ NodePreloader::PreloadOne(const char* dirPath)
 {
 	//PRINT(("preloading directory %s\n", dirPath));
 	BDirectory dir(dirPath);
-	if (!dir.InitCheck() == B_OK)
+	if (dir.InitCheck() != B_OK)
 		return;
 
 	node_ref nodeRef;

@@ -20,7 +20,7 @@
 
 #include <TimeSource.h>
 #include <MediaRoster.h>
-#include "debug.h"
+#include "MediaDebug.h"
 
 
 #define SEND_NEW_BUFFER_EVENT (BTimedEventQueue::B_USER_EVENT + 1)
@@ -352,7 +352,7 @@ SoundPlayNode::PrepareToConnect(const media_source& what,
 		channel_count = *(uint32 *)&format->user_data[4];
 		frame_rate = *(float *)&format->user_data[20];
 		TRACE("SoundPlayNode::PrepareToConnect: found mixer info: "
-			"channel_count %ld, frame_rate %.1f\n", channel_count, frame_rate);
+			"channel_count %" B_PRId32 " , frame_rate %.1f\n", channel_count, frame_rate);
 	}
 
 	media_format default_format;
@@ -419,7 +419,8 @@ SoundPlayNode::Connect(status_t error, const media_source& source,
 	// Do so, then make sure we get our events early enough.
 	media_node_id id;
 	FindLatencyFor(fOutput.destination, &fLatency, &id);
-	TRACE("SoundPlayNode::Connect: downstream latency = %Ld\n", fLatency);
+	TRACE("SoundPlayNode::Connect: downstream latency = %" B_PRId64 "\n",
+		fLatency);
 
 	// reset our buffer duration, etc. to avoid later calculations
 	bigtime_t duration = ((fOutput.format.u.raw_audio.buffer_size * 1000000LL)
@@ -428,10 +429,11 @@ SoundPlayNode::Connect(status_t error, const media_source& source,
 			* fOutput.format.u.raw_audio.channel_count))
 		/ (int32)fOutput.format.u.raw_audio.frame_rate;
 	SetBufferDuration(duration);
-	TRACE("SoundPlayNode::Connect: buffer duration is %Ld\n", duration);
+	TRACE("SoundPlayNode::Connect: buffer duration is %" B_PRId64 "\n",
+		duration);
 
 	fInternalLatency = (3 * BufferDuration()) / 4;
-	TRACE("SoundPlayNode::Connect: using %Ld as internal latency\n",
+	TRACE("SoundPlayNode::Connect: using %" B_PRId64 " as internal latency\n",
 		fInternalLatency);
 	SetEventLatency(fLatency + fInternalLatency);
 
@@ -624,7 +626,7 @@ SoundPlayNode::SendNewBuffer(const media_timed_event* event,
 	bigtime_t lateness, bool realTimeEvent)
 {
 	CALLED();
-	// printf("latency = %12Ld, event = %12Ld, sched = %5Ld, arrive at %12Ld, now %12Ld, current lateness %12Ld\n", EventLatency() + SchedulingLatency(), EventLatency(), SchedulingLatency(), event->event_time, TimeSource()->Now(), lateness);
+	// TRACE("latency = %12Ld, event = %12Ld, sched = %5Ld, arrive at %12Ld, now %12Ld, current lateness %12Ld\n", EventLatency() + SchedulingLatency(), EventLatency(), SchedulingLatency(), event->event_time, TimeSource()->Now(), lateness);
 
 	// make sure we're both started *and* connected before delivering a buffer
 	if (RunState() != BMediaEventLooper::B_STARTED
@@ -638,7 +640,7 @@ SoundPlayNode::SendNewBuffer(const media_timed_event* event,
 	// lateness is independent of EventLatency()!
 
 	if (lateness > (BufferDuration() / 3) ) {
-		printf("SoundPlayNode::SendNewBuffer, event scheduled much too late, "
+		TRACE("SoundPlayNode::SendNewBuffer, event scheduled much too late, "
 			"lateness is %" B_PRId64 "\n", lateness);
 	}
 
@@ -655,13 +657,13 @@ SoundPlayNode::SendNewBuffer(const media_timed_event* event,
 			bigtime_t how_early = event->event_time - TimeSource()->Now() - fLatency - fInternalLatency;
 			if (how_early > 5000) {
 
-				printf("SoundPlayNode::SendNewBuffer, event scheduled too early, how_early is %Ld\n", how_early);
+				TRACE("SoundPlayNode::SendNewBuffer, event scheduled too early, how_early is %Ld\n", how_early);
 
 				if (fTooEarlyCount++ == 5) {
 					fInternalLatency -= how_early;
 					if (fInternalLatency < 500)
 						fInternalLatency = 500;
-					printf("SoundPlayNode::SendNewBuffer setting internal latency to %Ld\n", fInternalLatency);
+					TRACE("SoundPlayNode::SendNewBuffer setting internal latency to %Ld\n", fInternalLatency);
 					SetEventLatency(fLatency + fInternalLatency);
 					fTooEarlyCount = 0;
 				}
@@ -672,7 +674,7 @@ SoundPlayNode::SendNewBuffer(const media_timed_event* event,
 					!= B_OK) {
 				// we need to recycle the buffer
 				// if the call to SendBuffer() fails
-				printf("SoundPlayNode::SendNewBuffer: Buffer sending "
+				TRACE("SoundPlayNode::SendNewBuffer: Buffer sending "
 					"failed\n");
 				buffer->Recycle();
 			}

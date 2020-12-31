@@ -22,6 +22,7 @@
 #include "DecoderPlugin.h"
 #include "EncoderPlugin.h"
 #include "ReaderPlugin.h"
+#include "StreamerPlugin.h"
 #include "WriterPlugin.h"
 
 
@@ -42,6 +43,9 @@ public:
 									const media_format& outputFormat);
 
 			status_t			GetReaders(entry_ref* _ref,
+									int32* _count, int32 maxCount);
+
+			status_t			GetStreamers(entry_ref* _ref,
 									int32* _count, int32 maxCount);
 
 			status_t			GetEncoder(entry_ref* _ref, int32 id);
@@ -71,6 +75,9 @@ private:
 			void				_RegisterWriter(WriterPlugin* writer,
 									const entry_ref& ref);
 			void				_RegisterEncoder(EncoderPlugin* encoder,
+									const entry_ref& ref);
+
+			void				_RegisterStreamer(StreamerPlugin* streamer,
 									const entry_ref& ref);
 
 			bool				_FindDecoder(const media_format& format,
@@ -105,12 +112,16 @@ private:
 				media_format		intputFormat;
 				media_format		outputFormat;
 			};
+			struct streamer_info {
+				entry_ref			ref;
+			};
 
 			BLocker				fLock;
 			List<reader_info>	fReaderList;
 			List<writer_info>	fWriterList;
 			List<decoder_info>	fDecoderList;
 			List<encoder_info>	fEncoderList;
+			List<streamer_info> fStreamerList;
 
 			List<media_file_format> fWriterFileFormats;
 

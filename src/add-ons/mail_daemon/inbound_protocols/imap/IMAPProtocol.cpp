@@ -38,8 +38,23 @@ IMAPProtocol::IMAPProtocol(const BMailAccountSettings& settings)
 
 IMAPProtocol::~IMAPProtocol()
 {
-}
+	MutexLocker locker(fWorkerLock);
+	std::vector<thread_id> threads;
+	for (int32 i = 0; i < fWorkers.CountItems(); i++) {
+		threads.push_back(fWorkers.ItemAt(i)->Thread());
+		fWorkers.ItemAt(i)->Quit();
+	}
+	locker.Unlock();
 
+	for (uint32 i = 0; i < threads.size(); i++)
+		wait_for_thread(threads[i], NULL);
+
+	FolderMap::iterator iterator = fFolders.begin();
+	for (; iterator != fFolders.end(); iterator++) {
+		IMAPFolder* folder = iterator->second;
+		delete folder; // to stop thread
+	}
+}
 
 status_t
 IMAPProtocol::CheckSubscribedFolders(IMAP::Protocol& protocol, bool idle)
@@ -70,7 +85,7 @@ IMAPProtocol::CheckSubscribedFolders(IMAP::Protocol& protocol, bool idle)
 
 	if (newFolders.IsEmpty() && fWorkers.CountItems() == workersWanted) {
 		// Nothing to do - we've already distributed everything
-		return B_OK;
+		return _EnqueueCheckMailboxes();
 	}
 
 	// Remove mailboxes from workers
@@ -187,8 +202,8 @@ IMAPProtocol::SyncMessages()
 		worker->EnqueueCheckSubscribedFolders();
 		return worker->Run();
 	}
-
-	return _EnqueueCheckMailboxes();
+	fWorkers.ItemAt(0)->EnqueueCheckSubscribedFolders();
+	return B_OK;
 }
 
 
@@ -196,14 +211,6 @@ status_t
 IMAPProtocol::MarkMessageAsRead(const entry_ref& ref, read_flags flags)
 {
 	printf("IMAP: mark as read %s: %d\n", ref.name, flags);
-	return B_ERROR;
-}
-
-
-status_t
-IMAPProtocol::AppendMessage(const entry_ref& ref)
-{
-	printf("IMAP: append message %s\n", ref.name);
 	return B_ERROR;
 }
 
@@ -244,14 +251,6 @@ IMAPProtocol::HandleFetchBody(const entry_ref& ref, const BMessenger& replyTo)
 
 	IMAPConnectionWorker* worker = found->second;
 	return worker->EnqueueFetchBody(*folder, uid, replyTo);
-}
-
-
-status_t
-IMAPProtocol::HandleDeleteMessage(const entry_ref& ref)
-{
-	printf("IMAP: delete message %s\n", ref.name);
-	return B_ERROR;
 }
 
 
@@ -297,6 +296,7 @@ IMAPProtocol::_CreateFolder(const BString& mailbox, const BString& separator)
 	if (status != B_OK) {
 		fprintf(stderr, "Initializing folder %s failed: %s\n", path.Path(),
 			strerror(status));
+		delete folder;
 		return NULL;
 	}
 

@@ -149,7 +149,7 @@ DownloadWindow::DownloadWindow(BRect frame, bool visible,
 	menu->AddItem(newWindowItem);
 	newWindowItem->SetTarget(be_app);
 	menu->AddSeparatorItem();
-	menu->AddItem(new BMenuItem(B_TRANSLATE("Hide"),
+	menu->AddItem(new BMenuItem(B_TRANSLATE("Close"),
 		new BMessage(B_QUIT_REQUESTED), 'D'));
 	menuBar->AddItem(menu);
 
@@ -182,6 +182,7 @@ DownloadWindow::DownloadWindow(BRect frame, bool visible,
 	if (!visible)
 		Hide();
 	Show();
+	MoveOnScreen(B_MOVE_IF_PARTIALLY_OFFSCREEN);
 }
 
 
@@ -219,6 +220,13 @@ DownloadWindow::DispatchMessage(BMessage* message, BHandler* target)
 		}
 	}
 	BWindow::DispatchMessage(message, target);
+}
+
+
+void
+DownloadWindow::FrameResized(float newWidth, float newHeight)
+{
+	MoveOnScreen(B_DO_NOT_RESIZE_TO_FIT | B_MOVE_IF_PARTIALLY_OFFSCREEN);
 }
 
 

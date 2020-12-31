@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 Haiku, Inc. All rights reserved.
+ * Copyright 2012-2016 Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -21,7 +21,7 @@
 // AUX i2c Communications
 #define DP_AUX_I2C_WRITE                       0x0
 #define DP_AUX_I2C_READ                        0x1
-#define DP_AUX_I2C_STATUS                      0x2
+#define DP_AUX_I2C_WRITE_STATUS_UPDATE         0x2
 #define DP_AUX_I2C_MOT                         0x4
 #define DP_AUX_I2C_REPLY_ACK                   (0x0 << 2)
 #define DP_AUX_I2C_REPLY_NACK                  (0x1 << 2)
@@ -42,6 +42,7 @@
 #define DP_DPCD_REV_MAJOR_MASK				(15 << 4)	// Int
 #define DP_DPCD_REV_10						0x0010		// Value
 #define DP_DPCD_REV_11						0x0011		// Value
+#define DP_DPCD_REV_12						0x0012		// Value
 // DP Maximum Link Rate (0x1)
 #define DP_MAX_LINK_RATE					0x0001		// Reg
 // Use DP_LINK_RATE_* for speed.
@@ -169,12 +170,12 @@
 #define DP_LANE_STATUS_CR_DONE_B			(1 << 4)	// Bool
 #define DP_LANE_STATUS_CHEQ_DONE_B			(1 << 5)	// Bool
 #define DP_LANE_STATUS_SYMB_LOCK_B			(1 << 6)	// Bool
-#define DP_LANE_STATUS_EQUALIZED_A			DP_LANE_STATUS_CR_DONE_A \
-											|| DP_LANE_STATUS_CHEQ_DONE_A \
-											|| DP_LANE_STATUS_SYMB_LOCK_A
-#define DP_LANE_STATUS_EQUALIZED_B			DP_LANE_STATUS_CR_DONE_B \
-											|| DP_LANE_STATUS_CHEQ_DONE_B \
-											|| DP_LANE_STATUS_SYMB_LOCK_B
+#define DP_LANE_STATUS_EQUALIZED_A			(DP_LANE_STATUS_CR_DONE_A \
+											| DP_LANE_STATUS_CHEQ_DONE_A \
+											| DP_LANE_STATUS_SYMB_LOCK_A)
+#define DP_LANE_STATUS_EQUALIZED_B			(DP_LANE_STATUS_CR_DONE_B \
+											| DP_LANE_STATUS_CHEQ_DONE_B \
+											| DP_LANE_STATUS_SYMB_LOCK_B)
 // DP Lane Align Status (0x0204)
 #define DP_LANE_ALIGN						0x0204		// Reg
 #define DP_LANE_ALIGN_DONE					(1 << 0)	// Bool

@@ -223,8 +223,8 @@ PackageView::MessageReceived(BMessage* message)
 					"distributor."),
 				B_TRANSLATE("OK"),
 				NULL, NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
-			fprintf(stderr,
-				B_TRANSLATE("Error while installing the package\n"));
+			fputs(B_TRANSLATE("Error while installing the package\n"),
+				stderr);
 			notify->SetFlags(notify->Flags() | B_CLOSE_ON_ESCAPE);
 			notify->Go();
 			fStatusWindow->Hide();
@@ -339,17 +339,17 @@ PackageView::ItemExists(PackageItem& item, BPath& path, int32& policy)
 			switch (item.ItemKind()) {
 				case P_KIND_SCRIPT:
 					formatString = B_TRANSLATE("The script named \'%s\' "
-						"already exits in the given path.\nReplace the script "
+						"already exists in the given path.\nReplace the script "
 						"with the one from this package or skip it?");
 					break;
 				case P_KIND_FILE:
 					formatString = B_TRANSLATE("The file named \'%s\' already "
-						"exits in the given path.\nReplace the file with the "
+						"exists in the given path.\nReplace the file with the "
 						"one from this package or skip it?");
 					break;
 				case P_KIND_DIRECTORY:
 					formatString = B_TRANSLATE("The directory named \'%s\' "
-						"already exits in the given path.\nReplace the "
+						"already exists in the given path.\nReplace the "
 						"directory with one from this package or skip it?");
 					break;
 				case P_KIND_SYM_LINK:
@@ -359,7 +359,7 @@ PackageView::ItemExists(PackageItem& item, BPath& path, int32& policy)
 					break;
 				default:
 					formatString = B_TRANSLATE("The item named \'%s\' already "
-						"exits in the given path.\nReplace the item with the "
+						"exists in the given path.\nReplace the item with the "
 						"one from this package or skip it?");
 					break;
 			}
@@ -390,7 +390,7 @@ PackageView::ItemExists(PackageItem& item, BPath& path, int32& policy)
 				// TODO: Maybe add 'No, but ask again' type of choice as well?
 				alertString = B_TRANSLATE("Do you want to remember this "
 					"decision for the rest of this installation?\n");
-				
+
 				BString actionString;
 				if (choice == P_EXISTS_OVERWRITE) {
 					alertString << B_TRANSLATE(
@@ -645,7 +645,7 @@ PackageView::_InstallTypeChanged(int32 index)
 
 			char volumeName[B_FILE_NAME_LENGTH];
 			volume.GetName(volumeName);
-	
+
 			BMenuItem* item = _AddDestinationMenuItem(volumeName,
 				volume.FreeBytes(), path.Path());
 

@@ -4,19 +4,7 @@
  * Copyright (C) 2006 Marcus Overhagen <marcus@overhagen.de>
  * Copyright 2015 Axel Dörfler <axeld@pinc-software.de>
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- *
+ * Released under the terms of the MIT license.
  */
 
 
@@ -32,11 +20,11 @@
 #include <Debug.h>
 #include <LayoutBuilder.h>
 #include <MediaDefs.h>
-#include <MessageFormat.h>
 #include <Mime.h>
 #include <NodeInfo.h>
 #include <Screen.h>
 #include <String.h>
+#include <StringFormat.h>
 #include <StringForRate.h>
 #include <StringView.h>
 #include <TextView.h>
@@ -498,7 +486,7 @@ InfoWin::_UpdateAudio()
 			info << bitString << " ";
 		}
 
-		static BMessageFormat channelFormat(B_TRANSLATE(
+		static BStringFormat channelFormat(B_TRANSLATE(
 			"{0, plural, =1{Mono} =2{Stereo} other{# Channels}}"));
 		channelFormat.Format(info, channelCount);
 

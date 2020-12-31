@@ -11,10 +11,8 @@
 #include <string.h>
 
 #include "encodings.h"
-extern "C" {
 #include "util.h"
 extern int debug_encodings;
-}
 
 #define TOUCH(x) ((void)(x))
 
@@ -1148,10 +1146,6 @@ status_t unicode_to_utf8(const uchar *uni, uint32 unilen, uint8 *utf8,
 }
 
 // from dir.c
-extern "C" {
-	extern const char acceptable[];
-	extern const char illegal[];
-}
 const char underbar[] = "+,;=[]"
 		"\x83\x85\x88\x89\x8A\x8B\x8C\x8D"
 		"\x93\x95\x96\x97\x98"
@@ -1180,7 +1174,7 @@ bool requires_long_name(const char *utf8, const uchar *unicode)
 		if (utf8[i] == '.') break;
 		/* XXX: should also check for upper-ascii stuff (requires matching
 		 * unicode with msdostou table, but doesn't hurt for now */
-		if (!strchr(acceptable, utf8[i])) return true;
+		if (!strchr(sAcceptable, utf8[i])) return true;
 	}
 
 	if (utf8[i] == 0) return false;
@@ -1191,7 +1185,7 @@ bool requires_long_name(const char *utf8, const uchar *unicode)
 	for (j=0;j<3;j++,i++) {
 		if (utf8[i] == 0) return false;
 		/* XXX: same here */
-		if (!strchr(acceptable, utf8[i])) return true;
+		if (!strchr(sAcceptable, utf8[i])) return true;
 	}
 
 	return (utf8[i] == 0) ? false : true;
@@ -1339,7 +1333,7 @@ generate_short_name_msdos(const uchar *utf8, const uint16 *uni,
 				break;
 
 		if (c < 0x100) {
-			if (strchr(illegal, c)) return EINVAL;
+			if (strchr(sIllegal, c)) return EINVAL;
 
 			if ((c >= 'a') && (c <= 'z'))
 				nshort[i++] = c - 'a' + 'A';
@@ -1347,7 +1341,7 @@ generate_short_name_msdos(const uchar *utf8, const uint16 *uni,
 				nshort[i++] = '_';
 			else if ((cp = strchr(capitalize_from, c)) != NULL)
 				nshort[i++] = capitalize_to[(int)(cp - capitalize_from)];
-			else if (strchr(acceptable, c) || strchr(capitalize_to, c))
+			else if (strchr(sAcceptable, c) || strchr(capitalize_to, c))
 				nshort[i++] = c;
 		}
 	}
@@ -1373,7 +1367,7 @@ generate_short_name_msdos(const uchar *utf8, const uint16 *uni,
 				break;
 
 		if (c < 0x100) {
-			if (strchr(illegal, c)) return EINVAL;
+			if (strchr(sIllegal, c)) return EINVAL;
 
 			if ((c >= 'a') && (c <= 'z'))
 				nshort[i++] = c - 'a' + 'A';
@@ -1381,7 +1375,7 @@ generate_short_name_msdos(const uchar *utf8, const uint16 *uni,
 				nshort[i++] = '_';
 			else if ((cp = strchr(capitalize_from, c)) != NULL)
 				nshort[i++] = capitalize_to[(int)(cp - capitalize_from)];
-			else if (strchr(acceptable, c) || strchr(capitalize_to, c))
+			else if (strchr(sAcceptable, c) || strchr(capitalize_to, c))
 				nshort[i++] = c;
 		}
 	}
@@ -1507,7 +1501,7 @@ status_t generate_short_name(const uchar *name, const uchar *uni,
 /* called to convert a short ms-dos filename to utf8.
    XXX: encoding is assumed to be standard US code page, never shift-JIS
 */
-status_t msdos_to_utf8(uchar *msdos, uchar *utf8, uint32 utf8len, bool toLower)
+status_t msdos_to_utf8(uchar *msdos, uchar *utf8, uint32 utf8len, uint8 toLower)
 {
 	uchar normalized[8+1+3+1];
 	int32 i, pos;
@@ -1516,16 +1510,19 @@ status_t msdos_to_utf8(uchar *msdos, uchar *utf8, uint32 utf8len, bool toLower)
 
 	pos = 0;
 	for (i=0;i<8;i++) {
-		if (msdos[i] == ' ') break;
+		if (msdos[i] == ' ')
+			break;
 		normalized[pos++] = ((i == 0) && (msdos[i] == 5)) ? 0xe5 :
-			(toLower ? tolower(msdos[i]) : msdos[i]);
+			((toLower & 0x08) ? tolower(msdos[i]) : msdos[i]);
 	}
 
 	if (msdos[8] != ' ') {
 		normalized[pos++] = '.';
 		for (i=8;i<11;i++) {
-			if (msdos[i] == ' ') break;
-			normalized[pos++] = (toLower ? tolower(msdos[i]) : msdos[i]);
+			if (msdos[i] == ' ')
+				break;
+			normalized[pos++]
+				= ((toLower & 0x10) ? tolower(msdos[i]) : msdos[i]);
 		}
 	}
 
@@ -1535,20 +1532,26 @@ status_t msdos_to_utf8(uchar *msdos, uchar *utf8, uint32 utf8len, bool toLower)
 			(char *)utf8, (int32 *)&utf8len);
 }
 
-bool requires_munged_short_name(const uchar *utf8name, const uchar nshort[11], int encoding)
+bool requires_munged_short_name(const uchar *utf8name, const uchar nshort[11],
+	int encoding)
 {
 	int leading = 0;
 	int trailing = 0;
 	int i, len;
 
-	if (encoding != MS_DOS_CONVERSION) return true;
+	if (encoding != MS_DOS_CONVERSION)
+		return true;
 
 	for ( ; *utf8name != 0; utf8name++) {
-		if (!BEGINS_UTF8CHAR(*utf8name)) continue;
-		if (*utf8name == '.') break;
+		if (!BEGINS_UTF8CHAR(*utf8name))
+			continue;
+		if (*utf8name == '.')
+			break;
 		leading++;
-		if (leading > 8) return true;
-		if ((nshort[leading - 1] == '_') && (*utf8name != '_')) return true;
+		if (leading > 8)
+			return true;
+		if ((nshort[leading - 1] == '_') && (*utf8name != '_'))
+			return true;
 	}
 
 	if (*utf8name != 0) {

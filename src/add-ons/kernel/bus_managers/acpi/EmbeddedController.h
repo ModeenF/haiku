@@ -150,7 +150,7 @@ struct acpi_ec_cookie {
 	uint32						ec_glkhandle;
 	mutex						ec_lock;
 	int							ec_burstactive;
-	int							ec_sci_pending;
+	int32						ec_sci_pending;
 	int32						ec_gencount;
 	ConditionVariable			ec_condition_var;
 	int							ec_suspending;
@@ -165,7 +165,7 @@ struct acpi_ec_cookie {
 #define EC_LOCK_TIMEOUT 1000
 
 /* Default delay in microseconds between each run of the status polling loop. */
-#define EC_POLL_DELAY	5
+#define EC_POLL_DELAY	50
 
 /* Total time in ms spent waiting for a response from EC. */
 #define EC_TIMEOUT		750
@@ -178,8 +178,8 @@ struct acpi_ec_cookie {
 
 
 
-static int		ec_burst_mode = 1;
-static int		ec_polled_mode = 0;
+static bool		ec_burst_mode = true;
+static bool		ec_polled_mode = false;
 
 static int		ec_timeout = EC_TIMEOUT;
 
@@ -188,15 +188,13 @@ static status_t
 EcLock(struct acpi_ec_cookie *sc)
 {
 	/* If _GLK is non-zero, acquire the global lock. */
-	status_t status = B_OK;
 	if (sc->ec_glk) {
-		status = sc->ec_acpi_module->acquire_global_lock(EC_LOCK_TIMEOUT,
+		status_t status = sc->ec_acpi_module->acquire_global_lock(EC_LOCK_TIMEOUT,
 			&sc->ec_glkhandle);
 		if (status != B_OK)
 			return status;
 	}
-	mutex_lock(&sc->ec_lock);
-	return status;
+	return mutex_lock(&sc->ec_lock);
 }
 
 

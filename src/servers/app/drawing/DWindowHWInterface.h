@@ -12,6 +12,7 @@
 
 #include "HWInterface.h"
 
+#include <AutoDeleter.h>
 #include <Accelerant.h>
 #include <image.h>
 #include <Region.h>
@@ -56,6 +57,9 @@ public:
 	virtual uint32				DPMSMode();
 	virtual uint32				DPMSCapabilities();
 
+	virtual status_t			SetBrightness(float);
+	virtual status_t			GetBrightness(float*);
+
 	// query for available hardware accleration and perform it
 	virtual	uint32				AvailableHWAcceleration() const;
 
@@ -78,7 +82,8 @@ public:
 			void				SetOffset(int32 left, int32 top);
 
 private:
-			DWindowBuffer*		fFrontBuffer;
+			ObjectDeleter<DWindowBuffer>
+								fFrontBuffer;
 
 			DWindow*			fWindow;
 

@@ -37,9 +37,6 @@
 #include "StatusView.h"
 
 
-static const float kIndentSpacing
-	= be_control_look->DefaultItemSpacing() * 2.3;
-static const uint32 kSettingsViewChanged = 'Svch';
 static const char* kSettingsFileName = "prefs_window_settings";
 
 
@@ -53,8 +50,7 @@ PreferencesWindow::PreferencesWindow(BRect frame)
 		B_NOT_RESIZABLE | B_AUTO_UPDATE_SIZE_LIMITS | B_NOT_ZOOMABLE)
 {
 	// Initial settings (used by revert button)
-	memcpy(&fSettings, static_cast<TBarApp*>(be_app)->Settings(),
-		sizeof(desk_settings));
+	fSettings = *static_cast<TBarApp*>(be_app)->Settings();
 
 	// Menu controls
 	fMenuRecentDocuments = new BCheckBox(B_TRANSLATE("Recent documents:"),
@@ -144,6 +140,8 @@ PreferencesWindow::PreferencesWindow(BRect frame)
 	fWindowAutoRaise->SetTarget(be_app);
 	fWindowAutoHide->SetTarget(be_app);
 
+	const float spacing = be_control_look->DefaultItemSpacing() * 2.3;
+
 	// Applications
 	BBox* appsSettingsBox = new BBox("applications");
 	appsSettingsBox->SetLabel(B_TRANSLATE("Applications"));
@@ -153,7 +151,7 @@ PreferencesWindow::PreferencesWindow(BRect frame)
 			.Add(fAppsSortTrackerFirst)
 			.Add(fAppsShowExpanders)
 			.AddGroup(B_HORIZONTAL, 0)
-				.Add(BSpaceLayoutItem::CreateHorizontalStrut(kIndentSpacing))
+				.Add(BSpaceLayoutItem::CreateHorizontalStrut(spacing))
 				.Add(fAppsExpandNew)
 				.End()
 			.Add(fAppsHideLabels)

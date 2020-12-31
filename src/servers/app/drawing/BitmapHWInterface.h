@@ -11,6 +11,8 @@
 
 #include "HWInterface.h"
 
+#include <AutoDeleter.h>
+
 class BitmapBuffer;
 class MallocBuffer;
 class ServerBitmap;
@@ -51,14 +53,19 @@ public:
 	virtual uint32				DPMSMode();
 	virtual uint32				DPMSCapabilities();
 
+	virtual status_t			SetBrightness(float);
+	virtual status_t			GetBrightness(float*);
+
 	// frame buffer access
 	virtual	RenderingBuffer*	FrontBuffer() const;
 	virtual	RenderingBuffer*	BackBuffer() const;
 	virtual	bool				IsDoubleBuffered() const;
 
 private:
-			BBitmapBuffer*		fBackBuffer;
-			BitmapBuffer*		fFrontBuffer;
+			ObjectDeleter<BBitmapBuffer>
+								fBackBuffer;
+			ObjectDeleter<BitmapBuffer>
+								fFrontBuffer;
 };
 
 #endif // BITMAP_HW_INTERFACE_H

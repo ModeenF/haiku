@@ -212,6 +212,14 @@ status_t
 AudioMixer::HandleMessage(int32 message, const void *data, size_t size)
 {
 	// since we're using a mediaeventlooper, there shouldn't be any messages
+	// except the message we are using to schedule output events for the
+	// process thread.
+
+	if (message == MIXER_SCHEDULE_EVENT) {
+		RealTimeQueue()->AddEvent(*(const media_timed_event*)data);
+		return B_OK;
+	}
+
 	return B_ERROR;
 }
 
@@ -267,7 +275,7 @@ AudioMixer::GetNextInput(int32 *cookie, media_input *out_input)
 		out_input->source = media_source::null;
 		out_input->destination.port = ControlPort();
 		out_input->destination.id = 0;
-		memset(&out_input->format, 0, sizeof(out_input->format));
+		out_input->format.Clear();
 		out_input->format.type = B_MEDIA_RAW_AUDIO;
 		strcpy(out_input->name, "Free Input");
 		*cookie += 1;
@@ -321,26 +329,31 @@ AudioMixer::BufferReceived(BBuffer *buffer)
 void
 AudioMixer::HandleInputBuffer(BBuffer* buffer, bigtime_t lateness)
 {
-	if (lateness > kMaxJitter && lateness > fLastLateness) {
-		debug_printf("AudioMixer: Dequeued input buffer %" B_PRIdBIGTIME
+	bigtime_t variation = 0;
+	if (lateness > fLastLateness)
+		variation = lateness-fLastLateness;
+
+	if (variation > kMaxJitter) {
+		TRACE("AudioMixer: Dequeued input buffer %" B_PRIdBIGTIME
 			" usec late\n", lateness);
 		if (RunMode() == B_DROP_DATA || RunMode() == B_DECREASE_PRECISION
 			|| RunMode() == B_INCREASE_LATENCY) {
-			debug_printf("AudioMixer: sending notify\n");
+			TRACE("AudioMixer: sending notify\n");
 
 			// Build a media_source out of the header data
 			media_source source = media_source::null;
 			source.port = buffer->Header()->source_port;
 			source.id = buffer->Header()->source;
 
-			NotifyLateProducer(source, lateness, TimeSource()->Now());
+			NotifyLateProducer(source, variation, TimeSource()->Now());
 
 			if (RunMode() == B_DROP_DATA) {
-				debug_printf("AudioMixer: dropping buffer\n");
+				TRACE("AudioMixer: dropping buffer\n");
 				return;
 			}
 		}
 	}
+
 	fLastLateness = lateness;
 
 	fCore->Lock();
@@ -519,7 +532,7 @@ AudioMixer::FormatSuggestionRequested(media_type type, int32 quality,
 		return B_MEDIA_BAD_FORMAT;
 
 	// we can produce any (wildcard) raw audio format
-	memset(format, 0, sizeof(*format));
+	format->Clear();
 	format->type = B_MEDIA_RAW_AUDIO;
 	return B_OK;
 }
@@ -673,7 +686,7 @@ AudioMixer::GetNextOutput(int32 *cookie, media_output *out_output)
 		out_output->source.port = ControlPort();
 		out_output->source.id = 0;
 		out_output->destination = media_destination::null;
-		memset(&out_output->format, 0, sizeof(out_output->format));
+		out_output->format.Clear();
 		out_output->format.type = B_MEDIA_RAW_AUDIO;
 		strcpy(out_output->name, "Mixer Output");
 	}
@@ -1038,7 +1051,7 @@ AudioMixer::LateNoticeReceived(const media_source& what, bigtime_t howMuch,
 
 		fLastLateNotification = TimeSource()->Now() + howMuch;
 
-		debug_printf("AudioMixer: increasing internal latency to %"
+		TRACE("AudioMixer: increasing internal latency to %"
 			B_PRIdBIGTIME " usec\n", fInternalLatency);
 		SetEventLatency(fDownstreamLatency + fInternalLatency);
 
@@ -1125,6 +1138,10 @@ AudioMixer::HandleEvent(const media_timed_event *event, bigtime_t lateness,
 			ERROR("DataStatus message\n");
 			break;
 		}
+
+		case MIXER_PROCESS_EVENT:
+			fCore->Process();
+		break;
 
 		default:
 			break;

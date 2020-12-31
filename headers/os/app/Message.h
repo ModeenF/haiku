@@ -1,5 +1,5 @@
 /*
- * Copyright 2005-2015 Haiku, Inc. All rights reserved.
+ * Copyright 2005-2017 Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -13,8 +13,10 @@
 
 #include <BeBuild.h>
 #include <DataIO.h>
+#include <Entry.h>
 #include <Flattenable.h>
 #include <OS.h>
+#include <Node.h>
 #include <Rect.h>
 #include <Size.h>
 
@@ -161,6 +163,8 @@ public:
 			status_t			AddMessenger(const char* name,
 									BMessenger messenger);
 			status_t			AddRef(const char* name, const entry_ref* ref);
+			status_t			AddNodeRef(const char* name,
+									const node_ref* ref);
 			status_t			AddMessage(const char* name,
 									const BMessage* message);
 			status_t			AddFlat(const char* name, BFlattenable* object,
@@ -258,6 +262,10 @@ public:
 			status_t			FindRef(const char* name, entry_ref* ref) const;
 			status_t			FindRef(const char* name, int32 index,
 									entry_ref* ref) const;
+			status_t			FindNodeRef(const char* name,
+									node_ref* ref) const;
+			status_t			FindNodeRef(const char* name, int32 index,
+									node_ref* ref) const;
 			status_t			FindMessage(const char* name,
 									BMessage* message) const;
 			status_t			FindMessage(const char* name, int32 index,
@@ -346,6 +354,10 @@ public:
 									const entry_ref* ref);
 			status_t			ReplaceRef(const char* name, int32 index,
 									const entry_ref* ref);
+			status_t			ReplaceNodeRef(const char* name,
+									const node_ref* ref);
+			status_t			ReplaceNodeRef(const char* name, int32 index,
+									const node_ref* ref);
 			status_t			ReplaceMessage(const char* name,
 									const BMessage* message);
 			status_t			ReplaceMessage(const char* name, int32 index,
@@ -394,6 +406,7 @@ public:
 			bool				HasMessenger(const char* name,
 									int32 n = 0) const;
 			bool				HasRef(const char* name, int32 n = 0) const;
+			bool				HasNodeRef(const char* name, int32 n = 0) const;
 			bool				HasMessage(const char* name, int32 n = 0) const;
 			bool				HasFlat(const char* name,
 									const BFlattenable* object) const;
@@ -461,6 +474,10 @@ public:
 									rgb_color defaultValue) const;
 			rgb_color			GetColor(const char* name, int32 index,
 									rgb_color defaultValue) const;
+			const void*			GetPointer(const char* name, int32 index,
+									const void* defaultValue = NULL) const;
+			const void*			GetPointer(const char* name,
+									const void* defaultValue = NULL) const;
 			const char*			GetString(const char* name,
 									const char* defaultValue = NULL) const;
 			const char*			GetString(const char* name, int32 index,

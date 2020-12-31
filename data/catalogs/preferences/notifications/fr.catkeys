@@ -1,39 +1,34 @@
-1	french	x-vnd.Haiku-Notifications	3961154942
-An error occurred saving the preferences.\nIt's possible you are running out of disk space.	PrefletWin		Une erreur est survenue à la sauvegarde des préférences.\nIl est possible que vous manquiez d’espace disque.
-Notifications	GeneralView		Notifications
-seconds of inactivity	GeneralView		secondes d’inactivités
-Revert	PrefletWin		Rétablir
-Mini icon	DisplayView		Petite icône
-Enable notifications	GeneralView		Activer les notifications
-Error	NotificationView		Erreur
-OK	GeneralView		OK
+1	french	x-vnd.Haiku-Notifications	4196496676
+Lower left	GeneralView		Inférieur gauche
+Application does not have a valid signature	NotificationView	Alert message	L’application n’a pas de signature valide
+Status	NotificationView		État
+Add…	NotificationView		Ajouter…
+Lower right	GeneralView		Inférieur droit
+Muted	NotificationView		Silencieux
+ is already listed	NotificationView	Alert message	 est déjà listé
 OK	PrefletWin		OK
-Type	NotificationView		Type
-Notifications cannot be stopped, because the server can't be reached.	GeneralView		Les notifications ne peuvent pas être arrêtées, parce qu’il est impossible d’atteindre le serveur.
-Cannot enable notifications because the server cannot be found.\nThis means your InfoPopper installation was not successfully completed.	GeneralView		Impossible d’activer les notifications, car le serveur est introuvable.\nCela signifie que votre installation d’InfoPopper ne s’est par terminée correctement.
-Important	NotificationView		Important
-Cannot disable notifications because the server can't be reached.	GeneralView		Impossible de désactiver les notifications car le serveur ne peut pas être atteint.
-Progress	NotificationView		Progression
-Last Received	NotificationView		Dernière reçue
-General	PrefletView		Général
-Apply	PrefletWin		Appliquer
-Display	PrefletView		Affichage
-Search:	NotificationView		Rechercher :
-Allowed	NotificationView		Autorisé
-Yes	NotificationView		Oui
-Large icon	DisplayView		Grande icône
-Icon size:	DisplayView		Taille de l’icône :
-Hide notifications from screen after	GeneralView		Faire disparaître les notifications de l’écran après
-Notifications	System name		Notifications
-Notifications	NotificationView		Notifications
-No	NotificationView		Non
-Title	NotificationView		Titre
-Information	NotificationView		Information
-Window width:	DisplayView		Largeur de la fenêtre :
-Application	NotificationView		Application
-Enabled	NotificationView		Activer
-Unknown	NotificationView		Inconnu
-Enable notifications at startup	GeneralView		Activer les notifications au démarrage
-Notifications	PrefletView		Notifications
-The notifications server cannot be found, this means your InfoPopper installation was not successfully completed.	GeneralView		Impossible de trouver le serveur de notifications. Cela signifie que votre installation d’InfoPopper ne s’est par terminée correctement.
+Notifications	PrefletWin		Notifications
+Notifications preflet sample	PrefletWin		Exemple de notification d’un preflet
+Mute notifications from this application	NotificationView		Ignorer les notifications de cette application
+wide	GeneralView	Window width: Slider high text	large
+narrow	GeneralView	Window width: Slider low text	resserré
+Revert	PrefletWin		Rétablir
+Applications	PrefletView		Applications
+{0, plural, =1{Timeout: # second}other{Timeout: # seconds}}	GeneralView		{0, plural, =1{Timeout: # seconde}other{Timeout: # secondes}}
+Upper right	GeneralView		Supérieur droit
+An error occurred saving the preferences.\nIt's possible you are running out of disk space.	PrefletWin		Une erreur est survenue à la sauvegarde des préférences.\nIl est possible que vous manquiez d’espace disque.
+Defaults	PrefletWin		Défauts
+Upper left	GeneralView		Supérieur gauche
+Window width	GeneralView		Largeur de fenêtre
 Applications	NotificationView		Applications
+General	PrefletView		Général
+OK	NotificationView		OK
+Follow Deskbar	GeneralView		Suivre la Deskbar
+Notifications	System name		Notifications
+Allowed	NotificationView		Autorisé
+Duration:	GeneralView		Durée :
+Application	NotificationView		Application
+Enable notifications	GeneralView		Activer les notifications
+This is a test notification message	PrefletWin		Ceci est une notification de test
+Remove	NotificationView		Retirer
+Position:	GeneralView		Position :

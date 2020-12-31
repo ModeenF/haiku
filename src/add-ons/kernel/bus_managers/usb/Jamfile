@@ -1,21 +1,8 @@
 SubDir HAIKU_TOP src add-ons kernel bus_managers usb ;
 
-SetSubDirSupportedPlatformsBeOSCompatible ;
-
 SubDirC++Flags -fno-rtti ;
 
-local compatSources ;
-
-SubDirSysHdrs $(SUBDIR) ;
-if $(TARGET_PLATFORM) != haiku {
-	UsePrivateHeaders kernel ;
-	UsePublicHeaders drivers ;
-	if ! $(HOST_PLATFORM_HAIKU_COMPATIBLE) {
-		compatSources = kernel_cpp.cpp ;
-	}
-} else {
-	UsePrivateKernelHeaders ;
-}
+UsePrivateKernelHeaders ;
 
 KernelStaticLibrary libusb.a :
 	Stack.cpp
@@ -27,7 +14,6 @@ KernelStaticLibrary libusb.a :
 	Interface.cpp
 	Object.cpp
 	PhysicalMemoryAllocator.cpp
-	$(compatSources)
 ;
 
 KernelAddon usb :
@@ -35,6 +21,3 @@ KernelAddon usb :
 	: libusb.a
 	: usb.rdef
 	;
-
-SEARCH on [ FGristFiles $(compatSources) ]
-	= [ FDirName $(HAIKU_TOP) src system kernel util ] ;

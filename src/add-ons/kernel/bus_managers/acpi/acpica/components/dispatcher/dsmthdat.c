@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -111,6 +111,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #include "acpi.h"
@@ -182,7 +218,9 @@ AcpiDsMethodDataInit (
 
     for (i = 0; i < ACPI_METHOD_NUM_ARGS; i++)
     {
-        ACPI_MOVE_32_TO_32 (&WalkState->Arguments[i].Name, NAMEOF_ARG_NTE);
+        ACPI_MOVE_32_TO_32 (&WalkState->Arguments[i].Name,
+            NAMEOF_ARG_NTE);
+
         WalkState->Arguments[i].Name.Integer |= (i << 24);
         WalkState->Arguments[i].DescriptorType = ACPI_DESC_TYPE_NAMED;
         WalkState->Arguments[i].Type = ACPI_TYPE_ANY;
@@ -193,7 +231,8 @@ AcpiDsMethodDataInit (
 
     for (i = 0; i < ACPI_METHOD_NUM_LOCALS; i++)
     {
-        ACPI_MOVE_32_TO_32 (&WalkState->LocalVariables[i].Name, NAMEOF_LOCAL_NTE);
+        ACPI_MOVE_32_TO_32 (&WalkState->LocalVariables[i].Name,
+            NAMEOF_LOCAL_NTE);
 
         WalkState->LocalVariables[i].Name.Integer |= (i << 24);
         WalkState->LocalVariables[i].DescriptorType = ACPI_DESC_TYPE_NAMED;
@@ -235,7 +274,7 @@ AcpiDsMethodDataDeleteAll (
         if (WalkState->LocalVariables[Index].Object)
         {
             ACPI_DEBUG_PRINT ((ACPI_DB_EXEC, "Deleting Local%u=%p\n",
-                    Index, WalkState->LocalVariables[Index].Object));
+                Index, WalkState->LocalVariables[Index].Object));
 
             /* Detach object (if present) and remove a reference */
 
@@ -250,7 +289,7 @@ AcpiDsMethodDataDeleteAll (
         if (WalkState->Arguments[Index].Object)
         {
             ACPI_DEBUG_PRINT ((ACPI_DB_EXEC, "Deleting Arg%u=%p\n",
-                    Index, WalkState->Arguments[Index].Object));
+                Index, WalkState->Arguments[Index].Object));
 
             /* Detach object (if present) and remove a reference */
 
@@ -293,7 +332,8 @@ AcpiDsMethodDataInitArgs (
 
     if (!Params)
     {
-        ACPI_DEBUG_PRINT ((ACPI_DB_EXEC, "No param list passed to method\n"));
+        ACPI_DEBUG_PRINT ((ACPI_DB_EXEC,
+            "No parameter list passed to method\n"));
         return_ACPI_STATUS (AE_OK);
     }
 
@@ -308,8 +348,8 @@ AcpiDsMethodDataInitArgs (
          * Store the argument in the method/walk descriptor.
          * Do not copy the arg in order to implement call by reference
          */
-        Status = AcpiDsMethodDataSetValue (ACPI_REFCLASS_ARG, Index,
-                    Params[Index], WalkState);
+        Status = AcpiDsMethodDataSetValue (
+            ACPI_REFCLASS_ARG, Index, Params[Index], WalkState);
         if (ACPI_FAILURE (Status))
         {
             return_ACPI_STATUS (Status);
@@ -699,7 +739,8 @@ AcpiDsStoreObjectToLocal (
     NewObjDesc = ObjDesc;
     if (ObjDesc->Common.ReferenceCount > 1)
     {
-        Status = AcpiUtCopyIobjectToIobject (ObjDesc, &NewObjDesc, WalkState);
+        Status = AcpiUtCopyIobjectToIobject (
+            ObjDesc, &NewObjDesc, WalkState);
         if (ACPI_FAILURE (Status))
         {
             return_ACPI_STATUS (Status);
@@ -736,13 +777,16 @@ AcpiDsStoreObjectToLocal (
              * If we have a valid reference object that came from RefOf(),
              * do the indirect store
              */
-            if ((ACPI_GET_DESCRIPTOR_TYPE (CurrentObjDesc) == ACPI_DESC_TYPE_OPERAND) &&
-                (CurrentObjDesc->Common.Type == ACPI_TYPE_LOCAL_REFERENCE) &&
-                (CurrentObjDesc->Reference.Class == ACPI_REFCLASS_REFOF))
+            if ((ACPI_GET_DESCRIPTOR_TYPE (CurrentObjDesc) ==
+                    ACPI_DESC_TYPE_OPERAND) &&
+                (CurrentObjDesc->Common.Type ==
+                    ACPI_TYPE_LOCAL_REFERENCE) &&
+                (CurrentObjDesc->Reference.Class ==
+                    ACPI_REFCLASS_REFOF))
             {
                 ACPI_DEBUG_PRINT ((ACPI_DB_EXEC,
-                        "Arg (%p) is an ObjRef(Node), storing in node %p\n",
-                        NewObjDesc, CurrentObjDesc));
+                    "Arg (%p) is an ObjRef(Node), storing in node %p\n",
+                    NewObjDesc, CurrentObjDesc));
 
                 /*
                  * Store this object to the Node (perform the indirect store)
@@ -750,8 +794,8 @@ AcpiDsStoreObjectToLocal (
                  * specification rules on storing to Locals/Args.
                  */
                 Status = AcpiExStoreObjectToNode (NewObjDesc,
-                            CurrentObjDesc->Reference.Object, WalkState,
-                            ACPI_NO_IMPLICIT_CONVERSION);
+                    CurrentObjDesc->Reference.Object, WalkState,
+                    ACPI_NO_IMPLICIT_CONVERSION);
 
                 /* Remove local reference if we copied the object above */
 
@@ -759,6 +803,7 @@ AcpiDsStoreObjectToLocal (
                 {
                     AcpiUtRemoveReference (NewObjDesc);
                 }
+
                 return_ACPI_STATUS (Status);
             }
         }
@@ -791,7 +836,8 @@ AcpiDsStoreObjectToLocal (
  *
  * FUNCTION:    AcpiDsMethodDataGetType
  *
- * PARAMETERS:  Opcode              - Either AML_LOCAL_OP or AML_ARG_OP
+ * PARAMETERS:  Opcode              - Either AML_FIRST LOCAL_OP or
+ *                                    AML_FIRST_ARG_OP
  *              Index               - Which Local or Arg whose type to get
  *              WalkState           - Current walk state object
  *

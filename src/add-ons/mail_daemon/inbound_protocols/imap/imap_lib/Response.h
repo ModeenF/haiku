@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2013, Axel Dörfler, axeld@pinc-software.de.
+ * Copyright 2011-2016, Axel Dörfler, axeld@pinc-software.de.
  * Distributed under the terms of the MIT License.
  */
 #ifndef RESPONSE_H
@@ -107,9 +107,14 @@ protected:
 };
 
 
-class StreamException : public ParseException {
+class StreamException : public std::exception {
 public:
 								StreamException(status_t status);
+
+			status_t			Status() const { return fStatus; }
+
+private:
+			status_t			fStatus;
 };
 
 
@@ -139,8 +144,7 @@ public:
 								Response();
 								~Response();
 
-			void				Parse(BDataIO& stream, LiteralHandler* handler)
-									throw(ParseException);
+			void				Parse(BDataIO& stream, LiteralHandler* handler);
 
 			bool				IsUntagged() const { return fTag == 0; }
 			uint32				Tag() const { return fTag; }
@@ -189,7 +193,7 @@ public:
 			void				SetLiteralHandler(LiteralHandler* handler);
 
 			status_t			NextResponse(Response& response,
-									bigtime_t timeout) throw(ParseException);
+									bigtime_t timeout);
 
 private:
 								ResponseParser(const ResponseParser& other);

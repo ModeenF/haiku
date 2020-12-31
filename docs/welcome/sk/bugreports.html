@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en-US" xml:lang="en-US"> 
+<html xmlns="http://www.w3.org/1999/xhtml" lang="sk" xml:lang="sk"> 
 <head>
 <!-- 
  *
- * Copyright 2008-2012, Haiku. All rights reserved.
+ * Copyright 2008-2020, Haiku. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -13,11 +13,13 @@
  *		Humdinger <humdingerb@gmail.com>
  * Translators:
  *		helix84
+ *		Humdinger
  *
 -->
 	<meta http-equiv="content-type" content="text/html; charset=utf-8" />
 	<meta name="robots" content="all" />
 	<title>Nahlasovanie chýb</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<link rel="stylesheet" type="text/css" href="../Haiku-doc.css" />
 </head>
 <body>
@@ -29,23 +31,27 @@
 <div class="nav">
 <div class="inner">
 <ul class="lang-menu">
-<li class="now"><img src="../images/flags/sk.png" alt="" /> Slovenčina</li>
-<li><a href="../fr/bugreports.html"><img src="../images/flags/fr.png" alt="" />Français</a></li>
-<li><a href="../de/bugreports.html"><img src="../images/flags/de.png" alt="" />Deutsch</a></li>
-<li><a href="../it/bugreports.html"><img src="../images/flags/it.png" alt="" />Italiano</a></li>
-<li><a href="../ru/bugreports.html"><img src="../images/flags/ru.png" alt="" />Русский</a></li>
-<li><a href="../es/bugreports.html"><img src="../images/flags/es.png" alt="" />Español</a></li>
-<li><a href="../sv_SE/bugreports.html"><img src="../images/flags/sv_SE.png" alt="" />Svenska</a></li>
-<li><a href="../jp/bugreports.html"><img src="../images/flags/jp.png" alt="" />日本語</a></li>
-<li><a href="../uk/bugreports.html"><img src="../images/flags/uk.png" alt="" />Українська</a></li>
-<li><a href="../zh_CN/bugreports.html"><img src="../images/flags/zh_CN.png" alt="" /> 中文 ［中文］</a></li>
-<li><a href="../pt_PT/bugreports.html"><img src="../images/flags/pt_PT.png" alt="" />Português</a></li>
-<li><a href="../fi/bugreports.html"><img src="../images/flags/fi.png" alt="" />Suomi</a></li>
-<li><a href="../hu/bugreports.html"><img src="../images/flags/hu.png" alt="" />Magyar</a></li>
-<li><a href="../pt_BR/bugreports.html"><img src="../images/flags/pt_BR.png" alt="" />Português (Brazil)</a></li>
-<li><a href="../ca/bugreports.html"><img src="../images/flags/ca.png" alt="" />Català</a></li>
-<li><a href="../pl/bugreports.html"><img src="../images/flags/pl.png" alt="" />Polski</a></li>
-<li><a href="../en/bugreports.html"><img src="../images/flags/gb.png" alt="" />English</a></li>
+<li class="now">Slovenčina&nbsp;<span class="dropdown-caret">&#9660;</span></li>
+<li><a href="../id/bugreports.html">Bahasa Indonesia</a></li>
+<li><a href="../ca/bugreports.html">Català</a></li>
+<li><a href="../de/bugreports.html">Deutsch</a></li>
+<li><a href="../en/bugreports.html">English</a></li>
+<li><a href="../es/bugreports.html">Español</a></li>
+<li><a href="../fr/bugreports.html">Français</a></li>
+<li><a href="../fur/bugreports.html">Furlan</a></li>
+<li><a href="../it/bugreports.html">Italiano</a></li>
+<li><a href="../hu/bugreports.html">Magyar</a></li>
+<li><a href="../pl/bugreports.html">Polski</a></li>
+<li><a href="../pt_PT/bugreports.html">Português</a></li>
+<li><a href="../pt_BR/bugreports.html">Português (Brazil)</a></li>
+<li><a href="../ro/bugreports.html">Română</a></li>
+<li><a href="../fi/bugreports.html">Suomi</a></li>
+<li><a href="../sv_SE/bugreports.html">Svenska</a></li>
+<li><a href="../tr/bugreports.html">Türkçe</a></li>
+<li><a href="../zh_CN/bugreports.html"> 中文 ［中文］</a></li>
+<li><a href="../ru/bugreports.html">Русский</a></li>
+<li><a href="../uk/bugreports.html">Українська</a></li>
+<li><a href="../jp/bugreports.html">日本語</a></li>
 </ul>
 <span>
     <a href="../welcome_sk.html" class="uplink">Welcome</a>
@@ -85,9 +91,9 @@ Pri vytváraní účtu určite poskytnite <b>vašu emailovú adresu</b>, pretož
 <p>Pred nahlásením chyby sa prosím <a href="http://dev.haiku-os.org/query?status=new&amp;status=assigned&amp;status=reopened&amp;status=closed&amp;summary=%7Etext+you+want+to+search+for&amp;order=priority">uisitite</a>, že už nebola nahlásená. Tiež na to môžete použiť funkciu <a href="http://dev.haiku-os.org/search?q=&amp;noquickjump=1&amp;ticket=on">hľadanie</a>.<br />
 Potom, ako ste sa uistili, že chyba je jedinečná, uveďte čo najpresnejšie vaše informácie:</p>
 <ul>
-	<li><p>Attempt to reproduce your issue on the current revision of Haiku. Pre-built images for testing purposes are  <a href="http://download.haiku-os.org">available</a>.</p></li>
+	<li><p>Pokúste sa reprodukovať problém v aktuálnej revízii Haiku. Sú pripravené <a href="http://haiku-files.org/">obrazy na testovacie účely</a>.</p></li>
 	<li><p>iveďte základné infomrácie o tom ako testujete Haiku (na skutočnom hardvéri, vo  VMWare, v QEMU atď.).</p></li>
-	<li><p>Uveďte, ktorú revíziu zo <acronym title="Subversion, nástroj na správu zdrojového kódu, ktorý používame">SVN</acronym> používate. Túto informáciu nájdete v dialógu <span class="menu">O Haiku...</span> z menu Panela. Tiež uvete, aký druh Haiku testujete (gcc2, gcc4, gcc2hybrid, gcc4hybrid). Obsazy na stiahnutie sú podľa toho pomenované; pri obraze, ktorý ste zostavili sami by ste mali vedieť ako ste ho zostavili.</p></li>
+	<li><p>Mention which revision you are running. You can find this information in <span class="menu">About Haiku...</span> from the Deskbar menu. Also mention what kind of Haiku build you are testing (x86_gcc2, x86_64). The downloadable images are named accordingly, for a self-built image you should know how you built it.</p></li>
 	<li><p>Popíšte váš problém. Skúste byč čo najpresnejší: popíšte správanie, ktoré ste očakávali a správanie, ktoré ste dostali.</p></li>
 	<li><p>Popíšte kroky, ktoré je potrebné vykonať na vyvolanie chyby. To pomôže vývojárom chybu reprodukovať.</p></li>
 	<li><p>Priložte všetky informácie,ktoré máte k dispozícii. Ak je to chyba používateľského rozhrania alebo chyba v niektorej z aplikácií, skúste urobiť snímku obrazovky stlačením klávesu <span class="key">Print Screen</span>.</p></li>
@@ -95,12 +101,14 @@ Potom, ako ste sa uistili, že chyba je jedinečná, uveďte čo najpresnejšie 
 	
 <h2><a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="app" name="app">Chyby aplikácií</a></h2>
-<p>Keď aplikácia havaruje, mali by ste vyvolať ladiaci nástroj z upozornenia, ktoré vyskočí. To otvorí okno Terminálu, v ktorom beží gdb (GNU debugger). Zadaním <span class="cli">bt</span> vytvoríte „backtrace“, ktorý by ste mali kompletne skopírovať (vrátane časti zorbazenej než ste zadali príkaz <span class="cli">bt</span>) a priložiť ho k hláseniu.</p>
+<p>When an application crashed, you can either save a report or write a core file (both saved to the Desktop) that you can attach to a bugreport, or you can evoke the <a href="../../userguide/sk/applications/debugger.html">Debugger</a>.</p>
+<p>If it's not a crashing bug, you may get useful information when starting the application from Terminal. Some applications provide logging and other options when started with certain parameters; try <tt>-h</tt> or <tt>--help</tt> to see if that is the case. As example, see the different logging levels of <a href="../../userguide/sk/applications/haikudepot.html#logs">HaikuDepot</a>.</p>
 
 <h2><a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="server" name="server">Chyby serverov</a></h2>
-<p>Ak havarujú dôležité servery ako aplikačný server, registrátor alebo server vstupu, neuvidíte zvyčajné upozornenie na haváriu. Namiesto toho sa celá obrazovka zmaže na bielu farbu, spustí sa relácia gdb a jej výstup sa objaví priamo na obrazovke. Pravdepodobne budete môcť pohybovať myšou, čo prepíše bielu farbu a výstup gdb na obrazovke. Aplikácie, ktoré ešte bežia (ako ProcessController alebo hodiny v Paneli) tiež možno prekreslia časť ladiaceho výstupu na obrazovke.<br />
-Okrem toho, že je všetko škaredšie a nepohodlné platí prakticky to isté ako pri chybách aplikácií. Predovšetkým získajte backtrace (príkaz <span class="cli">bt</span>). Možno budete musieť odfotiť obrazovku digitálnym fotoaparátom, pretože nebudete môcť text nikam skopírovať.</p>
+<p>When vital servers like the app server, the registrar or the input server crash, you won't see the usual crash alert. Instead the whole screen will be cleared white and the Debugger will be started in text-mode, its output appearing directly on screen. Likely you will still be able to move the mouse, which will overwrite the white and Debugger output on screen. Applications still running (like ProcessController or the clock in the Deskbar) might also draw over the debugger output on screen.<br />
+Besides everything being more ugly and inconvenient, basically the same applies as for application bugs. Most importantly procure a back trace (<span class="cli">bt</span> command). You may need to take a picture of the screen with a digital camera, since you won't be able to copy the text anywhere.<br />
+Depending on what exactly crashed, you can try to save a crash report on the Desktop with <span class="cli">save-report</span> or <span class="cli">write-core</span> for a core file, and then press the power button once to try shutting cleanly down. If the power button doesn't work, there are also the commands <span class="cli">shutdown</span> and <span class="cli">reboot</span>.</p>
 
 <h2><a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="kernel" name="kernel">Chyby jadra</a></h2>
@@ -112,52 +120,53 @@ Okrem toho, že je všetko škaredšie a nepohodlné platí prakticky to isté a
 <li><p>Systém nenaštartuje korektne. Môže spontánne naštartovať alebo v niektorom bode zastaviť (napr. na niektorej ikone štartovacej obrazovky). V druhom prípade tiež skúste <span class="key">ALT</span> <span class="key">SysReq</span> <span class="key">D</span>.</p></li>
 <li><p>Celý systém alebo niektorá časť hardvéru sa nespráva korektne. Napríklad môže byť veľmi pomalý, vyskytnú sa chyby alebo niečo vôbec nefunguje. Ak nejaký hardvér vôbec nefunguje, prvá vec, ktorú treba skontrolovať je, či ho momentálne Haiku vôbec podporuje (napr. spýtať sa v poštovej konferencii alebo na fóre).</p></li>
 </ul>
-<p>Note that while only the last point seems to indicate hardware relation, all the other symptoms could be caused by a bug in a hardware driver as well. If you have a suspicion what piece of hardware or corresponding driver might have to do with the problem, check whether removing/disabling the hardware or the driver makes a difference. For example, if you suspect Wifi you may find that your BIOS has an option to disable it. Or if not, you could blacklist the responsible Wifi driver from your Haiku installation (see <a href="../../../userguide/en/bootloader.html">Boot Loader</a>).</p>
+<p>Pamätajte, že hoci iba posledný bod indikuje súvislosť s hardvérom, všetky ostatné symptómy môžu byť spôsobené aj chybou v ovládači hardvéru. Ak máte podozrenie, ktorá časť hardvéru alebo zodpovedajúci ovládač môže súvisieť s problémom, skontrolujte, či odstránenie alebo vypnutie hardvéru či ovládača pomôže. Napríklad ak podozrievate Wi-Fi, možno zistíte, že váš BIOS umožňuje ju vypnúť. Alebo ak nie, môžete odstrániť príslušný ovládač Wi-Fi z vašej inštalácie Haiku (pozri <a href="../../userguide/sk/bootloader.html">Zavádzač systému</a>).</p>
 
 <h3><a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="kdl" name="kdl">Kernel Debugging Land - KDL</a></h3>
-<p>Ak systém sám nevstúpil do KDL, môžete ho úmyselne vyvolať klávesovou skratkou <span class="key">ALT</span> <span class="key">SysReq</span> <span class="key">D</span>.<br />
-Pamätajte, že v KDL vaša klávesnica nemusí fungovať. Klávesnice PS/2 fungujú vždy, klávesnice USB pripojené prostredníctvom ovládačov UHCI fungujú iba ak už aspoň raz ste vstúpili do KDL použitím klávesovej skratky. USB OHCI momentálne nie je podporované.</p>
+<p>If the system hasn't entered KDL by itself, you can do that intentionally by invoking the keyboard shortcut <span class="key">ALT</span> <span class="key">SysReq</span> <span class="key">D</span> (<span class="key">SysReq</span> being the <span class="key">Print</span> key, normally).<br />
+Note that in KDL your keyboard may not work. PS/2 keyboards always do, with USB keyboards it depends on the type of USB controller (UHCI/EHCI). Generally, the keyboard should be plugged into the port directly, not via any hubs. In some circumstances, the keyboard only works if one has entered KDL via the keyboard shortcut at least once. USB OHCI is not supported at the moment.</p>
 <p>Samotné KDL je istým druhom shellu. Môžete vykonávať príkazy, ktoré vypisujú informácie o systéme. Nasledovné príkazy môžu byť zaujímavé:</p>
 <table summary="layout" border="0" cellpadding="2" cellspacing="0">
-<tr><td><span class="cli">bt</span> (resp. sc)</td><td> </td><td>Vypíše backtrace. Ak systém svojvoľne vstúpil do KDL, vždy ho spustite.</td></tr>
+<tr><td><span class="cli">bt</span> (aka <span class="cli">sc</span>)</td><td> </td><td>Prints a back trace (aka stack crawl). If the system entered KDL on its on volition, a back trace is normally printed automatically. Enter the command if that didn't happen or part of it is obscured (e.g. when the stack trace is so long that it wrapped around) and your only way of providing the information to developers is by taking a picture of the screen.</td></tr>
 <tr><td><span class="cli">ints</span></td><td> </td><td>Zobrazí ošetrené a neošetrené hardvérové prerušenia.</td></tr>
 <tr><td class="onelinetop"><span class="cli">co</span> (resp. continue)</td><td> </td><td>Opustí ladenie jadra a pokračuje v normálnej prevádzke systému ak je to možné.</td></tr>
 <tr><td><span class="cli">reboot</span></td><td> </td><td>Okamžite reštartuje systém. Stratíte všetky neuložené dáta a aj tie, ktoré už boli uložené, ale zatiaľ neboli zapísané na disk.</td></tr>
 </table>
 <p>Ďalšie informácie nájdete v článku <a href="http://www.haiku-os.org/documents/dev/welcome_to_kernel_debugging_land">Welcome to Kernel Debugging Land</a>.</p>
 <p>Výstup KDL sa zapisuje na sériový port (ak ho máte a ak máte príslušný kábel na pripojenie druhého počítača, môžete prostredníctvom neho zachytiť výstup pomocou terminálového programu) a do syslogu. Ak nemôžete opustiť KDL, nezapíše však sa do súboru syslog. Existuje voľba zavádzača systému, ktorá vám umožňuje zachytiť ho napriek tomu (pozri nižšie).</p>
-<p>You can generate QR codes from KDL output that can then be converted to text using smartphones or similar devices. See the blog post <a href="http://www.haiku-os.org/blog/mmlr/2012-07-01_qr_encode_your_kdl_output">QR Encode your KDL Output</a> on how to get data out of KDL using that feature.</p>
+<p>Môžete vygenerovať QR kódy z výstupu KDL, ktoré je možné previesť na text pomocou smartfónu alebo podobných zariadení. V príspevku na blogu <a href="http://www.haiku-os.org/blog/mmlr/2012-07-01_qr_encode_your_kdl_output">QR Encode your KDL Output</a> nájdete informácie o tom, ako získať dáta z KDL pomocou tejto funkcie.</p>
 
 <h3><a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="syslog" name="syslog">Syslog</a></h3>
-<p><b>This is the preferred method for gaining information from a non-booting system.</b><br />
-The syslog (short for system log) contains valuable information about what has happened in your system, including the output of KDL sessions. It's usually a good idea to attach it to the kernel related Trac ticket. The syslog is written to the file <span class="path">/boot/system/var/log/syslog</span>. Since writing to a file requires a working system, the most recent output might not have made it to the syslog when a kernel problem occurs (particularly on spontaneous reboots or uncontinuable KDL sessions).</p>
-<p>The option <span class="menu">Enable debug syslog</span> in the boot loader's <span class="menu">Debug menu</span> makes the syslog persistent. If the option <span class="menu">Save syslog from previous session during boot</span> is activated in the boot loader options (as it is by default), you'll find the syslog of your last session as <span class="path">/boot/system/var/log/previous_syslog</span>.<br />
-If you're not able to boot to get to the previous_syslog, you have to enter the boot loader menu by holding down <span class="key">SHIFT</span> while booting.<br />
-In the boot loader's <span class="menu">Debug menu</span> you should find the entries <span class="menu">Display syslog from previous session</span> and <span class="menu">Save syslog from previous session</span>. The former displays the syslog on screen, the latter allows you to save it as a file to disk. Note that at the moment only FAT32 volumes are supported for saving the file. If you want to use a USB stick, but have plugged it in too late so that it isn't recognized yet, you can reset the machine and re-enter the boot loader menu. Note: Don't accidentally boot any operating system or the data will be lost.</p>
+<p><b>Toto je preferovaný spôsob ako získať informácie zo systému, ktorý nejde naštartovať.</b><br />
+Syslog (skratka system log) obsahuje cenné informácie o tom, čo sa na vašom systéme stalo vrátane výstupu ladenia KDL. Zvyčajne je dobrý nápad pripojiť ho k súvisiacemu hláseniu v systéme Trac. Syslog sa zapisuje do súboru <span class="path">/boot/system/var/log/syslog</span>. Pretože zapisovanie do súbory vyžaduje, aby bol systém funkčný, je možné, že posledný výstup po výskyte problému s jadrom sa do syslogu už nedostal (obzvlášť pri samovoľných reštartoch alebo reláciách KDL, v ktorých nemožno pokračovať).</p>
+<p>Voľba <span class="menu">Zapnúť ladiaci syslog</span> v <span class="menu">menu Ladenie</span> zavádzača systému zabezpečí, že syslog bude trvalo uložený. Ak je v nastaveniach zavádzača systému zapnutá voľba <span class="menu">Uložiť syslog z predchádzajúcej relácie pri štarte</span> (predvolene je zapnutá), nájdete syslog vašej poslednej relácie v súbore <span class="path">/boot/system/var/log/previous_syslog</span>.<br />
+Ak sa vám nedarí spustiť systém, aby ste sa dostali k poslednému syslogu (previous_syslog), musíte vstúpiť do menu zavádzača podržaním klávesu <span class="key">SHIFT</span> počas štartu systému.<br />
+V <span class="menu">menu Ladenie</span> zavádzača by ste mali nájsť položky <span class="menu">Zobraziť syslog z predošlej relácie</span> a <span class="menu">Uložiť syslogz predošlej relácie</span>. Prvá z nich zobrazí syslog na obrazovke, druhá z nich vám umožní uložiť ho ako súbor na disk. Pamätajte, že momentálne sú na ukladanie súboru podporované iba zväzky so súborovým systémom FAT32. Ak chcete použiť disk USB, ale zapojili ste ho príliš neskoro a nebol zatiaľ rozpoznaný, môžete reštartovať počítač a znovu vstúpiť do menu zavádzača. Pozn.: Vyhnite sa automatickému spusteniu akéhokoľvek operačného systému, inak sa dáta posledného syslogu môžu stratiť.</p>
 
 <h3><a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="onscreen" name="onscreen">Výstup ladenia na obrazovku</a></h3>
 <p><b>The on-screen debug output is useful only for debugging very specific issues and is known to have (timing) issues. Don't use it, if you don't have to.</b><br />
-This is only relevant when Haiku fails to boot on your machine and the <span class="menu">Debug syslog option</span> doesn't work for some reason. Before the Haiku boot logo appears, hold <span class="key">SHIFT</span> to enter the boot loader menu. Select <span class="menu">Select safe mode options</span>. Near the bottom, <span class="menu">[ ] Enable on screen debug output</span> will be listed. (Note: The other options could be enabled in an attempt to boot Haiku. If Haiku will boot only when one or more options are activated, be sure to mention which ones.)<br />
+This is only relevant when Haiku fails to boot on your machine and the <span class="menu">Debug syslog</span> option doesn't work for some reason. Before the Haiku boot logo appears, hold <span class="key">SHIFT</span> to enter the boot loader menu. Select <span class="menu">Select safe mode options</span>. Near the bottom, <span class="menu">[ ] Enable on screen debug output</span> will be listed. (Note: The other options could be enabled in an attempt to boot Haiku. If Haiku will boot only when one or more options are activated, be sure to mention which ones.)<br />
 Finally select <span class="menu">Return to main menu</span> and then <span class="menu">Continue booting</span>.<br />
-One or more pages of text will display on the screen, only the last few lines need to be included on your ticket. There's more information on the <a href="../../../userguide/sk/bootloader.html">Boot Loader</a>.</p>
+One or more pages of text will display on the screen, only the last few lines need to be included on your ticket. There's more information on the <a href="../../userguide/sk/bootloader.html">Boot Loader</a>.</p>
 
 <h2><a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="hardware" name="hardware">Chyby hardvéru/ovládačov</a></h2>
-<p>When dealing with a hardware/driver related bug, you should attach the following information as text files:</p>
+<p>Ak sa potýkate s chybou súvisiacou s hardvérom alebo ovládačom, mali by ste k hláseniu priložiť nasledovné informácie vo forme textových súborov:</p>
 
 <table summary="layout" border="0" cellpadding="2" cellspacing="0">
-<tr><td>- <span class="cli">listdev</span></td><td> </td><td>A detailed listing of your hardware, including vendor and pci id's, similar to Linux' <span class="cli">lshw</span> and <span class="cli">lspci</span>.</td></tr>
-<tr><td>- <span class="cli">listusb -v</span></td><td> </td><td>Assuming its a USB related issue, similar to <span class="cli">lsusb</span>.</td></tr>
-<tr><td>- <span class="cli">open /var/log/syslog</span></td><td> </td><td>The primary system log used by Haiku, akin to on screen debugging during boot. With the <span class="cli">open</span> command you can crop down the relevant part of the syslog in a text editor.</td></tr>
-<tr><td class="onelinetop">- <span class="cli">listimage | grep drivers/</span></td><td> </td><td>Lists all used drivers.</td></tr>
-<tr><td>- <span class="cli">ints</span></td><td> </td><td>Only available within <i>Kernel Debugging Land</i> (see above). Shows interrupt usage. There shouldn't be too many that are shared by different devices.</td></tr>
-<tr><td colspan="3">- On screen debug output (a safe mode boot time option).</td></tr>
+<tr><td>- <span class="cli">listdev</span></td><td> </td><td>Podrobný výpis vášho hardvéru vrátane dodávateľa a PCI ID, podobný ako <span class="cli">lshw</span> a <span class="cli">lspci</span> v Linuxe.</td></tr>
+<tr><td>- <span class="cli">listusb -v</span></td><td> </td><td>Za predpokladu, že sa problém týka USB, je podobný ako <span class="cli">lsusb</span>.</td></tr>
+<tr><td>- <span class="cli">open /var/log/syslog</span></td><td> </td><td>The primary system log used by Haiku, see <a href="#syslog">Syslog</a> above, akin to on screen debugging during boot. With the <span class="cli">open</span> command you can crop down the relevant part of the syslog in a text editor.</td></tr>
+<tr><td class="onelinetop">- <span class="cli">listimage | grep drivers/</span></td><td> </td><td>Vypíše všetky použité ovládače.</td></tr>
+<tr><td>- <span class="cli">usb_hid_report</span></td><td> </td><td>In case of USB input devices, add the <span class="cli">/tmp/usb_hid_report_descriptor_*.bin</span> file.</td></tr>
+<tr><td>- <span class="cli">ints</span></td><td> </td><td>Dostupné iba v rámci <i>(KDL) Kernel Debugging Land</i> (pozri vyššie). Zobrazuje použitie prerušení. Nemalo by sa vyskytovať mnoho takých, ktoré používajú viaceré zariadenia.</td></tr>
+<tr><td colspan="3">- On screen debug output (a safe mode boot time option, see <a href="#onscreen">above</a>).</td></tr>
 </table>
 
-<p>The first four commands are entered into Terminal. Add a <span class="cli"> &gt; output.txt</span> after a command, and it's piped into a text file called "output.txt" that you can attach to your bug report or email.</p>
+<p>Prvé štyri príkazy sú zadané do Terminálu. Keď za príkaz pridáte <span class="cli"> &gt; output.txt</span>, výstup sa zapíše do textového súboru s názvom „output.txt“, ktorý môžete priložiť k vášmu hláseniu chyby alebo emailu.</p>
 
 <h2><a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
 <a id="next" name="next">Čo ďalej?</a></h2>

@@ -1,6 +1,6 @@
 /*
  * Copyright 2002-2015, Axel Dörfler, axeld@pinc-software.de
- * Distributed under the terms of the Haiku License.
+ * Distributed under the terms of the MIT License.
  *
  * Copyright 2001-2002, Travis Geiselbrecht. All rights reserved.
  * Distributed under the terms of the NewOS License.
@@ -69,12 +69,18 @@
 #	define ASSERT_PRINT(x, format, args...)	do { } while(0)
 #endif
 
-#define STATIC_ASSERT(x)								\
-	do {												\
-		struct __staticAssertStruct__ {					\
-			char __static_assert_failed__[2*(x) - 1];	\
-		};												\
-	} while (false)
+#if __GNUC__ >= 5 && !defined(__cplusplus)
+#	define STATIC_ASSERT(x) _Static_assert(x, "static assert failed!")
+#elif defined(__cplusplus) && __cplusplus >= 201103L
+#	define STATIC_ASSERT(x) static_assert(x, "static assert failed!")
+#else
+#	define STATIC_ASSERT(x)								\
+		do {												\
+			struct __staticAssertStruct__ {					\
+				char __static_assert_failed__[2*(x) - 1];	\
+			};												\
+		} while (false)
+#endif
 
 #if KDEBUG
 #	define KDEBUG_ONLY(x)				x

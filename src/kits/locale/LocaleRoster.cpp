@@ -43,6 +43,7 @@
 
 using BPrivate::CatalogAddOnInfo;
 using BPrivate::MutableLocaleRoster;
+U_NAMESPACE_USE
 
 
 /*
@@ -541,7 +542,7 @@ _InitializeCatalog(void* param)
 
 	// load the catalog for this mimetype
 	entry_ref ref;
-	if (BEntry(info.name).GetRef(&ref) == B_OK && catalog->SetTo(ref) == B_OK);
+	if (BEntry(info.name).GetRef(&ref) == B_OK && catalog->SetTo(ref) == B_OK)
 		return B_OK;
 	
 	return B_ERROR;

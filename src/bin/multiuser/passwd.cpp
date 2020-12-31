@@ -169,11 +169,11 @@ main(int argc, const char* const* argv)
 			exit(1);
 		}
 
-		memset(repeatedPassword, 0, sizeof(repeatedPassword));
+		explicit_bzero(repeatedPassword, sizeof(repeatedPassword));
 
 		// crypt it
-		encryptedPassword = crypt(password, user);
-		memset(password, 0, sizeof(password));
+		encryptedPassword = crypt(password, NULL);
+		explicit_bzero(password, sizeof(password));
 	}
 
 	// prepare request for the registrar
@@ -182,7 +182,7 @@ main(int argc, const char* const* argv)
 		|| message.AddInt32("last changed", time(NULL)) != B_OK
 		|| message.AddString("password", "x") != B_OK
 		|| message.AddString("shadow password", encryptedPassword) != B_OK) {
-		fprintf(stderr, "Error: Out of memory!\n");
+		fprintf(stderr, "Error: Failed to construct message!\n");
 		exit(1);
 	}
 

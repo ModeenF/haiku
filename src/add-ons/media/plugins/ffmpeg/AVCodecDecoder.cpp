@@ -22,6 +22,7 @@
 
 #include <Bitmap.h>
 #include <Debug.h>
+#include <String.h>
 
 #include "Utilities.h"
 
@@ -50,11 +51,7 @@
 	static int sDumpedPackets = 0;
 #endif
 
-
-#if LIBAVCODEC_VERSION_INT > ((54 << 16) | (50 << 8))
 typedef AVCodecID CodecID;
-#endif
-
 
 struct wave_format_ex {
 	uint16 format_tag;
@@ -75,10 +72,11 @@ struct avformat_codec_context {
 
 // profiling related globals
 #define DO_PROFILING 0
-
+#if DO_PROFILING
 static bigtime_t decodingTime = 0;
 static bigtime_t conversionTime = 0;
 static long profileCounter = 0;
+#endif
 
 
 AVCodecDecoder::AVCodecDecoder()
@@ -88,13 +86,13 @@ AVCodecDecoder::AVCodecDecoder()
 	fFrame(0),
 	fIsAudio(false),
 	fCodec(NULL),
-	fContext(avcodec_alloc_context3(NULL)),
+	fCodecContext(avcodec_alloc_context3(NULL)),
 	fResampleContext(NULL),
 	fDecodedData(NULL),
 	fDecodedDataSizeInBytes(0),
-	fPostProcessedDecodedPicture(avcodec_alloc_frame()),
-	fRawDecodedPicture(avcodec_alloc_frame()),
-	fRawDecodedAudio(avcodec_alloc_frame()),
+	fPostProcessedDecodedPicture(av_frame_alloc()),
+	fRawDecodedPicture(av_frame_alloc()),
+	fRawDecodedAudio(av_frame_alloc()),
 
 	fCodecInitDone(false),
 
@@ -112,23 +110,28 @@ AVCodecDecoder::AVCodecDecoder()
 	fOutputFrameCount(0),
 	fOutputFrameRate(1.0),
 	fOutputFrameSize(0),
+	fInputFrameSize(0),
 
 	fChunkBuffer(NULL),
 	fChunkBufferSize(0),
 	fAudioDecodeError(false),
 
-	fDecodedDataBuffer(avcodec_alloc_frame()),
+	fDecodedDataBuffer(av_frame_alloc()),
 	fDecodedDataBufferOffset(0),
-	fDecodedDataBufferSize(0)
+	fDecodedDataBufferSize(0),
+	fBufferSinkContext(NULL),
+	fBufferSourceContext(NULL),
+	fFilterGraph(NULL),
+	fFilterFrame(NULL)
 {
 	TRACE("AVCodecDecoder::AVCodecDecoder()\n");
 
 	system_info info;
 	get_system_info(&info);
 
-	fContext->err_recognition = AV_EF_CAREFUL;
-	fContext->error_concealment = 3;
-	fContext->thread_count = info.cpu_count;
+	fCodecContext->err_recognition = AV_EF_CAREFUL;
+	fCodecContext->error_concealment = 3;
+	fCodecContext->thread_count = info.cpu_count;
 }
 
 
@@ -136,7 +139,7 @@ AVCodecDecoder::~AVCodecDecoder()
 {
 	TRACE("[%c] AVCodecDecoder::~AVCodecDecoder()\n", fIsAudio?('a'):('v'));
 
-#ifdef DO_PROFILING
+#if DO_PROFILING
 	if (profileCounter > 0) {
 		printf("[%c] profile: d1 = %lld, d2 = %lld (%Ld)\n",
 			fIsAudio?('a'):('v'), decodingTime / profileCounter,
@@ -145,7 +148,7 @@ AVCodecDecoder::~AVCodecDecoder()
 #endif
 
 	if (fCodecInitDone)
-		avcodec_close(fContext);
+		avcodec_close(fCodecContext);
 
 	swr_free(&fResampleContext);
 	free(fChunkBuffer);
@@ -155,8 +158,11 @@ AVCodecDecoder::~AVCodecDecoder()
 	av_free(fRawDecodedPicture);
 	av_free(fRawDecodedAudio->opaque);
 	av_free(fRawDecodedAudio);
-	av_free(fContext);
+	av_free(fCodecContext);
 	av_free(fDecodedDataBuffer);
+
+	av_frame_free(&fFilterFrame);
+	avfilter_graph_free(&fFilterGraph);
 
 #if USE_SWS_FOR_COLOR_SPACE_CONVERSION
 	if (fSwsContext != NULL)
@@ -265,7 +271,7 @@ AVCodecDecoder::SeekedTo(int64 frame, bigtime_t time)
 	status_t ret = B_OK;
 	// Reset the FFmpeg codec to flush buffers, so we keep the sync
 	if (fCodecInitDone) {
-		avcodec_flush_buffers(fContext);
+		avcodec_flush_buffers(fCodecContext);
 		_ResetTempPacket();
 	}
 
@@ -347,10 +353,10 @@ AVCodecDecoder::_NegotiateAudioOutputFormat(media_format* inOutFormat)
 	// close any previous instance
 	if (fCodecInitDone) {
 		fCodecInitDone = false;
-		avcodec_close(fContext);
+		avcodec_close(fCodecContext);
 	}
 
-	if (avcodec_open2(fContext, fCodec, NULL) >= 0)
+	if (avcodec_open2(fCodecContext, fCodec, NULL) >= 0)
 		fCodecInitDone = true;
 	else {
 		TRACE("avcodec_open() failed to init codec!\n");
@@ -375,9 +381,9 @@ AVCodecDecoder::_NegotiateAudioOutputFormat(media_format* inOutFormat)
 	media_multi_audio_format outputAudioFormat;
 	outputAudioFormat = media_raw_audio_format::wildcard;
 	outputAudioFormat.byte_order = B_MEDIA_HOST_ENDIAN;
-	outputAudioFormat.frame_rate = fContext->sample_rate;
-	outputAudioFormat.channel_count = fContext->channels;
-	ConvertAVSampleFormatToRawAudioFormat(fContext->sample_fmt,
+	outputAudioFormat.frame_rate = fCodecContext->sample_rate;
+	outputAudioFormat.channel_count = fCodecContext->channels;
+	ConvertAVSampleFormatToRawAudioFormat(fCodecContext->sample_fmt,
 		outputAudioFormat.format);
 	// Check that format is not still a wild card!
 	if (outputAudioFormat.format == 0) {
@@ -403,23 +409,31 @@ AVCodecDecoder::_NegotiateAudioOutputFormat(media_format* inOutFormat)
 	fOutputFrameSize = sampleSize * outputAudioFormat.channel_count;
 	fOutputFrameCount = outputAudioFormat.buffer_size / fOutputFrameSize;
 	fOutputFrameRate = outputAudioFormat.frame_rate;
+	if (av_sample_fmt_is_planar(fCodecContext->sample_fmt))
+		fInputFrameSize = sampleSize;
+	else
+		fInputFrameSize = fOutputFrameSize;
+
 	fRawDecodedAudio->opaque
 		= av_realloc(fRawDecodedAudio->opaque, sizeof(avformat_codec_context));
 	if (fRawDecodedAudio->opaque == NULL)
 		return B_NO_MEMORY;
 
-	if (av_sample_fmt_is_planar(fContext->sample_fmt)) {
+	if (av_sample_fmt_is_planar(fCodecContext->sample_fmt)) {
 		fResampleContext = swr_alloc_set_opts(NULL,
-			fContext->channel_layout, fContext->request_sample_fmt,
-			fContext->sample_rate,
-			fContext->channel_layout, fContext->sample_fmt, fContext->sample_rate,
+			fCodecContext->channel_layout,
+			fCodecContext->request_sample_fmt,
+			fCodecContext->sample_rate,
+			fCodecContext->channel_layout,
+			fCodecContext->sample_fmt,
+			fCodecContext->sample_rate,
 			0, NULL);
 		swr_init(fResampleContext);
 	}
 
 	TRACE("  bit_rate = %d, sample_rate = %d, channels = %d, "
 		"output frame size: %d, count: %ld, rate: %.2f\n",
-		fContext->bit_rate, fContext->sample_rate, fContext->channels,
+		fCodecContext->bit_rate, fCodecContext->sample_rate, fCodecContext->channels,
 		fOutputFrameSize, fOutputFrameCount, fOutputFrameRate);
 
 	return B_OK;
@@ -443,26 +457,29 @@ AVCodecDecoder::_NegotiateVideoOutputFormat(media_format* inOutFormat)
 		// properties accordingly regardless of the settings here.
 
 	bool codecCanHandleIncompleteFrames
-		= (fCodec->capabilities & CODEC_CAP_TRUNCATED) != 0;
+		= (fCodec->capabilities & AV_CODEC_CAP_TRUNCATED) != 0;
 	if (codecCanHandleIncompleteFrames) {
 		// Expect and handle video frames to be splitted across consecutive
 		// data chunks.
-		fContext->flags |= CODEC_FLAG_TRUNCATED;
+		fCodecContext->flags |= AV_CODEC_FLAG_TRUNCATED;
 	}
 
 	// close any previous instance
 	if (fCodecInitDone) {
 		fCodecInitDone = false;
-		avcodec_close(fContext);
+		avcodec_close(fCodecContext);
 	}
 
-	if (avcodec_open2(fContext, fCodec, NULL) >= 0)
+	if (avcodec_open2(fCodecContext, fCodec, NULL) >= 0)
 		fCodecInitDone = true;
 	else {
 		TRACE("avcodec_open() failed to init codec!\n");
 		return B_ERROR;
 	}
 
+#if USE_SWS_FOR_COLOR_SPACE_CONVERSION
+	fOutputColorSpace = B_RGB32;
+#else
 	// Make MediaPlayer happy (if not in rgb32 screen depth and no overlay,
 	// it will only ask for YCbCr, which DrawBitmap doesn't handle, so the
 	// default colordepth is RGB32).
@@ -470,6 +487,7 @@ AVCodecDecoder::_NegotiateVideoOutputFormat(media_format* inOutFormat)
 		fOutputColorSpace = B_YCbCr422;
 	else
 		fOutputColorSpace = B_RGB32;
+#endif
 
 #if USE_SWS_FOR_COLOR_SPACE_CONVERSION
 	if (fSwsContext != NULL)
@@ -711,6 +729,9 @@ AVCodecDecoder::_DecodeNextAudioFrame()
 		}
 
 		status_t decodeAudioChunkStatus = _DecodeNextAudioFrameChunk();
+		if (decodeAudioChunkStatus == B_LAST_BUFFER_ERROR
+				&& fRawDecodedAudio->nb_samples > 0)
+			break;
 		if (decodeAudioChunkStatus != B_OK)
 			return decodeAudioChunkStatus;
 	}
@@ -731,7 +752,7 @@ AVCodecDecoder::_DecodeNextAudioFrame()
 }
 
 
-/*!	\brief Applies all essential audio input properties to fContext that were
+/*!	\brief Applies all essential audio input properties to fCodecContext that were
 		passed to AVCodecDecoder when Setup() was called.
 
 	Note: This function must be called before the AVCodec is opened via
@@ -739,24 +760,24 @@ AVCodecDecoder::_DecodeNextAudioFrame()
 	function avcodec_decode_audio4() is undefined.
 
 	Essential properties applied from fInputFormat.u.encoded_audio:
-		- bit_rate copied to fContext->bit_rate
-		- frame_size copied to fContext->frame_size
-		- output.format converted to fContext->sample_fmt
-		- output.frame_rate copied to fContext->sample_rate
-		- output.channel_count copied to fContext->channels
+		- bit_rate copied to fCodecContext->bit_rate
+		- frame_size copied to fCodecContext->frame_size
+		- output.format converted to fCodecContext->sample_fmt
+		- output.frame_rate copied to fCodecContext->sample_rate
+		- output.channel_count copied to fCodecContext->channels
 
 	Other essential properties being applied:
-		- fBlockAlign to fContext->block_align
-		- fExtraData to fContext->extradata
-		- fExtraDataSize to fContext->extradata_size
+		- fBlockAlign to fCodecContext->block_align
+		- fExtraData to fCodecContext->extradata
+		- fExtraDataSize to fCodecContext->extradata_size
 
 	TODO: Either the following documentation section should be removed or this
 	TODO when it is clear whether fInputFormat.MetaData() and
-	fInputFormat.MetaDataSize() have to be applied to fContext. See the related
+	fInputFormat.MetaDataSize() have to be applied to fCodecContext. See the related
 	TODO in the method implementation.
 	Only applied when fInputFormat.MetaDataSize() is greater than zero:
-		- fInputFormat.MetaData() to fContext->extradata
-		- fInputFormat.MetaDataSize() to fContext->extradata_size
+		- fInputFormat.MetaData() to fCodecContext->extradata
+		- fInputFormat.MetaDataSize() to fCodecContext->extradata_size
 */
 void
 AVCodecDecoder::_ApplyEssentialAudioContainerPropertiesToContext()
@@ -764,29 +785,27 @@ AVCodecDecoder::_ApplyEssentialAudioContainerPropertiesToContext()
 	media_encoded_audio_format containerProperties
 		= fInputFormat.u.encoded_audio;
 
-	fContext->bit_rate
+	fCodecContext->bit_rate
 		= static_cast<int>(containerProperties.bit_rate);
-	fContext->frame_size
+	fCodecContext->frame_size
 		= static_cast<int>(containerProperties.frame_size);
 	ConvertRawAudioFormatToAVSampleFormat(
-		containerProperties.output.format, fContext->sample_fmt);
-#if LIBAVCODEC_VERSION_INT > ((52 << 16) | (114 << 8))
+		containerProperties.output.format, fCodecContext->sample_fmt);
 	ConvertRawAudioFormatToAVSampleFormat(
-		containerProperties.output.format, fContext->request_sample_fmt);
-#endif
-	fContext->sample_rate
+		containerProperties.output.format, fCodecContext->request_sample_fmt);
+	fCodecContext->sample_rate
 		= static_cast<int>(containerProperties.output.frame_rate);
-	fContext->channels
+	fCodecContext->channels
 		= static_cast<int>(containerProperties.output.channel_count);
 	// Check that channel count is not still a wild card!
-	if (fContext->channels == 0) {
+	if (fCodecContext->channels == 0) {
 		TRACE("  channel_count still a wild-card, assuming stereo.\n");
-		fContext->channels = 2;
+		fCodecContext->channels = 2;
 	}
 
-	fContext->block_align = fBlockAlign;
-	fContext->extradata = reinterpret_cast<uint8_t*>(fExtraData);
-	fContext->extradata_size = fExtraDataSize;
+	fCodecContext->block_align = fBlockAlign;
+	fCodecContext->extradata = reinterpret_cast<uint8_t*>(fExtraData);
+	fCodecContext->extradata_size = fExtraDataSize;
 
 	// TODO: This probably needs to go away, there is some misconception
 	// about extra data / info buffer and meta data. See
@@ -795,14 +814,18 @@ AVCodecDecoder::_ApplyEssentialAudioContainerPropertiesToContext()
 	// the infoBuffer passed to GetStreamInfo(). I think this may be why
 	// the code below was added.
 	if (fInputFormat.MetaDataSize() > 0) {
-		fContext->extradata = static_cast<uint8_t*>(
+		fCodecContext->extradata = static_cast<uint8_t*>(
 			const_cast<void*>(fInputFormat.MetaData()));
-		fContext->extradata_size = fInputFormat.MetaDataSize();
+		fCodecContext->extradata_size = fInputFormat.MetaDataSize();
 	}
 
 	TRACE("  bit_rate %d, sample_rate %d, channels %d, block_align %d, "
-		"extradata_size %d\n", fContext->bit_rate, fContext->sample_rate,
-		fContext->channels, fContext->block_align, fContext->extradata_size);
+		"extradata_size %d\n",
+		fCodecContext->bit_rate,
+		fCodecContext->sample_rate,
+		fCodecContext->channels,
+		fCodecContext->block_align,
+		fCodecContext->extradata_size);
 }
 
 
@@ -846,7 +869,7 @@ AVCodecDecoder::_CheckAndFixConditionsThatHintAtBrokenAudioCodeBelow()
 {
 	if (fDecodedDataBufferSize < 0) {
 		fprintf(stderr, "Decoding read past the end of the decoded data "
-			"buffer! %ld\n", fDecodedDataBufferSize);
+			"buffer! %" B_PRId32 "\n", fDecodedDataBufferSize);
 		fDecodedDataBufferSize = 0;
 	}
 	if (fTempPacket.size < 0) {
@@ -916,7 +939,8 @@ AVCodecDecoder::_MoveAudioFramesToRawDecodedAudioAndUpdateStartTimes()
 	// Some decoders do not support format conversion on themselves, or use
 	// "planar" audio (each channel separated instead of interleaved samples).
 	// In that case, we use swresample to convert the data
-	if (av_sample_fmt_is_planar(fContext->sample_fmt)) {
+	if (av_sample_fmt_is_planar(fCodecContext->sample_fmt)) {
+#if 0
 		const uint8_t* ptr[8];
 		for (int i = 0; i < 8; i++) {
 			if (fDecodedDataBuffer->data[i] == NULL)
@@ -925,11 +949,35 @@ AVCodecDecoder::_MoveAudioFramesToRawDecodedAudioAndUpdateStartTimes()
 				ptr[i] = fDecodedDataBuffer->data[i] + fDecodedDataBufferOffset;
 		}
 
-		int32 result = swr_convert(fResampleContext, fRawDecodedAudio->data,
+		// When there are more input frames than space in the output buffer,
+		// we could feed everything to swr and it would buffer the extra data.
+		// However, there is no easy way to flush that data without feeding more
+		// input, and it makes our timestamp computations fail.
+		// So, we feed only as much frames as we can get out, and handle the
+		// buffering ourselves.
+		// TODO Ideally, we should try to size our output buffer so that it can
+		// always hold all the output (swr provides helper functions for this)
+		inFrames = frames;
+		frames = swr_convert(fResampleContext, fRawDecodedAudio->data,
 			outFrames, ptr, inFrames);
 
-		if (result < 0)
+		if (frames < 0)
 			debugger("resampling failed");
+#else
+		// interleave planar audio with same format
+		uintptr_t out = (uintptr_t)fRawDecodedAudio->data[0];
+		int32 offset = fDecodedDataBufferOffset;
+		for (int i = 0; i < frames; i++) {
+			for (int j = 0; j < fCodecContext->channels; j++) {
+				memcpy((void*)out, fDecodedDataBuffer->data[j]
+					+ offset, fInputFrameSize);
+				out += fInputFrameSize;
+			}
+			offset += fInputFrameSize;
+		}
+		outFrames = frames;
+		inFrames = frames;
+#endif
 	} else {
 		memcpy(fRawDecodedAudio->data[0], fDecodedDataBuffer->data[0]
 				+ fDecodedDataBufferOffset, frames * fOutputFrameSize);
@@ -937,7 +985,7 @@ AVCodecDecoder::_MoveAudioFramesToRawDecodedAudioAndUpdateStartTimes()
 		inFrames = frames;
 	}
 
-	size_t remainingSize = inFrames * fOutputFrameSize;
+	size_t remainingSize = inFrames * fInputFrameSize;
 	size_t decodedSize = outFrames * fOutputFrameSize;
 	fDecodedDataBufferSize -= inFrames;
 
@@ -949,8 +997,8 @@ AVCodecDecoder::_MoveAudioFramesToRawDecodedAudioAndUpdateStartTimes()
 
 		avformat_codec_context* codecContext
 			= static_cast<avformat_codec_context*>(fRawDecodedAudio->opaque);
-		codecContext->channels = fContext->channels;
-		codecContext->sample_rate = fContext->sample_rate;
+		codecContext->channels = fCodecContext->channels;
+		codecContext->sample_rate = fCodecContext->sample_rate;
 	}
 
 	fRawDecodedAudio->data[0] += decodedSize;
@@ -1020,8 +1068,8 @@ AVCodecDecoder::_DecodeNextAudioFrameChunk()
 				// Report failure if not done already
 				int32 chunkBufferOffset = fTempPacket.data - fChunkBuffer;
 				printf("########### audio decode error, "
-					"fTempPacket.size %d, fChunkBuffer data offset %ld\n",
-					fTempPacket.size, chunkBufferOffset);
+					"fTempPacket.size %d, fChunkBuffer data offset %" B_PRId32
+					"\n", fTempPacket.size, chunkBufferOffset);
 				fAudioDecodeError = true;
 			}
 
@@ -1074,13 +1122,13 @@ status_t
 AVCodecDecoder::_DecodeSomeAudioFramesIntoEmptyDecodedDataBuffer()
 {
 	assert(fDecodedDataBufferSize == 0);
-	assert(fTempPacket.size > 0);
 
-	avcodec_get_frame_defaults(fDecodedDataBuffer);
+	memset(fDecodedDataBuffer, 0, sizeof(AVFrame));
+    av_frame_unref(fDecodedDataBuffer);
 	fDecodedDataBufferOffset = 0;
 	int gotAudioFrame = 0;
 
-	int encodedDataSizeInBytes = avcodec_decode_audio4(fContext,
+	int encodedDataSizeInBytes = avcodec_decode_audio4(fCodecContext,
 		fDecodedDataBuffer, &gotAudioFrame, &fTempPacket);
 	if (encodedDataSizeInBytes <= 0) {
 		// Error or failure to produce decompressed output.
@@ -1194,89 +1242,82 @@ AVCodecDecoder::_UpdateMediaHeaderForAudioFrame()
 status_t
 AVCodecDecoder::_DecodeNextVideoFrame()
 {
-#if 0
-	// Well, I heard this was not supposed to happen, but it does
-	// (for example with http://thud.us/videos/misc/xvid-samples/flyby-divx.avi
-	// see #11409). Since that video otherwise plays fine when removing the
-	// assert, I'm assuming we are being overcautious here and commenting it
-	// out.
-	assert(fTempPacket.size >= 0);
-#endif
-
-	while (true) {
-		status_t loadingChunkStatus
-			= _LoadNextChunkIfNeededAndAssignStartTime();
-		if (loadingChunkStatus == B_LAST_BUFFER_ERROR)
-			return _FlushOneVideoFrameFromDecoderBuffer();
-		if (loadingChunkStatus != B_OK) {
-			TRACE("AVCodecDecoder::_DecodeNextVideoFrame(): error from "
-				"GetNextChunk(): %s\n", strerror(loadingChunkStatus));
-			return loadingChunkStatus;
-		}
+	int error;
+	int send_error;
 
 #if DO_PROFILING
-		bigtime_t startTime = system_time();
+	bigtime_t startTime = system_time();
 #endif
 
-		// NOTE: In the FFMPEG 0.10.2 code example decoding_encoding.c, the
-		// length returned by avcodec_decode_video2() is used to update the
-		// packet buffer size (here it is fTempPacket.size). This way the
-		// packet buffer is allowed to contain incomplete frames so we are
-		// required to buffer the packets between different calls to
-		// _DecodeNextVideoFrame().
-		int gotVideoFrame = 0;
-		int encodedDataSizeInBytes = avcodec_decode_video2(fContext,
-			fRawDecodedPicture, &gotVideoFrame, &fTempPacket);
-		if (encodedDataSizeInBytes < 0) {
-			TRACE("[v] AVCodecDecoder: ignoring error in decoding frame %lld:"
-				" %d\n", fFrame, encodedDataSizeInBytes);
-			// NOTE: An error from avcodec_decode_video2() is ignored by the
-			// FFMPEG 0.10.2 example decoding_encoding.c. Only the packet
-			// buffers are flushed accordingly
+	error = avcodec_receive_frame(fCodecContext, fRawDecodedPicture);
+
+	if (error == AVERROR_EOF)
+		return B_LAST_BUFFER_ERROR;
+
+	if (error == AVERROR(EAGAIN)) {
+		do {
+			status_t loadingChunkStatus
+				= _LoadNextChunkIfNeededAndAssignStartTime();
+			if (loadingChunkStatus == B_LAST_BUFFER_ERROR)
+				return _FlushOneVideoFrameFromDecoderBuffer();
+			if (loadingChunkStatus != B_OK) {
+				TRACE("[v] AVCodecDecoder::_DecodeNextVideoFrame(): error from "
+					"GetNextChunk(): %s\n", strerror(loadingChunkStatus));
+				return loadingChunkStatus;
+			}
+
+			char timestamp[AV_TS_MAX_STRING_SIZE];
+			av_ts_make_time_string(timestamp,
+				fTempPacket.dts, &fCodecContext->time_base);
+			TRACE("[v] Feed %d more bytes (dts %s)\n", fTempPacket.size,
+				timestamp);
+
+			send_error = avcodec_send_packet(fCodecContext, &fTempPacket);
+			if (send_error < 0 && send_error != AVERROR(EAGAIN)) {
+				TRACE("[v] AVCodecDecoder: ignoring error in decoding frame "
+				"%lld: %d\n", fFrame, error);
+			}
+
+			// Packet is consumed, clear it
 			fTempPacket.data = NULL;
 			fTempPacket.size = 0;
-			continue;
-		}
 
-		fTempPacket.size -= encodedDataSizeInBytes;
-		fTempPacket.data += encodedDataSizeInBytes;
+			error = avcodec_receive_frame(fCodecContext, fRawDecodedPicture);
+			if (error != 0 && error != AVERROR(EAGAIN)) {
+				TRACE("[v] frame %lld - decoding error, error code: %d, "
+					"chunk size: %ld\n", fFrame, error, fChunkBufferSize);
+			}
 
-		bool gotNoVideoFrame = gotVideoFrame == 0;
-		if (gotNoVideoFrame) {
-			TRACE("frame %lld - no picture yet, encodedDataSizeInBytes: %d, "
-				"chunk size: %ld\n", fFrame, encodedDataSizeInBytes,
-				fChunkBufferSize);
-			continue;
-		}
-
-#if DO_PROFILING
-		bigtime_t formatConversionStart = system_time();
-#endif
-
-		status_t handleStatus = _HandleNewVideoFrameAndUpdateSystemState();
-		if (handleStatus != B_OK)
-			return handleStatus;
-
-#if DO_PROFILING
-		bigtime_t doneTime = system_time();
-		decodingTime += formatConversionStart - startTime;
-		conversionTime += doneTime - formatConversionStart;
-		profileCounter++;
-		if (!(fFrame % 5)) {
-			printf("[v] profile: d1 = %lld, d2 = %lld (%lld) required %Ld\n",
-				decodingTime / profileCounter, conversionTime / profileCounter,
-				fFrame, bigtime_t(1000000LL / fOutputFrameRate));
-			decodingTime = 0;
-			conversionTime = 0;
-			profileCounter = 0;
-		}
-#endif
-		return B_OK;
+		} while (error != 0);
 	}
+
+#if DO_PROFILING
+	bigtime_t formatConversionStart = system_time();
+#endif
+
+	status_t handleStatus = _HandleNewVideoFrameAndUpdateSystemState();
+	if (handleStatus != B_OK)
+		return handleStatus;
+
+#if DO_PROFILING
+	bigtime_t doneTime = system_time();
+	decodingTime += formatConversionStart - startTime;
+	conversionTime += doneTime - formatConversionStart;
+	profileCounter++;
+	if (!(fFrame % 5)) {
+		printf("[v] profile: d1 = %lld, d2 = %lld (%lld) required %Ld\n",
+			decodingTime / profileCounter, conversionTime / profileCounter,
+			fFrame, bigtime_t(1000000LL / fOutputFrameRate));
+		decodingTime = 0;
+		conversionTime = 0;
+		profileCounter = 0;
+	}
+#endif
+	return error;
 }
 
 
-/*!	\brief Applies all essential video input properties to fContext that were
+/*!	\brief Applies all essential video input properties to fCodecContext that were
 		passed to AVCodecDecoder when Setup() was called.
 
 	Note: This function must be called before the AVCodec is opened via
@@ -1284,16 +1325,16 @@ AVCodecDecoder::_DecodeNextVideoFrame()
 	function avcodec_decode_video2() is undefined.
 
 	Essential properties applied from fInputFormat.u.encoded_video.output:
-		- display.line_width copied to fContext->width
-		- display.line_count copied to fContext->height
+		- display.line_width copied to fCodecContext->width
+		- display.line_count copied to fCodecContext->height
 		- pixel_width_aspect and pixel_height_aspect converted to
-		  fContext->sample_aspect_ratio
-		- field_rate converted to fContext->time_base and
-		  fContext->ticks_per_frame
+		  fCodecContext->sample_aspect_ratio
+		- field_rate converted to fCodecContext->time_base and
+		  fCodecContext->ticks_per_frame
 
 	Other essential properties being applied:
-		- fExtraData to fContext->extradata
-		- fExtraDataSize to fContext->extradata_size
+		- fExtraData to fCodecContext->extradata
+		- fExtraDataSize to fCodecContext->extradata_size
 */
 void
 AVCodecDecoder::_ApplyEssentialVideoContainerPropertiesToContext()
@@ -1301,23 +1342,23 @@ AVCodecDecoder::_ApplyEssentialVideoContainerPropertiesToContext()
 	media_raw_video_format containerProperties
 		= fInputFormat.u.encoded_video.output;
 
-	fContext->width = containerProperties.display.line_width;
-	fContext->height = containerProperties.display.line_count;
+	fCodecContext->width = containerProperties.display.line_width;
+	fCodecContext->height = containerProperties.display.line_count;
 
 	if (containerProperties.pixel_width_aspect > 0
 		&& containerProperties.pixel_height_aspect > 0) {
 		ConvertVideoAspectWidthAndHeightToAVCodecContext(
 			containerProperties.pixel_width_aspect,
-			containerProperties.pixel_height_aspect, *fContext);
+			containerProperties.pixel_height_aspect, *fCodecContext);
 	}
 
 	if (containerProperties.field_rate > 0.0) {
 		ConvertVideoFrameRateToAVCodecContext(containerProperties.field_rate,
-			*fContext);
+			*fCodecContext);
 	}
 
-	fContext->extradata = reinterpret_cast<uint8_t*>(fExtraData);
-	fContext->extradata_size = fExtraDataSize;
+	fCodecContext->extradata = reinterpret_cast<uint8_t*>(fExtraData);
+	fCodecContext->extradata_size = fExtraDataSize;
 }
 
 
@@ -1399,7 +1440,7 @@ AVCodecDecoder::_LoadNextChunkIfNeededAndAssignStartTime()
 	This is needed so that some decoders can read safely a predefined number of
 	bytes at a time for performance optimization purposes.
 
-	The additional memory has a size of FF_INPUT_BUFFER_PADDING_SIZE as defined
+	The additional memory has a size of AV_INPUT_BUFFER_PADDING_SIZE as defined
 	in avcodec.h.
 
 	Ownership of fChunkBuffer memory is with the class so it needs to be freed
@@ -1421,15 +1462,19 @@ status_t
 AVCodecDecoder::_CopyChunkToChunkBufferAndAddPadding(const void* chunk,
 	size_t chunkSize)
 {
-	fChunkBuffer = static_cast<uint8_t*>(realloc(fChunkBuffer,
-		chunkSize + FF_INPUT_BUFFER_PADDING_SIZE));
-	if (fChunkBuffer == NULL) {
+	uint8_t* tmpBuffer = static_cast<uint8_t*>(realloc(fChunkBuffer,
+		chunkSize + AV_INPUT_BUFFER_PADDING_SIZE));
+	if (tmpBuffer == NULL) {
+		free(fChunkBuffer);
+		fChunkBuffer = NULL;
 		fChunkBufferSize = 0;
 		return B_NO_MEMORY;
+	} else {
+		fChunkBuffer = tmpBuffer;
 	}
 
 	memcpy(fChunkBuffer, chunk, chunkSize);
-	memset(fChunkBuffer + chunkSize, 0, FF_INPUT_BUFFER_PADDING_SIZE);
+	memset(fChunkBuffer + chunkSize, 0, AV_INPUT_BUFFER_PADDING_SIZE);
 		// Establish safety net, by zero'ing the padding area.
 
 	fChunkBufferSize = chunkSize;
@@ -1455,7 +1500,7 @@ AVCodecDecoder::_HandleNewVideoFrameAndUpdateSystemState()
 	if (postProcessStatus != B_OK)
 		return postProcessStatus;
 
-	ConvertAVCodecContextToVideoFrameRate(*fContext, fOutputFrameRate);
+	ConvertAVCodecContextToVideoFrameRate(*fCodecContext, fOutputFrameRate);
 
 #ifdef DEBUG
 	dump_ffframe_video(fRawDecodedPicture, "ffpict");
@@ -1489,19 +1534,15 @@ AVCodecDecoder::_HandleNewVideoFrameAndUpdateSystemState()
 status_t
 AVCodecDecoder::_FlushOneVideoFrameFromDecoderBuffer()
 {
-	// Create empty fTempPacket to tell the video decoder it is time to flush
-	fTempPacket.data = NULL;
-	fTempPacket.size = 0;
+	// Tell the decoder there is nothing to send anymore
+	avcodec_send_packet(fCodecContext, NULL);
 
-	int gotVideoFrame = 0;
-	avcodec_decode_video2(fContext,	fRawDecodedPicture, &gotVideoFrame,
-		&fTempPacket);
-		// We are only interested in complete frames now, so ignore the return
-		// value.
+	// Get any remaining frame
+	int error = avcodec_receive_frame(fCodecContext, fRawDecodedPicture);
 
-	bool gotNoVideoFrame = gotVideoFrame == 0;
-	if (gotNoVideoFrame) {
+	if (error != 0 && error != AVERROR(EAGAIN)) {
 		// video buffer is flushed successfully
+		// (or there is an error, not much we can do about it)
 		return B_LAST_BUFFER_ERROR;
 	}
 
@@ -1534,9 +1575,11 @@ AVCodecDecoder::_UpdateMediaHeaderForVideoFrame()
 	fHeader.file_pos = 0;
 	fHeader.orig_size = 0;
 	fHeader.start_time = fRawDecodedPicture->pkt_dts;
-	fHeader.size_used = avpicture_get_size(
+		// The pkt_dts is already in microseconds, even if ffmpeg docs says
+		// 'in codec time_base units'
+	fHeader.size_used = av_image_get_buffer_size(
 		colorspace_to_pixfmt(fOutputColorSpace), fRawDecodedPicture->width,
-		fRawDecodedPicture->height);
+		fRawDecodedPicture->height, 1);
 	fHeader.u.raw_video.display_line_width = fRawDecodedPicture->width;
 	fHeader.u.raw_video.display_line_count = fRawDecodedPicture->height;
 	fHeader.u.raw_video.bytes_per_row
@@ -1549,15 +1592,16 @@ AVCodecDecoder::_UpdateMediaHeaderForVideoFrame()
 	fHeader.u.raw_video.first_active_line = 1;
 	fHeader.u.raw_video.line_count = fRawDecodedPicture->height;
 
-	ConvertAVCodecContextToVideoAspectWidthAndHeight(*fContext,
+	ConvertAVCodecContextToVideoAspectWidthAndHeight(*fCodecContext,
 		fHeader.u.raw_video.pixel_width_aspect,
 		fHeader.u.raw_video.pixel_height_aspect);
 
-	TRACE("[v] start_time=%02d:%02d.%02d field_sequence=%lu\n",
-		int((fHeader.start_time / 60000000) % 60),
-		int((fHeader.start_time / 1000000) % 60),
-		int((fHeader.start_time / 10000) % 100),
-		fHeader.u.raw_video.field_sequence);
+	char timestamp[AV_TS_MAX_STRING_SIZE];
+	av_ts_make_time_string(timestamp,
+		fRawDecodedPicture->best_effort_timestamp, &fCodecContext->time_base);
+
+	TRACE("[v] start_time=%s field_sequence=%lu\n",
+		timestamp, fHeader.u.raw_video.field_sequence);
 }
 
 
@@ -1572,7 +1616,7 @@ AVCodecDecoder::_UpdateMediaHeaderForVideoFrame()
 	for correct operation
 
 	You should only call this function when you	got a new picture decoded by
-	the video decoder. 
+	the video decoder.
 
 	When this function finishes the postprocessed video frame will be available
 	in fPostProcessedDecodedPicture and fDecodedData (fDecodedDataSizeInBytes
@@ -1586,11 +1630,11 @@ AVCodecDecoder::_DeinterlaceAndColorConvertVideoFrame()
 {
 	int displayWidth = fRawDecodedPicture->width;
 	int displayHeight = fRawDecodedPicture->height;
-	AVPicture deinterlacedPicture;
+	AVFrame deinterlacedPicture;
 	bool useDeinterlacedPicture = false;
 
 	if (fRawDecodedPicture->interlaced_frame) {
-		AVPicture rawPicture;
+		AVFrame rawPicture;
 		rawPicture.data[0] = fRawDecodedPicture->data[0];
 		rawPicture.data[1] = fRawDecodedPicture->data[1];
 		rawPicture.data[2] = fRawDecodedPicture->data[2];
@@ -1600,28 +1644,29 @@ AVCodecDecoder::_DeinterlaceAndColorConvertVideoFrame()
 		rawPicture.linesize[2] = fRawDecodedPicture->linesize[2];
 		rawPicture.linesize[3] = fRawDecodedPicture->linesize[3];
 
-		avpicture_alloc(&deinterlacedPicture, fContext->pix_fmt, displayWidth,
-			displayHeight);
+		if (av_image_alloc(deinterlacedPicture.data,
+				deinterlacedPicture.linesize, displayWidth, displayHeight,
+				fCodecContext->pix_fmt, 1) < 0)
+			return B_NO_MEMORY;
 
-		if (avpicture_deinterlace(&deinterlacedPicture, &rawPicture,
-				fContext->pix_fmt, displayWidth, displayHeight) < 0) {
-			TRACE("[v] avpicture_deinterlace() - error\n");
-		} else
-			useDeinterlacedPicture = true;
+		// deinterlace implemented using avfilter
+		_ProcessFilterGraph(&deinterlacedPicture, &rawPicture,
+			fCodecContext->pix_fmt, displayWidth, displayHeight);
+		useDeinterlacedPicture = true;
 	}
 
 	// Some decoders do not set pix_fmt until they have decoded 1 frame
 #if USE_SWS_FOR_COLOR_SPACE_CONVERSION
 	if (fSwsContext == NULL) {
 		fSwsContext = sws_getContext(displayWidth, displayHeight,
-			fContext->pix_fmt, displayWidth, displayHeight,
+			fCodecContext->pix_fmt, displayWidth, displayHeight,
 			colorspace_to_pixfmt(fOutputColorSpace),
 			SWS_FAST_BILINEAR, NULL, NULL, NULL);
 	}
 #else
 	if (fFormatConversionFunc == NULL) {
 		fFormatConversionFunc = resolve_colorspace(fOutputColorSpace,
-			fContext->pix_fmt, displayWidth, displayHeight);
+			fCodecContext->pix_fmt, displayWidth, displayHeight);
 	}
 #endif
 
@@ -1682,7 +1727,103 @@ AVCodecDecoder::_DeinterlaceAndColorConvertVideoFrame()
 	}
 
 	if (fRawDecodedPicture->interlaced_frame)
-		avpicture_free(&deinterlacedPicture);
+		av_freep(&deinterlacedPicture.data[0]);
 
+	return B_OK;
+}
+
+
+/*! \brief Init the deinterlace filter graph.
+
+	\returns B_OK the filter graph could be built.
+	\returns B_BAD_VALUE something was wrong with building the graph.
+*/
+status_t
+AVCodecDecoder::_InitFilterGraph(enum AVPixelFormat pixfmt, int32 width,
+	int32 height)
+{
+	if (fFilterGraph != NULL) {
+		av_frame_free(&fFilterFrame);
+		avfilter_graph_free(&fFilterGraph);
+	}
+
+	fFilterGraph = avfilter_graph_alloc();
+
+	BString arguments;
+	arguments.SetToFormat("buffer=video_size=%" B_PRId32 "x%" B_PRId32
+		":pix_fmt=%d:time_base=1/1:pixel_aspect=0/1[in];[in]yadif[out];"
+		"[out]buffersink", width, height,
+		pixfmt);
+	AVFilterInOut* inputs = NULL;
+	AVFilterInOut* outputs = NULL;
+	TRACE("[v] _InitFilterGraph(): %s\n", arguments.String());
+	int ret = avfilter_graph_parse2(fFilterGraph, arguments.String(), &inputs,
+		&outputs);
+	if (ret < 0) {
+		fprintf(stderr, "avfilter_graph_parse2() failed\n");
+		return B_BAD_VALUE;
+	}
+
+	ret = avfilter_graph_config(fFilterGraph, NULL);
+	if (ret < 0) {
+		fprintf(stderr, "avfilter_graph_config() failed\n");
+		return B_BAD_VALUE;
+	}
+
+	fBufferSourceContext = avfilter_graph_get_filter(fFilterGraph,
+		"Parsed_buffer_0");
+	fBufferSinkContext = avfilter_graph_get_filter(fFilterGraph,
+		"Parsed_buffersink_2");
+	if (fBufferSourceContext == NULL || fBufferSinkContext == NULL) {
+		fprintf(stderr, "avfilter_graph_get_filter() failed\n");
+		return B_BAD_VALUE;
+	}
+	fFilterFrame = av_frame_alloc();
+	fLastWidth = width;
+	fLastHeight = height;
+	fLastPixfmt = pixfmt;
+
+	return B_OK;
+}
+
+
+/*! \brief Process an AVPicture with the deinterlace filter graph.
+
+    We decode exactly one video frame into dst.
+	Equivalent function for avpicture_deinterlace() from version 2.x.
+
+	\returns B_OK video frame successfully deinterlaced.
+	\returns B_BAD_DATA No frame could be output.
+	\returns B_NO_MEMORY Not enough memory available for correct operation.
+*/
+status_t
+AVCodecDecoder::_ProcessFilterGraph(AVFrame *dst, const AVFrame *src,
+	enum AVPixelFormat pixfmt, int32 width, int32 height)
+{
+	if (fFilterGraph == NULL || width != fLastWidth
+		|| height != fLastHeight || pixfmt != fLastPixfmt) {
+
+		status_t err = _InitFilterGraph(pixfmt, width, height);
+		if (err != B_OK)
+			return err;
+	}
+
+	memcpy(fFilterFrame->data, src->data, sizeof(src->data));
+	memcpy(fFilterFrame->linesize, src->linesize, sizeof(src->linesize));
+	fFilterFrame->width = width;
+	fFilterFrame->height = height;
+	fFilterFrame->format = pixfmt;
+
+	int ret = av_buffersrc_add_frame(fBufferSourceContext, fFilterFrame);
+	if (ret < 0)
+		return B_NO_MEMORY;
+
+	ret = av_buffersink_get_frame(fBufferSinkContext, fFilterFrame);
+	if (ret < 0)
+		return B_BAD_DATA;
+
+	av_image_copy(dst->data, dst->linesize, (const uint8**)fFilterFrame->data,
+		fFilterFrame->linesize, pixfmt, width, height);
+	av_frame_unref(fFilterFrame);
 	return B_OK;
 }

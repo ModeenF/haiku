@@ -12,6 +12,7 @@
 #include <LayoutBuilder.h>
 #include <Messenger.h>
 #include <Roster.h>
+#include <SeparatorView.h>
 #include <TabView.h>
 
 #include <stdio.h>
@@ -29,7 +30,6 @@ static const uint32 kMsgRevert = 'rvrt';
 
 static const uint32 kMsgStartServices = 'SrSR';
 static const uint32 kMsgStopServices = 'StST';
-static const uint32 kMsgShowDebug = 'ShDG';
 
 LocalDevice* ActiveLocalDevice = NULL;
 
@@ -39,8 +39,6 @@ BluetoothWindow::BluetoothWindow(BRect frame)
 	BWindow(frame, B_TRANSLATE_SYSTEM_NAME("Bluetooth"), B_TITLED_WINDOW,
 		B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS)
 {
-	SetLayout(new BGroupLayout(B_HORIZONTAL));
-
 	fDefaultsButton = new BButton("defaults", B_TRANSLATE("Defaults"),
 		new BMessage(kMsgSetDefaults), B_WILL_DRAW);
 
@@ -60,18 +58,8 @@ BluetoothWindow::BluetoothWindow(BRect frame)
 		new BMessage(kMsgStopServices), 0));
 	menu->AddSeparatorItem();
 	menu->AddItem(new BMenuItem(
-		B_TRANSLATE("Show bluetooth console" B_UTF8_ELLIPSIS),
-		new BMessage(kMsgStartServices), 0));
-	menu->AddItem(new BMenuItem(
-		B_TRANSLATE("Refresh LocalDevices" B_UTF8_ELLIPSIS),
+		B_TRANSLATE("Refresh local devices" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgRefresh), 0));
-	fMenubar->AddItem(menu);
-
-	menu = new BMenu(B_TRANSLATE("View"));
-	menu->AddItem(new BMenuItem(
-		B_TRANSLATE("Connections & channels" B_UTF8_ELLIPSIS), NULL, 0));
-	menu->AddItem(new BMenuItem(
-		B_TRANSLATE("Remote devices list" B_UTF8_ELLIPSIS), NULL, 0));
 	fMenubar->AddItem(menu);
 
 	menu = new BMenu(B_TRANSLATE("Help"));
@@ -80,6 +68,7 @@ BluetoothWindow::BluetoothWindow(BRect frame)
 	fMenubar->AddItem(menu);
 
 	BTabView* tabView = new BTabView("tabview", B_WIDTH_FROM_LABEL);
+	tabView->SetBorder(B_NO_BORDER);
 
 	fSettingsView = new BluetoothSettingsView(B_TRANSLATE("Settings"));
 //	fConnChan = new ConnChanView("Connections & Channels", B_WILL_DRAW);
@@ -93,16 +82,20 @@ BluetoothWindow::BluetoothWindow(BRect frame)
 	fRevertButton->SetEnabled(false);
 
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
+		.SetInsets(0)
 		.Add(fMenubar)
-		.AddStrut(B_USE_DEFAULT_SPACING)
+		.AddStrut(B_USE_HALF_ITEM_SPACING)
 		.Add(tabView)
-		.AddStrut(B_USE_DEFAULT_SPACING)
-		.AddGroup(B_HORIZONTAL, 0)
+		.AddStrut(B_USE_HALF_ITEM_SPACING)
+		.Add(new BSeparatorView(B_HORIZONTAL))
+		.AddGroup(B_HORIZONTAL)
+			.SetInsets(B_USE_WINDOW_SPACING, B_USE_DEFAULT_SPACING,
+				B_USE_WINDOW_SPACING, B_USE_WINDOW_SPACING)
+			.Add(fDefaultsButton)
 			.Add(fRevertButton)
 			.AddGlue()
-			.Add(fDefaultsButton)
-			.End()
-		.SetInsets(B_USE_WINDOW_SPACING);
+		.End()
+	.End();
 }
 
 
@@ -124,22 +117,16 @@ BluetoothWindow::MessageReceived(BMessage* message)
 								|| fAntialiasingSettings->IsDefaultable());
 			fRevertButton->SetEnabled(false);
 */			break;
-		case kMsgStartServices:
-			printf("kMsgStartServices\n");
-			if (!be_roster->IsRunning(BLUETOOTH_SIGNATURE)) {
-				status_t error;
 
-				error = be_roster->Launch(BLUETOOTH_SIGNATURE);
+		case kMsgStartServices:
+			if (!be_roster->IsRunning(BLUETOOTH_SIGNATURE)) {
+				status_t error = be_roster->Launch(BLUETOOTH_SIGNATURE);
 				printf("kMsgStartServices: %s\n", strerror(error));
 			}
 			break;
-
 		case kMsgStopServices:
-			printf("kMsgStopServices\n");
 			if (be_roster->IsRunning(BLUETOOTH_SIGNATURE)) {
-				status_t error;
-
-				error = BMessenger(BLUETOOTH_SIGNATURE).SendMessage(B_QUIT_REQUESTED);
+				status_t error = BMessenger(BLUETOOTH_SIGNATURE).SendMessage(B_QUIT_REQUESTED);
 				printf("kMsgStopServices: %s\n", strerror(error));
 			}
 			break;
@@ -161,7 +148,7 @@ BluetoothWindow::MessageReceived(BMessage* message)
 
 
 bool
-BluetoothWindow::QuitRequested(void)
+BluetoothWindow::QuitRequested()
 {
 	be_app->PostMessage(B_QUIT_REQUESTED);
 	return true;

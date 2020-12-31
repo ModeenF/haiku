@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -111,6 +111,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #include "acpi.h"
@@ -179,7 +215,8 @@ AcpiUtCreateInternalObjectDbg (
 
     /* Allocate the raw object descriptor */
 
-    Object = AcpiUtAllocateObjectDescDbg (ModuleName, LineNumber, ComponentId);
+    Object = AcpiUtAllocateObjectDescDbg (
+        ModuleName, LineNumber, ComponentId);
     if (!Object)
     {
         return_PTR (NULL);
@@ -193,8 +230,8 @@ AcpiUtCreateInternalObjectDbg (
 
         /* These types require a secondary object */
 
-        SecondObject = AcpiUtAllocateObjectDescDbg (ModuleName,
-                            LineNumber, ComponentId);
+        SecondObject = AcpiUtAllocateObjectDescDbg (
+            ModuleName, LineNumber, ComponentId);
         if (!SecondObject)
         {
             AcpiUtDeleteObjectDesc (Object);
@@ -265,7 +302,7 @@ AcpiUtCreatePackageObject (
      * terminated.
      */
     PackageElements = ACPI_ALLOCATE_ZEROED (
-                        ((ACPI_SIZE) Count + 1) * sizeof (void *));
+        ((ACPI_SIZE) Count + 1) * sizeof (void *));
     if (!PackageElements)
     {
         ACPI_FREE (PackageDesc);
@@ -355,6 +392,7 @@ AcpiUtCreateBufferObject (
         {
             ACPI_ERROR ((AE_INFO, "Could not allocate size %u",
                 (UINT32) BufferSize));
+
             AcpiUtRemoveReference (BufferDesc);
             return_PTR (NULL);
         }
@@ -414,6 +452,7 @@ AcpiUtCreateStringObject (
     {
         ACPI_ERROR ((AE_INFO, "Could not allocate size %u",
             (UINT32) StringSize));
+
         AcpiUtRemoveReference (StringDesc);
         return_PTR (NULL);
     }
@@ -470,8 +509,8 @@ AcpiUtValidInternalObject (
     default:
 
         ACPI_DEBUG_PRINT ((ACPI_DB_EXEC,
-                "%p is not an ACPI operand obj [%s]\n",
-                Object, AcpiUtGetDescriptorName (Object)));
+            "%p is not an ACPI operand obj [%s]\n",
+            Object, AcpiUtGetDescriptorName (Object)));
         break;
     }
 
@@ -520,7 +559,7 @@ AcpiUtAllocateObjectDescDbg (
     ACPI_SET_DESCRIPTOR_TYPE (Object, ACPI_DESC_TYPE_OPERAND);
 
     ACPI_DEBUG_PRINT ((ACPI_DB_ALLOCATIONS, "%p Size %X\n",
-            Object, (UINT32) sizeof (ACPI_OPERAND_OBJECT)));
+        Object, (UINT32) sizeof (ACPI_OPERAND_OBJECT)));
 
     return_PTR (Object);
 }
@@ -612,6 +651,10 @@ AcpiUtGetSimpleObjectSize (
     {
         /* A namespace node should never get here */
 
+        ACPI_ERROR ((AE_INFO,
+            "Received a namespace node [%4.4s] "
+            "where an operand object is required",
+            ACPI_CAST_PTR (ACPI_NAMESPACE_NODE, InternalObject)->Name.Ascii));
         return_ACPI_STATUS (AE_AML_INTERNAL);
     }
 
@@ -783,12 +826,12 @@ AcpiUtGetPackageObjectSize (
     ACPI_FUNCTION_TRACE_PTR (UtGetPackageObjectSize, InternalObject);
 
 
-    Info.Length      = 0;
+    Info.Length = 0;
     Info.ObjectSpace = 0;
     Info.NumPackages = 1;
 
-    Status = AcpiUtWalkPackageTree (InternalObject, NULL,
-        AcpiUtGetElementLength, &Info);
+    Status = AcpiUtWalkPackageTree (
+        InternalObject, NULL, AcpiUtGetElementLength, &Info);
     if (ACPI_FAILURE (Status))
     {
         return_ACPI_STATUS (Status);
@@ -799,8 +842,8 @@ AcpiUtGetPackageObjectSize (
      * just add the length of the package objects themselves.
      * Round up to the next machine word.
      */
-    Info.Length += ACPI_ROUND_UP_TO_NATIVE_WORD (sizeof (ACPI_OBJECT)) *
-                    (ACPI_SIZE) Info.NumPackages;
+    Info.Length += ACPI_ROUND_UP_TO_NATIVE_WORD (
+        sizeof (ACPI_OBJECT)) * (ACPI_SIZE) Info.NumPackages;
 
     /* Return the total package length */
 
@@ -834,7 +877,8 @@ AcpiUtGetObjectSize (
     ACPI_FUNCTION_ENTRY ();
 
 
-    if ((ACPI_GET_DESCRIPTOR_TYPE (InternalObject) == ACPI_DESC_TYPE_OPERAND) &&
+    if ((ACPI_GET_DESCRIPTOR_TYPE (InternalObject) ==
+            ACPI_DESC_TYPE_OPERAND) &&
         (InternalObject->Common.Type == ACPI_TYPE_PACKAGE))
     {
         Status = AcpiUtGetPackageObjectSize (InternalObject, ObjLength);

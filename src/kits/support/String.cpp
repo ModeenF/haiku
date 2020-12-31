@@ -102,8 +102,8 @@ public:
 			if (fBuffer != NULL)
 				fBufferSize *= 2;
 
-			int32* newBuffer = NULL;
-			newBuffer = (int32*)realloc(fBuffer, fBufferSize * sizeof(int32));
+			int32* newBuffer =
+				(int32*)realloc(fBuffer, fBufferSize * sizeof(int32));
 			if (newBuffer == NULL)
 				return false;
 
@@ -130,57 +130,6 @@ private:
 	int32	fBufferSize;
 	int32*	fBuffer;
 };
-
-
-//	#pragma mark - BStringRef
-
-
-BStringRef::BStringRef(BString& string, int32 position)
-	:
-	fString(string), fPosition(position)
-{
-}
-
-
-BStringRef::operator char() const
-{
-	return fPosition < fString.Length() ? fString.fPrivateData[fPosition] : 0;
-}
-
-
-BStringRef&
-BStringRef::operator=(char c)
-{
-	fString._MakeWritable();
-	fString.fPrivateData[fPosition] = c;
-	return *this;
-}
-
-
-BStringRef&
-BStringRef::operator=(const BStringRef &rc)
-{
-	return operator=(rc.fString.fPrivateData[rc.fPosition]);
-}
-
-
-const char*
-BStringRef::operator&() const
-{
-	return &fString.fPrivateData[fPosition];
-}
-
-
-char*
-BStringRef::operator&()
-{
-	if (fString._MakeWritable() != B_OK)
-		return NULL;
-
-	fString._ReferenceCount() = -1;
-		// mark as unsharable
-	return &fString.fPrivateData[fPosition];
-}
 
 
 //	#pragma mark - BString
@@ -576,7 +525,7 @@ BString::Split(const char* separator, bool noEmptyStrings,
 		if (endIndex == length)
 			break;
 
-		index = endIndex + 1;
+		index = endIndex + separatorLength;
 	}
 
 	return true;
@@ -1110,6 +1059,13 @@ BString::Compare(const char* string, int32 length) const
 
 
 int
+BString::CompareAt(size_t offset, const BString& string, int32 length) const
+{
+	return strncmp(String() + offset, string.String(), length);
+}
+
+
+int
 BString::CompareChars(const BString& string, int32 charCount) const
 {
 	return Compare(string, UTF8CountBytes(fPrivateData, charCount));
@@ -1442,7 +1398,7 @@ BString::StartsWith(const BString& string) const
 bool
 BString::StartsWith(const char* string) const
 {
-	return StartsWith(string, strlen(string));
+	return StartsWith(string, strlen(safestr(string)));
 }
 
 
@@ -1457,6 +1413,30 @@ BString::StartsWith(const char* string, int32 length) const
 
 
 bool
+BString::IStartsWith(const BString& string) const
+{
+	return IStartsWith(string.String(), string.Length());
+}
+
+
+bool
+BString::IStartsWith(const char* string) const
+{
+	return IStartsWith(string, strlen(safestr(string)));
+}
+
+
+bool
+BString::IStartsWith(const char* string, int32 length) const
+{
+	if (length > Length() || length > (int32)strlen(safestr(string)))
+		return false;
+
+	return _IFindAfter(string, 0, length) == 0;
+}
+
+
+bool
 BString::EndsWith(const BString& string) const
 {
 	return EndsWith(string.String(), string.Length());
@@ -1466,7 +1446,7 @@ BString::EndsWith(const BString& string) const
 bool
 BString::EndsWith(const char* string) const
 {
-	return EndsWith(string, strlen(string));
+	return EndsWith(string, strlen(safestr(string)));
 }
 
 
@@ -1478,6 +1458,31 @@ BString::EndsWith(const char* string, int32 length) const
 		return false;
 
 	return memcmp(String() + offset, string, length) == 0;
+}
+
+
+bool
+BString::IEndsWith(const BString& string) const
+{
+	return IEndsWith(string.String(), string.Length());
+}
+
+
+bool
+BString::IEndsWith(const char* string) const
+{
+	return IEndsWith(string, strlen(safestr(string)));
+}
+
+
+bool
+BString::IEndsWith(const char* string, int32 length) const
+{
+	int32 offset = Length() - length;
+	if (offset < 0)
+		return false;
+
+	return _IFindBefore(string, Length(), length) == offset;
 }
 
 
@@ -1540,7 +1545,7 @@ BString::Replace(char replaceThis, char withThis, int32 maxReplaceCount,
 BString&
 BString::ReplaceFirst(const char* replaceThis, const char* withThis)
 {
-	if (!replaceThis || !withThis || FindFirst(replaceThis) < 0)
+	if (replaceThis == NULL || FindFirst(replaceThis) < 0)
 		return *this;
 
 	if (_MakeWritable() != B_OK)
@@ -1553,14 +1558,16 @@ BString::ReplaceFirst(const char* replaceThis, const char* withThis)
 BString&
 BString::ReplaceLast(const char* replaceThis, const char* withThis)
 {
-	if (!replaceThis || !withThis)
+	if (replaceThis == NULL)
 		return *this;
+	if (withThis == NULL)
+		withThis = "";
 
 	int32 replaceThisLength = strlen(replaceThis);
 	int32 pos = _FindBefore(replaceThis, Length(), replaceThisLength);
 
 	if (pos >= 0) {
-		int32 withThisLength =  strlen(withThis);
+		int32 withThisLength = strlen(withThis);
 		int32 difference = withThisLength - replaceThisLength;
 
 		if (difference > 0) {
@@ -1584,7 +1591,7 @@ BString&
 BString::ReplaceAll(const char* replaceThis, const char* withThis,
 	int32 fromOffset)
 {
-	if (!replaceThis || !withThis || FindFirst(replaceThis) < 0)
+	if (replaceThis == NULL || FindFirst(replaceThis) < 0)
 		return *this;
 
 	if (_MakeWritable() != B_OK)
@@ -1599,7 +1606,7 @@ BString&
 BString::Replace(const char* replaceThis, const char* withThis,
 	int32 maxReplaceCount, int32 fromOffset)
 {
-	if (!replaceThis || !withThis || maxReplaceCount <= 0
+	if (replaceThis == NULL || maxReplaceCount <= 0
 		|| FindFirst(replaceThis) < 0)
 		return *this;
 
@@ -1691,7 +1698,7 @@ BString::IReplace(char replaceThis, char withThis, int32 maxReplaceCount,
 BString&
 BString::IReplaceFirst(const char* replaceThis, const char* withThis)
 {
-	if (!replaceThis || !withThis || IFindFirst(replaceThis) < 0)
+	if (replaceThis == NULL || IFindFirst(replaceThis) < 0)
 		return *this;
 
 	if (_MakeWritable() != B_OK)
@@ -1703,8 +1710,10 @@ BString::IReplaceFirst(const char* replaceThis, const char* withThis)
 BString&
 BString::IReplaceLast(const char* replaceThis, const char* withThis)
 {
-	if (!replaceThis || !withThis)
+	if (replaceThis == NULL)
 		return *this;
+	if (withThis == NULL)
+		withThis = "";
 
 	int32 replaceThisLength = strlen(replaceThis);
 	int32 pos = _IFindBefore(replaceThis, Length(), replaceThisLength);
@@ -1734,7 +1743,7 @@ BString&
 BString::IReplaceAll(const char* replaceThis, const char* withThis,
 	int32 fromOffset)
 {
-	if (!replaceThis || !withThis || IFindFirst(replaceThis) < 0)
+	if (replaceThis == NULL || IFindFirst(replaceThis) < 0)
 		return *this;
 
 	if (_MakeWritable() != B_OK)
@@ -1749,7 +1758,7 @@ BString&
 BString::IReplace(const char* replaceThis, const char* withThis,
 	int32 maxReplaceCount, int32 fromOffset)
 {
-	if (!replaceThis || !withThis || maxReplaceCount <= 0
+	if (replaceThis == NULL || maxReplaceCount <= 0
 		|| FindFirst(replaceThis) < 0)
 		return *this;
 
@@ -1866,13 +1875,7 @@ BString::ReplaceCharsSet(const char* setOfChars, const char* with)
 //	#pragma mark - Unchecked char access
 
 
-#if __GNUC__ > 3
-BStringRef
-BString::operator[](int32 index)
-{
-	return BStringRef(*this, index);
-}
-#else
+#if __GNUC__ == 2
 char&
 BString::operator[](int32 index)
 {
@@ -1948,6 +1951,16 @@ BString::UnlockBuffer(int32 length)
 		_ReferenceCount() = 1;
 			// mark shareable again
 	}
+
+	return *this;
+}
+
+
+BString&
+BString::SetByteAt(int32 pos, char to)
+{
+	if (pos < Length() && _MakeWritable() == B_OK)
+		fPrivateData[pos] = to;
 
 	return *this;
 }
@@ -2625,7 +2638,7 @@ BString::_DoReplace(const char* findThis, const char* replaceWith,
 	TFindMethod findMethod = ignoreCase
 		? &BString::_IFindAfter : &BString::_FindAfter;
 
-	if (!replaceWith)
+	if (replaceWith == NULL)
 		replaceWith = "";
 
 	int32 replaceLen = strlen(replaceWith);
@@ -2696,6 +2709,88 @@ __ls__7BStringR7BString(BString* self, BString& string)
 {
 	return self->operator<<(string);
 }
+
+
+#if __GNUC__ > 3
+
+//	#pragma mark - BStringRef backwards compatibility
+
+
+class BStringRef {
+public:
+	BStringRef(BString& string, int32 position);
+	~BStringRef() {}
+
+	operator char() const;
+
+	char* operator&();
+	const char* operator&() const;
+
+	BStringRef& operator=(char c);
+	BStringRef& operator=(const BStringRef& rc);
+
+private:
+	BString&	fString;
+	int32		fPosition;
+};
+
+
+BStringRef::BStringRef(BString& string, int32 position)
+	:
+	fString(string), fPosition(position)
+{
+}
+
+
+BStringRef::operator char() const
+{
+	return fPosition < fString.Length() ? fString.fPrivateData[fPosition] : 0;
+}
+
+
+BStringRef&
+BStringRef::operator=(char c)
+{
+	fString._MakeWritable();
+	fString.fPrivateData[fPosition] = c;
+	return *this;
+}
+
+
+BStringRef&
+BStringRef::operator=(const BStringRef &rc)
+{
+	return operator=(rc.fString.fPrivateData[rc.fPosition]);
+}
+
+
+const char*
+BStringRef::operator&() const
+{
+	return &fString.fPrivateData[fPosition];
+}
+
+
+char*
+BStringRef::operator&()
+{
+	if (fString._MakeWritable() != B_OK)
+		return NULL;
+
+	fString._ReferenceCount() = -1;
+		// mark as unsharable
+	return &fString.fPrivateData[fPosition];
+}
+
+
+
+extern "C" BStringRef
+_ZN7BStringixEi(BString* self, int32 index)
+
+{
+	return BStringRef(*self, index);
+}
+#endif
 
 
 //	#pragma mark - Non-member compare for sorting, etc.

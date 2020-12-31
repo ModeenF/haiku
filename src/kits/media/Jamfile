@@ -1,13 +1,9 @@
 SubDir HAIKU_TOP src kits media ;
 
-SetSubDirSupportedPlatformsBeOSCompatible ;
-
-if $(TARGET_PLATFORM) != haiku {
-	UseHeaders [ FDirName $(HAIKU_TOP) headers os media ] : true ;
-		# We need the public media headers also when not compiling for Haiku.
-}
+AddResources libmedia.so : libmedia.rdef ;
 
 UsePrivateHeaders app media shared ;
+UsePrivateHeaders [ FDirName media experimental ] ;
 
 if $(CHECK_MALLOC) {
 	SubDirC++Flags -D_NO_INLINE_ASM -fcheck-memory-usage ;
@@ -17,14 +13,10 @@ local architectureObject ;
 for architectureObject in [ MultiArchSubDirSetup ] {
 	on $(architectureObject) {
 
+		SEARCH_SOURCE += [ FDirName $(SUBDIR) experimental ] ;
 		SEARCH_SOURCE += [ FDirName $(SUBDIR) legacy ] ;
 
 		SharedLibrary [ MultiArchDefaultGristFiles libmedia.so ] :
-			# Private Media Kit
-			!missing_symbols.cpp
-			Deprecated.cpp
-			MediaRecorder.cpp
-
 			# Public Media Kit
 			Buffer.cpp
 			BufferConsumer.cpp
@@ -41,6 +33,7 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			MediaFiles.cpp
 			MediaFormats.cpp
 			MediaNode.cpp
+			MediaRecorder.cpp
 			MediaRoster.cpp
 			MediaTheme.cpp
 			MediaTrack.cpp
@@ -54,6 +47,15 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			TimedEventQueue.cpp
 			TimeSource.cpp
 
+			# Experimental Media Kit
+			AdapterIO.cpp
+			MediaClient.cpp
+			MediaClientDefs.cpp
+			MediaClientNode.cpp
+			MediaConnection.cpp
+			MediaIO.cpp
+			SimpleMediaClient.cpp
+
 			# Internal Functionality
 			AddOnManager.cpp
 			BufferCache.cpp
@@ -63,6 +65,7 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			FormatManager.cpp
 			MediaRecorderNode.cpp
 			Notifications.cpp
+			PortPool.cpp
 			request_data.cpp
 			SharedBufferList.cpp
 			TrackReader.cpp
@@ -85,12 +88,25 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			EncoderPlugin.cpp
 			MediaExtractor.cpp
 			MediaPlugin.cpp
+			MediaStreamer.cpp
 			MediaWriter.cpp
 			PluginManager.cpp
 			ReaderPlugin.cpp
+			StreamerPlugin.cpp
 			WriterPlugin.cpp
+
+			# Compat Media Kit
+			!missing_symbols.cpp
+			Deprecated.cpp
 			:
-			be localestub [ TargetLibsupc++ ] [ TargetLibstdc++ ]
+			be localestub shared
+			[ TargetLibsupc++ ] [ TargetLibstdc++ ]
 			;
 	}
 }
+
+DoCatalogs libmedia.so
+	: x-vnd.Haiku-libmedia
+	:
+	MediaDefs.cpp
+	;

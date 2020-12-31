@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2009, Pyun YongHyeon <yongari@FreeBSD.org>
  * All rights reserved.
  *
@@ -24,7 +26,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD$
+ * $FreeBSD: releng/12.0/sys/dev/alc/if_alcvar.h 326255 2017-11-27 14:52:40Z pfg $
  */
 
 #ifndef	_IF_ALCVAR_H
@@ -52,6 +54,10 @@
 /* Water mark to kick reclaiming Tx buffers. */
 #define	ALC_TX_DESC_HIWAT	((ALC_TX_RING_CNT * 6) / 10)
 
+/*
+ * AR816x controllers support up to 16 messages but this driver
+ * uses single message.
+ */
 #define	ALC_MSI_MESSAGES	1
 #define	ALC_MSIX_MESSAGES	1
 
@@ -224,13 +230,15 @@ struct alc_softc {
 #define	ALC_FLAG_PM		0x0010
 #define	ALC_FLAG_FASTETHER	0x0020
 #define	ALC_FLAG_JUMBO		0x0040
-#define	ALC_FLAG_ASPM_MON	0x0080
 #define	ALC_FLAG_CMB_BUG	0x0100
 #define	ALC_FLAG_SMB_BUG	0x0200
 #define	ALC_FLAG_L0S		0x0400
 #define	ALC_FLAG_L1S		0x0800
 #define	ALC_FLAG_APS		0x1000
-#define	ALC_FLAG_LINK		0x8000
+#define	ALC_FLAG_AR816X_FAMILY	0x2000
+#define	ALC_FLAG_LINK_WAR	0x4000
+#define	ALC_FLAG_E2X00		0x8000
+#define	ALC_FLAG_LINK		0x10000
 
 	struct callout		alc_tick_ch;
 	struct alc_hw_stats	alc_stats;

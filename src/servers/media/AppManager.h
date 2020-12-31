@@ -28,6 +28,8 @@ public:
 
 			void				Dump();
 
+			void				NotifyRosters();
+
 private:
 			void				_CleanupTeam(team_id team);
 

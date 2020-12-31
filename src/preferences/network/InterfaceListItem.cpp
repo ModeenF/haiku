@@ -19,7 +19,6 @@
 #include <Catalog.h>
 #include <ControlLook.h>
 #include <IconUtils.h>
-#include <NetworkDevice.h>
 #include <OutlineListView.h>
 #include <Resources.h>
 #include <String.h>
@@ -32,9 +31,11 @@
 #define B_TRANSLATION_CONTEXT "InterfaceListItem"
 
 
-InterfaceListItem::InterfaceListItem(const char* name)
+InterfaceListItem::InterfaceListItem(const char* name,
+	BNetworkInterfaceType type)
 	:
 	BListItem(0, false),
+	fType(type),
 	fIcon(NULL),
 	fFirstLineOffset(0),
 	fLineOffset(0),
@@ -83,7 +84,8 @@ InterfaceListItem::DrawItem(BView* owner, BRect bounds, bool complete)
 		- BPoint(be_plain_font->StringWidth(stateText)
 			+ be_control_look->DefaultLabelSpacing(), 0);
 	BPoint namePoint = bounds.LeftTop()
-		+ BPoint(ICON_SIZE + 12, fFirstLineOffset);
+		+ BPoint(ICON_SIZE + (be_control_look->DefaultLabelSpacing() * 2),
+		fFirstLineOffset);
 
 	if (fDisabled) {
 		owner->SetDrawingMode(B_OP_ALPHA);
@@ -119,7 +121,8 @@ InterfaceListItem::DrawItem(BView* owner, BRect bounds, bool complete)
 	owner->SetFont(be_plain_font);
 	owner->DrawString(stateText, statePoint);
 
-	BPoint linePoint = bounds.LeftTop() + BPoint(ICON_SIZE + 12,
+	BPoint linePoint = bounds.LeftTop()
+		+ BPoint(ICON_SIZE + (be_control_look->DefaultLabelSpacing() * 2),
 		fFirstLineOffset + fLineOffset);
 	owner->DrawString(fSubtitle, linePoint);
 
@@ -164,16 +167,21 @@ InterfaceListItem::ConfigurationUpdated(const BMessage& message)
 void
 InterfaceListItem::_Init()
 {
-	const char* mediaTypeName = NULL;
-
-	BNetworkDevice device(Name());
-	if (device.IsWireless())
-		mediaTypeName = "wifi";
-	else if (device.IsEthernet())
-		mediaTypeName = "ether";
-
-	_PopulateBitmaps(mediaTypeName);
-		// Load the interface icons
+	switch(fType) {
+		default:
+		case B_NETWORK_INTERFACE_TYPE_WIFI:
+			_PopulateBitmaps("wifi");
+			break;
+		case B_NETWORK_INTERFACE_TYPE_ETHERNET:
+			_PopulateBitmaps("ether");
+			break;
+		case B_NETWORK_INTERFACE_TYPE_VPN:
+			_PopulateBitmaps("vpn");
+			break;
+		case B_NETWORK_INTERFACE_TYPE_DIAL_UP:
+			_PopulateBitmaps("dialup");
+			break;
+	}
 }
 
 
@@ -255,13 +263,24 @@ InterfaceListItem::_UpdateState()
 	fHasLink = fInterface.HasLink();
 	fConnecting = (fInterface.Flags() & IFF_CONFIGURING) != 0;
 
-	BNetworkDevice device(Name());
-	if (device.IsWireless())
-		fSubtitle = B_TRANSLATE("Wireless device");
-	else if (device.IsEthernet())
-		fSubtitle = B_TRANSLATE("Ethernet device");
-	else
-		fSubtitle = "";
+	switch (fType) {
+		case B_NETWORK_INTERFACE_TYPE_WIFI:
+			fSubtitle = B_TRANSLATE("Wireless device");
+			break;
+		case B_NETWORK_INTERFACE_TYPE_ETHERNET:
+			fSubtitle = B_TRANSLATE("Ethernet device");
+			break;
+		case B_NETWORK_INTERFACE_TYPE_DIAL_UP:
+			fSubtitle = B_TRANSLATE("Dial-up connection");
+			fDisabled = false;
+			break;
+		case B_NETWORK_INTERFACE_TYPE_VPN:
+			fSubtitle = B_TRANSLATE("VPN connection");
+			fDisabled = false;
+			break;
+		default:
+			fSubtitle = "";
+	}
 }
 
 
@@ -289,8 +308,16 @@ InterfaceListItem::_StateText() const
 {
 	if (fDisabled)
 		return B_TRANSLATE("disabled");
-	if (!fInterface.HasLink())
-		return B_TRANSLATE("no link");
+
+	if (!fInterface.HasLink()) {
+		switch (fType) {
+			case B_NETWORK_INTERFACE_TYPE_VPN:
+			case B_NETWORK_INTERFACE_TYPE_DIAL_UP:
+				return B_TRANSLATE("disconnected");
+			default:
+				return B_TRANSLATE("no link");
+		}
+	}
 
 	// TODO!
 //	} else if ((fSettings->IPAddr(AF_INET).IsEmpty()

@@ -6,15 +6,18 @@
  * Effect from corTeX / Optimum.
  */
 
+
 #include <AppKit.h>
 #include <Catalog.h>
+#include <ColorMenuItem.h>
 #include <ControlLook.h>
 #include <InterfaceKit.h>
 #include <LayoutBuilder.h>
-#include <Window.h>
+#include <MenuField.h>
 #include <ScreenSaver.h>
 #include <String.h>
 #include <SupportDefs.h>
+#include <Window.h>
 
 #include <math.h>
 #include <stdio.h>
@@ -191,8 +194,8 @@ drawshdisk(int x0, int y0, int r)
 				(because if x<0, then (unsigned)(x) = 2**32-|x| which is
 				BIG and thus >H )
 
-				This is clearly a stupid, unmaintanable, unreadable "optimization".
-				But i like it :)
+				This is clearly a stupid, unmaintanable, unreadable
+				"optimization". But i like it :)
 			*/
 			if ((uint32)(y0 - y - 1) < gHeight - 3)
 				memshset(&gBuffer8[x0 + gWidth * (y0 - y + 1)], c, d, x);
@@ -302,7 +305,8 @@ setPalette()
 		case 0:		// yellow
 		default:
 			for (i = 0; i < 30; i++)
-				gPalette[i] = (uint8)(i * 8 / 10) << 16 | (uint8)(i * 6 / 10) << 8;
+				gPalette[i] = (uint8)(i * 8 / 10) << 16
+					| (uint8)(i * 6 / 10) << 8;
 					// | (uint8)(i*3/10);
 
 			for (i = 30; i < 256; i++) {
@@ -335,20 +339,17 @@ setPalette()
 					// << 16 | (uint8)(i * 6/10) << 8;
 					// | (uint8)(i * 3 / 10);
 
-			for (i = 128;i < 256;i++)
-			{
+			for (i = 128;i < 256; i++) {
 				uint8 r = i;
 				uint8 c = (uint8)((cos((i - 256) / 42.0) * 0.5 + 0.5) * 225);
 
 				gPalette[i] = ((r << 16) | (c << 8) | c);
 			}
-/*			for (i = 192; i < 224; i++)
-			{
+/*			for (i = 192; i < 224; i++) {
 				uint8 c = (i - 192);
 				gPalette[i] = gPalette[i] & 0xff0000 | c << 8 | c;
 			}
-			for (i = 224; i < 256; i++)
-			{
+			for (i = 224; i < 256; i++) {
 				uint8 c = (i-224) / 2;
 				c = 32 + c * c * 6 / 10;
 				gPalette[i] = gPalette[i] & 0xff0000 | c << 8 | c;
@@ -397,8 +398,7 @@ setPalette()
 			}
 			break;
 	}
-/*	for (i = 0;i < 256;i++)
-	{
+/*	for (i = 0;i < 256; i++) {
 		uint8 r = (i);
 		uint8 g = (i * i >> 8); //(i * 8 / 10);
 		uint8 b = 0; //(i * 2 / 10);
@@ -412,15 +412,14 @@ setPalette()
 }
 
 
-/***********************************************************************************/
-// #pragma mark -
-// #pragma mark SimpleSlider
+// #pragma mark - SimpleSlider
+
 
 class SimpleSlider : public BSlider {
 public:
 	SimpleSlider(const char* label, BMessage* message)
-		:
-		BSlider(B_EMPTY_STRING, B_EMPTY_STRING, message, 1, 100, B_HORIZONTAL)
+	:
+	BSlider(B_EMPTY_STRING, B_EMPTY_STRING, message, 1, 100, B_HORIZONTAL)
 	{
 		SetLimitLabels("1", "100");
 		SetHashMarks(B_HASH_MARKS_BOTTOM);
@@ -440,8 +439,7 @@ private:
 };
 
 
-/***********************************************************************************/
-// #pragma mark -
+// #pragma mark - SettingsView
 
 
 class SettingsView : public BView {
@@ -452,9 +450,9 @@ public:
 	virtual	void				MessageReceived(BMessage* message);
 
 	private:
-			BMenuField*			fWidthMenu;
-			BMenuField*			fColorMenu;
-			BMenuField*			fBorderMenu;
+			BMenuField*			fWidthMenuField;
+			BMenuField*			fColorMenuField;
+			BMenuField*			fBorderMenuField;
 			BCheckBox*			fMotionCheck;
 			BSlider*			fSpeedSlider;
 			BSlider*			fFramesSlider;
@@ -465,6 +463,8 @@ SettingsView::SettingsView(BRect frame)
 	:
 	BView(frame, "", B_FOLLOW_ALL, B_WILL_DRAW)
 {
+	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+
 	BStringView* titleString = new BStringView(B_EMPTY_STRING,
 		B_TRANSLATE("Nebula"));
 	titleString->SetFont(be_bold_font);
@@ -472,8 +472,7 @@ SettingsView::SettingsView(BRect frame)
 	BStringView* copyrightString = new BStringView(B_EMPTY_STRING,
 		B_TRANSLATE("© 2001-2004 Axel Dörfler."));
 
-	BPopUpMenu* popMenu;
-	BMenuItem* item;
+	BPopUpMenu* popUpMenu;
 
 	int32 widths[] = {
 		0,
@@ -491,7 +490,7 @@ SettingsView::SettingsView(BRect frame)
 
 	size_t widthsLength = sizeof(widths) / sizeof(widths[0]);
 
-	popMenu = new BPopUpMenu("");
+	popUpMenu = new BPopUpMenu("");
 	for (size_t i = 0; i < widthsLength; i++) {
 		BString label;
 		if (widths[i] == 0)
@@ -503,16 +502,15 @@ SettingsView::SettingsView(BRect frame)
 		message->AddInt32("width", widths[i]);
 
 		const char* l = label.String();
-		popMenu->AddItem(item = new BMenuItem(B_TRANSLATE(l), message));
-
-		if (gSettingsWidth == widths[i])
-			item->SetMarked(true);
+		BMenuItem* item = new BMenuItem(B_TRANSLATE(l), message);
+		popUpMenu->AddItem(item);
+		item->SetMarked(gSettingsWidth == widths[i]);
 	}
 
-	fWidthMenu = new BMenuField("res", B_TRANSLATE("Internal width:"),
-		popMenu);
+	fWidthMenuField = new BMenuField("res", B_TRANSLATE("Internal width:"),
+		popUpMenu);
 
-	const char* colorSchemes[] = {
+	const char* colorSchemeLabels[] = {
 		B_TRANSLATE("yellow"),
 		B_TRANSLATE("cyan"),
 		B_TRANSLATE("red"),
@@ -522,16 +520,27 @@ SettingsView::SettingsView(BRect frame)
 		B_TRANSLATE("orange (original)")
 	};
 
-	popMenu = new BPopUpMenu("");
+	rgb_color colorSchemeColors[] = {
+		(rgb_color){ 255, 220, 0   },
+		(rgb_color){ 127, 219, 255 },
+		(rgb_color){ 255, 65,  54  },
+		(rgb_color){ 46,  204, 64  },
+		(rgb_color){ 170, 170, 170 },
+		(rgb_color){ 234, 234, 234 },
+		(rgb_color){ 255, 133, 27  }
+	};
+
+	popUpMenu = new BPopUpMenu("");
 	for (int i = 0; i < 7; i++) {
 		BMessage* message = new BMessage(kMsgColorScheme);
 		message->AddInt8("scheme", (int8)i);
-		popMenu->AddItem(item = new BMenuItem(colorSchemes[i], message));
-		if (gPaletteScheme == i)
-			item->SetMarked(true);
+		BColorMenuItem* item = new BColorMenuItem(colorSchemeLabels[i],
+			message, colorSchemeColors[i]);
+		popUpMenu->AddItem(item);
+		item->SetMarked(gPaletteScheme == i);
 	}
 
-	fColorMenu = new BMenuField("col", B_TRANSLATE("Color:"), popMenu);
+	fColorMenuField = new BMenuField("col", B_TRANSLATE("Color:"), popUpMenu);
 
 	const char* blankBorderFormats[] = {
 		B_TRANSLATE("fullscreen, no borders"),
@@ -540,22 +549,24 @@ SettingsView::SettingsView(BRect frame)
 		B_TRANSLATE("only a slit")
 	};
 
-	popMenu = new BPopUpMenu("");
+	popUpMenu = new BPopUpMenu("");
 	for (int8 i = 0; i < 4; i++) {
 		BMessage* message = new BMessage(kMsgBlankBorders);
 		message->AddInt8("border", i);
-		popMenu->AddItem(item = new BMenuItem(blankBorderFormats[i], message));
-		if (gBlankBorders == i)
-			item->SetMarked(true);
+		BMenuItem* item = new BMenuItem(blankBorderFormats[i], message);
+		popUpMenu->AddItem(item);
+		item->SetMarked(gBlankBorders == i);
 	}
 
-	fBorderMenu = new BMenuField("cinema", B_TRANSLATE("Format:"), popMenu);
+	fBorderMenuField = new BMenuField("cinema", B_TRANSLATE("Format:"),
+		popUpMenu);
 
 	fMotionCheck = new BCheckBox(B_EMPTY_STRING,
 		B_TRANSLATE("Enable motion blur"), new BMessage(kMsgMotionBlur));
 	fMotionCheck->SetValue((int)gMotionBlur);
 
-	fSpeedSlider = new SimpleSlider(B_TRANSLATE("Speed"), new BMessage(kMsgSpeed));
+	fSpeedSlider = new SimpleSlider(B_TRANSLATE("Speed"),
+		new BMessage(kMsgSpeed));
 	fSpeedSlider->SetValue((gSpeed - 0.002) / 0.05);
 
 	fFramesSlider = new SimpleSlider(B_TRANSLATE("Maximum Frames Per Second"),
@@ -563,52 +574,41 @@ SettingsView::SettingsView(BRect frame)
 	fFramesSlider->SetValue(gMaxFramesPerSecond);
 
 	BLayoutBuilder::Group<>(this, B_VERTICAL, B_USE_HALF_ITEM_SPACING)
-		.SetInsets(B_USE_HALF_ITEM_INSETS, B_USE_HALF_ITEM_INSETS,
-			B_USE_BIG_INSETS, B_USE_HALF_ITEM_INSETS)
+		.SetInsets(B_USE_DEFAULT_SPACING)
 		.Add(titleString)
 		.Add(copyrightString)
 		.AddStrut(roundf(be_control_look->DefaultItemSpacing() / 2))
 		.AddGlue()
-		.AddGroup(B_HORIZONTAL, 0.0f)
-			.AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
-				.Add(fColorMenu->CreateLabelLayoutItem(), 0, 0)
-				.AddGroup(B_HORIZONTAL, 0.0f, 1, 0)
-					.Add(fColorMenu->CreateMenuBarLayoutItem(), 0.0f)
-					.AddGlue()
-					.End()
-				.Add(fWidthMenu->CreateLabelLayoutItem(), 0, 1)
-				.AddGroup(B_HORIZONTAL, 0.0f, 1, 1)
-					.Add(fWidthMenu->CreateMenuBarLayoutItem(), 0.0f)
-					.AddGlue()
-					.End()
-				.Add(fBorderMenu->CreateLabelLayoutItem(), 0, 2)
-				.AddGroup(B_HORIZONTAL, 0.0f, 1, 2)
-					.Add(fBorderMenu->CreateMenuBarLayoutItem(), 0.0f)
-					.AddGlue()
-					.End()
-				.Add(fMotionCheck, 1, 3)
+		.AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
+			.Add(fColorMenuField->CreateLabelLayoutItem(), 0, 0)
+			.AddGroup(B_HORIZONTAL, 0.0f, 1, 0)
+				.Add(fColorMenuField->CreateMenuBarLayoutItem(), 0.0f)
+				.AddGlue()
 				.End()
-			.AddGlue()
+			.Add(fWidthMenuField->CreateLabelLayoutItem(), 0, 1)
+			.AddGroup(B_HORIZONTAL, 0.0f, 1, 1)
+				.Add(fWidthMenuField->CreateMenuBarLayoutItem(), 0.0f)
+				.AddGlue()
+				.End()
+			.Add(fBorderMenuField->CreateLabelLayoutItem(), 0, 2)
+			.AddGroup(B_HORIZONTAL, 0.0f, 1, 2)
+				.Add(fBorderMenuField->CreateMenuBarLayoutItem(), 0.0f)
+				.AddGlue()
+				.End()
+			.Add(fMotionCheck, 1, 3)
 			.End()
-		.AddGlue()
 		.Add(fSpeedSlider)
-		.AddGlue()
 		.Add(fFramesSlider)
-		.AddGlue()
 	.End();
-
-	MoveBy(0, -25); // The view is not where it should be.
 }
 
 
 void
 SettingsView::AttachedToWindow()
 {
-	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-
-	fWidthMenu->Menu()->SetTargetForItems(this);
-	fColorMenu->Menu()->SetTargetForItems(this);
-	fBorderMenu->Menu()->SetTargetForItems(this);
+	fWidthMenuField->Menu()->SetTargetForItems(this);
+	fColorMenuField->Menu()->SetTargetForItems(this);
+	fBorderMenuField->Menu()->SetTargetForItems(this);
 	fMotionCheck->SetTarget(this);
 	fSpeedSlider->SetTarget(this);
 	fFramesSlider->SetTarget(this);
@@ -642,15 +642,15 @@ SettingsView::MessageReceived(BMessage* message)
 
 		case kMsgFrames:
 			gMaxFramesPerSecond = fFramesSlider->Value();
-			gScreenSaver->SetTickSize((bigtime_t)(1000000LL / gMaxFramesPerSecond));
+			gScreenSaver->SetTickSize(
+				(bigtime_t)(1000000LL / gMaxFramesPerSecond));
 			break;
 	}
 }
 
 
 
-/***********************************************************************************/
-// #pragma mark -
+// #pragma mark - Nebula
 
 
 class Nebula : public BScreenSaver {
@@ -695,7 +695,7 @@ Nebula::Nebula(BMessage* message, image_id id)
 void
 Nebula::StartConfig(BView* view)
 {
-	view->AddChild(new SettingsView(view->Frame()));
+	view->AddChild(new SettingsView(view->Bounds()));
 }
 
 
@@ -726,8 +726,7 @@ Nebula::StartSaver(BView* view, bool preview)
 	}
 
 	// uniforme cubique
-/*	for (i = 0;i < GMAX;i++)
-	{
+/*	for (i = 0;i < GMAX; i++) {
 		gal[i].x = 1 * ((rand()&1023) - 512);
 		gal[i].y = 1 * ((rand()&1023) - 512);
 		gal[i].z = 1 * ((rand()&1023) - 512);
@@ -811,7 +810,8 @@ Nebula::Draw(BView* view, int32)
 	if (fStarted) {
 		view->SetHighColor(0, 0, 0, 0);
 		view->FillRect(view->Frame());
-		view->MovePenTo(0, (view->Bounds().Height() / fFactor - 1 - gHeight) / 2);
+		view->MovePenTo(0,
+			(view->Bounds().Height() / fFactor - 1 - gHeight) / 2);
 
 		fStarted = false;
 	}
@@ -826,8 +826,7 @@ Nebula::Draw(BView* view, int32)
 }
 
 
-/***********************************************************************************/
-// #pragma mark -
+// #pragma mark - instantiate_screen_saver
 
 
 extern "C" _EXPORT BScreenSaver*

@@ -1,4 +1,5 @@
 /*
+ * Copyright 2017, Chế Vũ Gia Hy, cvghy116@gmail.com.
  * Copyright 2010-2011, Jérôme Duval, korli@users.berlios.de.
  * Copyright 2010, François Revol, <revol@free.fr>.
  * Copyright 2004-2008, Axel Dörfler, axeld@pinc-software.de.
@@ -9,12 +10,7 @@
 
 
 #include "Attribute.h"
-
-#include <new>
-#include <stdio.h>
-#include <stdlib.h>
-
-#include "BPlusTree.h"
+#include "BTree.h"
 #include "CRCTable.h"
 #include "Utility.h"
 
@@ -92,13 +88,13 @@ Attribute::Stat(struct stat& stat)
 	TRACE("Stat\n");
 
 	size_t nameLength = strlen(fName);
-	btrfs_dir_entry *entries;
-	size_t length;
+	btrfs_dir_entry* entries;
+	uint32 length;
 	status_t status = _Lookup(fName, nameLength, &entries, &length);
 	if (status < B_OK)
 		return status;
 
-	btrfs_dir_entry *entry;
+	btrfs_dir_entry* entry;
 	status = _FindEntry(entries, length, fName, nameLength, &entry);
 	if (status != B_OK) {
 		free(entries);
@@ -120,13 +116,13 @@ Attribute::Read(attr_cookie* cookie, off_t pos, uint8* buffer, size_t* _length)
 		return ERANGE;
 
 	size_t nameLength = strlen(fName);
-	btrfs_dir_entry *entries;
-	size_t length;
+	btrfs_dir_entry* entries;
+	uint32 length;
 	status_t status = _Lookup(fName, nameLength, &entries, &length);
 	if (status < B_OK)
 		return status;
 
-	btrfs_dir_entry *entry;
+	btrfs_dir_entry* entry;
 	status = _FindEntry(entries, length, fName, nameLength, &entry);
 	if (status != B_OK) {
 		free(entries);
@@ -149,24 +145,25 @@ Attribute::Read(attr_cookie* cookie, off_t pos, uint8* buffer, size_t* _length)
 
 status_t
 Attribute::_Lookup(const char* name, size_t nameLength,
-	btrfs_dir_entry **_entries, size_t *_length)
+	btrfs_dir_entry** _entries, uint32* _length)
 {
 	uint32 hash = calculate_crc((uint32)~1, (uint8*)name, nameLength);
 	struct btrfs_key key;
 	key.SetType(BTRFS_KEY_TYPE_XATTR_ITEM);
 	key.SetObjectID(fInode->ID());
 	key.SetOffset(hash);
+	BTree::Path path(fInode->GetVolume()->FSTree());
 
-	btrfs_dir_entry *entries;
-	size_t length;
-	status_t status = fInode->GetVolume()->FSTree()->FindExact(key,
+	btrfs_dir_entry* entries;
+	uint32 length;
+	status_t status = fInode->GetVolume()->FSTree()->FindExact(&path, key,
 		(void**)&entries, &length);
 	if (status != B_OK) {
 		TRACE("AttributeIterator::Lookup(): Couldn't find entry with hash %"
 			B_PRIu32 " \"%s\"\n", hash, name);
 		return status;
 	}
-	
+
 	if (_entries == NULL)
 		free(entries);
 	else
@@ -180,19 +177,18 @@ Attribute::_Lookup(const char* name, size_t nameLength,
 
 
 status_t
-Attribute::_FindEntry(btrfs_dir_entry *entries, size_t length,
-	const char* name, size_t nameLength, btrfs_dir_entry **_entry)
+Attribute::_FindEntry(btrfs_dir_entry* entries, size_t length,
+	const char* name, size_t nameLength, btrfs_dir_entry** _entry)
 {
-	btrfs_dir_entry *entry = entries;
+	btrfs_dir_entry* entry = entries;
 	uint16 current = 0;
 	while (current < length) {
 		current += entry->Length();
 		break;
 		// TODO there could be several entries with the same name hash
-		entry = (btrfs_dir_entry *)((uint8*)entry + entry->Length());
+		entry = (btrfs_dir_entry*)((uint8*)entry + entry->Length());
 	}
-	
+
 	*_entry = entry;
 	return B_OK;
 }
-

@@ -1,33 +1,26 @@
 #ifndef BEOS_BUILD_COMPATIBILITY_H
 #define BEOS_BUILD_COMPATIBILITY_H
 
-#if defined(HAIKU_HOST_PLATFORM_CYGWIN)
-#	ifndef __addr_t_defined
-#		define __addr_t_defined
-#	endif
-#endif
-
-#if defined(HAIKU_HOST_PLATFORM_CYGWIN) || defined(HAIKU_HOST_PLATFORM_SUNOS)
+// DEFFILEMODE is not available on platforms with MUSL
 #ifndef DEFFILEMODE
 #define DEFFILEMODE (S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH)
+#endif
+
+// There's no ALLPERMS on platforms with MUSL
+#ifndef ALLPERMS
+#	define ALLPERMS (S_ISUID|S_ISGID|S_ISVTX|S_IRWXU|S_IRWXG|S_IRWXO)
 #endif
 
 #ifndef S_IUMSK
 #define	S_IUMSK 07777
 #endif
 
-#include <ctype.h>
-#endif
-
-#ifdef HAIKU_HOST_PLATFORM_SUNOS
-#	include <limits.h>
-#	ifndef NAME_MAX
-#		define NAME_MAX	MAXNAMELEN
-#	endif
-#endif
-
 typedef unsigned long	haiku_build_addr_t;
 #define addr_t			haiku_build_addr_t
+
+#if defined(HAIKU_HOST_PLATFORM_MSYS)
+#define __addr_t_defined
+#endif
 
 #include <Errors.h>
 
@@ -36,8 +29,8 @@ typedef unsigned long	haiku_build_addr_t;
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/uio.h>
 #include <unistd.h>
+#include <sys/uio.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -53,11 +46,6 @@ extern size_t	strlcat(char* dest, const char* source, size_t length);
 
 #if defined(HAIKU_HOST_PLATFORM_FREEBSD) || defined(HAIKU_HOST_PLATFORM_DARWIN)
 extern size_t	strnlen(const char* string, size_t length);
-#endif
-
-#if defined(HAIKU_HOST_PLATFORM_CYGWIN) || defined(HAIKU_HOST_PLATFORM_SUNOS)
-extern char*	stpcpy(char* dest, const char* src);
-extern char*	strcasestr(const char* s, const char* find);
 #endif
 
 // BeOS only
@@ -179,6 +167,22 @@ int		_haiku_build_renameat(int fromFD, const char* from, int toFD,
 #	define fcntl(fd, op...)				_haiku_build_fcntl(fd, op)
 #	define renameat(fromFD, from, toFD, to) \
 		_haiku_build_renameat(fromFD, from, toFD, to)
+
+#	if defined(HAIKU_HOST_USE_XATTR) && defined(HAIKU_HOST_PLATFORM_HAIKU)
+#		define fs_read_attr			_haiku_build_fs_read_attr
+#		define fs_write_attr		_haiku_build_fs_write_attr
+#		define fs_remove_attr		_haiku_build_fs_remove_attr
+#		define fs_stat_attr			_haiku_build_fs_stat_attr
+#		define fs_open_attr			_haiku_build_fs_open_attr
+#		define fs_fopen_attr		_haiku_build_fs_fopen_attr
+#		define fs_close_attr		_haiku_build_fs_close_attr
+#		define fs_open_attr_dir		_haiku_build_fs_open_attr_dir
+#		define fs_fopen_attr_dir	_haiku_build_fs_fopen_attr_dir
+#		define fs_close_attr_dir	_haiku_build_fs_close_attr_dir
+#		define fs_read_attr_dir		_haiku_build_fs_read_attr_dir
+#		define fs_rewind_attr_dir	_haiku_build_fs_rewind_attr_dir
+#	endif
+
 #endif	// _HAIKU_BUILD_DONT_REMAP_FD_FUNCTIONS
 
 

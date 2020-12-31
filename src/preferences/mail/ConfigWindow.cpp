@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2015 Haiku, Inc. All rights reserved.
+ * Copyright 2007-2016 Haiku, Inc. All rights reserved.
  * Copyright 2001-2003 Dr. Zoidberg Enterprises. All rights reserved.
  *
  * Distributed under the terms of the MIT License.
@@ -208,7 +208,7 @@ ConfigWindow::ConfigWindow()
 	fLastSelectedAccount(NULL),
 	fSaveSettings(false)
 {
-	BTabView* tabView = new BTabView("tab");
+	BTabView* tabView = new BTabView("tab", B_WIDTH_FROM_WIDEST);
 	tabView->SetBorder(B_NO_BORDER);
 
 	// accounts listview
@@ -499,10 +499,14 @@ ConfigWindow::_SaveSettings()
 		messenger.SendMessage(&changedAccounts);
 	}
 
-	// Start the mail_daemon if auto start was selected
+	// Start/stop the mail_daemon depending on the settings
 	BMailDaemon daemon;
-	if (fSaveSettings && settings.DaemonAutoStarts() && !daemon.IsRunning())
-		daemon.Launch();
+	if (fSaveSettings) {
+		if (settings.DaemonAutoStarts() && !daemon.IsRunning())
+			daemon.Launch();
+		else if (!settings.DaemonAutoStarts() && daemon.IsRunning())
+			daemon.Quit();
+	}
 }
 
 

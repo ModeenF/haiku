@@ -4,7 +4,7 @@ AddSubDirSupportedPlatforms libbe_test ;
 
 UsePrivateHeaders [ FDirName graphics common ] ;
 UsePrivateHeaders [ FDirName graphics radeon ] ;
-UsePrivateHeaders interface ;
+UsePrivateHeaders interface preferences ;
 
 Preference Screen :
 	AlertWindow.cpp
@@ -17,7 +17,7 @@ Preference Screen :
 	ScreenSettings.cpp
 	ScreenWindow.cpp
 	Utility.cpp
-	: be [ TargetLibsupc++ ] localestub libaccelerantscommon.a
+	: be [ TargetLibstdc++ ] [ TargetLibsupc++ ] localestub libaccelerantscommon.a
 	: Screen.rdef
 	;
 

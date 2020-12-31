@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en-US" xml:lang="en-US">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="zh-CN" xml:lang="zh-CN">
 <head>
 <!-- 
  *
@@ -10,14 +10,15 @@
  * Authors:
  *		Humdinger <humdingerb@gmail.com>
  * Translators:
- *		Pengphei Han
  *		dill
+ *		Pengphei Han
  *
 -->
 	<meta http-equiv="content-type" content="text/html; charset=utf-8" />
 	<meta http-equiv="Content-Style-Type" content="text/css" />
 	<meta name="robots" content="all" />
 	<title>文件系统布局</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<link rel="stylesheet" type="text/css" href="../Haiku-doc.css" />
 </head>
 <body>
@@ -29,23 +30,27 @@
 <div class="nav">
 <div class="inner">
 <ul class="lang-menu">
-<li class="now"><img src="../images/flags/zh_CN.png" alt="" />  中文 ［中文］</li>
-<li><a href="../fr/filesystem-layout.html"><img src="../images/flags/fr.png" alt="" />Français</a></li>
-<li><a href="../de/filesystem-layout.html"><img src="../images/flags/de.png" alt="" />Deutsch</a></li>
-<li><a href="../it/filesystem-layout.html"><img src="../images/flags/it.png" alt="" />Italiano</a></li>
-<li><a href="../ru/filesystem-layout.html"><img src="../images/flags/ru.png" alt="" />Русский</a></li>
-<li><a href="../es/filesystem-layout.html"><img src="../images/flags/es.png" alt="" />Español</a></li>
-<li><a href="../sv_SE/filesystem-layout.html"><img src="../images/flags/sv_SE.png" alt="" />Svenska</a></li>
-<li><a href="../jp/filesystem-layout.html"><img src="../images/flags/jp.png" alt="" />日本語</a></li>
-<li><a href="../uk/filesystem-layout.html"><img src="../images/flags/uk.png" alt="" />Українська</a></li>
-<li><a href="../pt_PT/filesystem-layout.html"><img src="../images/flags/pt_PT.png" alt="" />Português</a></li>
-<li><a href="../fi/filesystem-layout.html"><img src="../images/flags/fi.png" alt="" />Suomi</a></li>
-<li><a href="../sk/filesystem-layout.html"><img src="../images/flags/sk.png" alt="" />Slovenčina</a></li>
-<li><a href="../hu/filesystem-layout.html"><img src="../images/flags/hu.png" alt="" />Magyar</a></li>
-<li><a href="../pt_BR/filesystem-layout.html"><img src="../images/flags/pt_BR.png" alt="" />Português (Brazil)</a></li>
-<li><a href="../ca/filesystem-layout.html"><img src="../images/flags/ca.png" alt="" />Català</a></li>
-<li><a href="../pl/filesystem-layout.html"><img src="../images/flags/pl.png" alt="" />Polski</a></li>
-<li><a href="../en/filesystem-layout.html"><img src="../images/flags/gb.png" alt="" />English</a></li>
+<li class="now"> 中文 ［中文］&nbsp;<span class="dropdown-caret">&#9660;</span></li>
+<li><a href="../id/filesystem-layout.html">Bahasa Indonesia</a></li>
+<li><a href="../ca/filesystem-layout.html">Català</a></li>
+<li><a href="../de/filesystem-layout.html">Deutsch</a></li>
+<li><a href="../en/filesystem-layout.html">English</a></li>
+<li><a href="../es/filesystem-layout.html">Español</a></li>
+<li><a href="../fr/filesystem-layout.html">Français</a></li>
+<li><a href="../fur/filesystem-layout.html">Furlan</a></li>
+<li><a href="../it/filesystem-layout.html">Italiano</a></li>
+<li><a href="../hu/filesystem-layout.html">Magyar</a></li>
+<li><a href="../pl/filesystem-layout.html">Polski</a></li>
+<li><a href="../pt_PT/filesystem-layout.html">Português</a></li>
+<li><a href="../pt_BR/filesystem-layout.html">Português (Brazil)</a></li>
+<li><a href="../ro/filesystem-layout.html">Română</a></li>
+<li><a href="../sk/filesystem-layout.html">Slovenčina</a></li>
+<li><a href="../fi/filesystem-layout.html">Suomi</a></li>
+<li><a href="../sv_SE/filesystem-layout.html">Svenska</a></li>
+<li><a href="../tr/filesystem-layout.html">Türkçe</a></li>
+<li><a href="../ru/filesystem-layout.html">Русский</a></li>
+<li><a href="../uk/filesystem-layout.html">Українська</a></li>
+<li><a href="../jp/filesystem-layout.html">日本語</a></li>
 </ul>
 <span>
  «  <a href="bootloader.html">引导程序</a> 
@@ -56,7 +61,6 @@
 
 <div id="content">
 <div>
-<div class="box-info">本节的翻译还未完成。在未完成之前，所有的未完成部分都将使用英语原文。</div>
 
 <h1>文件系统布局</h1>
 
@@ -84,7 +88,7 @@
 <tr><td><span class="path">/boot/system/settings/</span></td><td> </td><td>包含系统级别的设置。</td></tr>
 <tr><td><span class="path">/boot/system/var/</span></td><td> </td><td>包含日志文件，例如 syslog（在出错时非常重要），并且是 swap 文件的默认位置，</td></tr>
 </table>
-<p><span class="box-info">更多有关 <span class="path">packages</span> 和 <span class="path">non-packaged</span> 目录详细信息，请查阅 <a href="applications.html">应用程序安装</a>。</span></p>
+<p><span class="box-info">更多有关 <span class="path">packages</span> 和 <span class="path">non-packaged</span> 目录详细信息，请查阅 <a href="applications.html">应用程序</a>。</span></p>
 
 <h2>
 <a href="#"><img src="../images/up.png" style="border:none;float:right" alt="index" /></a>
@@ -95,7 +99,7 @@
 
 <table summary="layout" border="0" cellspacing="0" cellpadding="4">
 <tr><td><span class="path">~/Desktop/</span></td><td style="width:10px;"> </td>
-<td>Holds the files of your desktop. Double-clicking won't open it, as it is already always visible. When your files happen to be obscured by open windows, just switch quickly to another <a href="workspaces.html">Workspace</a>. Of course, <a href="tracker.html#drill-down">drilling</a> down by right-clicking is also possible.</td></tr>
+<td>保存您桌面上的文件。双击将不会打开该目录，因为其总是可见的。当您的文件通过打开窗口出现时，将会快速的切换到另一个 <a href="workspaces.html"> 工作区</a>。当然，通过右键点击，然后 <a href="tracker.html#drill-down">拖动</a> 也可以实现。</td></tr>
 <tr><td><span class="path">~/mail/</span></td><td style="width:10px;"> </td>
 <td>您的邮件默认保存位置。</td></tr>
 <tr><td><span class="path">~/people/</span></td><td style="width:10px;"> </td>
@@ -117,7 +121,7 @@
 <td>该文件夹存放了所有程序的设置文件和一些系统配置文件。有些程序会将其设置文件存放在它们自己的子文件夹中，但是其他的则直接存放在这里。</td></tr>
 </table>
 
-<p><span class="box-info">更多有关 <span class="path">packages</span> 和 <span class="path">non-packaged</span> 目录详细信息，请查阅 <a href="applications.html">应用程序安装</a>。</span></p>
+<p><span class="box-info">更多有关 <span class="path">packages</span> 和 <span class="path">non-packaged</span> 目录详细信息，请查阅 <a href="applications.html">应用程序</a>。</span></p>
 <p>在 <span class="path">~/config/settings/</span> 中存在一些有意思的子文件夹：</p>
 
 <table summary="layout" border="0" cellspacing="0" cellpadding="4">

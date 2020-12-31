@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2015, Haiku, Inc. All Rights Reserved.
+ * Copyright 2006-2017, Haiku, Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -34,12 +34,13 @@ public:
 
 	virtual	void			MessageReceived(BMessage* message);
 	virtual	void			Draw(BRect updateRect);
+			void			DrawTo(BView* view, BRect rect);
 
 
 protected:
 							PowerStatusView(BMessage* archive);
 
-	virtual void			Update(bool force = false);
+	virtual void			Update(bool force = false, bool notify = true);
 
 			void			FromMessage(const BMessage* message);
 			status_t		ToMessage(BMessage* message) const;
@@ -48,7 +49,7 @@ private:
 			void			_GetBatteryInfo(int batteryID, battery_info* info);
 			void			_Init();
 			void			_SetLabel(char* buffer, size_t bufferLength);
-			void			_DrawBattery(BRect rect);
+			void			_DrawBattery(BView* view, BRect rect);
 			void			_NotifyLowBattery();
 
 protected:
@@ -98,6 +99,7 @@ private:
 			BWindow*		fExtendedWindow;
 			bool			fMessengerExist;
 			BMessenger*		fExtWindowMessenger;
+			bool			fReplicated;
 };
 
 

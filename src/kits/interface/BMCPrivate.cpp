@@ -39,9 +39,9 @@ public:
 
 
 _BMCItem_::_BMCItem_(BMessage* data)
-	: BMenuItem(data)
+	:
+	BMenuItem(data)
 {
-
 }
 
 
@@ -206,7 +206,7 @@ _BMCMenuBar_::Draw(BRect updateRect)
 	be_control_look->DrawMenuFieldBackground(this, rect,
 		updateRect, base, fShowPopUpMarker, flags);
 
-	_DrawItems(updateRect);
+	DrawItems(updateRect);
 }
 
 
@@ -255,7 +255,8 @@ _BMCMenuBar_::MessageReceived(BMessage* message)
 		{
 			BMenuItem* item = ItemAt(0);
 
-			if (item && item->Submenu() &&  item->Submenu()->Window()) {
+			if (item != NULL && item->Submenu() != NULL
+				&& item->Submenu()->Window() != NULL) {
 				BMessage message(B_KEY_DOWN);
 
 				message.AddInt8("byte", B_ESCAPE);
@@ -348,9 +349,8 @@ _BMCMenuBar_::_Init()
 	bottom--;
 #endif
 
-	if (be_control_look != NULL)
-		left = right = be_control_look->DefaultLabelSpacing();
+	left = right = be_control_look->DefaultLabelSpacing();
 
 	SetItemMargins(left, top,
-		right + fShowPopUpMarker ? kPopUpIndicatorWidth : 0, bottom);
+		right + (fShowPopUpMarker ? kPopUpIndicatorWidth : 0), bottom);
 }

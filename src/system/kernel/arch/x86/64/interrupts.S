@@ -1,4 +1,5 @@
 /*
+ * Copyright 2018, Jérôme Duval, jerome.duval@gmail.com.
  * Copyright 2012, Alex Smith, alex@alex-smith.me.uk.
  * Distributed under the terms of the MIT License.
  */
@@ -9,6 +10,7 @@
 #include <thread_types.h>
 
 #include <arch/x86/descriptors.h>
+#include <arch/x86/arch_altcodepatch.h>
 #include <arch/x86/arch_cpu.h>
 #include <arch/x86/arch_kernel.h>
 
@@ -143,6 +145,7 @@
 // Interrupt with no error code, pushes a 0 error code.
 #define DEFINE_ISR(nr)					\
 	.align 16;							\
+	ASM_CLAC							\
 	push	$0;							\
 	push	$nr;						\
 	jmp		int_bottom;
@@ -150,6 +153,7 @@
 // Interrupt with an error code.
 #define DEFINE_ISR_E(nr)				\
 	.align 16;							\
+	ASM_CLAC							\
 	push	$nr;						\
 	jmp		int_bottom;
 
@@ -217,16 +221,32 @@ STATIC_FUNCTION(int_bottom):
 	// exception.
 	orq		$X86_EFLAGS_RESUME, IFRAME_flags(%rbp)
 
-	subq	$512, %rsp
-	andq	$~15, %rsp
-	fxsaveq	(%rsp)
+	// xsave needs a 64-byte alignment
+	andq	$~63, %rsp
+	movq	(gFPUSaveLength), %rcx
+	subq	%rcx, %rsp
+	leaq	(%rsp), %rdi
+	shrq	$3, %rcx
+	movq	$0, %rax
+	rep stosq
+	movl	(gXsaveMask), %eax
+	movl	(gXsaveMask+4), %edx
+	movq	%rsp, %rdi
+	CODEPATCH_START
+	fxsaveq	(%rdi)
+	CODEPATCH_END(ALTCODEPATCH_TAG_XSAVE)
 
 	// Call the interrupt handler.
 	movq	%rbp, %rdi
 	movq	IFRAME_vector(%rbp), %rax
 	call	*gInterruptHandlerTable(, %rax, 8)
 
-	fxrstorq	(%rsp)
+	movl	(gXsaveMask), %eax
+	movl	(gXsaveMask+4), %edx
+	movq	%rsp, %rdi
+	CODEPATCH_START
+	fxrstorq	(%rdi)
+	CODEPATCH_END(ALTCODEPATCH_TAG_XRSTOR)
 	movq	%rbp, %rsp
 
 	// Restore the saved registers.
@@ -238,8 +258,9 @@ FUNCTION_END(int_bottom)
 
 // Handler for an interrupt that occurred in user-mode.
 STATIC_FUNCTION(int_bottom_user):
-	// Load the kerrnel GS segment base.
+	// Load the kernel GS segment base.
 	swapgs
+	lfence
 
 	// Push the rest of the interrupt frame to the stack.
 	PUSH_IFRAME_BOTTOM(IFRAME_TYPE_OTHER)
@@ -248,9 +269,22 @@ STATIC_FUNCTION(int_bottom_user):
 	// Frame pointer is the iframe.
 	movq	%rsp, %rbp
 
-	subq	$512, %rsp
-	andq	$~15, %rsp
-	fxsaveq	(%rsp)
+	// xsave needs a 64-byte alignment
+	andq	$~63, %rsp
+	movq	(gFPUSaveLength), %rcx
+	subq	%rcx, %rsp
+	leaq	(%rsp), %rdi
+	shrq	$3, %rcx
+	movq	$0, %rax
+	rep stosq
+	movl	(gXsaveMask), %eax
+	movl	(gXsaveMask+4), %edx
+
+	movq	%rsp, %rdi
+	CODEPATCH_START
+	fxsaveq	(%rdi)
+	CODEPATCH_END(ALTCODEPATCH_TAG_XSAVE)
+
 	movq	%rsp, IFRAME_fpu(%rbp)
 
 	// Set the RF (resume flag) in RFLAGS. This prevents an instruction
@@ -272,7 +306,8 @@ STATIC_FUNCTION(int_bottom_user):
 	// If there are no signals pending or we're not debugging, we can avoid
 	// most of the work here, just need to update the kernel time.
 	testl	$(THREAD_FLAGS_DEBUGGER_INSTALLED | THREAD_FLAGS_SIGNALS_PENDING \
-			| THREAD_FLAGS_DEBUG_THREAD | THREAD_FLAGS_BREAKPOINTS_DEFINED) \
+			| THREAD_FLAGS_DEBUG_THREAD | THREAD_FLAGS_BREAKPOINTS_DEFINED \
+			| THREAD_FLAGS_TRAP_FOR_CORE_DUMP) \
 			, THREAD_flags(%r12)
 	jnz		.Lkernel_exit_work
 
@@ -280,7 +315,12 @@ STATIC_FUNCTION(int_bottom_user):
 
 	UPDATE_THREAD_KERNEL_TIME()
 
-	fxrstorq	(%rsp)
+	movl	(gXsaveMask), %eax
+	movl	(gXsaveMask+4), %edx
+	movq	%rsp, %rdi
+	CODEPATCH_START
+	fxrstorq	(%rdi)
+	CODEPATCH_END(ALTCODEPATCH_TAG_XRSTOR)
 	movq	%rbp, %rsp
 
 	// Restore the saved registers.
@@ -288,13 +328,15 @@ STATIC_FUNCTION(int_bottom_user):
 
 	// Restore the previous GS base and return.
 	swapgs
+	lfence
 	iretq
 
 .Lkernel_exit_work:
 	// Slow path for return to userland.
 
 	// Do we need to handle signals?
-	testl	$(THREAD_FLAGS_SIGNALS_PENDING | THREAD_FLAGS_DEBUG_THREAD) \
+	testl	$(THREAD_FLAGS_SIGNALS_PENDING | THREAD_FLAGS_DEBUG_THREAD \
+			| THREAD_FLAGS_TRAP_FOR_CORE_DUMP) \
 			, THREAD_flags(%r12)
 	jnz		.Lkernel_exit_handle_signals
 	cli
@@ -307,7 +349,12 @@ STATIC_FUNCTION(int_bottom_user):
 	movq	%rbp, %rdi
 	call	x86_init_user_debug_at_kernel_exit
 1:
-	fxrstorq	(%rsp)
+	movl	(gXsaveMask), %eax
+	movl	(gXsaveMask+4), %edx
+	movq	%rsp, %rdi
+	CODEPATCH_START
+	fxrstorq	(%rdi)
+	CODEPATCH_END(ALTCODEPATCH_TAG_XRSTOR)
 	movq	%rbp, %rsp
 
 	// Restore the saved registers.
@@ -315,6 +362,7 @@ STATIC_FUNCTION(int_bottom_user):
 
 	// Restore the previous GS base and return.
 	swapgs
+	lfence
 	iretq
 
 .Lkernel_exit_handle_signals:
@@ -334,8 +382,12 @@ FUNCTION(x86_64_syscall_entry):
 	// scratch space to store the user stack pointer in before we can push it
 	// to the stack.
 	swapgs
+	lfence
 	movq	%rsp, %gs:ARCH_THREAD_user_rsp
 	movq	%gs:ARCH_THREAD_syscall_rsp, %rsp
+
+	// The following pushes de-align the stack by 8 bytes, so account for that first.
+	sub 	$8, %rsp
 
 	// Set up an iframe on the stack (R11 = saved RFLAGS, RCX = saved RIP).
 	push	$USER_DATA_SELECTOR			// ss
@@ -351,7 +403,6 @@ FUNCTION(x86_64_syscall_entry):
 
 	// Frame pointer is the iframe.
 	movq	%rsp, %rbp
-	andq	$~15, %rsp
 
 	// Preserve call number (R14 is callee-save), get thread pointer.
 	movq	%rax, %r14
@@ -412,16 +463,16 @@ FUNCTION(x86_64_syscall_entry):
 	testl	$THREAD_FLAGS_SYSCALL_RESTARTED, THREAD_flags(%r12)
 	jz		2f
 1:
-    movl	THREAD_flags(%r12), %eax
+	movl	THREAD_flags(%r12), %eax
 	movl	%eax, %edx
-    andl	$~THREAD_FLAGS_SYSCALL_RESTARTED, %edx
-    lock
-    cmpxchgl	%edx, THREAD_flags(%r12)
-    jnz		1b
+	andl	$~THREAD_FLAGS_SYSCALL_RESTARTED, %edx
+	lock
+	cmpxchgl	%edx, THREAD_flags(%r12)
+	jnz		1b
 2:
 	testl	$(THREAD_FLAGS_DEBUGGER_INSTALLED | THREAD_FLAGS_SIGNALS_PENDING \
 			| THREAD_FLAGS_DEBUG_THREAD | THREAD_FLAGS_BREAKPOINTS_DEFINED \
-			| THREAD_FLAGS_RESTART_SYSCALL) \
+			| THREAD_FLAGS_TRAP_FOR_CORE_DUMP | THREAD_FLAGS_RESTART_SYSCALL) \
 			, THREAD_flags(%r12)
 	jnz		.Lpost_syscall_work
 
@@ -444,6 +495,7 @@ FUNCTION(x86_64_syscall_entry):
 
 	// Restore previous GS base and return.
 	swapgs
+	lfence
 	sysretq
 
 .Lpre_syscall_debug:
@@ -482,7 +534,8 @@ FUNCTION(x86_64_syscall_entry):
 	addq	$48, %rsp
 1:
 	// Do we need to handle signals?
-	testl	$(THREAD_FLAGS_SIGNALS_PENDING | THREAD_FLAGS_DEBUG_THREAD) \
+	testl	$(THREAD_FLAGS_SIGNALS_PENDING | THREAD_FLAGS_DEBUG_THREAD \
+			| THREAD_FLAGS_TRAP_FOR_CORE_DUMP) \
 			, THREAD_flags(%r12)
 	jnz		.Lpost_syscall_handle_signals
 	cli
@@ -508,14 +561,20 @@ FUNCTION(x86_64_syscall_entry):
 	jmp .Liret
 
 .Lrestore_fpu:
-	movq	IFRAME_fpu(%rbp), %rax
-	fxrstorq	(%rax)
+	movq	IFRAME_fpu(%rbp), %rdi
+
+	movl	(gXsaveMask), %eax
+	movl	(gXsaveMask+4), %edx
+	CODEPATCH_START
+	fxrstorq	(%rdi)
+	CODEPATCH_END(ALTCODEPATCH_TAG_XRSTOR)
 .Liret:
 	// Restore the saved registers.
 	RESTORE_IFRAME()
 
 	// Restore the previous GS base and return.
 	swapgs
+	lfence
 	iretq
 
 .Lpost_syscall_handle_signals:
@@ -543,10 +602,13 @@ FUNCTION(x86_64_syscall_entry):
 	// Set a fault handler.
 	movq	$.Lbad_syscall_args, THREAD_fault_handler(%r12)
 
+	ASM_STAC
+
 	// Copy them by quadwords.
 	shrq	$3, %rcx
 	rep
 	movsq
+	ASM_CLAC
 	movq	$0, THREAD_fault_handler(%r12)
 
 	// Perform the call.
@@ -578,7 +640,8 @@ FUNCTION(x86_return_to_userland):
 	// Perform kernel exit work.
 	movq	%gs:0, %r12
 	testl	$(THREAD_FLAGS_DEBUGGER_INSTALLED | THREAD_FLAGS_SIGNALS_PENDING \
-			| THREAD_FLAGS_DEBUG_THREAD | THREAD_FLAGS_BREAKPOINTS_DEFINED) \
+			| THREAD_FLAGS_DEBUG_THREAD | THREAD_FLAGS_BREAKPOINTS_DEFINED \
+			| THREAD_FLAGS_TRAP_FOR_CORE_DUMP) \
 			, THREAD_flags(%r12)
 	jnz		.Luserland_return_work
 
@@ -588,12 +651,14 @@ FUNCTION(x86_return_to_userland):
 	// Restore the frame and return.
 	RESTORE_IFRAME()
 	swapgs
+	lfence
 	iretq
 .Luserland_return_work:
 	// Slow path for return to userland.
 
 	// Do we need to handle signals?
-	testl	$(THREAD_FLAGS_SIGNALS_PENDING | THREAD_FLAGS_DEBUG_THREAD) \
+	testl	$(THREAD_FLAGS_SIGNALS_PENDING | THREAD_FLAGS_DEBUG_THREAD \
+			| THREAD_FLAGS_TRAP_FOR_CORE_DUMP) \
 			, THREAD_flags(%r12)
 	jnz		.Luserland_return_handle_signals
 	cli
@@ -611,6 +676,7 @@ FUNCTION(x86_return_to_userland):
 
 	// Restore the previous GS base and return.
 	swapgs
+	lfence
 	iretq
 .Luserland_return_handle_signals:
 	// thread_at_kernel_exit requires interrupts to be enabled, it will disable

@@ -14,16 +14,11 @@
 #define	HAVE_GNU_LD 1
 
 /* Define if using ELF, which supports weak symbols.
-   This implies HAVE_ASM_WEAK_DIRECTIVE and NO_UNDERSCORES; set by
-   --with-elf.  */
+   This implies HAVE_ASM_WEAK_DIRECTIVE set by --with-elf.  */
 #define	HAVE_ELF 1
 
 /* Define if using XCOFF. Set by --with-xcoff.  */
 #undef	HAVE_XCOFF
-
-/* Define if C symbols are asm symbols.  Don't define if C symbols
-   have a `_' prepended to make the asm symbol.  */
-#define	NO_UNDERSCORES 1
 
 /* Define if weak symbols are available via the `.weak' directive.  */
 #define	HAVE_ASM_WEAK_DIRECTIVE 1
@@ -110,7 +105,7 @@
 
 /* Define if the regparm attribute shall be used for local functions
    (gcc on ix86 only).  */
-#define	USE_REGPARMS 1
+#define	USE_REGPARMS 0
 
 /* Defined on PowerPC if the GCC being used has a problem with clobbering
    certain registers (CR0, MQ, CTR, LR) in asm statements.  */
@@ -161,7 +156,7 @@
 
 /* Defined to some form of __attribute__ ((...)) if the compiler supports
    a different, more efficient calling convention.  */
-#if defined USE_REGPARMS && !defined PROF && !defined __BOUNDED_POINTERS__
+#if USE_REGPARMS && !defined PROF && !defined __BOUNDED_POINTERS__
 # define internal_function __attribute__ ((regparm (3), stdcall))
 #endif
 
@@ -192,6 +187,11 @@
 
 /* Mach/i386 specific: define if the `i386_set_gdt' RPC is available.  */
 #undef	HAVE_I386_SET_GDT
+
+/* arm does not support 128bit long doubles, so let's just use 64bit ones.
+ * This mcro aliases the long double symbols to the double implementation. */
+#define NO_LONG_DOUBLE 1
+#define __NO_LONG_DOUBLE_MATH 1
 
 /*
  */

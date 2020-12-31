@@ -13,7 +13,7 @@
 
 #include <Autolock.h>
 
-#include "debug.h"
+#include "MediaDebug.h"
 
 #include "PluginManager.h"
 
@@ -81,6 +81,13 @@ MediaWriter::InitCheck()
 	CALLED();
 
 	return fWriter != NULL ? fWriter->Init(&fFileFormat) : B_NO_INIT;
+}
+
+
+BDataIO*
+MediaWriter::Target() const
+{
+	return fTarget;
 }
 
 

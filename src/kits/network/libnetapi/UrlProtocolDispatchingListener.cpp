@@ -1,14 +1,17 @@
 /*
- * Copyright 2010 Haiku Inc. All rights reserved.
+ * Copyright 2010-2017 Haiku Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
  *		Christophe Huriaux, c.huriaux@gmail.com
+ *		Adrien Destugues, pulkomandy@pulkomandy.tk
  */
 
 
 #include <UrlProtocolDispatchingListener.h>
+
 #include <Debug.h>
+#include <UrlResult.h>
 
 #include <assert.h>
 
@@ -27,7 +30,7 @@ BUrlProtocolDispatchingListener::BUrlProtocolDispatchingListener
 
 BUrlProtocolDispatchingListener::BUrlProtocolDispatchingListener
 	(const BMessenger& messenger)
-		: 
+		:
 		fMessenger(messenger)
 {
 }
@@ -66,9 +69,17 @@ BUrlProtocolDispatchingListener::ResponseStarted(BUrlRequest* caller)
 
 
 void
-BUrlProtocolDispatchingListener::HeadersReceived(BUrlRequest* caller)
+BUrlProtocolDispatchingListener::HeadersReceived(BUrlRequest* caller,
+	const BUrlResult& result)
 {
+	/* The URL request does not keep the headers valid after calling this
+	 * method. For asynchronous delivery to work, we need to archive them
+	 * into the message. */
 	BMessage message(B_URL_PROTOCOL_NOTIFICATION);
+	BMessage archive;
+	result.Archive(&archive, true);
+	message.AddMessage("url:result", &archive);
+
 	_SendMessage(&message, B_URL_PROTOCOL_HEADERS_RECEIVED, caller);
 }
 
@@ -125,6 +136,18 @@ BUrlProtocolDispatchingListener::RequestCompleted(BUrlRequest* caller,
 }
 
 
+void
+BUrlProtocolDispatchingListener::DebugMessage(BUrlRequest* caller,
+	BUrlProtocolDebugMessage type, const char* text)
+{
+	BMessage message(B_URL_PROTOCOL_NOTIFICATION);
+	message.AddInt32("url:type", type);
+	message.AddString("url:text", text);
+
+	_SendMessage(&message, B_URL_PROTOCOL_DEBUG_MESSAGE, caller);
+}
+
+
 bool
 BUrlProtocolDispatchingListener::CertificateVerificationFailed(
 	BUrlRequest* caller, BCertificate& certificate, const char* error)
@@ -145,11 +168,11 @@ BUrlProtocolDispatchingListener::CertificateVerificationFailed(
 
 
 void
-BUrlProtocolDispatchingListener::_SendMessage(BMessage* message, 
+BUrlProtocolDispatchingListener::_SendMessage(BMessage* message,
 	int8 notification, BUrlRequest* caller)
 {
 	ASSERT(message != NULL);
-		
+
 	message->AddPointer(kUrlProtocolCaller, caller);
 	message->AddInt8(kUrlProtocolMessageType, notification);
 

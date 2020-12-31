@@ -8,6 +8,7 @@
 
 
 #include <lock.h>
+#include <KernelExport.h>
 
 
 struct mtx {
@@ -17,8 +18,11 @@ struct mtx {
 			mutex			lock;
 			thread_id		owner;
 		}					mutex;
-		int32				spinlock;
 		recursive_lock		recursive;
+		struct {
+			spinlock		lock;
+			cpu_status		state;
+		}					spinlock;
 	} u;
 };
 

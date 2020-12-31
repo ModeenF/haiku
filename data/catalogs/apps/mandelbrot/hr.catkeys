@@ -1,8 +1,8 @@
-1	croatian	x-vnd.Haiku-Mandelbrot	2570821733
-File	Mandelbrot		Datoteka
-Palette 3	Mandelbrot		Paleta 3
-Quit	Mandelbrot		Izađi
-Palette 2	Mandelbrot		Paleta 2
-Palette 4	Mandelbrot		Paleta 4
-Palette	Mandelbrot		Paleta
-Palette 1	Mandelbrot		Paleta 1
+1	croatian	x-vnd.Haiku-Mandelbrot	3572543304
+About	MandelbrotWindow		O programu
+Palette	MandelbrotWindow		Paleta
+File	MandelbrotWindow		Datoteka
+Julia	MandelbrotWindow		Julia
+Fire	MandelbrotWindow		Vatra
+High contrast	MandelbrotWindow		Veliki kontrast
+Midnight	MandelbrotWindow		Ponoć

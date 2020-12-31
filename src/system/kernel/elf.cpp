@@ -1,4 +1,5 @@
 /*
+ * Copyright 2018, Jérôme Duval, jerome.duval@gmail.com.
  * Copyright 2009-2011, Ingo Weinhold, ingo_weinhold@gmx.de.
  * Copyright 2002-2009, Axel Dörfler, axeld@pinc-software.de.
  * Distributed under the terms of the MIT License.
@@ -23,7 +24,9 @@
 #include <algorithm>
 
 #include <AutoDeleter.h>
+#include <BytePointer.h>
 #include <commpage.h>
+#include <driver_settings.h>
 #include <boot/kernel_args.h>
 #include <debug.h>
 #include <image_defs.h>
@@ -82,6 +85,8 @@ typedef BOpenHashTable<ImageHashDefinition> ImageHash;
 } // namespace
 
 
+#ifndef ELF32_COMPAT
+
 static ImageHash *sImagesHash;
 
 static struct elf_image_info *sKernelImage = NULL;
@@ -90,6 +95,7 @@ static mutex sImageMutex = MUTEX_INITIALIZER("kimages_lock");
 static mutex sImageLoadMutex = MUTEX_INITIALIZER("kimages_load_lock");
 	// serializes loading/unloading add-ons locking order
 	// sImageLoadMutex -> sImageMutex
+static bool sLoadElfSymbols = false;
 static bool sInitialized = false;
 
 
@@ -108,23 +114,24 @@ unregister_elf_image(struct elf_image_info *image)
 static void
 register_elf_image(struct elf_image_info *image)
 {
-	image_info imageInfo;
+	extended_image_info imageInfo;
 
-	memset(&imageInfo, 0, sizeof(image_info));
-	imageInfo.id = image->id;
-	imageInfo.type = B_SYSTEM_IMAGE;
-	strlcpy(imageInfo.name, image->name, sizeof(imageInfo.name));
+	memset(&imageInfo, 0, sizeof(imageInfo));
+	imageInfo.basic_info.id = image->id;
+	imageInfo.basic_info.type = B_SYSTEM_IMAGE;
+	strlcpy(imageInfo.basic_info.name, image->name,
+		sizeof(imageInfo.basic_info.name));
 
-	imageInfo.text = (void *)image->text_region.start;
-	imageInfo.text_size = image->text_region.size;
-	imageInfo.data = (void *)image->data_region.start;
-	imageInfo.data_size = image->data_region.size;
+	imageInfo.basic_info.text = (void *)image->text_region.start;
+	imageInfo.basic_info.text_size = image->text_region.size;
+	imageInfo.basic_info.data = (void *)image->data_region.start;
+	imageInfo.basic_info.data_size = image->data_region.size;
 
 	if (image->text_region.id >= 0) {
 		// evaluate the API/ABI version symbols
 
 		// Haiku API version
-		imageInfo.api_version = 0;
+		imageInfo.basic_info.api_version = 0;
 		elf_sym* symbol = elf_find_symbol(image,
 			B_SHARED_OBJECT_HAIKU_VERSION_VARIABLE_NAME, NULL, true);
 		if (symbol != NULL && symbol->st_shndx != SHN_UNDEF
@@ -135,12 +142,12 @@ register_elf_image(struct elf_image_info *image)
 			if (symbolAddress >= image->text_region.start
 				&& symbolAddress - image->text_region.start + sizeof(uint32)
 					<= image->text_region.size) {
-				imageInfo.api_version = *(uint32*)symbolAddress;
+				imageInfo.basic_info.api_version = *(uint32*)symbolAddress;
 			}
 		}
 
 		// Haiku ABI
-		imageInfo.abi = 0;
+		imageInfo.basic_info.abi = 0;
 		symbol = elf_find_symbol(image,
 			B_SHARED_OBJECT_HAIKU_ABI_VARIABLE_NAME, NULL, true);
 		if (symbol != NULL && symbol->st_shndx != SHN_UNDEF
@@ -151,17 +158,17 @@ register_elf_image(struct elf_image_info *image)
 			if (symbolAddress >= image->text_region.start
 				&& symbolAddress - image->text_region.start + sizeof(uint32)
 					<= image->text_region.size) {
-				imageInfo.api_version = *(uint32*)symbolAddress;
+				imageInfo.basic_info.api_version = *(uint32*)symbolAddress;
 			}
 		}
 	} else {
 		// in-memory image -- use the current values
-		imageInfo.api_version = B_HAIKU_VERSION;
-		imageInfo.abi = B_HAIKU_ABI;
+		imageInfo.basic_info.api_version = B_HAIKU_VERSION;
+		imageInfo.basic_info.abi = B_HAIKU_ABI;
 	}
 
 	image->id = register_image(team_get_kernel_team(), &imageInfo,
-		sizeof(image_info));
+		sizeof(imageInfo));
 	sImagesHash->Insert(image);
 }
 
@@ -251,6 +258,9 @@ find_image_by_vnode(void *vnode)
 }
 
 
+#endif // ELF32_COMPAT
+
+
 static struct elf_image_info *
 create_image_struct()
 {
@@ -336,6 +346,9 @@ get_symbol_bind_string(elf_sym *symbol)
 			return "----";
 	}
 }
+
+
+#ifndef ELF32_COMPAT
 
 
 /*!	Searches a symbol (pattern) in all kernel images */
@@ -569,8 +582,7 @@ dump_image(int argc, char **argv)
 
 
 // Currently unused
-#if 0
-static
+/*static
 void dump_symbol(struct elf_image_info *image, elf_sym *sym)
 {
 
@@ -583,7 +595,10 @@ void dump_symbol(struct elf_image_info *image, elf_sym *sym)
 	kprintf(" st_other 0x%x\n", sym->st_other);
 	kprintf(" st_shndx %d\n", sym->st_shndx);
 }
-#endif
+*/
+
+
+#endif // ELF32_COMPAT
 
 
 static elf_sym *
@@ -798,6 +813,9 @@ elf_parse_dynamic_section(struct elf_image_info *image)
 }
 
 
+#ifndef ELF32_COMPAT
+
+
 static status_t
 assert_defined_image_version(elf_image_info* dependentImage,
 	elf_image_info* image, const elf_version_info& neededVersion, bool weak)
@@ -812,7 +830,7 @@ assert_defined_image_version(elf_image_info* dependentImage,
 	}
 
 	// iterate through the defined versions to find the given one
-	elf_verdef* definition = image->version_definitions;
+	BytePointer<elf_verdef> definition(image->version_definitions);
 	for (uint32 i = 0; i < image->num_version_definitions; i++) {
 		uint32 versionIndex = VER_NDX(definition->vd_ndx);
 		elf_version_info& info = image->versions[versionIndex];
@@ -822,8 +840,7 @@ assert_defined_image_version(elf_image_info* dependentImage,
 			return B_OK;
 		}
 
-		definition = (elf_verdef*)
-			((uint8*)definition + definition->vd_next);
+		definition += definition->vd_next;
 	}
 
 	// version not found -- fail, if not weak
@@ -846,7 +863,7 @@ init_image_version_infos(elf_image_info* image)
 	uint32 maxIndex = 0;
 
 	if (image->version_definitions != NULL) {
-		elf_verdef* definition = image->version_definitions;
+		BytePointer<elf_verdef> definition(image->version_definitions);
 		for (uint32 i = 0; i < image->num_version_definitions; i++) {
 			if (definition->vd_version != 1) {
 				dprintf("Unsupported version definition revision: %u\n",
@@ -858,13 +875,12 @@ init_image_version_infos(elf_image_info* image)
 			if (versionIndex > maxIndex)
 				maxIndex = versionIndex;
 
-			definition = (elf_verdef*)
-				((uint8*)definition	+ definition->vd_next);
+			definition += definition->vd_next;
 		}
 	}
 
 	if (image->needed_versions != NULL) {
-		elf_verneed* needed = image->needed_versions;
+		BytePointer<elf_verneed> needed(image->needed_versions);
 		for (uint32 i = 0; i < image->num_needed_versions; i++) {
 			if (needed->vn_version != 1) {
 				dprintf("Unsupported version needed revision: %u\n",
@@ -872,17 +888,16 @@ init_image_version_infos(elf_image_info* image)
 				return B_BAD_VALUE;
 			}
 
-			elf_vernaux* vernaux
-				= (elf_vernaux*)((uint8*)needed + needed->vn_aux);
+			BytePointer<elf_vernaux> vernaux(needed + needed->vn_aux);
 			for (uint32 k = 0; k < needed->vn_cnt; k++) {
 				uint32 versionIndex = VER_NDX(vernaux->vna_other);
 				if (versionIndex > maxIndex)
 					maxIndex = versionIndex;
 
-				vernaux = (elf_vernaux*)((uint8*)vernaux + vernaux->vna_next);
+				vernaux += vernaux->vna_next;
 			}
 
-			needed = (elf_verneed*)((uint8*)needed + needed->vn_next);
+			needed += needed->vn_next;
 		}
 	}
 
@@ -902,12 +917,12 @@ init_image_version_infos(elf_image_info* image)
 
 	// version definitions
 	if (image->version_definitions != NULL) {
-		elf_verdef* definition = image->version_definitions;
+		BytePointer<elf_verdef> definition(image->version_definitions);
 		for (uint32 i = 0; i < image->num_version_definitions; i++) {
 			if (definition->vd_cnt > 0
 				&& (definition->vd_flags & VER_FLG_BASE) == 0) {
-				elf_verdaux* verdaux
-					= (elf_verdaux*)((uint8*)definition + definition->vd_aux);
+				BytePointer<elf_verdaux> verdaux(definition
+					+ definition->vd_aux);
 
 				uint32 versionIndex = VER_NDX(definition->vd_ndx);
 				elf_version_info& info = image->versions[versionIndex];
@@ -916,19 +931,17 @@ init_image_version_infos(elf_image_info* image)
 				info.file_name = NULL;
 			}
 
-			definition = (elf_verdef*)
-				((uint8*)definition + definition->vd_next);
+			definition += definition->vd_next;
 		}
 	}
 
 	// needed versions
 	if (image->needed_versions != NULL) {
-		elf_verneed* needed = image->needed_versions;
+		BytePointer<elf_verneed> needed(image->needed_versions);
 		for (uint32 i = 0; i < image->num_needed_versions; i++) {
 			const char* fileName = STRING(image, needed->vn_file);
 
-			elf_vernaux* vernaux
-				= (elf_vernaux*)((uint8*)needed + needed->vn_aux);
+			BytePointer<elf_vernaux> vernaux(needed + needed->vn_aux);
 			for (uint32 k = 0; k < needed->vn_cnt; k++) {
 				uint32 versionIndex = VER_NDX(vernaux->vna_other);
 				elf_version_info& info = image->versions[versionIndex];
@@ -936,10 +949,10 @@ init_image_version_infos(elf_image_info* image)
 				info.name = STRING(image, vernaux->vna_name);
 				info.file_name = fileName;
 
-				vernaux = (elf_vernaux*)((uint8*)vernaux + vernaux->vna_next);
+				vernaux += vernaux->vna_next;
 			}
 
-			needed = (elf_verneed*)((uint8*)needed + needed->vn_next);
+			needed += needed->vn_next;
 		}
 	}
 
@@ -953,12 +966,11 @@ check_needed_image_versions(elf_image_info* image)
 	if (image->needed_versions == NULL)
 		return B_OK;
 
-	elf_verneed* needed = image->needed_versions;
+	BytePointer<elf_verneed> needed(image->needed_versions);
 	for (uint32 i = 0; i < image->num_needed_versions; i++) {
 		elf_image_info* dependency = sKernelImage;
 
-		elf_vernaux* vernaux
-			= (elf_vernaux*)((uint8*)needed + needed->vn_aux);
+		BytePointer<elf_vernaux> vernaux(needed + needed->vn_aux);
 		for (uint32 k = 0; k < needed->vn_cnt; k++) {
 			uint32 versionIndex = VER_NDX(vernaux->vna_other);
 			elf_version_info& info = image->versions[versionIndex];
@@ -968,14 +980,17 @@ check_needed_image_versions(elf_image_info* image)
 			if (error != B_OK)
 				return error;
 
-			vernaux = (elf_vernaux*)((uint8*)vernaux + vernaux->vna_next);
+			vernaux += vernaux->vna_next;
 		}
 
-		needed = (elf_verneed*)((uint8*)needed + needed->vn_next);
+		needed += needed->vn_next;
 	}
 
 	return B_OK;
 }
+
+
+#endif // ELF32_COMPAT
 
 
 /*!	Resolves the \a symbol by linking against \a sharedImage if necessary.
@@ -983,7 +998,7 @@ check_needed_image_versions(elf_image_info* image)
 */
 status_t
 elf_resolve_symbol(struct elf_image_info *image, elf_sym *symbol,
-	struct elf_image_info *sharedImage, addr_t *_symbolAddress)
+	struct elf_image_info *sharedImage, elf_addr *_symbolAddress)
 {
 	// Local symbols references are always resolved to the given symbol.
 	if (symbol->Bind() == STB_LOCAL) {
@@ -1106,7 +1121,7 @@ elf_relocate(struct elf_image_info* image, struct elf_image_info* resolveImage)
 static int
 verify_eheader(elf_ehdr *elfHeader)
 {
-	if (memcmp(elfHeader->e_ident, ELF_MAGIC, 4) != 0)
+	if (memcmp(elfHeader->e_ident, ELFMAG, 4) != 0)
 		return B_NOT_AN_EXECUTABLE;
 
 	if (elfHeader->e_ident[4] != ELF_CLASS)
@@ -1120,6 +1135,9 @@ verify_eheader(elf_ehdr *elfHeader)
 
 	return 0;
 }
+
+
+#ifndef ELF32_COMPAT
 
 
 static void
@@ -1801,8 +1819,11 @@ elf_lookup_kernel_symbol(const char* name, elf_symbol_info* info)
 }
 
 
+#endif // ELF32_COMPAT
+
+
 status_t
-elf_load_user_image(const char *path, Team *team, int flags, addr_t *entry)
+elf_load_user_image(const char *path, Team *team, uint32 flags, addr_t *entry)
 {
 	elf_ehdr elfHeader;
 	elf_phdr *programHeaders = NULL;
@@ -1842,6 +1863,11 @@ elf_load_user_image(const char *path, Team *team, int flags, addr_t *entry)
 	status = verify_eheader(&elfHeader);
 	if (status < B_OK)
 		goto error;
+
+#ifdef ELF_LOAD_USER_IMAGE_TEST_EXECUTABLE
+	if ((flags & ELF_LOAD_USER_IMAGE_TEST_EXECUTABLE) != 0)
+		return B_OK;
+#endif
 
 	struct elf_image_info* image;
 	image = create_image_struct();
@@ -1887,8 +1913,8 @@ elf_load_user_image(const char *path, Team *team, int flags, addr_t *entry)
 			leaf++;
 
 		length = strlen(leaf);
-		if (length > B_OS_NAME_LENGTH - 8)
-			sprintf(baseName, "...%s", leaf + length + 8 - B_OS_NAME_LENGTH);
+		if (length > B_OS_NAME_LENGTH - 16)
+			snprintf(baseName, B_OS_NAME_LENGTH, "...%s", leaf + length + 16 - B_OS_NAME_LENGTH);
 		else
 			strcpy(baseName, leaf);
 	}
@@ -1902,8 +1928,8 @@ elf_load_user_image(const char *path, Team *team, int flags, addr_t *entry)
 		goto error2;
 	}
 
-	image_info imageInfo;
-	memset(&imageInfo, 0, sizeof(image_info));
+	extended_image_info imageInfo;
+	memset(&imageInfo, 0, sizeof(imageInfo));
 
 	for (i = 0; i < elfHeader.e_phnum; i++) {
 		char regionName[B_OS_NAME_LENGTH];
@@ -1935,7 +1961,7 @@ elf_load_user_image(const char *path, Team *team, int flags, addr_t *entry)
 			memUpperBound = ROUNDUP(memUpperBound, B_PAGE_SIZE);
 			fileUpperBound = ROUNDUP(fileUpperBound, B_PAGE_SIZE);
 
-			sprintf(regionName, "%s_seg%drw", baseName, i);
+			snprintf(regionName, B_OS_NAME_LENGTH, "%s_seg%drw", baseName, i);
 
 			id = vm_map_file(team->id, regionName, (void **)&regionAddress,
 				addressSpec, fileUpperBound,
@@ -1948,8 +1974,8 @@ elf_load_user_image(const char *path, Team *team, int flags, addr_t *entry)
 			}
 			mappedAreas[i] = id;
 
-			imageInfo.data = regionAddress;
-			imageInfo.data_size = memUpperBound;
+			imageInfo.basic_info.data = regionAddress;
+			imageInfo.basic_info.data_size = memUpperBound;
 
 			image->data_region.start = (addr_t)regionAddress;
 			image->data_region.size = memUpperBound;
@@ -1962,7 +1988,9 @@ elf_load_user_image(const char *path, Team *team, int flags, addr_t *entry)
 			size_t amount = fileUpperBound
 				- (programHeaders[i].p_vaddr % B_PAGE_SIZE)
 				- (programHeaders[i].p_filesz);
+			set_ac();
 			memset((void *)start, 0, amount);
+			clear_ac();
 
 			// Check if we need extra storage for the bss - we have to do this if
 			// the above region doesn't already comprise the memory size, too.
@@ -2005,8 +2033,8 @@ elf_load_user_image(const char *path, Team *team, int flags, addr_t *entry)
 
 			mappedAreas[i] = id;
 
-			imageInfo.text = regionAddress;
-			imageInfo.text_size = segmentSize;
+			imageInfo.basic_info.text = regionAddress;
+			imageInfo.basic_info.text_size = segmentSize;
 
 			image->text_region.start = (addr_t)regionAddress;
 			image->text_region.size = segmentSize;
@@ -2024,6 +2052,7 @@ elf_load_user_image(const char *path, Team *team, int flags, addr_t *entry)
 	// modify the dynamic ptr by the delta of the regions
 	image->dynamic_section += image->text_region.delta;
 
+	set_ac();
 	status = elf_parse_dynamic_section(image);
 	if (status != B_OK)
 		goto error2;
@@ -2031,6 +2060,8 @@ elf_load_user_image(const char *path, Team *team, int flags, addr_t *entry)
 	status = elf_relocate(image, image);
 	if (status != B_OK)
 		goto error2;
+
+	clear_ac();
 
 	// set correct area protection
 	for (i = 0; i < elfHeader.e_phnum; i++) {
@@ -2053,20 +2084,26 @@ elf_load_user_image(const char *path, Team *team, int flags, addr_t *entry)
 	}
 
 	// register the loaded image
-	imageInfo.type = B_LIBRARY_IMAGE;
-    imageInfo.device = st.st_dev;
-    imageInfo.node = st.st_ino;
-	strlcpy(imageInfo.name, path, sizeof(imageInfo.name));
+	imageInfo.basic_info.type = B_LIBRARY_IMAGE;
+	imageInfo.basic_info.device = st.st_dev;
+	imageInfo.basic_info.node = st.st_ino;
+	strlcpy(imageInfo.basic_info.name, path, sizeof(imageInfo.basic_info.name));
 
-	imageInfo.api_version = B_HAIKU_VERSION;
-	imageInfo.abi = B_HAIKU_ABI;
+	imageInfo.basic_info.api_version = B_HAIKU_VERSION;
+	imageInfo.basic_info.abi = B_HAIKU_ABI;
 		// TODO: Get the actual values for the shared object. Currently only
 		// the runtime loader is loaded, so this is good enough for the time
 		// being.
 
-	imageInfo.id = register_image(team, &imageInfo, sizeof(image_info));
-	if (imageInfo.id >= 0 && team_get_current_team_id() == team->id)
-		user_debug_image_created(&imageInfo);
+	imageInfo.text_delta = delta;
+	imageInfo.symbol_table = image->syms;
+	imageInfo.symbol_hash = image->symhash;
+	imageInfo.string_table = image->strtab;
+
+	imageInfo.basic_info.id = register_image(team, &imageInfo,
+		sizeof(imageInfo));
+	if (imageInfo.basic_info.id >= 0 && team_get_current_team_id() == team->id)
+		user_debug_image_created(&imageInfo.basic_info);
 		// Don't care, if registering fails. It's not crucial.
 
 	TRACE(("elf_load: done!\n"));
@@ -2075,6 +2112,7 @@ elf_load_user_image(const char *path, Team *team, int flags, addr_t *entry)
 	status = B_OK;
 
 error2:
+	clear_ac();
 	free(mappedAreas);
 
 	image->elf_header = NULL;
@@ -2087,6 +2125,8 @@ error:
 	return status;
 }
 
+
+#ifndef ELF32_COMPAT
 
 image_id
 load_kernel_add_on(const char *path)
@@ -2240,7 +2280,11 @@ load_kernel_add_on(const char *path)
 				// should check here for appropriate interpreter
 				continue;
 			case PT_PHDR:
+			case PT_STACK:
 				// we don't use it
+				continue;
+			case PT_EH_FRAME:
+				// not implemented yet, but can be ignored
 				continue;
 			default:
 				dprintf("%s: unhandled pheader type %#" B_PRIx32 "\n", fileName,
@@ -2349,8 +2393,7 @@ load_kernel_add_on(const char *path)
 	vm_unreserve_address_range(VMAddressSpace::KernelID(), reservedAddress,
 		reservedSize);
 
-	// ToDo: this should be enabled by kernel settings!
-	if (1)
+	if (sLoadElfSymbols)
 		load_elf_symbol_table(fd, image);
 
 	free(programHeaders);
@@ -2557,12 +2600,138 @@ elf_add_memory_image_symbol(image_id id, const char* name, addr_t address,
 }
 
 
+/*!	Reads the symbol and string table for the kernel image with the given ID.
+	\a _symbolCount and \a _stringTableSize are both in- and output parameters.
+	When called they call the size of the buffers given by \a symbolTable and
+	\a stringTable respectively. When the function returns successfully, they
+	will contain the actual sizes (which can be greater than the original ones).
+	The function will copy as much as possible into the buffers. For only
+	getting the required buffer sizes, it can be invoked with \c NULL buffers.
+	On success \a _imageDelta will contain the offset to be added to the symbol
+	values in the table to get the actual symbol addresses.
+*/
 status_t
-elf_init(kernel_args *args)
+elf_read_kernel_image_symbols(image_id id, elf_sym* symbolTable,
+	int32* _symbolCount, char* stringTable, size_t* _stringTableSize,
+	addr_t* _imageDelta, bool kernel)
 {
-	struct preloaded_image *image;
+	// check params
+	if (_symbolCount == NULL || _stringTableSize == NULL)
+		return B_BAD_VALUE;
+	if (!kernel) {
+		if (!IS_USER_ADDRESS(_symbolCount) || !IS_USER_ADDRESS(_stringTableSize)
+			|| (_imageDelta != NULL && !IS_USER_ADDRESS(_imageDelta))
+			|| (symbolTable != NULL && !IS_USER_ADDRESS(symbolTable))
+			|| (stringTable != NULL && !IS_USER_ADDRESS(stringTable))) {
+			return B_BAD_ADDRESS;
+		}
+	}
+
+	// get buffer sizes
+	int32 maxSymbolCount;
+	size_t maxStringTableSize;
+	if (kernel) {
+		maxSymbolCount = *_symbolCount;
+		maxStringTableSize = *_stringTableSize;
+	} else {
+		if (user_memcpy(&maxSymbolCount, _symbolCount, sizeof(maxSymbolCount))
+				!= B_OK
+			|| user_memcpy(&maxStringTableSize, _stringTableSize,
+				sizeof(maxStringTableSize)) != B_OK) {
+			return B_BAD_ADDRESS;
+		}
+	}
+
+	// find the image
+	MutexLocker _(sImageMutex);
+	struct elf_image_info* image = find_image(id);
+	if (image == NULL)
+		return B_ENTRY_NOT_FOUND;
+
+	// get the tables and infos
+	addr_t imageDelta = image->text_region.delta;
+	const elf_sym* symbols;
+	int32 symbolCount;
+	const char* strings;
+
+	if (image->debug_symbols != NULL) {
+		symbols = image->debug_symbols;
+		symbolCount = image->num_debug_symbols;
+		strings = image->debug_string_table;
+	} else {
+		symbols = image->syms;
+		symbolCount = image->symhash[1];
+		strings = image->strtab;
+	}
+
+	// The string table size isn't stored in the elf_image_info structure. Find
+	// out by iterating through all symbols.
+	size_t stringTableSize = 0;
+	for (int32 i = 0; i < symbolCount; i++) {
+		size_t index = symbols[i].st_name;
+		if (index > stringTableSize)
+			stringTableSize = index;
+	}
+	stringTableSize += strlen(strings + stringTableSize) + 1;
+		// add size of the last string
+
+	// copy symbol table
+	int32 symbolsToCopy = min_c(symbolCount, maxSymbolCount);
+	if (symbolTable != NULL && symbolsToCopy > 0) {
+		if (kernel) {
+			memcpy(symbolTable, symbols, sizeof(elf_sym) * symbolsToCopy);
+		} else if (user_memcpy(symbolTable, symbols,
+				sizeof(elf_sym) * symbolsToCopy) != B_OK) {
+			return B_BAD_ADDRESS;
+		}
+	}
+
+	// copy string table
+	size_t stringsToCopy = min_c(stringTableSize, maxStringTableSize);
+	if (stringTable != NULL && stringsToCopy > 0) {
+		if (kernel) {
+			memcpy(stringTable, strings, stringsToCopy);
+		} else {
+			if (user_memcpy(stringTable, strings, stringsToCopy)
+					!= B_OK) {
+				return B_BAD_ADDRESS;
+			}
+		}
+	}
+
+	// copy sizes
+	if (kernel) {
+		*_symbolCount = symbolCount;
+		*_stringTableSize = stringTableSize;
+		if (_imageDelta != NULL)
+			*_imageDelta = imageDelta;
+	} else {
+		if (user_memcpy(_symbolCount, &symbolCount, sizeof(symbolCount)) != B_OK
+			|| user_memcpy(_stringTableSize, &stringTableSize,
+					sizeof(stringTableSize)) != B_OK
+			|| (_imageDelta != NULL && user_memcpy(_imageDelta, &imageDelta,
+					sizeof(imageDelta)) != B_OK)) {
+			return B_BAD_ADDRESS;
+		}
+	}
+
+	return B_OK;
+}
+
+
+status_t
+elf_init(kernel_args* args)
+{
+	struct preloaded_image* image;
 
 	image_init();
+
+	if (void* handle = load_driver_settings("kernel")) {
+		sLoadElfSymbols = get_driver_boolean_parameter(handle, "load_symbols",
+			false, false);
+
+		unload_driver_settings(handle);
+	}
 
 	sImagesHash = new(std::nothrow) ImageHash();
 	if (sImagesHash == NULL)
@@ -2615,85 +2784,9 @@ _user_read_kernel_image_symbols(image_id id, elf_sym* symbolTable,
 	int32* _symbolCount, char* stringTable, size_t* _stringTableSize,
 	addr_t* _imageDelta)
 {
-	// check params
-	if (_symbolCount == NULL || _stringTableSize == NULL)
-		return B_BAD_VALUE;
-	if (!IS_USER_ADDRESS(_symbolCount) || !IS_USER_ADDRESS(_stringTableSize)
-		|| (_imageDelta != NULL && !IS_USER_ADDRESS(_imageDelta))
-		|| (symbolTable != NULL && !IS_USER_ADDRESS(symbolTable))
-		|| (stringTable != NULL && !IS_USER_ADDRESS(stringTable))) {
-		return B_BAD_ADDRESS;
-	}
-
-	// get buffer sizes
-	int32 maxSymbolCount;
-	size_t maxStringTableSize;
-	if (user_memcpy(&maxSymbolCount, _symbolCount, sizeof(maxSymbolCount))
-			!= B_OK
-		|| user_memcpy(&maxStringTableSize, _stringTableSize,
-			sizeof(maxStringTableSize)) != B_OK) {
-		return B_BAD_ADDRESS;
-	}
-
-	// find the image
-	MutexLocker _(sImageMutex);
-	struct elf_image_info* image = find_image(id);
-	if (image == NULL)
-		return B_ENTRY_NOT_FOUND;
-
-	// get the tables and infos
-	addr_t imageDelta = image->text_region.delta;
-	const elf_sym* symbols;
-	int32 symbolCount;
-	const char* strings;
-
-	if (image->debug_symbols != NULL) {
-		symbols = image->debug_symbols;
-		symbolCount = image->num_debug_symbols;
-		strings = image->debug_string_table;
-	} else {
-		symbols = image->syms;
-		symbolCount = image->symhash[1];
-		strings = image->strtab;
-	}
-
-	// The string table size isn't stored in the elf_image_info structure. Find
-	// out by iterating through all symbols.
-	size_t stringTableSize = 0;
-	for (int32 i = 0; i < symbolCount; i++) {
-		size_t index = symbols[i].st_name;
-		if (index > stringTableSize)
-			stringTableSize = index;
-	}
-	stringTableSize += strlen(strings + stringTableSize) + 1;
-		// add size of the last string
-
-	// copy symbol table
-	int32 symbolsToCopy = min_c(symbolCount, maxSymbolCount);
-	if (symbolTable != NULL && symbolsToCopy > 0) {
-		if (user_memcpy(symbolTable, symbols, sizeof(elf_sym) * symbolsToCopy)
-				!= B_OK) {
-			return B_BAD_ADDRESS;
-		}
-	}
-
-	// copy string table
-	size_t stringsToCopy = min_c(stringTableSize, maxStringTableSize);
-	if (stringTable != NULL && stringsToCopy > 0) {
-		if (user_memcpy(stringTable, strings, stringsToCopy)
-				!= B_OK) {
-			return B_BAD_ADDRESS;
-		}
-	}
-
-	// copy sizes
-	if (user_memcpy(_symbolCount, &symbolCount, sizeof(symbolCount)) != B_OK
-		|| user_memcpy(_stringTableSize, &stringTableSize,
-				sizeof(stringTableSize)) != B_OK
-		|| (_imageDelta != NULL && user_memcpy(_imageDelta, &imageDelta,
-				sizeof(imageDelta)) != B_OK)) {
-		return B_BAD_ADDRESS;
-	}
-
-	return B_OK;
+	return elf_read_kernel_image_symbols(id, symbolTable, _symbolCount,
+		stringTable, _stringTableSize, _imageDelta, false);
 }
+
+#endif // ELF32_COMPAT
+

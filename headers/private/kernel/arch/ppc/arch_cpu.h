@@ -7,12 +7,17 @@
 
 
 #include <arch/ppc/arch_thread_types.h>
+#include <arch/ppc/cpu.h>
 #include <kernel.h>
 
 
 #define CPU_MAX_CACHE_LEVEL	8
 #define CACHE_LINE_SIZE		128
 	// 128 Byte lines on PPC970
+
+
+#define set_ac()
+#define clear_ac()
 
 
 struct iframe {

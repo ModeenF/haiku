@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------
 //  This software is part of the OpenBeOS distribution and is covered 
-//  by the OpenBeOS license.
+//  by the MIT License.
 //---------------------------------------------------------------------
 /*!
 	\file Err.cpp
@@ -62,7 +62,7 @@ Err::SetTo(const std::string &msg, const ssize_t pos) {
 
 void
 Err::Unset() {
-	delete fMsg;
+	delete[] fMsg;
 	fMsg = NULL;
 	fPos = -1;
 }
@@ -80,7 +80,7 @@ Err::Pos() const {
 void
 Err::SetMsg(const char *msg) {
 	if (fMsg) {
-		delete fMsg;
+		delete[] fMsg;
 		fMsg = NULL;
 	} 
 	if (msg) {

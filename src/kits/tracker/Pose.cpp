@@ -59,8 +59,8 @@ CalcFreeSpace(BVolume* volume)
 	int32 percent
 		= static_cast<int32>(volume->FreeBytes() / (capacity / 100));
 
-	// warn below 20 MB of free space (if this is less than 10% of free space)
-	if (volume->FreeBytes() < 20 * 1024 * 1024 && percent < 10)
+	// warn below 5% of free space
+	if (percent < 5)
 		return -2 - percent;
 	return percent;
 }
@@ -523,7 +523,7 @@ bool
 BPose::PointInPose(BPoint loc, const BPoseView* poseView, BPoint where,
 	BTextWidget** hitWidget) const
 {
-	if (hitWidget)
+	if (hitWidget != NULL)
 		*hitWidget = NULL;
 
 	// check intersection with icon
@@ -603,7 +603,7 @@ BPose::Draw(BRect rect, const BRect& updateRect, BPoseView* poseView,
 						&& windowActive;
 
 					if (index == 0 && selectDuringDraw) {
-						//draw with dark background to select text
+						// draw with dark background to select text
 						drawView->PushState();
 						drawView->SetLowColor(0, 0, 0);
 					}
@@ -834,21 +834,15 @@ BPose::DrawBar(BPoint where, BView* view, icon_size which)
 {
 	view->PushState();
 
-	int32 size;
-	int32 barWidth;
-	int32 barHeight;
+	int32 size = which - 1;
 	int32 yOffset;
-	if (which >= B_LARGE_ICON) {
-		size = which - 1;
-		barWidth = (int32)(7.0f / 32.0f * (float)which);
-		yOffset = 2;
-		barHeight = size - 4 - 2 * yOffset;
-	} else {
-		size = B_MINI_ICON;
+	int32 barWidth = (int32)(7.0f / 32.0f * (float)which);
+	if (barWidth < 4) {
 		barWidth = 4;
 		yOffset = 0;
-		barHeight = size - 4 - 2 * yOffset;
-	}
+	} else
+		yOffset = 2;
+	int32 barHeight = size - 4 - 2 * yOffset;
 
 	// the black shadowed line
 	view->SetHighColor(32, 32, 32, 92);
@@ -962,7 +956,7 @@ BPose::CalcRect(const BPoseView* poseView) const
 		rect.right = rect.left + poseView->IconSizeInt();
 
 		BTextWidget* widget = WidgetFor(poseView->FirstColumn()->AttrHash());
-		if (widget) {
+		if (widget != NULL) {
 			float textWidth = ceilf(widget->TextWidth(poseView) + 1);
 			if (textWidth > poseView->IconSizeInt()) {
 				rect.left += (poseView->IconSizeInt() - textWidth) / 2;
@@ -979,7 +973,7 @@ BPose::CalcRect(const BPoseView* poseView) const
 		rect.right = rect.left + B_MINI_ICON + kMiniIconSeparator;
 		rect.bottom = rect.top + poseView->IconPoseHeight();
 		BTextWidget* widget = WidgetFor(poseView->FirstColumn()->AttrHash());
-		if (widget)
+		if (widget != NULL)
 			rect.right += ceil(widget->TextWidth(poseView) + 1);
 	}
 

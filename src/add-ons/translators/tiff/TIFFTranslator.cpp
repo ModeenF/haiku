@@ -207,8 +207,8 @@ identify_tiff_header(BPositionIO *inSource, BMessage *ioExtension,
 
 		if (documentIndex < 1 || documentIndex > documentCount) {
 			// document index is invalid
-			fprintf(stderr, B_TRANSLATE("identify_tiff_header: invalid "
-				"document index\n"));
+			fputs(B_TRANSLATE("identify_tiff_header: invalid "
+				"document index\n"), stderr);
 			return B_NO_TRANSLATOR;
 		}
 	}
@@ -216,8 +216,8 @@ identify_tiff_header(BPositionIO *inSource, BMessage *ioExtension,
 	// identify the document the user specified or the first document
 	// if the user did not specify which document they wanted to identify
 	if (!TIFFSetDirectory(tif, documentIndex - 1)) {
-		fprintf(stderr, B_TRANSLATE("identify_tiff_header: couldn't set "
-			"directory\n"));
+		fputs(B_TRANSLATE("identify_tiff_header: couldn't set "
+			"directory\n"), stderr);
 		return B_NO_TRANSLATOR;
 	}
 
@@ -233,8 +233,8 @@ identify_tiff_header(BPositionIO *inSource, BMessage *ioExtension,
 		outInfo->quality = TIFF_IN_QUALITY;
 		outInfo->capability = TIFF_IN_CAPABILITY;
 		strcpy(outInfo->MIME, "image/tiff");
-		snprintf(outInfo->name, sizeof(outInfo->name),
-			B_TRANSLATE("TIFF image"));
+		strlcpy(outInfo->name, B_TRANSLATE("TIFF image"),
+			sizeof(outInfo->name));
 	}
 
 	if (!poutTIFF) {
@@ -603,7 +603,7 @@ write_tif_stream(TIFF* tif, BPositionIO* inSource, color_space format,
 
 
 TIFFTranslator::TIFFTranslator()
-	: BaseTranslator(B_TRANSLATE("TIFF images"), 
+	: BaseTranslator(B_TRANSLATE("TIFF images"),
 		B_TRANSLATE("TIFF image translator"),
 		TIFF_TRANSLATOR_VERSION,
 		sInputFormats, kNumInputFormats,
@@ -652,8 +652,8 @@ TIFFTranslator::translate_from_bits(BPositionIO *inSource, uint32 outType,
 		TIFF* tif = TIFFClientOpen("TIFFTranslator", "w", outDestination,
 			tiff_read_proc, tiff_write_proc, tiff_seek_proc, tiff_close_proc,
 			tiff_size_proc, tiff_map_file_proc, tiff_unmap_file_proc);
-	    if (!tif)
-	    	return B_NO_TRANSLATOR;
+		if (!tif)
+			return B_NO_TRANSLATOR;
 
 		// common fields which are independent of the bitmap format
 		uint32 width = bitsHeader.bounds.IntegerWidth() + 1;
@@ -958,6 +958,6 @@ TIFFTranslator::DerivedTranslate(BPositionIO *inSource,
 BView *
 TIFFTranslator::NewConfigView(TranslatorSettings *settings)
 {
-	return new TIFFView(B_TRANSLATE("TIFFTranslator Settings"), 
+	return new TIFFView(B_TRANSLATE("TIFFTranslator Settings"),
 		B_WILL_DRAW, settings);
 }

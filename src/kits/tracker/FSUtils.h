@@ -165,7 +165,7 @@ private:
 #ifndef _IMPEXP_TRACKER
 #define _IMPEXP_TRACKER
 #endif
-_IMPEXP_TRACKER status_t FSCopyAttributesAndStats(BNode*, BNode*);
+_IMPEXP_TRACKER status_t FSCopyAttributesAndStats(BNode*, BNode*, bool = true);
 
 _IMPEXP_TRACKER void FSDuplicate(BObjectList<entry_ref>* srcList,
 	BList* pointList);
@@ -249,18 +249,18 @@ status_t TrackerLaunch(const BMessage* refs, bool async,
 	bool okToRunOpenWith = true);
 status_t TrackerLaunch(const entry_ref* appRef, const BMessage* refs,
 	bool async, bool okToRunOpenWith = true);
-status_t LaunchBrokenLink(const char*, const BMessage*);
 
 status_t FSFindTrackerSettingsDir(BPath*, bool autoCreate = true);
 
 bool FSIsDeskDir(const BEntry*);
 
-// two separate ifYouDoAction and toDoAction versions are needed for
-// localization purposes. The first one is used in "If you do action..."
-// sentence, the second one in the "To do action" sentence.
+enum DestructiveAction {
+	kRename,
+	kMove
+};
+
 bool ConfirmChangeIfWellKnownDirectory(const BEntry* entry,
-	const char* ifYouDoAction, const char* toDoAction,
-	const char* toConfirmAction, bool dontAsk = false,
+	DestructiveAction action, bool dontAsk = false,
 	int32* confirmedAlready = NULL);
 
 bool CheckDevicesEqual(const entry_ref* entry, const Model* targetModel);

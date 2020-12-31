@@ -3,8 +3,19 @@ SubDir HAIKU_TOP src add-ons kernel file_systems packagefs ;
 
 UseBuildFeatureHeaders zlib ;
 UsePrivateKernelHeaders ;
-UsePrivateHeaders package shared storage support ;
+UsePrivateHeaders package shared storage support file_systems ;
 
+local zstdSources ;
+local zstdKernelLib ;
+
+if [ FIsBuildFeatureEnabled zstd ] {
+	zstdSources = ZstdCompressionAlgorithm.cpp ;
+	zstdKernelLib = kernel_libzstd.a ;
+	UseBuildFeatureHeaders zstd ;
+	Includes [ FGristFiles $(zstdSources) ]
+		: [ BuildFeatureAttribute zstd : headers ] ;
+	SubDirC++Flags -DZSTD_ENABLED ;
+}
 
 local subDirs =
 	indices
@@ -24,13 +35,10 @@ HAIKU_PACKAGE_FS_SOURCES =
 	AttributeIndex.cpp
 	AutoPackageAttributeDirectoryCookie.cpp
 	AutoPackageAttributes.cpp
-	BlockBufferPoolKernel.cpp
 	CachedDataReader.cpp
-	DebugSupport.cpp
 	Dependency.cpp
 	Directory.cpp
 	EmptyAttributeDirectoryCookie.cpp
-	GlobalFactory.cpp
 	Index.cpp
 	IndexedAttributeOwner.cpp
 	kernel_interface.cpp
@@ -71,16 +79,14 @@ HAIKU_PACKAGE_FS_SOURCES =
 
 HAIKU_PACKAGE_FS_SHARED_SOURCES =
 	QueryParserUtils.cpp
+	DebugSupport.cpp
 ;
 
 HAIKU_PACKAGE_FS_PACKAGE_READER_SOURCES =
-	BlockBufferPoolImpl.cpp
-	BufferPool.cpp
 	DataReader.cpp
 	ErrorOutput.cpp
 	FDDataReader.cpp
 	HPKGDefs.cpp
-	PoolBuffer.cpp
 	PackageContentHandler.cpp
 	PackageData.cpp
 	PackageDataReader.cpp
@@ -90,17 +96,6 @@ HAIKU_PACKAGE_FS_PACKAGE_READER_SOURCES =
 	PackageFileHeapReader.cpp
 	PackageReaderImpl.cpp
 	ReaderImplBase.cpp
-;
-
-HAIKU_PACKAGE_FS_PACKAGE_READER_SOURCES_V1 =
-	HPKGDefsV1.cpp
-	PackageContentHandlerV1.cpp
-	PackageDataV1.cpp
-	PackageDataReaderV1.cpp
-	PackageEntryV1.cpp
-	PackageEntryAttributeV1.cpp
-	PackageReaderImplV1.cpp
-	ReaderImplBaseV1.cpp
 ;
 
 Includes [ FGristFiles ZlibCompressionAlgorithm.cpp ]
@@ -117,6 +112,7 @@ local storageKitSources =
 local supportKitSources =
 	CompressionAlgorithm.cpp
 	ZlibCompressionAlgorithm.cpp
+	$(zstdSources)
 ;
 
 KernelAddon packagefs
@@ -124,12 +120,11 @@ KernelAddon packagefs
 	$(HAIKU_PACKAGE_FS_SOURCES)
 	$(HAIKU_PACKAGE_FS_SHARED_SOURCES)
 	$(HAIKU_PACKAGE_FS_PACKAGE_READER_SOURCES)
-	$(HAIKU_PACKAGE_FS_PACKAGE_READER_SOURCES_V1)
 	$(libSharedSources)
 	$(storageKitSources)
 	$(supportKitSources)
 
-	: kernel_libz.a
+	: kernel_libz.a $(zstdKernelLib)
 ;
 
 
@@ -137,10 +132,8 @@ SEARCH on [ FGristFiles $(HAIKU_PACKAGE_FS_SHARED_SOURCES) ]
 	+= [ FDirName $(HAIKU_TOP) src add-ons kernel file_systems shared ] ;
 SEARCH on [ FGristFiles $(HAIKU_PACKAGE_FS_PACKAGE_READER_SOURCES) ]
 	+= [ FDirName $(HAIKU_TOP) src kits package hpkg ] ;
-SEARCH on [ FGristFiles $(HAIKU_PACKAGE_FS_PACKAGE_READER_SOURCES_V1) ]
-	+= [ FDirName $(HAIKU_TOP) src kits package hpkg v1 ] ;
 SEARCH on [ FGristFiles $(libSharedSources) ]
-	+= [ FDirName $(HAIKU_TOP) src kits shared ] ;
+	+= [ FDirName $(HAIKU_TOP) src build libshared ] ;
 SEARCH on [ FGristFiles $(storageKitSources) ]
 	+= [ FDirName $(HAIKU_TOP) src kits storage ] ;
 SEARCH on [ FGristFiles $(supportKitSources) ]

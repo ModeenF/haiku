@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -111,6 +111,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 /*
@@ -172,22 +208,20 @@ AcpiUtRemoveAllocation (
 
 ACPI_STATUS
 AcpiUtCreateList (
-    char                    *ListName,
+    const char              *ListName,
     UINT16                  ObjectSize,
     ACPI_MEMORY_LIST        **ReturnCache)
 {
     ACPI_MEMORY_LIST        *Cache;
 
 
-    Cache = AcpiOsAllocate (sizeof (ACPI_MEMORY_LIST));
+    Cache = AcpiOsAllocateZeroed (sizeof (ACPI_MEMORY_LIST));
     if (!Cache)
     {
         return (AE_NO_MEMORY);
     }
 
-    memset (Cache, 0, sizeof (ACPI_MEMORY_LIST));
-
-    Cache->ListName   = ListName;
+    Cache->ListName = ListName;
     Cache->ObjectSize = ObjectSize;
 
     *ReturnCache = Cache;
@@ -241,8 +275,8 @@ AcpiUtAllocateAndTrack (
         return (NULL);
     }
 
-    Status = AcpiUtTrackAllocation (Allocation, Size,
-                    ACPI_MEM_MALLOC, Component, Module, Line);
+    Status = AcpiUtTrackAllocation (
+        Allocation, Size, ACPI_MEM_MALLOC, Component, Module, Line);
     if (ACPI_FAILURE (Status))
     {
         AcpiOsFree (Allocation);
@@ -252,9 +286,12 @@ AcpiUtAllocateAndTrack (
     AcpiGbl_GlobalList->TotalAllocated++;
     AcpiGbl_GlobalList->TotalSize += (UINT32) Size;
     AcpiGbl_GlobalList->CurrentTotalSize += (UINT32) Size;
-    if (AcpiGbl_GlobalList->CurrentTotalSize > AcpiGbl_GlobalList->MaxOccupied)
+
+    if (AcpiGbl_GlobalList->CurrentTotalSize >
+        AcpiGbl_GlobalList->MaxOccupied)
     {
-        AcpiGbl_GlobalList->MaxOccupied = AcpiGbl_GlobalList->CurrentTotalSize;
+        AcpiGbl_GlobalList->MaxOccupied =
+            AcpiGbl_GlobalList->CurrentTotalSize;
     }
 
     return ((void *) &Allocation->UserSpace);
@@ -296,7 +333,8 @@ AcpiUtAllocateZeroedAndTrack (
         Size = 1;
     }
 
-    Allocation = AcpiOsAllocateZeroed (Size + sizeof (ACPI_DEBUG_MEM_HEADER));
+    Allocation = AcpiOsAllocateZeroed (
+        Size + sizeof (ACPI_DEBUG_MEM_HEADER));
     if (!Allocation)
     {
         /* Report allocation error */
@@ -307,7 +345,7 @@ AcpiUtAllocateZeroedAndTrack (
     }
 
     Status = AcpiUtTrackAllocation (Allocation, Size,
-                ACPI_MEM_CALLOC, Component, Module, Line);
+        ACPI_MEM_CALLOC, Component, Module, Line);
     if (ACPI_FAILURE (Status))
     {
         AcpiOsFree (Allocation);
@@ -317,9 +355,12 @@ AcpiUtAllocateZeroedAndTrack (
     AcpiGbl_GlobalList->TotalAllocated++;
     AcpiGbl_GlobalList->TotalSize += (UINT32) Size;
     AcpiGbl_GlobalList->CurrentTotalSize += (UINT32) Size;
-    if (AcpiGbl_GlobalList->CurrentTotalSize > AcpiGbl_GlobalList->MaxOccupied)
+
+    if (AcpiGbl_GlobalList->CurrentTotalSize >
+        AcpiGbl_GlobalList->MaxOccupied)
     {
-        AcpiGbl_GlobalList->MaxOccupied = AcpiGbl_GlobalList->CurrentTotalSize;
+        AcpiGbl_GlobalList->MaxOccupied =
+            AcpiGbl_GlobalList->CurrentTotalSize;
     }
 
     return ((void *) &Allocation->UserSpace);
@@ -364,13 +405,12 @@ AcpiUtFreeAndTrack (
     }
 
     DebugBlock = ACPI_CAST_PTR (ACPI_DEBUG_MEM_BLOCK,
-                    (((char *) Allocation) - sizeof (ACPI_DEBUG_MEM_HEADER)));
+        (((char *) Allocation) - sizeof (ACPI_DEBUG_MEM_HEADER)));
 
     AcpiGbl_GlobalList->TotalFreed++;
     AcpiGbl_GlobalList->CurrentTotalSize -= DebugBlock->Size;
 
-    Status = AcpiUtRemoveAllocation (DebugBlock,
-                    Component, Module, Line);
+    Status = AcpiUtRemoveAllocation (DebugBlock, Component, Module, Line);
     if (ACPI_FAILURE (Status))
     {
         ACPI_EXCEPTION ((AE_INFO, Status, "Could not free memory"));
@@ -512,13 +552,12 @@ AcpiUtTrackAllocation (
 
     /* Fill in the instance data */
 
-    Allocation->Size      = (UINT32) Size;
+    Allocation->Size = (UINT32) Size;
     Allocation->AllocType = AllocType;
     Allocation->Component = Component;
-    Allocation->Line      = Line;
+    Allocation->Line = Line;
 
-    strncpy (Allocation->Module, Module, ACPI_MAX_MODULE_NAME);
-    Allocation->Module[ACPI_MAX_MODULE_NAME-1] = 0;
+    AcpiUtSafeStrncpy (Allocation->Module, (char *) Module, ACPI_MAX_MODULE_NAME);
 
     if (!Element)
     {
@@ -526,7 +565,8 @@ AcpiUtTrackAllocation (
 
         if (MemList->ListHead)
         {
-            ((ACPI_DEBUG_MEM_BLOCK *)(MemList->ListHead))->Previous = Allocation;
+            ((ACPI_DEBUG_MEM_BLOCK *)(MemList->ListHead))->Previous =
+                Allocation;
         }
 
         Allocation->Next = MemList->ListHead;
@@ -659,37 +699,37 @@ AcpiUtDumpAllocationInfo (
 
 /*
     ACPI_DEBUG_PRINT (TRACE_ALLOCATIONS | TRACE_TABLES,
-                    ("%30s: %4d (%3d Kb)\n", "Current allocations",
-                    MemList->CurrentCount,
-                    ROUND_UP_TO_1K (MemList->CurrentSize)));
+        ("%30s: %4d (%3d Kb)\n", "Current allocations",
+        MemList->CurrentCount,
+        ROUND_UP_TO_1K (MemList->CurrentSize)));
 
     ACPI_DEBUG_PRINT (TRACE_ALLOCATIONS | TRACE_TABLES,
-                    ("%30s: %4d (%3d Kb)\n", "Max concurrent allocations",
-                    MemList->MaxConcurrentCount,
-                    ROUND_UP_TO_1K (MemList->MaxConcurrentSize)));
-
-
-    ACPI_DEBUG_PRINT (TRACE_ALLOCATIONS | TRACE_TABLES,
-                    ("%30s: %4d (%3d Kb)\n", "Total (all) internal objects",
-                    RunningObjectCount,
-                    ROUND_UP_TO_1K (RunningObjectSize)));
-
-    ACPI_DEBUG_PRINT (TRACE_ALLOCATIONS | TRACE_TABLES,
-                    ("%30s: %4d (%3d Kb)\n", "Total (all) allocations",
-                    RunningAllocCount,
-                    ROUND_UP_TO_1K (RunningAllocSize)));
+        ("%30s: %4d (%3d Kb)\n", "Max concurrent allocations",
+        MemList->MaxConcurrentCount,
+        ROUND_UP_TO_1K (MemList->MaxConcurrentSize)));
 
 
     ACPI_DEBUG_PRINT (TRACE_ALLOCATIONS | TRACE_TABLES,
-                    ("%30s: %4d (%3d Kb)\n", "Current Nodes",
-                    AcpiGbl_CurrentNodeCount,
-                    ROUND_UP_TO_1K (AcpiGbl_CurrentNodeSize)));
+        ("%30s: %4d (%3d Kb)\n", "Total (all) internal objects",
+        RunningObjectCount,
+        ROUND_UP_TO_1K (RunningObjectSize)));
 
     ACPI_DEBUG_PRINT (TRACE_ALLOCATIONS | TRACE_TABLES,
-                    ("%30s: %4d (%3d Kb)\n", "Max Nodes",
-                    AcpiGbl_MaxConcurrentNodeCount,
-                    ROUND_UP_TO_1K ((AcpiGbl_MaxConcurrentNodeCount *
-                        sizeof (ACPI_NAMESPACE_NODE)))));
+        ("%30s: %4d (%3d Kb)\n", "Total (all) allocations",
+        RunningAllocCount,
+        ROUND_UP_TO_1K (RunningAllocSize)));
+
+
+    ACPI_DEBUG_PRINT (TRACE_ALLOCATIONS | TRACE_TABLES,
+        ("%30s: %4d (%3d Kb)\n", "Current Nodes",
+        AcpiGbl_CurrentNodeCount,
+        ROUND_UP_TO_1K (AcpiGbl_CurrentNodeSize)));
+
+    ACPI_DEBUG_PRINT (TRACE_ALLOCATIONS | TRACE_TABLES,
+        ("%30s: %4d (%3d Kb)\n", "Max Nodes",
+        AcpiGbl_MaxConcurrentNodeCount,
+        ROUND_UP_TO_1K ((AcpiGbl_MaxConcurrentNodeCount *
+            sizeof (ACPI_NAMESPACE_NODE)))));
 */
     return_VOID;
 }
@@ -735,17 +775,23 @@ AcpiUtDumpAllocations (
         return_VOID;
     }
 
+    if (!AcpiGbl_GlobalList)
+    {
+        goto Exit;
+    }
+
     Element = AcpiGbl_GlobalList->ListHead;
     while (Element)
     {
         if ((Element->Component & Component) &&
             ((Module == NULL) || (0 == strcmp (Module, Element->Module))))
         {
-            Descriptor = ACPI_CAST_PTR (ACPI_DESCRIPTOR, &Element->UserSpace);
+            Descriptor = ACPI_CAST_PTR (
+                ACPI_DESCRIPTOR, &Element->UserSpace);
 
             if (Element->Size < sizeof (ACPI_COMMON_DESCRIPTOR))
             {
-                AcpiOsPrintf ("%p Length 0x%04X %9.9s-%u "
+                AcpiOsPrintf ("%p Length 0x%04X %9.9s-%4.4u "
                     "[Not a Descriptor - too small]\n",
                     Descriptor, Element->Size, Element->Module,
                     Element->Line);
@@ -754,9 +800,10 @@ AcpiUtDumpAllocations (
             {
                 /* Ignore allocated objects that are in a cache */
 
-                if (ACPI_GET_DESCRIPTOR_TYPE (Descriptor) != ACPI_DESC_TYPE_CACHED)
+                if (ACPI_GET_DESCRIPTOR_TYPE (Descriptor) !=
+                    ACPI_DESC_TYPE_CACHED)
                 {
-                    AcpiOsPrintf ("%p Length 0x%04X %9.9s-%u [%s] ",
+                    AcpiOsPrintf ("%p Length 0x%04X %9.9s-%4.4u [%s] ",
                         Descriptor, Element->Size, Element->Module,
                         Element->Line, AcpiUtGetDescriptorName (Descriptor));
 
@@ -832,17 +879,18 @@ AcpiUtDumpAllocations (
         Element = Element->Next;
     }
 
+Exit:
     (void) AcpiUtReleaseMutex (ACPI_MTX_MEMORY);
 
     /* Print summary */
 
     if (!NumOutstanding)
     {
-        ACPI_INFO ((AE_INFO, "No outstanding allocations"));
+        ACPI_INFO (("No outstanding allocations"));
     }
     else
     {
-        ACPI_ERROR ((AE_INFO, "%u(0x%X) Outstanding allocations",
+        ACPI_ERROR ((AE_INFO, "%u (0x%X) Outstanding cache allocations",
             NumOutstanding, NumOutstanding));
     }
 

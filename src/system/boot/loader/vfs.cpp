@@ -1,6 +1,7 @@
 /*
  * Copyright 2003-2013, Axel Dörfler, axeld@pinc-software.de.
  * Copyright 2014, Ingo Weinhold, ingo_weinhold@gmx.de.
+ * Copyright 2017, Jessica Hamilton, jessica.l.hamilton@gmail.com.
  * Distributed under the terms of the MIT License.
  */
 
@@ -294,7 +295,9 @@ MemoryDisk::MemoryDisk(const uint8* data, size_t size, const char* name)
 ssize_t
 MemoryDisk::ReadAt(void* cookie, off_t pos, void* buffer, size_t bufferSize)
 {
-	if (pos >= fSize)
+	if (pos < 0)
+		return B_BAD_VALUE;
+	if ((size_t)pos >= fSize)
 		return 0;
 
 	if (pos + bufferSize > fSize)
@@ -525,7 +528,7 @@ BootVolume::_SetTo(Directory* rootDirectory,
 	fSystemDirectory = static_cast<Directory*>(systemNode);
 
 	if (packageVolumeInfo == NULL) {
-		// get a package volume info 
+		// get a package volume info
 		BReference<PackageVolumeInfo> packageVolumeInfoReference(
 			new(std::nothrow) PackageVolumeInfo);
 		status_t error = packageVolumeInfoReference->SetTo(fSystemDirectory,
@@ -573,8 +576,8 @@ BootVolume::_OpenSystemPackage()
 	Node* packagesNode = fSystemDirectory->Lookup("packages", false);
 	if (packagesNode == NULL)
 		return -1;
-	MethodDeleter<Node, status_t> packagesNodeReleaser(packagesNode,
-		&Node::Release);
+	MethodDeleter<Node, status_t, &Node::Release>
+		packagesNodeReleaser(packagesNode);
 
 	if (!S_ISDIR(packagesNode->Type()))
 		return -1;
@@ -644,40 +647,43 @@ register_boot_file_system(BootVolume& bootVolume)
 status_t
 get_boot_file_system(stage2_args* args, BootVolume& _bootVolume)
 {
-	Node *device;
 	status_t error = platform_add_boot_device(args, &gBootDevices);
 	if (error != B_OK)
 		return error;
 
-	// the boot device must be the first device in the list
-	device = gBootDevices.First();
+	NodeIterator iterator = gBootDevices.GetIterator();
+	while (iterator.HasNext()) {
+		Node *device = iterator.Next();
 
-	error = add_partitions_for(device, false, true);
-	if (error != B_OK)
-		return error;
+		error = add_partitions_for(device, false, true);
+		if (error != B_OK)
+			continue;
 
-	Partition *partition;
-	error = platform_get_boot_partition(args, device, &gPartitions, &partition);
-	if (error != B_OK)
-		return error;
+		Partition *partition;
+		error = platform_get_boot_partition(args, device, &gPartitions, &partition);
+		if (error != B_OK)
+			continue;
 
-	Directory *fileSystem;
-	error = partition->Mount(&fileSystem, true);
-	if (error != B_OK) {
-		// this partition doesn't contain any known file system; we
-		// don't need it anymore
-		gPartitions.Remove(partition);
-		delete partition;
-		return error;
+		Directory *fileSystem;
+		error = partition->Mount(&fileSystem, true);
+		if (error != B_OK) {
+			// this partition doesn't contain any known file system; we
+			// don't need it anymore
+			gPartitions.Remove(partition);
+			delete partition;
+			continue;
+		}
+
+		// init the BootVolume
+		error = _bootVolume.SetTo(fileSystem);
+		if (error != B_OK)
+			continue;
+
+		sBootDevice = device;
+		return B_OK;
 	}
 
-	// init the BootVolume
-	error = _bootVolume.SetTo(fileSystem);
-	if (error != B_OK)
-		return error;
-
-	sBootDevice = device;
-	return B_OK;
+	return B_ERROR;
 }
 
 
@@ -1044,7 +1050,7 @@ open_from(Directory *directory, const char *name, int mode, mode_t permissions)
 			if (lastSlash[1] == '\0')
 				return B_ENTRY_NOT_FOUND;
 
-			lastSlash = '\0';
+			*lastSlash = '\0';
 			name = lastSlash + 1;
 
 			// resolve the directory
@@ -1166,7 +1172,7 @@ open_directory(Directory* baseDirectory, const char* path)
 		errno = error;
 		return NULL;
 	}
-	MethodDeleter<Node, status_t> nodeReleaser(node, &Node::Release);
+	MethodDeleter<Node, status_t, &Node::Release> nodeReleaser(node);
 
 	if (!S_ISDIR(node->Type())) {
 		errno = error;

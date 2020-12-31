@@ -6,14 +6,13 @@
  *		Alex Wilson, yourpalal2@gmail.com
  *
  * Corresponds to:
- *		headers/os/interface/LayoutItem.h  rev 38207
- *		src/kits/interface/LayoutItem.cpp  rev 38207
+ *		headers/os/interface/LayoutItem.h  rev 49040
+ *		src/kits/interface/LayoutItem.cpp  rev 49040
  */
 
 
 /*!
 	\file LayoutItem.h
-	\ingroup interface
 	\ingroup layout
 	\ingroup libbe
 	\brief Describes the BLayoutItem class.
@@ -22,7 +21,6 @@
 
 /*!
 	\class BLayoutItem
-	\ingroup interface
 	\ingroup layout
 	\ingroup libbe
 	\brief Abstract class representing things that are positionable and
@@ -52,6 +50,21 @@
 /*!
 	\fn BLayout* BLayoutItem::Layout() const
 	\brief Returns the BLayout this BLayoutItem resides in.
+
+	\since Haiku R1
+*/
+
+
+/*!
+	\fn bool BLayoutItem::RemoveSelf()
+	\brief Remove this layout item from the BLayout it is a part of.
+
+	This method works analoguous to BView::RemoveSelf(), that is it removes
+	itself from the parent layout and returns whether or not this was
+	succesful.
+
+	\return \c true if the item was removed from the layout, or \c false if
+		item was not part of a layout, or removal was succesful.
 
 	\since Haiku R1
 */
@@ -191,6 +204,20 @@
 
 
 /*!
+	\fn void BLayoutItem::SetExplicitSize(BSize size)
+	\brief Set the explicity size to \a size.
+
+	This method is a convenience method that sets the minimum size, maximum
+	size and preferred size to \a size, as to force this layout item to have
+	a specific size.
+
+	\param size The specific (non-zero) size for this layout item.
+
+	\since Haiku R1
+*/
+
+
+/*!
 	\fn void BLayoutItem::SetExplicitAlignment(BAlignment alignment) = 0
 	\brief Set this item's explicit alignment, to be used in Alignment().
 
@@ -257,7 +284,7 @@
 	\fn BRect BLayoutItem::Frame() = 0
 	\brief Return the bounding frame of this item.
 
-	The returned BRect is in the coordinate system of the target view of the 
+	The returned BRect is in the coordinate system of the target view of the
 	BLayout this item belongs to.
 
 	\since Haiku R1

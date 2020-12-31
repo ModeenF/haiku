@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -111,6 +111,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #include "acpi.h"
@@ -186,6 +222,11 @@ static const ACPI_SIMPLE_REPAIR_INFO    AcpiObjectRepairInfo[] =
                 ACPI_NOT_PACKAGE_ELEMENT,
                 AcpiNsConvertToResource },
 
+    /* Object reference conversions */
+
+    { "_DEP", ACPI_RTYPE_STRING, ACPI_ALL_PACKAGE_ELEMENTS,
+                AcpiNsConvertToReference },
+
     /* Unicode conversions */
 
     { "_MLS", ACPI_RTYPE_STRING, 1,
@@ -246,7 +287,8 @@ AcpiNsSimpleRepair (
                 ACPI_WARN_ALWAYS, "Missing expected return value"));
         }
 
-        Status = Predefined->ObjectConverter (ReturnObject, &NewObject);
+        Status = Predefined->ObjectConverter (Info->Node, ReturnObject,
+            &NewObject);
         if (ACPI_FAILURE (Status))
         {
             /* A fatal error occurred during a conversion */
@@ -294,7 +336,7 @@ AcpiNsSimpleRepair (
                     ACPI_WARN_ALWAYS, "Found unexpected NULL package element"));
 
                 Status = AcpiNsRepairNullElement (Info, ExpectedBtypes,
-                            PackageIndex, ReturnObjectPtr);
+                    PackageIndex, ReturnObjectPtr);
                 if (ACPI_SUCCESS (Status))
                 {
                     return (AE_OK); /* Repair was successful */
@@ -368,24 +410,12 @@ ObjectRepaired:
 
     if (PackageIndex != ACPI_NOT_PACKAGE_ELEMENT)
     {
-        /*
-         * The original object is a package element. We need to
-         * decrement the reference count of the original object,
-         * for removing it from the package.
-         *
-         * However, if the original object was just wrapped with a
-         * package object as part of the repair, we don't need to
-         * change the reference count.
-         */
+        /* Update reference count of new object */
+
         if (!(Info->ReturnFlags & ACPI_OBJECT_WRAPPED))
         {
             NewObject->Common.ReferenceCount =
                 ReturnObject->Common.ReferenceCount;
-
-            if (ReturnObject->Common.ReferenceCount > 1)
-            {
-                ReturnObject->Common.ReferenceCount--;
-            }
         }
 
         ACPI_DEBUG_PRINT ((ACPI_DB_REPAIR,
@@ -445,13 +475,15 @@ AcpiNsMatchSimpleRepair (
             /* Check if we can actually repair this name/type combination */
 
             if ((ReturnBtype & ThisName->UnexpectedBtypes) &&
-                (PackageIndex == ThisName->PackageIndex))
+                (ThisName->PackageIndex == ACPI_ALL_PACKAGE_ELEMENTS ||
+                 PackageIndex == ThisName->PackageIndex))
             {
                 return (ThisName);
             }
 
             return (NULL);
         }
+
         ThisName++;
     }
 
@@ -536,11 +568,13 @@ AcpiNsRepairNullElement (
 
     /* Set the reference count according to the parent Package object */
 
-    NewObject->Common.ReferenceCount = Info->ParentPackage->Common.ReferenceCount;
+    NewObject->Common.ReferenceCount =
+        Info->ParentPackage->Common.ReferenceCount;
 
     ACPI_DEBUG_PRINT ((ACPI_DB_REPAIR,
         "%s: Converted NULL package element to expected %s at index %u\n",
-         Info->FullPathname, AcpiUtGetObjectTypeName (NewObject), PackageIndex));
+        Info->FullPathname, AcpiUtGetObjectTypeName (NewObject),
+        PackageIndex));
 
     *ReturnObjectPtr = NewObject;
     Info->ReturnFlags |= ACPI_OBJECT_REPAIRED;
@@ -623,6 +657,7 @@ AcpiNsRemoveNullElements (
             *Dest = *Source;
             Dest++;
         }
+
         Source++;
     }
 
@@ -679,8 +714,8 @@ AcpiNsWrapWithPackage (
 
 
     /*
-     * Create the new outer package and populate it. The new package will
-     * have a single element, the lone sub-object.
+     * Create the new outer package and populate it. The new
+     * package will have a single element, the lone sub-object.
      */
     PkgObjDesc = AcpiUtCreatePackageObject (1);
     if (!PkgObjDesc)

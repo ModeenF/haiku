@@ -76,6 +76,11 @@ enum NewPagePolicy {
 	CloneCurrentPage				= 3
 };
 
+enum StartUpPolicy {
+	ResumePriorSession				= 0,
+	StartNewSession					= 1
+};
+
 enum {
 	NEW_WINDOW						= 'nwnd',
 	NEW_TAB							= 'ntab',
@@ -280,4 +285,3 @@ private:
 
 
 #endif // BROWSER_WINDOW_H
-

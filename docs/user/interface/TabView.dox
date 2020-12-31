@@ -1,5 +1,5 @@
 /*
- * Copyright 2014 Haiku, Inc. All rights reserved.
+ * Copyright 2014-2020 Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -7,8 +7,8 @@
  *		John Scipione, jscipione@gmail.com
  *
  * Corresponds to:
- *		headers/os/interface/TabView.h	 hrev45377
- *		src/kits/interface/TabView.cpp	 hrev45377
+ *		headers/os/interface/TabView.h	 hrev54500
+ *		src/kits/interface/TabView.cpp	 hrev54500
  */
 
 
@@ -27,33 +27,45 @@
 	Tab position flags
 
 	\since BeOS R3
+
+	\deprecated This should not be used anymore.
+	\sa BTab::DrawTab()
 */
 
 
 /*!
 	\var tab_position B_TAB_FIRST
 
-	First tab in the tab view.
+	The first tab in the tab view.
 
 	\since BeOS R3
+
+	\deprecated This should not be used anymore.
+	\sa BTab::DrawTab()
 */
 
 
 /*!
 	\var tab_position B_TAB_FRONT
 
-	Front most tab in the tab view.
+	The selected tab in the tab view.
 
 	\since BeOS R3
+
+	\deprecated This should not be used anymore.
+	\sa BTab::DrawTab()
 */
 
 
 /*!
 	\var tab_position B_TAB_ANY
 
-	Any tab in the tab view.
+	Any tab in the tab view that is not the first or selected tab.
 
 	\since BeOS R3
+
+	\deprecated This should not be used anymore.
+	\sa BTab::DrawTab()
 */
 
 
@@ -145,7 +157,7 @@
 	\class BTabView
 	\ingroup interface
 	\ingroup libbe
-	\brief Displays and manipulates styled text.
+	\brief A container for BTab objects to display all tabs.
 
 	\since BeOS R3
 */
@@ -239,30 +251,27 @@
 /*!
 	\fn void BTab::DrawTab(BView* owner, BRect frame, tab_position position,
 		bool full)
-	\brief Draws the tab.
+	\brief Draws the tab and label according to \a position and \a full.
 
-	This method draws the tab's title by calling DrawLabel(), then draws the
-	tab itself. The \a position of the tab may affect how the tab is rendered
-	-- for example the frontmost tab may have a different appearance than the
-	other tabs.
+	This method draws the tab, then draws the tab's title by calling
+	DrawLabel(). The \a position of the tab may affect how the tab is
+	rendered -- for example the first tab may have a different appearance
+	than the other tabs. You may override this method to draw tabs
+	differently in your BTab subclass.
 
 	\param owner The view that owns the tab.
 	\param frame The frame rectangle to draw in.
 	\param position May affect how the tab is rendered. Choices include:
-	       - \c B_TAB_FIRST
-	       - \c B_TAB_FRONT
-	       - \c B_TAB_ANY
-	\param full Whether or not to completely draw the tab, no longer used.
+	       - \c B_TAB_FIRST The first tab
+	       - \c B_TAB_FRONT The selected or active tab
+	       - \c B_TAB_ANY	Tab that is not first or front
+	\param full Whether or not to completely draw the tab. All tabs were full
+	            except for the tab before the selected tab on BeOS R5.
 
-	\since BeOS R3
-*/
-
-
-/*!
-	\class BTabView
-	\ingroup interface
-	\ingroup libbe
-	\brief A container for BTab objects to display all tabs.
+	\warning The \a position and \a full parameters should no longer be used.
+	         This information can be gathered from BTabView by calling the
+	         BTabView::IndexOf(), BTabView::Selection(), and
+	         BTabView::CountTabs() methods.
 
 	\since BeOS R3
 */
@@ -416,10 +425,10 @@
 
 
 /*!
-	\fn void BTabView::DrawBox(BRect selTabRect)
+	\fn void BTabView::DrawBox(BRect selectedTabRect)
 	\brief Draws the box that encloses the container view.
 
-	\param selTabRect The frame rectangle of the currently selected tab.
+	\param selectedTabRect The frame rectangle of the currently selected tab.
 
 	\since BeOS R3
 */
@@ -494,7 +503,7 @@
 
 /*!
 	\fn int32 BTabView::Selection() const
-	\brief Returns the currently selected tab's index.
+	\brief Returns the index of the selected tab or -1 if not found.
 
 	\since BeOS R3
 */
@@ -602,6 +611,7 @@
 /*!
 	\fn void BTabView::FrameResized(float newWidth, float newHeight)
 	\copydoc BView::FrameResized()
+*/
 
 
 /*!
@@ -694,8 +704,13 @@
 
 
 /*!
-	\fn void BTabView::SetBorder(border_style border)
-	\brief Sets the border of the tab view to \a border.
+	\fn void BTabView::SetBorder(border_style borderStyle)
+	\brief Sets the border style of the tab view to \a borderStyle.
+
+	\param borderStyle One of the following:
+	       - \c B_FANCY_BORDER (the default)
+	       - \c B_PLAIN_BORDER a plain line border,
+	       - \c B_NO_BORDER do not draw a border.
 
 	\since Haiku R1
 */
@@ -732,3 +747,10 @@
 	\since Haiku R1
 */
 
+
+/*!
+	\fn int32 BTabView::IndexOf(Tab* tab) const
+	\brief Returns the index of \a tab or -1 if not found.
+
+	\since Haiku R1
+*/

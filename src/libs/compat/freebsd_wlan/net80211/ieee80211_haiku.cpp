@@ -1,6 +1,7 @@
 /*
- * Copyright 2009, Colin Günther, coling@gmx.de.
- * All rights reserved. Distributed under the terms of the MIT License.
+ * Copyright 2009, Colin Günther, coling@gmx.de. All rights reserved.
+ * Copyright 2018, Haiku, Inc. All rights reserved.
+ * Distributed under the terms of the MIT License.
  */
 
 
@@ -56,7 +57,6 @@ extern "C" {
 #include <util/KMessage.h>
 
 #include <ether_driver.h>
-#include <bosii_driver.h>
 #include <net_notifications.h>
 
 #include <shared.h>
@@ -96,10 +96,6 @@ get_ifnet(device_t device, int& i)
 status_t
 init_wlan_stack(void)
 {
-	ieee80211_phy_init();
-	ieee80211_auth_setup();
-	ieee80211_ht_init();
-
 	get_module(NET_NOTIFICATIONS_MODULE_NAME,
 		(module_info**)&sNotificationModule);
 
@@ -118,35 +114,22 @@ uninit_wlan_stack(void)
 status_t
 start_wlan(device_t device)
 {
-	int i;
-	struct ifnet* ifp = get_ifnet(device, i);
-	if (ifp == NULL)
+	struct ieee80211com* ic = ieee80211_find_com(device->nameunit);
+	if (ic == NULL)
 		return B_BAD_VALUE;
-
-// TODO: review this and find a cleaner solution!
-	// This ensures that the cloned device gets
-	// the same index assigned as the base device
-	// Resulting in the same device name
-	// e.g.: /dev/net/atheros/0 instead of
-	//       /dev/net/atheros/1
-	gDevices[i] = NULL;
-
-	struct ieee80211com* ic = (ieee80211com*)ifp->if_l2com;
 
 	struct ieee80211vap* vap = ic->ic_vap_create(ic, "wlan",
 		device_get_unit(device),
 		IEEE80211_M_STA,		// mode
 		0,						// flags
 		NULL,					// BSSID
-		IF_LLADDR(ifp));		// MAC address
+		ic->ic_macaddr);		// MAC address
 
-	if (vap == NULL) {
-		gDevices[i] = ifp;
+	if (vap == NULL)
 		return B_ERROR;
-	}
 
 	// ic_vap_create() established that gDevices[i] links to vap->iv_ifp now
-	KASSERT(gDevices[i] == vap->iv_ifp,
+	KASSERT(gDevices[gDeviceCount - 1] == vap->iv_ifp,
 		("start_wlan: gDevices[i] != vap->iv_ifp"));
 
 	vap->iv_ifp->scan_done_sem = create_sem(0, "wlan scan done");
@@ -168,12 +151,6 @@ stop_wlan(device_t device)
 	if (ifp == NULL)
 		return B_BAD_VALUE;
 
-	if (ifp->if_type == IFT_IEEE80211) {
-		// This happens when there was an error in starting the wlan before,
-		// resulting in never creating a clone device
-		return B_OK;
-	}
-
 	delete_sem(ifp->scan_done_sem);
 
 	struct ieee80211vap* vap = (ieee80211vap*)ifp->if_softc;
@@ -183,9 +160,6 @@ stop_wlan(device_t device)
 
 	// ic_vap_delete freed gDevices[i]
 	KASSERT(gDevices[i] == NULL, ("stop_wlan: gDevices[i] != NULL"));
-
-	// assign the base device ifp again
-	gDevices[i] = ic->ic_ifp;
 
 	return B_OK;
 }
@@ -225,147 +199,9 @@ wlan_control(void* cookie, uint32 op, void* arg, size_t length)
 	struct ifnet* ifp = (struct ifnet*)cookie;
 
 	switch (op) {
-		case BOSII_DEVICE:
-			return B_OK;
-
-		case BOSII_DETECT_NETWORKS:
-		{
-			struct ieee80211req request;
-			struct ieee80211_scan_req scanRequest;
-
-			if_printf(ifp, "%s: BOSII_DETECT_NETWORKS\n", __func__);
-			memset(&scanRequest, 0, sizeof(scanRequest));
-			scanRequest.sr_flags = IEEE80211_IOC_SCAN_ACTIVE
-				| IEEE80211_IOC_SCAN_NOPICK
-				| IEEE80211_IOC_SCAN_ONCE;
-			scanRequest.sr_duration = 10000; // 10 s
-			scanRequest.sr_nssid = 0;
-
-			memset(&request, 0, sizeof(request));
-			request.i_type = IEEE80211_IOC_SCAN_REQ;
-			request.i_data = &scanRequest;
-			request.i_len = sizeof(scanRequest);
-
-			ifp->if_ioctl(ifp, SIOCS80211, (caddr_t)&request);
-
-			acquire_sem_etc(ifp->scan_done_sem, 1, B_RELATIVE_TIMEOUT,
-				10000000); // 10 s
-
-			return B_OK;
-		}
-
-		case BOSII_GET_DETECTED_NETWORKS:
-		{
-			struct ieee80211req request;
-			struct ifreq ifRequest;
-			struct route_entry* networkRequest = &ifRequest.ifr_route;
-
-			if_printf(ifp, "%s: BOSII_GET_DETECTED_NETWORKS\n", __func__);
-
-			if (length < sizeof(struct ieee80211req_scan_result))
-				return B_BAD_VALUE;
-
-			if (user_memcpy(&ifRequest, arg, sizeof(ifRequest)) < B_OK)
-				return B_BAD_ADDRESS;
-
-			memset(&request, 0, sizeof(request));
-			request.i_type = IEEE80211_IOC_SCAN_RESULTS;
-			request.i_len = length;
-			request.i_data = networkRequest->destination;
-
-			// After return value of request.i_data is copied into user
-			// space, already.
-			if (ifp->if_ioctl(ifp, SIOCG80211, (caddr_t)&request) < B_OK)
-				return B_BAD_ADDRESS;
-
-			// Tell the user space how much data was copied
-			networkRequest->mtu = request.i_len;
-			if (user_memcpy(&((struct ifreq*)arg)->ifr_route.mtu,
-				&networkRequest->mtu, sizeof(networkRequest->mtu)) < B_OK)
-				return B_BAD_ADDRESS;
-
-			return B_OK;
-		}
-
-		case BOSII_JOIN_NETWORK:
-		{
-			struct ieee80211req request;
-			struct ifreq ifRequest;
-			struct route_entry* networkRequest = &ifRequest.ifr_route;
-			struct ieee80211req_scan_result network;
-
-			if_printf(ifp, "%s: BOSII_JOIN_NETWORK\n", __func__);
-
-			if (length < sizeof(struct ifreq))
-				return B_BAD_VALUE;
-
-			if (user_memcpy(&ifRequest, arg, sizeof(ifRequest)) != B_OK
-				|| user_memcpy(&network, networkRequest->source,
-						sizeof(ieee80211req_scan_result)) != B_OK)
-				return B_BAD_ADDRESS;
-
-			memset(&request, 0, sizeof(ieee80211req));
-
-			request.i_type = IEEE80211_IOC_SSID;
-			request.i_val = 0;
-			request.i_len = network.isr_ssid_len;
-			request.i_data = (uint8*)networkRequest->source
-				+ network.isr_ie_off;
-			if (ifp->if_ioctl(ifp, SIOCS80211, (caddr_t)&request) < B_OK)
-				return B_ERROR;
-
-			// wait for network join
-
-			return B_OK;
-		}
-
-		case BOSII_GET_ASSOCIATED_NETWORK:
-		{
-			struct ieee80211req request;
-			struct ifreq ifRequest;
-			struct route_entry* networkRequest = &ifRequest.ifr_route;
-
-			if_printf(ifp, "%s: BOSII_GET_ASSOCIATED_NETWORK\n", __func__);
-
-			if (length < sizeof(struct ieee80211req_sta_req))
-				return B_BAD_VALUE;
-
-			if (user_memcpy(&ifRequest, arg, sizeof(ifRequest)) < B_OK)
-				return B_BAD_ADDRESS;
-
-			// Only want station information about associated network.
-			memset(&request, 0, sizeof(request));
-			request.i_type = IEEE80211_IOC_BSSID;
-			request.i_len = IEEE80211_ADDR_LEN;
-			request.i_data = ((struct ieee80211req_sta_req*)networkRequest->
-					destination)->is_u.macaddr;
-			if (ifp->if_ioctl(ifp, SIOCG80211, (caddr_t)&request) < B_OK)
-				return B_BAD_ADDRESS;
-
-			request.i_type = IEEE80211_IOC_STA_INFO;
-			request.i_len = length;
-			request.i_data = networkRequest->destination;
-
-			// After return value of request.i_data is copied into user
-			// space, already.
-			if (ifp->if_ioctl(ifp, SIOCG80211, (caddr_t)&request) < B_OK)
-				return B_BAD_ADDRESS;
-
-			// Tell the user space how much data was copied
-			networkRequest->mtu = request.i_len;
-			if (user_memcpy(&((struct ifreq*)arg)->ifr_route.mtu,
-					&networkRequest->mtu, sizeof(networkRequest->mtu)) != B_OK)
-				return B_BAD_ADDRESS;
-
-			return B_OK;
-		}
-
 		case SIOCG80211:
 		case SIOCS80211:
 		{
-			// Allowing FreeBSD based WLAN ioctls to pass, as those will become
-			// the future Haiku WLAN ioctls anyway.
-
 			// FreeBSD drivers assume that the request structure has already
 			// been copied into kernel space
 			struct ieee80211req request;
@@ -377,7 +213,7 @@ wlan_control(void* cookie, uint32 op, void* arg, size_t length)
 			else if (request.i_type == IEEE80211_IOC_HAIKU_COMPAT_WLAN_DOWN)
 				return wlan_close(cookie);
 
-			TRACE("wlan_control: %ld, %d\n", op, request.i_type);
+			TRACE("wlan_control: %" B_PRIu32 ", %d\n", op, request.i_type);
 			status_t status = ifp->if_ioctl(ifp, op, (caddr_t)&request);
 			if (status != B_OK)
 				return status;
@@ -400,19 +236,6 @@ wlan_control(void* cookie, uint32 op, void* arg, size_t length)
 }
 
 
-status_t
-wlan_if_l2com_alloc(void* data)
-{
-	struct ifnet* ifp = (struct ifnet*)data;
-
-	ifp->if_l2com = _kernel_malloc(sizeof(struct ieee80211com), M_ZERO);
-	if (ifp->if_l2com == NULL)
-		return B_NO_MEMORY;
-	((struct ieee80211com*)(ifp->if_l2com))->ic_ifp = ifp;
-	return B_OK;
-}
-
-
 void
 get_random_bytes(void* p, size_t n)
 {
@@ -427,18 +250,28 @@ get_random_bytes(void* p, size_t n)
 }
 
 
-struct mbuf*
-ieee80211_getmgtframe(uint8_t** frm, int headroom, int pktlen)
+struct mbuf *
+ieee80211_getmgtframe(uint8_t **frm, int headroom, int pktlen)
 {
-	struct mbuf* m;
+	struct mbuf *m;
 	u_int len;
 
+	/*
+	 * NB: we know the mbuf routines will align the data area
+	 *     so we don't need to do anything special.
+	 */
 	len = roundup2(headroom + pktlen, 4);
 	KASSERT(len <= MCLBYTES, ("802.11 mgt frame too large: %u", len));
 	if (len < MINCLSIZE) {
 		m = m_gethdr(M_NOWAIT, MT_DATA);
+		/*
+		 * Align the data in case additional headers are added.
+		 * This should only happen when a WEP header is added
+		 * which only happens for shared key authentication mgt
+		 * frames which all fit in MHLEN.
+		 */
 		if (m != NULL)
-			MH_ALIGN(m, len);
+			M_ALIGN(m, len);
 	} else {
 		m = m_getcl(M_NOWAIT, MT_DATA, M_PKTHDR);
 		if (m != NULL)
@@ -454,7 +287,7 @@ ieee80211_getmgtframe(uint8_t** frm, int headroom, int pktlen)
 
 /*
  * Decrements the reference-counter and
- * tests whether it became zero.
+ * tests whether it became zero. If so, sets it to one.
  *
  * @return 1 reference-counter became zero
  * @return 0 reference-counter didn't became zero
@@ -462,8 +295,8 @@ ieee80211_getmgtframe(uint8_t** frm, int headroom, int pktlen)
 int
 ieee80211_node_dectestref(struct ieee80211_node* ni)
 {
-	// atomic_add returns old value
-	return atomic_add((int32*)&ni->ni_refcnt, -1) == 1;
+	atomic_subtract_int(&ni->ni_refcnt, 1);
+	return atomic_cmpset_int(&ni->ni_refcnt, 0, 1);
 }
 
 
@@ -518,6 +351,46 @@ ieee80211_flush_ifq(struct ifqueue* ifq, struct ieee80211vap* vap)
 }
 
 
+#ifndef __NO_STRICT_ALIGNMENT
+/*
+ * Re-align the payload in the mbuf.  This is mainly used (right now)
+ * to handle IP header alignment requirements on certain architectures.
+ */
+extern "C" struct mbuf *
+ieee80211_realign(struct ieee80211vap *vap, struct mbuf *m, size_t align)
+{
+	int pktlen, space;
+	struct mbuf *n;
+
+	pktlen = m->m_pkthdr.len;
+	space = pktlen + align;
+	if (space < MINCLSIZE)
+		n = m_gethdr(M_NOWAIT, MT_DATA);
+	else {
+		n = m_getjcl(M_NOWAIT, MT_DATA, M_PKTHDR,
+		    space <= MCLBYTES ?     MCLBYTES :
+#if MJUMPAGESIZE != MCLBYTES
+		    space <= MJUMPAGESIZE ? MJUMPAGESIZE :
+#endif
+		    space <= MJUM9BYTES ?   MJUM9BYTES : MJUM16BYTES);
+	}
+	if (__predict_true(n != NULL)) {
+		m_move_pkthdr(n, m);
+		n->m_data = (caddr_t)(ALIGN(n->m_data + align) - align);
+		m_copydata(m, 0, pktlen, mtod(n, caddr_t));
+		n->m_len = pktlen;
+	} else {
+		IEEE80211_DISCARD(vap, IEEE80211_MSG_ANY,
+		    mtod(m, const struct ieee80211_frame *), NULL,
+		    "%s", "no mbuf to realign");
+		vap->iv_stats.is_rx_badalign++;
+	}
+	m_freem(m);
+	return n;
+}
+#endif /* !__NO_STRICT_ALIGNMENT */
+
+
 int
 ieee80211_add_callback(struct mbuf* m,
 	void (*func)(struct ieee80211_node*, void*, int), void* arg)
@@ -553,6 +426,181 @@ ieee80211_process_callback(struct ieee80211_node* ni, struct mbuf* m,
 }
 
 
+int
+ieee80211_add_xmit_params(struct mbuf *m,
+	const struct ieee80211_bpf_params *params)
+{
+	struct m_tag *mtag;
+	struct ieee80211_tx_params *tx;
+
+	mtag = m_tag_alloc(MTAG_ABI_NET80211, NET80211_TAG_XMIT_PARAMS,
+		sizeof(struct ieee80211_tx_params), M_NOWAIT);
+	if (mtag == NULL)
+		return (0);
+
+	tx = (struct ieee80211_tx_params *)(mtag+1);
+	memcpy(&tx->params, params, sizeof(struct ieee80211_bpf_params));
+	m_tag_prepend(m, mtag);
+	return (1);
+}
+
+
+int
+ieee80211_get_xmit_params(struct mbuf *m,
+	struct ieee80211_bpf_params *params)
+{
+	struct m_tag *mtag;
+	struct ieee80211_tx_params *tx;
+
+	mtag = m_tag_locate(m, MTAG_ABI_NET80211, NET80211_TAG_XMIT_PARAMS,
+		NULL);
+	if (mtag == NULL)
+		return (-1);
+	tx = (struct ieee80211_tx_params *)(mtag + 1);
+	memcpy(params, &tx->params, sizeof(struct ieee80211_bpf_params));
+	return (0);
+}
+
+
+/*
+ * Add RX parameters to the given mbuf.
+ *
+ * Returns 1 if OK, 0 on error.
+ */
+int
+ieee80211_add_rx_params(struct mbuf *m, const struct ieee80211_rx_stats *rxs)
+{
+	struct m_tag *mtag;
+	struct ieee80211_rx_params *rx;
+
+	mtag = m_tag_alloc(MTAG_ABI_NET80211, NET80211_TAG_RECV_PARAMS,
+		sizeof(struct ieee80211_rx_stats), M_NOWAIT);
+	if (mtag == NULL)
+		return (0);
+
+	rx = (struct ieee80211_rx_params *)(mtag + 1);
+	memcpy(&rx->params, rxs, sizeof(*rxs));
+	m_tag_prepend(m, mtag);
+	return (1);
+}
+
+
+int
+ieee80211_get_rx_params(struct mbuf *m, struct ieee80211_rx_stats *rxs)
+{
+	struct m_tag *mtag;
+	struct ieee80211_rx_params *rx;
+
+	mtag = m_tag_locate(m, MTAG_ABI_NET80211, NET80211_TAG_RECV_PARAMS,
+		NULL);
+	if (mtag == NULL)
+		return (-1);
+	rx = (struct ieee80211_rx_params *)(mtag + 1);
+	memcpy(rxs, &rx->params, sizeof(*rxs));
+	return (0);
+}
+
+
+const struct ieee80211_rx_stats *
+ieee80211_get_rx_params_ptr(struct mbuf *m)
+{
+	struct m_tag *mtag;
+	struct ieee80211_rx_params *rx;
+
+	mtag = m_tag_locate(m, MTAG_ABI_NET80211, NET80211_TAG_RECV_PARAMS,
+	    NULL);
+	if (mtag == NULL)
+		return (NULL);
+	rx = (struct ieee80211_rx_params *)(mtag + 1);
+	return (&rx->params);
+}
+
+
+/*
+ * Add TOA parameters to the given mbuf.
+ */
+int
+ieee80211_add_toa_params(struct mbuf *m, const struct ieee80211_toa_params *p)
+{
+	struct m_tag *mtag;
+	struct ieee80211_toa_params *rp;
+
+	mtag = m_tag_alloc(MTAG_ABI_NET80211, NET80211_TAG_TOA_PARAMS,
+	    sizeof(struct ieee80211_toa_params), M_NOWAIT);
+	if (mtag == NULL)
+		return (0);
+
+	rp = (struct ieee80211_toa_params *)(mtag + 1);
+	memcpy(rp, p, sizeof(*rp));
+	m_tag_prepend(m, mtag);
+	return (1);
+}
+
+
+int
+ieee80211_get_toa_params(struct mbuf *m, struct ieee80211_toa_params *p)
+{
+	struct m_tag *mtag;
+	struct ieee80211_toa_params *rp;
+
+	mtag = m_tag_locate(m, MTAG_ABI_NET80211, NET80211_TAG_TOA_PARAMS,
+	    NULL);
+	if (mtag == NULL)
+		return (0);
+	rp = (struct ieee80211_toa_params *)(mtag + 1);
+	if (p != NULL)
+		memcpy(p, rp, sizeof(*p));
+	return (1);
+}
+
+
+/*
+ * Transmit a frame to the parent interface.
+ */
+int
+ieee80211_parent_xmitpkt(struct ieee80211com *ic, struct mbuf *m)
+{
+	int error;
+
+	/*
+	 * Assert the IC TX lock is held - this enforces the
+	 * processing -> queuing order is maintained
+	 */
+	IEEE80211_TX_LOCK_ASSERT(ic);
+	error = ic->ic_transmit(ic, m);
+	if (error) {
+		struct ieee80211_node *ni;
+
+		ni = (struct ieee80211_node *)m->m_pkthdr.rcvif;
+
+		/* XXX number of fragments */
+		if_inc_counter(ni->ni_vap->iv_ifp, IFCOUNTER_OERRORS, 1);
+		ieee80211_free_node(ni);
+		ieee80211_free_mbuf(m);
+	}
+	return (error);
+}
+
+
+/*
+ * Transmit a frame to the VAP interface.
+ */
+int
+ieee80211_vap_xmitpkt(struct ieee80211vap *vap, struct mbuf *m)
+{
+	struct ifnet *ifp = vap->iv_ifp;
+
+	/*
+	 * When transmitting via the VAP, we shouldn't hold
+	 * any IC TX lock as the VAP TX path will acquire it.
+	 */
+	IEEE80211_TX_UNLOCK_ASSERT(vap->iv_ic);
+
+	return (ifp->if_transmit(ifp, m));
+
+}
+
+
 void
 ieee80211_sysctl_vattach(struct ieee80211vap* vap)
 {
@@ -561,12 +609,10 @@ ieee80211_sysctl_vattach(struct ieee80211vap* vap)
 		| IEEE80211_MSG_ASSOC
 		| IEEE80211_MSG_AUTH
 		| IEEE80211_MSG_STATE
-		| IEEE80211_MSG_POWER
 		| IEEE80211_MSG_WME
 		| IEEE80211_MSG_DOTH
 		| IEEE80211_MSG_INACT
-		| IEEE80211_MSG_ROAM
-		| IEEE80211_MSG_RATECTL;
+		| IEEE80211_MSG_ROAM;
 }
 
 
@@ -590,7 +636,9 @@ ieee80211_vap_destroy(struct ieee80211vap* vap)
 void
 ieee80211_load_module(const char* modname)
 {
+#if 0
 	dprintf("%s not implemented, yet: modname %s\n", __func__, modname);
+#endif
 }
 
 
@@ -600,10 +648,10 @@ ieee80211_notify_node_join(struct ieee80211_node* ni, int newassoc)
 	struct ieee80211vap* vap = ni->ni_vap;
 	struct ifnet* ifp = vap->iv_ifp;
 
+	TRACE("%s\n", __FUNCTION__);
+
 	if (ni == vap->iv_bss)
 		if_link_state_change(ifp, LINK_STATE_UP);
-
-	TRACE("%s\n", __FUNCTION__);
 
 	if (sNotificationModule != NULL) {
 		char messageBuffer[512];

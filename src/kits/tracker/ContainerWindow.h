@@ -70,10 +70,6 @@ class SelectionWindow;
 
 extern const char* kAddOnsMenuName;
 
-const window_feel kPrivateDesktopWindowFeel = window_feel(1024);
-const window_look kPrivateDesktopWindowLook = window_look(4);
-	// this is a mirror of an app server private values
-
 
 enum {
 	// flags that describe opening of the window
@@ -193,7 +189,11 @@ public:
 
 	// add-on iteration
 	void EachAddon(bool (*)(const Model*, const char*, uint32 shortcut,
-		uint32 modifiers, bool primary, void*), void*, BStringList&);
+			uint32 modifiers, bool primary, void*, BContainerWindow*, BMenu*),
+		void*, BStringList&, BMenu*);
+
+	BMessage* AddOnMessage(int32);
+	entry_ref GetCurrentDirRef();
 
 	BPopUpMenu* ContextMenu();
 
@@ -346,6 +346,7 @@ private:
 
 	void _UpdateSelectionMIMEInfo();
 	void _AddFolderIcon();
+	void _PassMessageToAddOn(BMessage*);
 };
 
 

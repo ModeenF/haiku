@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -111,6 +111,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #include "acpi.h"
@@ -158,8 +194,8 @@ AcpiBufferToResource (
 
     /* Get the required length for the converted resource */
 
-    Status = AcpiRsGetListLength (AmlBuffer, AmlBufferLength,
-                &ListSizeNeeded);
+    Status = AcpiRsGetListLength (
+        AmlBuffer, AmlBufferLength, &ListSizeNeeded);
     if (Status == AE_AML_NO_RESOURCE_END_TAG)
     {
         Status = AE_OK;
@@ -181,7 +217,7 @@ AcpiBufferToResource (
     /* Perform the AML-to-Resource conversion */
 
     Status = AcpiUtWalkAmlResources (NULL, AmlBuffer, AmlBufferLength,
-                AcpiRsConvertAmlToResources, &CurrentResourcePtr);
+        AcpiRsConvertAmlToResources, &CurrentResourcePtr);
     if (Status == AE_AML_NO_RESOURCE_END_TAG)
     {
         Status = AE_OK;
@@ -269,14 +305,14 @@ AcpiRsCreateResourceList (
 
     Resource = OutputBuffer->Pointer;
     Status = AcpiUtWalkAmlResources (NULL, AmlStart, AmlBufferLength,
-                AcpiRsConvertAmlToResources, &Resource);
+        AcpiRsConvertAmlToResources, &Resource);
     if (ACPI_FAILURE (Status))
     {
         return_ACPI_STATUS (Status);
     }
 
     ACPI_DEBUG_PRINT ((ACPI_DB_INFO, "OutputBuffer %p Length %X\n",
-            OutputBuffer->Pointer, (UINT32) OutputBuffer->Length));
+        OutputBuffer->Pointer, (UINT32) OutputBuffer->Length));
     return_ACPI_STATUS (AE_OK);
 }
 
@@ -327,8 +363,8 @@ AcpiRsCreatePciRoutingTable (
 
     /* Get the required buffer length */
 
-    Status = AcpiRsGetPciRoutingTableLength (PackageObject,
-                &BufferSizeNeeded);
+    Status = AcpiRsGetPciRoutingTableLength (
+        PackageObject,&BufferSizeNeeded);
     if (ACPI_FAILURE (Status))
     {
         return_ACPI_STATUS (Status);
@@ -350,10 +386,10 @@ AcpiRsCreatePciRoutingTable (
      * package that in turn contains an UINT64 Address, a UINT8 Pin,
      * a Name, and a UINT8 SourceIndex.
      */
-    TopObjectList    = PackageObject->Package.Elements;
+    TopObjectList = PackageObject->Package.Elements;
     NumberOfElements = PackageObject->Package.Count;
-    Buffer           = OutputBuffer->Pointer;
-    UserPrt          = ACPI_CAST_PTR (ACPI_PCI_ROUTING_TABLE, Buffer);
+    Buffer = OutputBuffer->Pointer;
+    UserPrt = ACPI_CAST_PTR (ACPI_PCI_ROUTING_TABLE, Buffer);
 
     for (Index = 0; Index < NumberOfElements; Index++)
     {
@@ -367,9 +403,9 @@ AcpiRsCreatePciRoutingTable (
         UserPrt = ACPI_CAST_PTR (ACPI_PCI_ROUTING_TABLE, Buffer);
 
         /*
-         * Fill in the Length field with the information we have at this point.
-         * The minus four is to subtract the size of the UINT8 Source[4] member
-         * because it is added below.
+         * Fill in the Length field with the information we have at this
+         * point. The minus four is to subtract the size of the UINT8
+         * Source[4] member because it is added below.
          */
         UserPrt->Length = (sizeof (ACPI_PCI_ROUTING_TABLE) - 4);
 
@@ -395,7 +431,8 @@ AcpiRsCreatePciRoutingTable (
         ObjDesc = SubObjectList[0];
         if (!ObjDesc || ObjDesc->Common.Type != ACPI_TYPE_INTEGER)
         {
-            ACPI_ERROR ((AE_INFO, "(PRT[%u].Address) Need Integer, found %s",
+            ACPI_ERROR ((AE_INFO,
+                "(PRT[%u].Address) Need Integer, found %s",
                 Index, AcpiUtGetObjectTypeName (ObjDesc)));
             return_ACPI_STATUS (AE_BAD_DATA);
         }
@@ -438,12 +475,12 @@ AcpiRsCreatePciRoutingTable (
                 /* Use *remaining* length of the buffer as max for pathname */
 
                 PathBuffer.Length = OutputBuffer->Length -
-                                    (UINT32) ((UINT8 *) UserPrt->Source -
-                                    (UINT8 *) OutputBuffer->Pointer);
+                    (UINT32) ((UINT8 *) UserPrt->Source -
+                    (UINT8 *) OutputBuffer->Pointer);
                 PathBuffer.Pointer = UserPrt->Source;
 
-                Status = AcpiNsHandleToPathname ((ACPI_HANDLE) Node,
-                            &PathBuffer, FALSE);
+                Status = AcpiNsHandleToPathname (
+                    (ACPI_HANDLE) Node, &PathBuffer, FALSE);
 
                 /* +1 to include null terminator */
 
@@ -463,8 +500,8 @@ AcpiRsCreatePciRoutingTable (
 
             case ACPI_TYPE_INTEGER:
                 /*
-                 * If this is a number, then the Source Name is NULL, since the
-                 * entire buffer was zeroed out, we can leave this alone.
+                 * If this is a number, then the Source Name is NULL, since
+                 * the entire buffer was zeroed out, we can leave this alone.
                  *
                  * Add to the Length field the length of the UINT32 NULL
                  */
@@ -503,7 +540,7 @@ AcpiRsCreatePciRoutingTable (
     }
 
     ACPI_DEBUG_PRINT ((ACPI_DB_INFO, "OutputBuffer %p Length %X\n",
-            OutputBuffer->Pointer, (UINT32) OutputBuffer->Length));
+        OutputBuffer->Pointer, (UINT32) OutputBuffer->Length));
     return_ACPI_STATUS (AE_OK);
 }
 
@@ -544,8 +581,8 @@ AcpiRsCreateAmlResources (
 
     /* Get the buffer size needed for the AML byte stream */
 
-    Status = AcpiRsGetAmlLength (ResourceList->Pointer,
-                ResourceList->Length, &AmlSizeNeeded);
+    Status = AcpiRsGetAmlLength (
+        ResourceList->Pointer, ResourceList->Length, &AmlSizeNeeded);
 
     ACPI_DEBUG_PRINT ((ACPI_DB_INFO, "AmlSizeNeeded=%X, %s\n",
         (UINT32) AmlSizeNeeded, AcpiFormatException (Status)));
@@ -565,7 +602,7 @@ AcpiRsCreateAmlResources (
     /* Do the conversion */
 
     Status = AcpiRsConvertResourcesToAml (ResourceList->Pointer,
-                AmlSizeNeeded, OutputBuffer->Pointer);
+        AmlSizeNeeded, OutputBuffer->Pointer);
     if (ACPI_FAILURE (Status))
     {
         return_ACPI_STATUS (Status);

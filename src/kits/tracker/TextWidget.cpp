@@ -33,6 +33,8 @@ All rights reserved.
 */
 
 
+#include "TextWidget.h"
+
 #include <string.h>
 #include <stdlib.h>
 
@@ -51,7 +53,6 @@ All rights reserved.
 #include "Commands.h"
 #include "FSUtils.h"
 #include "PoseView.h"
-#include "TextWidget.h"
 #include "Utilities.h"
 
 
@@ -133,7 +134,8 @@ BTextWidget::ColumnRect(BPoint poseLoc, const BColumn* column,
 	BRect result;
 	result.left = column->Offset() + poseLoc.x;
 	result.right = result.left + column->Width();
-	result.bottom = poseLoc.y + view->ListElemHeight() - 1;
+	result.bottom = poseLoc.y
+		+ roundf((view->ListElemHeight() + view->FontHeight()) / 2);
 	result.top = result.bottom - view->FontHeight();
 	return result;
 }
@@ -174,7 +176,8 @@ BTextWidget::CalcRectCommon(BPoint poseLoc, const BColumn* column,
 				break;
 		}
 
-		result.bottom = poseLoc.y + (view->ListElemHeight() - 1);
+		result.bottom = poseLoc.y
+			+ roundf((view->ListElemHeight() + view->FontHeight()) / 2);
 	} else {
 		if (view->ViewMode() == kIconMode) {
 			// large/scaled icon mode
@@ -186,7 +189,6 @@ BTextWidget::CalcRectCommon(BPoint poseLoc, const BColumn* column,
 
 		result.right = result.left + textWidth;
 		result.bottom = poseLoc.y + view->IconPoseHeight();
-
 	}
 	result.top = result.bottom - view->FontHeight();
 
@@ -332,11 +334,18 @@ TextViewFilter(BMessage* message, BHandler**, BMessageFilter* filter)
 		BTextView* textView = dynamic_cast<BTextView*>(
 			scrollView->FindView("WidgetTextView"));
 		if (textView != NULL) {
+			BRect textRect = textView->TextRect();
 			BRect rect = scrollView->Frame();
 
-			if (rect.right + 3 > poseView->Bounds().right
-				|| rect.left - 3 < 0)
+			if (rect.right + 5 > poseView->Bounds().right
+				|| rect.left - 5 < 0)
 				textView->MakeResizable(true, NULL);
+
+			if (textRect.Width() + 10 < rect.Width()) {
+				textView->MakeResizable(true, scrollView);
+				// make sure no empty white space stays on the right
+				textView->ScrollToOffset(0);
+			}
 		}
 	}
 
@@ -353,45 +362,40 @@ BTextWidget::StartEdit(BRect bounds, BPoseView* view, BPose* pose)
 
 	BEntry entry(pose->TargetModel()->EntryRef());
 	if (entry.InitCheck() == B_OK
-		&& !ConfirmChangeIfWellKnownDirectory(&entry,
-			B_TRANSLATE_COMMENT("rename",
-				"As in 'if you rename this folder...' (en) "
-				"'Wird dieser Ordner umbenannt...' (de)"),
-			B_TRANSLATE_COMMENT("rename",
-				"As in 'to rename this folder...' (en) "
-				"'Um diesen Ordner umzubenennen...' (de)"),
-			B_TRANSLATE_COMMENT("Rename",
-				"Button label, 'Rename' (en), 'Umbenennen' (de)")))
+		&& !ConfirmChangeIfWellKnownDirectory(&entry, kRename)) {
 		return;
+	}
+
+	// TODO fix text rect being off by a pixel on some files
 
 	// get bounds with full text length
 	BRect rect(bounds);
 	BRect textRect(bounds);
-	rect.OffsetBy(-2, -1);
-	rect.right += 1;
 
-	BFont font;
-	view->GetFont(&font);
+	// label offset
+	float hOffset = 0;
+	float vOffset = view->ViewMode() == kListMode ? -1 : -2;
+	rect.OffsetBy(hOffset, vOffset);
+
 	BTextView* textView = new BTextView(rect, "WidgetTextView", textRect,
-		&font, 0, B_FOLLOW_ALL, B_WILL_DRAW);
+		be_plain_font, 0, B_FOLLOW_ALL, B_WILL_DRAW);
 
 	textView->SetWordWrap(false);
+	textView->SetInsets(2, 2, 2, 2);
 	DisallowMetaKeys(textView);
 	fText->SetUpEditing(textView);
 
 	textView->AddFilter(new BMessageFilter(B_KEY_DOWN, TextViewFilter));
 
-	rect.right = rect.left + textView->LineWidth() + 3;
-	// center new width, if necessary
-	if (view->ViewMode() == kIconMode
-		|| (view->ViewMode() == kListMode && fAlignment == B_ALIGN_CENTER)) {
-		rect.OffsetBy(bounds.Width() / 2 - rect.Width() / 2, 0);
-	}
+	rect.right = rect.left + textView->LineWidth();
+	rect.bottom = rect.top + textView->LineHeight() - 1;
 
-	rect.bottom = rect.top + textView->LineHeight() + 1;
-	textRect = rect.OffsetToCopy(2, 1);
-	textRect.right -= 3;
-	textRect.bottom--;
+	// enlarge rect by inset amount
+	rect.InsetBy(-2, -2);
+
+	// undo label offset
+	textRect = rect.OffsetToCopy(-hOffset, -vOffset);
+
 	textView->SetTextRect(textRect);
 
 	BPoint origin = view->LeftTop();
@@ -432,6 +436,10 @@ BTextWidget::StartEdit(BRect bounds, BPoseView* view, BPose* pose)
 		// for widget
 
 	textView->SelectAll();
+	textView->ScrollToSelection();
+		// scroll to beginning so that text is visible
+	textView->ScrollBy(-1, -2);
+		// scroll in rect to center text
 	textView->MakeFocus();
 
 	// make this text widget invisible while we edit it
@@ -536,15 +544,10 @@ BTextWidget::Draw(BRect eraseRect, BRect textRect, float, BPoseView* view,
 
 		// set high color
 		rgb_color highColor;
-		if (view->IsDesktopWindow()) {
-			if (selected)
-				highColor = ui_color(B_DOCUMENT_BACKGROUND_COLOR);
-			else
-				highColor = view->DeskTextColor();
-		} else if (selected && view->Window()->IsActive()) {
+		if (selected)
 			highColor = ui_color(B_DOCUMENT_BACKGROUND_COLOR);
-		} else
-			highColor = kBlack;
+		else
+			highColor = view->DeskTextColor();
 
 		if (clipboardMode == kMoveSelectionTo && !selected) {
 			drawView->SetDrawingMode(B_OP_ALPHA);

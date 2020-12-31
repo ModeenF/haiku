@@ -482,8 +482,6 @@ Interface::~Interface()
 {
 	TRACE("Interface %p: destructor\n", this);
 
-	put_device_interface(fDeviceInterface);
-
 	// Uninitialize the domain datalink protocols
 
 	DatalinkTable::Iterator iterator = fDatalinkTable.GetIterator();
@@ -500,6 +498,8 @@ Interface::~Interface()
 
 		delete datalink;
 	}
+
+	put_device_interface(fDeviceInterface);
 
 	recursive_lock_destroy(&fLock);
 
@@ -1188,7 +1188,7 @@ Interface::_ChangeAddress(RecursiveLocker& locker, InterfaceAddress* address,
 /*!	Searches for a specific interface by name.
 	You need to have the interface list's lock hold when calling this function.
 */
-static struct Interface*
+static Interface*
 find_interface(const char* name)
 {
 	ASSERT_LOCKED_RECURSIVE(&sLock);
@@ -1206,7 +1206,7 @@ find_interface(const char* name)
 /*!	Searches for a specific interface by index.
 	You need to have the interface list's lock hold when calling this function.
 */
-static struct Interface*
+static Interface*
 find_interface(uint32 index)
 {
 	InterfaceList::Iterator iterator = sInterfaces.GetIterator();

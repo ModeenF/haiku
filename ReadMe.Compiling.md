@@ -1,58 +1,56 @@
 Building Haiku
 ==========================
 This is a overview into the process of building HAIKU from source.
-An online version is available at <https://haiku-os.org/guides/building/>.
+An online version is available at <https://www.haiku-os.org/guides/building/>.
 
-Official releases of Haiku are at <https://haiku-os.org/get-haiku>.
+Official releases of Haiku are at <https://www.haiku-os.org/get-haiku>.
 The (unstable) nightly builds are available at <https://download.haiku-os.org/>.
 
 We currently support the following platforms:
  * Haiku
  * Linux
  * FreeBSD
- * Mac OS X
+ * macOS
 
 Required Software
 ----------------------------
 Tools provided within Haiku's repositories:
  * `jam` (Jam 2.5-haiku-20111222)
- * Haiku's cross-compiler (needed only for non-Haiku platforms)
+ * Haiku's cross-compiler
 
 The tools to compile Haiku will vary, depending on the platform that you are
 using to build Haiku. When building from Haiku, all of the necessary
-development tools are included in official releases (e.g. R1 alpha4) and in the
+development tools are included in official releases (e.g. R1/beta1) and in the
 nightly builds.
 
  * `git`
- * `ssh` (for developers with commit access)
  * `gcc`/`g++` and binutils (`as`, `ld`, etc., required by GCC)
  * (GNU) `make`
  * `bison` (2.4 or better)
  * `flex` and `lex` (usually a mini shell script invoking `flex`)
  * `makeinfo` (part of `texinfo`, only needed for building GCC 4)
  * `autoheader` (part of `autoconf`, needed for building GCC)
- * `automake`
+ * `automake` (needed for building GCC)
  * `gawk`
  * `nasm`
  * `wget`
  * `[un]zip`
- * `cdrtools` (**not** `genisoimage`!)
+ * `xorriso`
+ * `mtools` (<https://gnu.org/software/mtools/intro.html>)
  * case-sensitive file system
 
 Whether they are installed can be tested by running them in a shell with
 the `--version` parameter.
 
 The following libraries (and their respective headers) are required:
- * `curl`
  * `zlib`
 
 ### Haiku for ARM
 If you want to compile Haiku for ARM, you will also need:
 
  * `mkimage` (<http://www.denx.de/wiki/U-Boot/WebHome>)
- * Mtools (<https://gnu.org/software/mtools/intro.html>)
 
-### On Mac OS X
+### On macOS
 
 Disk Utility can create a case-sensitive disk image of at least 3 GiB in size.
 The following ports need to be installed:
@@ -60,7 +58,6 @@ The following ports need to be installed:
  * `gawk`
  * `gettext`
  * `libiconv`
- * `gnuregex`
  * `gsed`
  * `cdrtools`
  * `nasm`
@@ -82,10 +79,9 @@ The buildtools are needed only for non-Haiku platforms.
 
 Anonymous checkout:
 ```
-git clone https://git.haiku-os.org/haiku
-git clone https://git.haiku-os.org/buildtools
+git clone https://review.haiku-os.org/haiku.git
+git clone https://review.haiku-os.org/buildtools.git
 ```
-(You can also use the `git://` protocol, but it is not secure).
 
 If you have commit access:
 ```
@@ -95,7 +91,7 @@ git clone ssh://git.haiku-os.org/buildtools
 
 Building Jam
 -------------------------------------------
-(*This step applies only to non-Haiku platforms.*)
+(*This step applies only to non-Haiku platforms. Haiku already ships with the correct version of Jam*)
 
 Change to the `buildtools` folder and run the following commands to
 generate and install `jam`:
@@ -119,32 +115,39 @@ update the source tree very frequently, you may want to execute `configure`
 after each update just to be on the safe side.
 
 Depending on your goal, there are several different ways to configure Haiku.
-You can either call configure from within your Haiku trunk folder. That will
-prepare a folder named 'generated', which will contain the compiled objects.
+The first way is to call configure from within your Haiku checkout's root. That
+will prepare a folder named 'generated', which will contain the compiled objects.
 Another option is to manually created one or more `generated.*` folders and run
 configure from within them. For example, imagine the following directory setup:
 ```
-buildtools-trunk/
-haiku-trunk/
-haiku-trunk/generated.x86gcc2
+buildtools/
+haiku/
+haiku/generated.x86gcc2
 ```
 
-### Configure a GCC 2.95 Hybrid, from a non-Haiku platform
+### Configure an x86_64 (GCC 8) build
 ```bash
-cd haiku-trunk/generated.x86gcc2
-../configure --use-xattr-ref \
-	--build-cross-tools x86_gcc2 ../../buildtools/ \
+cd haiku/generated.x86_64
+../configure --cross-tools-source ../../buildtools --build-cross-tools x86_64
+```
+
+### Configure a 32-bit GCC 2.95/GCC 8 Hybrid, from a non-Haiku platform
+```bash
+cd haiku/generated.x86gcc2
+../configure \
+	--cross-tools-source ../../buildtools/ \
+	--build-cross-tools x86_gcc2 
 	--build-cross-tools x86
 ```
 
-### Configure a GCC 2.95 Hybrid, from Haiku
-```
-cd haiku-trunk/generated.x86gcc2
+### Configure a 32-bit GCC 2.95/GCC 8 Hybrid, from Haiku
+```bash
+cd haiku/generated.x86gcc2
 ../configure --target-arch x86_gcc2 --target-arch x86
 ```
 
 Additional information about GCC Hybrids can be found on the website,
-<https://haiku-os.org/guides/building/gcc-hybrid>.
+<https://www.haiku-os.org/guides/building/gcc-hybrid>.
 
 ### Configure options
 The various runtime options for configure are documented in its onscreen help
@@ -216,6 +219,51 @@ You can also force the rebuild of a component by using the `-a` parameter:
 jam -qa Debugger
 ```
 
+Bootstrap Build
+----------------
+New architectures (and occasionally existing ones) will require a bootstrap
+build to compile *build packages*. (Catch-22 software packages which are needed
+to compile Haiku, but need to be initially compiled under Haiku)
+
+### Pre-requirements
+  * All of the standard tools in the Required Software section above.
+  * The following repositories on disk in the same general location
+    * haiku (https://git.haiku-os.org/haiku)
+    * buildtools (https://git.haiku-os.org/buildtools)
+    * haikuporter (https://github.com/haikuports/haikuporter.git)
+    * haikuports.cross (https://github.com/haikuports/haikuports.cross.git)
+    * haikuports (https://github.com/haikuports/haikuports.git)
+
+### Setting Up a Bootstrap build
+Create a clean build directory under the haiku repo.
+```
+mkdir generated.myarch && cd generated.myarch
+```
+
+Configure Haiku's build system for a bootstrap build specifying the location
+of all of the repositories above.
+```
+../configure -j4 \
+  --build-cross-tools myarch ../../buildtools \
+  --bootstrap ../../haikuporter/haikuporter ../../haikuports.cross ../../haikuports
+```
+
+Once the build system is configured for bootstrap, we now can begin building
+the bootstrap image.
+
+```
+jam -q @bootstrap-raw
+```
+
+If you are bootstrapping for an architecture Haiku already boots on, the generated
+disk image can be used to compile *build packages* needed for the standard
+Haiku build.
+
+If you are bootstrapping for a new architecture which doesn't build yet, you will
+need to leverage the ```unbootstrap.sh``` script to hack the generated bootstrap
+packages into non-bootstrap packages which can be temporarily used as
+*build packages*.
+
 Running
 ----------------
 Generally there are two ways of running Haiku: on real hardware using a
@@ -231,7 +279,7 @@ BootManager
 ```
 
 ### On Emulated Hardware
-For emulated hardware you should build disk image (see above). How to set up
+For emulated hardware you should build a disk image (see above). How to set up
 this image depends on your emulator. If you use QEMU, you can usually just
 provide the path to the image as command line argument to the `qemu`
 executable.

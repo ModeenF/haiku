@@ -1,19 +1,204 @@
 /* 
  * Copyright 2004-2010, Marcus Overhagen. All rights reserved.
- * Distributed under the terms of the OpenBeOS License.
+ * Copyright 2016, Dario Casalinuovo. All rights reserved.
+ * Distributed under the terms of the MIT License.
  */
 
-#include <Path.h>
+
+#include <AdapterIO.h>
+#include <AutoDeleter.h>
+#include <Autolock.h>
+#include <BufferIO.h>
+#include <DataIO.h>
 #include <image.h>
+#include <Path.h>
+
 #include <string.h>
 
 #include "AddOnManager.h"
 #include "PluginManager.h"
 #include "DataExchange.h"
-#include "debug.h"
+#include "MediaDebug.h"
 
 
 PluginManager gPluginManager;
+
+#define BLOCK_SIZE 4096
+#define MAX_STREAMERS 40
+
+
+class DataIOAdapter : public BAdapterIO {
+public:
+	DataIOAdapter(BDataIO* dataIO)
+		:
+		BAdapterIO(B_MEDIA_SEEK_BACKWARD | B_MEDIA_MUTABLE_SIZE,
+			B_INFINITE_TIMEOUT),
+		fDataIO(dataIO)
+	{
+		fDataInputAdapter = BuildInputAdapter();
+	}
+
+	virtual	~DataIOAdapter()
+	{
+	}
+
+	virtual	ssize_t	ReadAt(off_t position, void* buffer,
+		size_t size)
+	{
+		if (position == Position()) {
+			ssize_t ret = fDataIO->Read(buffer, size);
+			fDataInputAdapter->Write(buffer, ret);
+			return ret;
+		}
+
+		off_t totalSize = 0;
+		if (GetSize(&totalSize) != B_OK)
+			return B_UNSUPPORTED;
+
+		if (position+size < (size_t)totalSize)
+			return ReadAt(position, buffer, size);
+
+		return B_NOT_SUPPORTED;
+	}
+
+	virtual	ssize_t	WriteAt(off_t position, const void* buffer,
+		size_t size)
+	{
+		if (position == Position()) {
+			ssize_t ret = fDataIO->Write(buffer, size);
+			fDataInputAdapter->Write(buffer, ret);
+			return ret;
+		}
+
+		return B_NOT_SUPPORTED;
+	}
+
+private:
+	BDataIO*		fDataIO;
+	BInputAdapter*	fDataInputAdapter;
+};
+
+
+class BMediaIOWrapper : public BMediaIO {
+public:
+	BMediaIOWrapper(BDataIO* source)
+		:
+		fData(NULL),
+		fPosition(NULL),
+		fMedia(NULL),
+		fDataIOAdapter(NULL),
+		fErr(B_NO_ERROR)
+	{
+		CALLED();
+
+		fPosition = dynamic_cast<BPositionIO*>(source);
+		fMedia = dynamic_cast<BMediaIO*>(source);
+		fData = source;
+
+		if (!IsPosition()) {
+			// In this case we have to supply our own form
+			// of pseudo-seekable object from a non-seekable
+			// BDataIO.
+			fDataIOAdapter = new DataIOAdapter(source);
+			fMedia = dynamic_cast<BMediaIO*>(fDataIOAdapter);
+			fPosition = dynamic_cast<BPositionIO*>(fDataIOAdapter);
+			fData = dynamic_cast<BDataIO*>(fDataIOAdapter);
+			TRACE("Unable to improve performance with a BufferIO\n");
+		}
+
+		if (IsMedia())
+			fMedia->GetFlags(&fFlags);
+		else if (IsPosition())
+			fFlags = B_MEDIA_SEEKABLE;
+	}
+
+	virtual	~BMediaIOWrapper()
+	{
+		if (fDataIOAdapter != NULL)
+			delete fDataIOAdapter;
+	}
+
+	status_t InitCheck() const
+	{
+		return fErr;
+	}
+
+	// BMediaIO interface
+
+	virtual void GetFlags(int32* flags) const
+	{
+		*flags = fFlags;
+	}
+
+	// BPositionIO interface
+
+	virtual	ssize_t ReadAt(off_t position, void* buffer,
+		size_t size)
+	{
+		CALLED();
+
+		return fPosition->ReadAt(position, buffer, size);
+	}
+
+	virtual	ssize_t WriteAt(off_t position, const void* buffer,
+		size_t size)
+	{
+		CALLED();
+
+		return fPosition->WriteAt(position, buffer, size);
+	}
+
+	virtual	off_t Seek(off_t position, uint32 seekMode)
+	{
+		CALLED();
+
+		return fPosition->Seek(position, seekMode);
+
+	}
+
+	virtual off_t Position() const
+	{
+		CALLED();
+
+		return fPosition->Position();
+	}
+
+	virtual	status_t SetSize(off_t size)
+	{
+		CALLED();
+
+		return fPosition->SetSize(size);
+	}
+
+	virtual	status_t GetSize(off_t* size) const
+	{
+		CALLED();
+
+		return fPosition->GetSize(size);
+	}
+
+protected:
+
+	bool IsMedia() const
+	{
+		return fMedia != NULL;
+	}
+
+	bool IsPosition() const
+	{
+		return fPosition != NULL;
+	}
+
+private:
+	BDataIO*			fData;
+	BPositionIO*		fPosition;
+	BMediaIO*			fMedia;
+	DataIOAdapter*		fDataIOAdapter;
+
+	int32				fFlags;
+
+	status_t			fErr;
+};
 
 
 // #pragma mark - Readers/Decoders
@@ -25,18 +210,21 @@ PluginManager::CreateReader(Reader** reader, int32* streamCount,
 {
 	TRACE("PluginManager::CreateReader enter\n");
 
-	BPositionIO *seekable_source = dynamic_cast<BPositionIO *>(source);
-	if (seekable_source == 0) {
-		printf("PluginManager::CreateReader: non-seekable sources not "
-			"supported yet\n");
-		return B_ERROR;
-	}
+	// The wrapper class will present our source in a more useful
+	// way, we create an instance which is buffering our reads and
+	// writes.
+	BMediaIOWrapper* buffered_source = new BMediaIOWrapper(source);
+	ObjectDeleter<BMediaIOWrapper> ioDeleter(buffered_source);
+
+	status_t ret = buffered_source->InitCheck();
+	if (ret != B_OK)
+		return ret;
 
 	// get list of available readers from the server
 	entry_ref refs[MAX_READERS];
 	int32 count;
 
-	status_t ret = AddOnManager::GetInstance()->GetReaders(refs, &count,
+	ret = AddOnManager::GetInstance()->GetReaders(refs, &count,
 		MAX_READERS);
 	if (ret != B_OK) {
 		printf("PluginManager::CreateReader: can't get list of readers: %s\n",
@@ -67,14 +255,15 @@ PluginManager::CreateReader(Reader** reader, int32* streamCount,
 			return B_ERROR;
 		}
 
-		seekable_source->Seek(0, SEEK_SET);
-		(*reader)->Setup(seekable_source);
+		buffered_source->Seek(0, SEEK_SET);
+		(*reader)->Setup(buffered_source);
 		(*reader)->fMediaPlugin = plugin;
 
 		if ((*reader)->Sniff(streamCount) == B_OK) {
 			TRACE("PluginManager::CreateReader: Sniff success "
-				"(%ld stream(s))\n", *streamCount);
+				"(%" B_PRId32 " stream(s))\n", *streamCount);
 			(*reader)->GetFileFormatInfo(mff);
+			ioDeleter.Detach();
 			return B_OK;
 		}
 
@@ -386,6 +575,91 @@ PluginManager::DestroyEncoder(Encoder* encoder)
 }
 
 
+status_t
+PluginManager::CreateStreamer(Streamer** streamer, BUrl url, BDataIO** source)
+{
+	BAutolock _(fLocker);
+
+	TRACE("PluginManager::CreateStreamer enter\n");
+
+	entry_ref refs[MAX_STREAMERS];
+	int32 count;
+
+	status_t ret = AddOnManager::GetInstance()->GetStreamers(refs, &count,
+		MAX_STREAMERS);
+	if (ret != B_OK) {
+		printf("PluginManager::CreateStreamer: can't get list of streamers:"
+			" %s\n", strerror(ret));
+		return ret;
+	}
+
+	// try each reader by calling it's Sniff function...
+	for (int32 i = 0; i < count; i++) {
+		entry_ref ref = refs[i];
+		MediaPlugin* plugin = GetPlugin(ref);
+		if (plugin == NULL) {
+			printf("PluginManager::CreateStreamer: GetPlugin failed\n");
+			return B_ERROR;
+		}
+
+		StreamerPlugin* streamerPlugin = dynamic_cast<StreamerPlugin*>(plugin);
+		if (streamerPlugin == NULL) {
+			printf("PluginManager::CreateStreamer: dynamic_cast failed\n");
+			PutPlugin(plugin);
+			return B_ERROR;
+		}
+
+		*streamer = streamerPlugin->NewStreamer();
+		if (*streamer == NULL) {
+			printf("PluginManager::CreateStreamer: NewReader failed\n");
+			PutPlugin(plugin);
+			return B_ERROR;
+		}
+
+		(*streamer)->fMediaPlugin = plugin;
+		plugin->fRefCount++;
+
+		BDataIO* streamSource = NULL;
+		if ((*streamer)->Sniff(url, &streamSource) == B_OK) {
+			TRACE("PluginManager::CreateStreamer: Sniff success\n");
+			*source = streamSource;
+			return B_OK;
+		}
+
+		DestroyStreamer(*streamer);
+		*streamer = NULL;
+	}
+
+	TRACE("PluginManager::CreateStreamer leave\n");
+	return B_MEDIA_NO_HANDLER;
+}
+
+
+void
+PluginManager::DestroyStreamer(Streamer* streamer)
+{
+	BAutolock _(fLocker);
+
+	if (streamer != NULL) {
+		TRACE("PluginManager::DestroyStreamer(%p, plugin: %p)\n", streamer,
+			streamer->fMediaPlugin);
+
+		// NOTE: We have to put the plug-in after deleting the streamer,
+		// since otherwise we may actually unload the code for the
+		// destructor...
+		MediaPlugin* plugin = streamer->fMediaPlugin;
+		delete streamer;
+
+		// Delete the plugin only when every reference is released
+		if (plugin->fRefCount == 1) {
+			plugin->fRefCount = 0;
+			PutPlugin(plugin);
+		} else
+			plugin->fRefCount--;
+	}
+}
+
+
 // #pragma mark -
 
 
@@ -466,7 +740,7 @@ PluginManager::PutPlugin(MediaPlugin* plugin)
 			if (pinfo->usecount == 0) {
 				TRACE("  deleting %p\n", pinfo->plugin);
 				delete pinfo->plugin;
-				TRACE("  unloading add-on: %ld\n\n", pinfo->image);
+				TRACE("  unloading add-on: %" B_PRId32 "\n\n", pinfo->image);
 				unload_add_on(pinfo->image);
 				fPluginList.RemoveCurrent();
 			}

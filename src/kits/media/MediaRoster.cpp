@@ -61,7 +61,7 @@ char __dont_remove_copyright_from_binary[] = "Copyright (c) 2002-2006 Marcus "
 
 #include <AppMisc.h>
 #include <DataExchange.h>
-#include <debug.h>
+#include <MediaDebug.h>
 #include <DormantNodeManager.h>
 #include <MediaMisc.h>
 #include <MediaRosterEx.h>
@@ -70,6 +70,7 @@ char __dont_remove_copyright_from_binary[] = "Copyright (c) 2002-2006 Marcus "
 #include <SharedBufferList.h>
 #include <TList.h>
 
+#include "PortPool.h"
 #include "TimeSourceObjectManager.h"
 
 
@@ -80,6 +81,11 @@ namespace media {
 struct RosterNotification {
 	BMessenger	messenger;
 	int32		what;
+};
+
+
+struct SyncedMessage {
+	BMessage* message;
 };
 
 
@@ -109,13 +115,21 @@ static BLocker sInitLocker("BMediaRoster::Roster locker");
 static List<LocalNode> sRegisteredNodes;
 
 
+// This class takes care of all static initialization and destruction of
+// libmedia objects. It guarantees that things are created and destroyed in
+// the correct order, as well as performing some "garbage collecting" by being
+// destructed automatically on application exit.
 class MediaRosterUndertaker {
 public:
+	MediaRosterUndertaker()
+	{
+		gPortPool = new PortPool();
+	}
+
 	~MediaRosterUndertaker()
 	{
 		BAutolock _(sInitLocker);
-		if (BMediaRoster::CurrentRoster() != NULL
-				&& BMediaRoster::CurrentRoster()->Lock()) {
+		if (BMediaRoster::CurrentRoster() != NULL) {
 
 			// Detect any forgotten node
 			if (sRegisteredNodes.CountItems() > 0) {
@@ -132,7 +146,17 @@ public:
 			if (be_app != NULL)
 				be_app->UnregisterLooper(BMediaRoster::CurrentRoster());
 
-			BMediaRoster::CurrentRoster()->Quit();
+			status_t err = B_ERROR;
+			thread_id roster = BMediaRoster::CurrentRoster()->Thread();
+
+			BMediaRoster::CurrentRoster()->PostMessage(B_QUIT_REQUESTED);
+
+			wait_for_thread(roster, &err);
+			if (err != B_OK)
+				ERROR("BMediaRoster: wait_for_thread returned error");
+
+			// Only now delete the port pool
+			delete gPortPool;
 		}
 	}
 };
@@ -148,7 +172,9 @@ using namespace BPrivate::media;
 
 BMediaRosterEx::BMediaRosterEx(status_t* _error)
 	:
-	BMediaRoster()
+	BMediaRoster(),
+	fLaunchNotification(false),
+	fAutoExit(false)
 {
 	gDormantNodeManager = new DormantNodeManager();
 	gTimeSourceObjectManager = new TimeSourceObjectManager();
@@ -227,6 +253,17 @@ BMediaRosterEx::UnregisterLocalNode(BMediaNode* node)
 	int32 index = sRegisteredNodes.Find(LocalNode(node));
 	if (index != -1)
 		sRegisteredNodes.Remove(index);
+}
+
+
+void
+BMediaRosterEx::EnableLaunchNotification(bool enable, bool autoExit)
+{
+	// NOTE: in theory, we should personalize it depending on each
+	// request, but we are using it just in launch/shutdown_media_server,
+	// so we are enough safe to don't care about that.
+	fLaunchNotification = enable;
+	fAutoExit = autoExit;
 }
 
 
@@ -577,7 +614,8 @@ BMediaRosterEx::PublishOutputs(const media_node& node, List<media_output>* list)
 		size_t size;
 		size = ROUND_UP_TO_PAGE(count * sizeof(media_output));
 		request.area = create_area("publish outputs", &start_addr,
-			B_ANY_ADDRESS, size, B_NO_LOCK, B_READ_AREA | B_WRITE_AREA);
+			B_ANY_ADDRESS, size, B_NO_LOCK,
+			B_READ_AREA | B_WRITE_AREA | B_CLONEABLE_AREA);
 		if (request.area < B_OK) {
 			ERROR("PublishOutputs: failed to create area, %#" B_PRIx32 "\n",
 				request.area);
@@ -626,7 +664,8 @@ BMediaRosterEx::PublishInputs(const media_node& node, List<media_input>* list)
 		size_t size;
 		size = ROUND_UP_TO_PAGE(count * sizeof(media_input));
 		request.area = create_area("publish inputs", &start_addr,
-			B_ANY_ADDRESS, size, B_NO_LOCK, B_READ_AREA | B_WRITE_AREA);
+			B_ANY_ADDRESS, size, B_NO_LOCK,
+			B_READ_AREA | B_WRITE_AREA | B_CLONEABLE_AREA);
 		if (request.area < B_OK) {
 			ERROR("PublishInputs: failed to create area, %#" B_PRIx32 "\n",
 				request.area);
@@ -2129,17 +2168,17 @@ BMediaRosterEx::RegisterNode(BMediaNode* node, media_addon_id addOnID,
 	ASSERT(reply.node_id == node->Node().node);
 	ASSERT(reply.node_id == node->ID());
 
-	// call the callback
-	node->NodeRegistered();
-
-	TRACE("BMediaRoster::RegisterNode: NodeRegistered callback finished\n");
-
 	// if the BMediaNode also inherits from BTimeSource, we need to call
 	// BTimeSource::FinishCreate()
 	if ((node->Kinds() & B_TIME_SOURCE) != 0) {
 		if (BTimeSource* timeSource = dynamic_cast<BTimeSource*>(node))
 			timeSource->FinishCreate();
 	}
+
+	// call the callback
+	node->NodeRegistered();
+
+	TRACE("BMediaRoster::RegisterNode: NodeRegistered callback finished\n");
 
 	TRACE("BMediaRoster::RegisterNode: publishing inputs/outputs\n");
 
@@ -2197,23 +2236,25 @@ BMediaRoster::UnregisterNode(BMediaNode* node)
 	if (node == NULL)
 		return B_BAD_VALUE;
 
-	TRACE("BMediaRoster::UnregisterNode %ld (%p)\n", node->ID(), node);
+	TRACE("BMediaRoster::UnregisterNode %"
+		B_PRId32 " (%p)\n", node->ID(), node);
 
 	if ((node->fKinds & NODE_KIND_NO_REFCOUNTING) !=0) {
 		TRACE("BMediaRoster::UnregisterNode, trying to unregister reference "
-			"counting disabled timesource, node %ld, port %ld, team %ld\n",
+			"counting disabled timesource, node %"
+			B_PRId32 " , port %" B_PRId32 " , team %" B_PRId32 "\n",
 			node->ID(), node->ControlPort(), BPrivate::current_team());
 		return B_OK;
 	}
 	if (node->ID() == NODE_UNREGISTERED_ID) {
-		PRINT(1, "Warning: BMediaRoster::UnregisterNode: node id %ld, name "
-			"'%s' already unregistered\n", node->ID(), node->Name());
+		PRINT(1, "Warning: BMediaRoster::UnregisterNode: node id %" B_PRId32
+			", name '%s' already unregistered\n", node->ID(), node->Name());
 		return B_OK;
 	}
 	if (node->fRefCount != 0) {
-		PRINT(1, "Warning: BMediaRoster::UnregisterNode: node id %ld, name "
-			"'%s' has local reference count of %ld\n", node->ID(), node->Name(),
-			node->fRefCount);
+		PRINT(1, "Warning: BMediaRoster::UnregisterNode: node id %" B_PRId32
+			", name '%s' has local reference count of %" B_PRId32 "\n",
+			node->ID(), node->Name(), node->fRefCount);
 		// no return here, we continue and unregister!
 	}
 
@@ -2394,7 +2435,7 @@ BMediaRoster::GetParameterWebFor(const media_node& node, BParameterWeb** _web)
 		area_id area;
 		void *data;
 		area = create_area("parameter web data", &data, B_ANY_ADDRESS, size,
-			B_NO_LOCK, B_READ_AREA | B_WRITE_AREA);
+			B_NO_LOCK, B_READ_AREA | B_WRITE_AREA | B_CLONEABLE_AREA);
 		if (area < B_OK) {
 			ERROR("BMediaRoster::GetParameterWebFor couldn't create area of "
 				"size %" B_PRId32 "\n", size);
@@ -3210,7 +3251,7 @@ BMediaRoster::GetFormatFor(const media_input& input, media_format* _format,
 	status_t rv;
 
 	request.dest = input.destination;
-	memset(&request.format, 0, sizeof(request.format)); // wildcard
+	request.format.Clear(); // wildcard
 
 	rv = QueryPort(input.destination.port, CONSUMER_ACCEPT_FORMAT, &request,
 		sizeof(request), &reply, sizeof(reply));
@@ -3443,31 +3484,11 @@ BMediaRoster::MessageReceived(BMessage* message)
 
 			TRACE("BMediaRoster::MessageReceived media services are going up.");
 
-			// Send the notification to our subscribers
 			if (BMediaRoster::IsRunning()) {
-				sServerIsUp = true;
-				// Wait for media services to wake up
-				// TODO: This should be solved so that the server
-				// have a way to notify us when the system is really
-				// ready to run and we avoid sleeping.
-				snooze(2000000);
-				// Restore our friendship with the media servers
+				// Wait for media services to wake up and restore our friendship
 				if (MediaRosterEx(this)->BuildConnections() != B_OK) {
 					TRACE("BMediaRoster::MessageReceived can't reconnect"
 						"to media_server.");
-				}
-
-				for (int32 i = 0; i < sNotificationList.CountItems(); i++) {
-					RosterNotification* current;
-					if (sNotificationList.Get(i, &current) != true)
-						return;
-					if (current->what == B_MEDIA_SERVER_STARTED) {
-						if (current->messenger.SendMessage(
-								B_MEDIA_SERVER_STARTED) != B_OK) {
-							if(!current->messenger.IsValid())
-								sNotificationList.Remove(i);
-						}
-					}
 				}
 			}
 			return;
@@ -3497,6 +3518,38 @@ BMediaRoster::MessageReceived(BMessage* message)
 							if(!current->messenger.IsValid())
 								sNotificationList.Remove(i);
 						}
+					}
+				}
+			}
+			return;
+		}
+
+		case MEDIA_SERVER_ALIVE:
+		{
+			if (!BMediaRoster::IsRunning())
+				return;
+
+			sServerIsUp = true;
+
+			TRACE("BMediaRoster::MessageReceived media services are"
+				" finally up.");
+
+			if (MediaRosterEx(this)->fLaunchNotification) {
+				progress_startup(100, NULL, NULL);
+				if (MediaRosterEx(this)->fAutoExit)
+					MediaRosterEx(this)->fLaunchNotification = false;
+			}
+
+			// Send the notification to our subscribers
+			for (int32 i = 0; i < sNotificationList.CountItems(); i++) {
+				RosterNotification* current;
+				if (sNotificationList.Get(i, &current) != true)
+					return;
+				if (current->what == B_MEDIA_SERVER_STARTED) {
+					if (current->messenger.SendMessage(
+							B_MEDIA_SERVER_STARTED) != B_OK) {
+						if(!current->messenger.IsValid())
+							sNotificationList.Remove(i);
 					}
 				}
 			}

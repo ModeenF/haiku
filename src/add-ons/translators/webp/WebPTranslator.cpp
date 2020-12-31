@@ -110,13 +110,14 @@ const uint32 kNumDefaultSettings = sizeof(sDefaultSettings) /
 
 
 WebPTranslator::WebPTranslator()
-	: BaseTranslator(B_TRANSLATE("WebP images"),
-		B_TRANSLATE("WebP image translator"),
-		WEBP_TRANSLATOR_VERSION,
-		sInputFormats, kNumInputFormats,
-		sOutputFormats, kNumOutputFormats,
-		"WebPTranslator_Settings", sDefaultSettings, kNumDefaultSettings,
-		B_TRANSLATOR_BITMAP, WEBP_IMAGE_FORMAT)
+	:
+	BaseTranslator(B_TRANSLATE("WebP images"),
+	B_TRANSLATE("WebP image translator"),
+	WEBP_TRANSLATOR_VERSION,
+	sInputFormats, kNumInputFormats,
+	sOutputFormats, kNumOutputFormats,
+	"WebPTranslator_Settings", sDefaultSettings, kNumDefaultSettings,
+	B_TRANSLATOR_BITMAP, WEBP_IMAGE_FORMAT)
 {
 }
 
@@ -136,23 +137,21 @@ WebPTranslator::DerivedIdentify(BPositionIO* stream,
 	if (outType != B_TRANSLATOR_BITMAP)
 		return B_NO_TRANSLATOR;
 
-	// Check RIFF and 'WEBPVP8 ' signatures...
-	uint32 buf[4];
-	ssize_t size = 16;
+	// Read header and first chunck bytes...
+	uint32 buf[64];
+	ssize_t size = sizeof(buf);
 	if (stream->Read(buf, size) != size)
 		return B_IO_ERROR;
 
-	const uint32 kRIFFMagic = B_HOST_TO_BENDIAN_INT32('RIFF');
-	const uint32 kWEBPMagic = B_HOST_TO_BENDIAN_INT32('WEBP');
-	const uint32 kVP8Magic  = B_HOST_TO_BENDIAN_INT32('VP8 ');
-	if (buf[0] != kRIFFMagic || buf[2] != kWEBPMagic || buf[3] != kVP8Magic)
+	// Check it's a valid WebP format
+	if (!WebPGetInfo((const uint8_t*)buf, size, NULL, NULL))
 		return B_ILLEGAL_DATA;
 
 	info->type = WEBP_IMAGE_FORMAT;
 	info->group = B_TRANSLATOR_BITMAP;
 	info->quality = WEBP_IN_QUALITY;
 	info->capability = WEBP_IN_CAPABILITY;
-	snprintf(info->name, sizeof(info->name), B_TRANSLATE("WebP image"));
+	strlcpy(info->name, B_TRANSLATE("WebP image"), sizeof(info->name));
 	strcpy(info->MIME, "image/webp");
 
 	return B_OK;
@@ -161,8 +160,8 @@ WebPTranslator::DerivedIdentify(BPositionIO* stream,
 
 status_t
 WebPTranslator::DerivedTranslate(BPositionIO* stream,
-		const translator_info* info, BMessage* ioExtension,
-		uint32 outType, BPositionIO* target, int32 baseType)
+	const translator_info* info, BMessage* ioExtension, uint32 outType,
+	BPositionIO* target, int32 baseType)
 {
 	if (baseType == 1)
 		// if stream is in bits format
@@ -186,7 +185,7 @@ WebPTranslator::NewConfigView(TranslatorSettings* settings)
 
 status_t
 WebPTranslator::_TranslateFromBits(BPositionIO* stream, BMessage* ioExtension,
-		uint32 outType, BPositionIO* target)
+	uint32 outType, BPositionIO* target)
 {
 	if (!outType)
 		outType = WEBP_IMAGE_FORMAT;
@@ -252,7 +251,7 @@ WebPTranslator::_TranslateFromBits(BPositionIO* stream, BMessage* ioExtension,
 
 	if (!WebPPictureInit(&picture) || !WebPConfigInit(&config)) {
 		printf("Error! Version mismatch!\n");
-  		return B_ERROR;
+		return B_ERROR;
 	}
 
 	WebPPreset preset = (WebPPreset)fSettings->SetGetInt32(WEBP_SETTING_PRESET);
@@ -268,7 +267,7 @@ WebPTranslator::_TranslateFromBits(BPositionIO* stream, BMessage* ioExtension,
 
 	if (!WebPValidateConfig(&config)) {
 		printf("Error! Invalid configuration.\n");
- 		return B_ERROR;
+		return B_ERROR;
 	}
 
 	picture.width = bitsHeader.bounds.IntegerWidth() + 1;
@@ -309,7 +308,7 @@ WebPTranslator::_TranslateFromBits(BPositionIO* stream, BMessage* ioExtension,
 
 status_t
 WebPTranslator::_TranslateFromWebP(BPositionIO* stream, BMessage* ioExtension,
-		uint32 outType, BPositionIO* target)
+	uint32 outType, BPositionIO* target)
 {
 	if (!outType)
 		outType = B_TRANSLATOR_BITMAP;
@@ -341,7 +340,7 @@ WebPTranslator::_TranslateFromWebP(BPositionIO* stream, BMessage* ioExtension,
 
 	FreeAllocation _(out);
 
- 	uint32 dataSize = width * 4 * height;
+	uint32 dataSize = width * 4 * height;
 
 	TranslatorBitmap bitmapHeader;
 	bitmapHeader.magic = B_TRANSLATOR_BITMAP;

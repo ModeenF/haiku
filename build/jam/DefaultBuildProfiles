@@ -38,28 +38,30 @@ rule DefineDefaultBuildProfiles
 	DefineBuildProfile release-vmware : vmware-image : "haiku-release.vmdk" ;
 	DefineBuildProfile release-cd : cd-image : "haiku-release.iso" ;
 	DefineBuildProfile release-anyboot : anyboot-image
-		: "haiku-release-anyboot.image" ;
+		: "haiku-release-anyboot.iso" ;
 
 	# nightly profiles
 	DefineBuildProfile nightly-raw : image : "haiku-nightly.image" ;
 	DefineBuildProfile nightly-vmware : vmware-image : "haiku-nightly.vmdk" ;
 	DefineBuildProfile nightly-cd : cd-image : "haiku-nightly.iso" ;
 	DefineBuildProfile nightly-anyboot : anyboot-image
-		: "haiku-nightly-anyboot.image" ;
+		: "haiku-nightly-anyboot.iso" ;
 
 	# bootstrap profiles
 	DefineBuildProfile bootstrap-raw : image : "haiku-bootstrap.image" ;
 	DefineBuildProfile bootstrap-mmc : haiku-mmc-image : "haiku-bootstrap.mmc" ;
 	DefineBuildProfile bootstrap-vmware : vmware-image
 		: "haiku-bootstrap.vmdk" ;
+	DefineBuildProfile bootstrap-anyboot : anyboot-image
+		: "haiku-bootstrap-anyboot.iso" ;
 
 	# minimum profiles
 	DefineBuildProfile minimum-raw : image : "haiku-minimum.image" ;
 	DefineBuildProfile minimum-mmc : haiku-mmc-image : "haiku-minimum.mmc" ;
 	DefineBuildProfile minimum-vmware : vmware-image : "haiku-minimum.vmdk" ;
+	DefineBuildProfile minimum-cd : cd-image : "haiku-minimum.iso" ;
 	DefineBuildProfile minimum-anyboot : anyboot-image
-		: "haiku-minimum-anyboot.image" ;
-
+		: "haiku-minimum-anyboot.iso" ;
 
 	switch $(HAIKU_BUILD_PROFILE) {
 		case "release-*" : {
@@ -68,37 +70,46 @@ rule DefineDefaultBuildProfiles
 			HAIKU_ROOT_USER_REAL_NAME ?= "Yourself" ;
 			AddGroupToHaikuImage party : 101 : user sshd ;
 			HAIKU_IMAGE_HOST_NAME ?= shredder ;
-			HAIKU_IMAGE_SIZE ?= 800 ;
+			if $(DEBUG) != 0 {
+				HAIKU_IMAGE_SIZE ?= 1300 ;
+			}
+			if $(HAIKU_INCLUDE_SOURCES) = 1 {
+				HAIKU_IMAGE_SIZE ?= 1100 ;
+			} else {
+				HAIKU_IMAGE_SIZE ?= 690 ;
+			}
 
-			AddHaikuImagePackages
+			AddHaikuImageSystemPackages
 				bepdf
-				cvs
-				dejavu
 				keymapswitcher
-				llvm
-				man
-				mercurial
+				mandoc
 				nano
+				noto
+				noto_sans_cjk_jp
 				openssh
 				p7zip
+				pdfwriter
 				pe
 				python
-				subversion
 				timgmsoundfont
 				vision
-				vl_gothic
 				wpa_supplicant
 				wqy_microhei
 				# xz_utils can't be built with gcc2, so we install it for
-				# primary gcc 4 architectures or gcc 2 hybrids.
+				# primary gcc 8 architectures or gcc 2 hybrids.
 				xz_utils@!gcc2
 				gcc2 @{ xz_utils_x86@secondary_x86 }@
+				;
+			AddHaikuImageSourcePackages
+				bepdf
+				nano
+				p7zip
 				;
 
 			local architectureObject ;
 			for architectureObject in [ MultiArchSubDirSetup ] {
 				on $(architectureObject) {
-					AddHaikuImagePackages openssl wonderbrush@gcc2 ;
+					AddHaikuImageSystemPackages openssl wonderbrush@gcc2 ;
 				}
 			}
 
@@ -112,22 +123,22 @@ rule DefineDefaultBuildProfiles
 			}
 		}
 
-		case "alpha-*" : {
-			Echo The alpha-* build profiles have been renamed to release-* ;
-		}
-
 		case "nightly-*" : {
 			Echo Building Haiku Nightly ;
 			HAIKU_ROOT_USER_NAME ?= user ;
 			HAIKU_ROOT_USER_REAL_NAME ?= "Yourself" ;
 			AddGroupToHaikuImage party : 101 : user sshd ;
 			HAIKU_IMAGE_HOST_NAME ?= shredder ;
+			if $(DEBUG) != 0 {
+				HAIKU_IMAGE_SIZE ?= 850 ;
+			}
 			HAIKU_IMAGE_SIZE ?= 600 ;
+			HAIKU_NIGHTLY_BUILD = 1 ;
 
-			AddHaikuImagePackages
-				dejavu
-				man
+			AddHaikuImageSystemPackages
+				mandoc
 				nano
+				noto
 				openssh
 				openssl
 				p7zip
@@ -138,6 +149,10 @@ rule DefineDefaultBuildProfiles
 				# primary gcc 4 architectures or gcc 2 hybrids.
 				xz_utils@!gcc2
 				gcc2 @{ xz_utils_x86@secondary_x86 }@
+				;
+			AddHaikuImageSourcePackages
+				nano
+				p7zip
 				;
 
 			AddOptionalHaikuImagePackages Development Git ;
@@ -150,70 +165,79 @@ rule DefineDefaultBuildProfiles
 			}
 		}
 
+		case "minimum-*" : {
+			Echo Building Haiku Minimum Target ;
+			HAIKU_IMAGE_HOST_NAME ?= shredder ;
+			if $(DEBUG) != 0 {
+				HAIKU_IMAGE_SIZE ?= 450 ;
+			}
+
+			AddHaikuImageSystemPackages
+				openssl
+				;
+		}
+
 		case "bootstrap-*" : {
 			Echo Building Haiku Bootstrap ;
 			HAIKU_IMAGE_HOST_NAME ?= shredder ;
 			HAIKU_IMAGE_SIZE ?= 20000 ;
 
-			AddHaikuImagePackages
+			AddHaikuImageSystemPackages
 				binutils
 				bison
-				curl_devel
-				dejavu
 				expat
 				flex
-				freetype_devel
 				gawk
 				gcc
 				grep
 				haikuporter
 				less
 				libedit
-				libedit_devel
 				m4
 				make
 				ncurses6
-				ncurses6_devel
+				noto
 				python
 				sed
 				texinfo
-				zlib_devel
 				;
+
+			AddHaikuImageDisabledPackages
+				curl_devel
+				freetype_devel
+				libedit_devel
+				ncurses6_devel
+				zlib_devel
+			;
 
 			# secondary architecture packages
 			local architectureObject ;
 			for architectureObject
 					in [ MultiArchSubDirSetup $(TARGET_PACKAGING_ARCHS[2-]) ] {
 				on $(architectureObject) {
-					AddHaikuImagePackages
+					AddHaikuImageSystemPackages
 						binutils
 						curl
-						curl_devel
 						expat
 						freetype
-						freetype_devel
 						gcc
 						icu
 						libsolv
 						libedit
-						libedit_devel
 						ncurses6
-						ncurses6_devel
 						zlib
-						zlib_devel
 						;
+					AddHaikuImageDisabledPackages
+						curl_devel
+						freetype_devel
+						libedit_devel
+						ncurses6_devel
+						zlib_devel
+					;
 				}
 			}
 
 			AddOptionalHaikuImagePackages DevelopmentMin ;
-		}
-
-		case "minimum-*" : {
-			Echo Building Haiku Minimum Target ;
-			HAIKU_IMAGE_HOST_NAME ?= shredder ;
-
-			AddHaikuImagePackages
-				;
 		}
 	}
 
@@ -227,8 +251,7 @@ rule DefineDefaultBuildProfiles
 	# check whether it is unknown or one of the default profiles.
 	if $(HAIKU_BUILD_PROFILE) && ! $(HAIKU_BUILD_PROFILE_DEFINED) {
 		# define the obvious default profiles
-		if $(HAIKU_BUILD_PROFILE) in anyboot-image cd-image image install
-				vmware-image {
+		if $(HAIKU_BUILD_PROFILE) in cd-image install vmware-image {
 			DefineBuildProfile $(HAIKU_BUILD_PROFILE) : $(HAIKU_BUILD_PROFILE) ;
 		} else {
 			Exit "Build profile" $(HAIKU_BUILD_PROFILE) "not defined." ;

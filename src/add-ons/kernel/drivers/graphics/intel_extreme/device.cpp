@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2009, Haiku, Inc. All Rights Reserved.
+ * Copyright 2006-2018, Haiku, Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -79,22 +79,108 @@ getset_register(int argc, char** argv)
 	if (set)
 		value = parse_expression(argv[2]);
 
-	kprintf("intel_extreme register %#lx\n", reg);
+	kprintf("intel_extreme register %#" B_PRIx32 "\n", reg);
 
 	intel_info &info = *gDeviceInfo[0];
 	uint32 oldValue = read32(info, reg);
 
-	kprintf("  %svalue: %#lx (%lu)\n", set ? "old " : "", oldValue, oldValue);
+	kprintf("  %svalue: %#" B_PRIx32 " (%" B_PRIu32 ")\n", set ? "old " : "",
+		oldValue, oldValue);
 
 	if (set) {
 		write32(info, reg, value);
 
 		value = read32(info, reg);
-		kprintf("  new value: %#lx (%lu)\n", value, value);
+		kprintf("  new value: %#" B_PRIx32 " (%" B_PRIu32 ")\n", value, value);
 	}
 
 	return 0;
 }
+
+
+static int
+dump_pipe_info(int argc, char** argv)
+{
+	int pipeOffset = 0;
+
+	if (argc > 2) {
+		kprintf("usage: %s [pipe index]\n", argv[0]);
+		return 0;
+	}
+
+	if (argc > 1) {
+		uint32 pipe = parse_expression(argv[1]);
+		if (pipe != 0)
+			pipeOffset = INTEL_DISPLAY_OFFSET; // Use pipe B if requested
+	}
+
+	intel_info &info = *gDeviceInfo[0];
+	uint32 value;
+
+	kprintf("intel_extreme pipe configuration:\n");
+
+	value = read32(info, INTEL_DISPLAY_A_HTOTAL + pipeOffset);
+	kprintf("  HTOTAL start %" B_PRIu32 " end %" B_PRIu32 "\n",
+		(value & 0xFFFF) + 1, (value >> 16) + 1);
+	value = read32(info, INTEL_DISPLAY_A_HBLANK + pipeOffset);
+	kprintf("  HBLANK start %" B_PRIu32 " end %" B_PRIu32 "\n",
+		(value & 0xFFFF) + 1, (value >> 16) + 1);
+	value = read32(info, INTEL_DISPLAY_A_HSYNC + pipeOffset);
+	kprintf("  HSYNC start %" B_PRIu32 " end %" B_PRIu32 "\n",
+		(value & 0xFFFF) + 1, (value >> 16) + 1);
+	value = read32(info, INTEL_DISPLAY_A_VTOTAL + pipeOffset);
+	kprintf("  VTOTAL start %" B_PRIu32 " end %" B_PRIu32 "\n",
+		(value & 0xFFFF) + 1, (value >> 16) + 1);
+	value = read32(info, INTEL_DISPLAY_A_VBLANK + pipeOffset);
+	kprintf("  VBLANK start %" B_PRIu32 " end %" B_PRIu32 "\n",
+		(value & 0xFFFF) + 1, (value >> 16) + 1);
+	value = read32(info, INTEL_DISPLAY_A_VSYNC + pipeOffset);
+	kprintf("  VSYNC start %" B_PRIu32 " end %" B_PRIu32 "\n",
+		(value & 0xFFFF) + 1, (value >> 16) + 1);
+	value = read32(info, INTEL_DISPLAY_A_PIPE_SIZE + pipeOffset);
+	kprintf("  SIZE %" B_PRIu32 "x%" B_PRIu32 "\n",
+		(value & 0xFFFF) + 1, (value >> 16) + 1);
+
+	if (info.pch_info != INTEL_PCH_NONE) {
+		kprintf("intel_extreme transcoder configuration:\n");
+
+		value = read32(info, INTEL_TRANSCODER_A_HTOTAL + pipeOffset);
+		kprintf("  HTOTAL start %" B_PRIu32 " end %" B_PRIu32 "\n",
+			(value & 0xFFFF) + 1, (value >> 16) + 1);
+		value = read32(info, INTEL_TRANSCODER_A_HBLANK + pipeOffset);
+		kprintf("  HBLANK start %" B_PRIu32 " end %" B_PRIu32 "\n",
+			(value & 0xFFFF) + 1, (value >> 16) + 1);
+		value = read32(info, INTEL_TRANSCODER_A_HSYNC + pipeOffset);
+		kprintf("  HSYNC start %" B_PRIu32 " end %" B_PRIu32 "\n",
+			(value & 0xFFFF) + 1, (value >> 16) + 1);
+		value = read32(info, INTEL_TRANSCODER_A_VTOTAL + pipeOffset);
+		kprintf("  VTOTAL start %" B_PRIu32 " end %" B_PRIu32 "\n",
+			(value & 0xFFFF) + 1, (value >> 16) + 1);
+		value = read32(info, INTEL_TRANSCODER_A_VBLANK + pipeOffset);
+		kprintf("  VBLANK start %" B_PRIu32 " end %" B_PRIu32 "\n",
+			(value & 0xFFFF) + 1, (value >> 16) + 1);
+		value = read32(info, INTEL_TRANSCODER_A_VSYNC + pipeOffset);
+		kprintf("  VSYNC start %" B_PRIu32 " end %" B_PRIu32 "\n",
+			(value & 0xFFFF) + 1, (value >> 16) + 1);
+		value = read32(info, INTEL_TRANSCODER_A_IMAGE_SIZE + pipeOffset);
+		kprintf("  SIZE %" B_PRIu32 "x%" B_PRIu32 "\n",
+			(value & 0xFFFF) + 1, (value >> 16) + 1);
+	}
+
+	kprintf("intel_extreme display plane configuration:\n");
+
+	value = read32(info, INTEL_DISPLAY_A_CONTROL + pipeOffset);
+	kprintf("  CONTROL: %" B_PRIx32 "\n", value);
+	value = read32(info, INTEL_DISPLAY_A_BASE + pipeOffset);
+	kprintf("  BASE: %" B_PRIx32 "\n", value);
+	value = read32(info, INTEL_DISPLAY_A_BYTES_PER_ROW + pipeOffset);
+	kprintf("  BYTES_PER_ROW: %" B_PRIx32 "\n", value);
+	value = read32(info, INTEL_DISPLAY_A_SURFACE + pipeOffset);
+	kprintf("  SURFACE: %" B_PRIx32 "\n", value);
+
+	return 0;
+}
+
 #endif	// DEBUG_COMMANDS
 
 
@@ -132,6 +218,8 @@ device_open(const char* name, uint32 /*flags*/, void** _cookie)
 #ifdef DEBUG_COMMANDS
 			add_debugger_command("ie_reg", getset_register,
 				"dumps or sets the specified intel_extreme register");
+			add_debugger_command("ie_pipe", dump_pipe_info,
+				"show pipe configuration information");
 #endif
 		}
 	}
@@ -170,6 +258,7 @@ device_free(void* data)
 
 #ifdef DEBUG_COMMANDS
 		remove_debugger_command("ie_reg", getset_register);
+		remove_debugger_command("ie_pipe", dump_pipe_info);
 #endif
 	}
 
@@ -185,46 +274,41 @@ device_ioctl(void* data, uint32 op, void* buffer, size_t bufferLength)
 
 	switch (op) {
 		case B_GET_ACCELERANT_SIGNATURE:
-			strcpy((char*)buffer, INTEL_ACCELERANT_NAME);
 			TRACE("accelerant: %s\n", INTEL_ACCELERANT_NAME);
+			if (user_strlcpy((char*)buffer, INTEL_ACCELERANT_NAME,
+					bufferLength) < B_OK)
+				return B_BAD_ADDRESS;
 			return B_OK;
 
 		// needed to share data between kernel and accelerant
 		case INTEL_GET_PRIVATE_DATA:
 		{
-			intel_get_private_data* data = (intel_get_private_data* )buffer;
+			intel_get_private_data data;
+			if (user_memcpy(&data, buffer, sizeof(intel_get_private_data)) < B_OK)
+				return B_BAD_ADDRESS;
 
-			if (data->magic == INTEL_PRIVATE_DATA_MAGIC) {
-				data->shared_info_area = info->shared_area;
-				return B_OK;
+			if (data.magic == INTEL_PRIVATE_DATA_MAGIC) {
+				data.shared_info_area = info->shared_area;
+				return user_memcpy(buffer, &data,
+					sizeof(intel_get_private_data));
 			}
 			break;
 		}
 
 		// needed for cloning
 		case INTEL_GET_DEVICE_NAME:
-#ifdef __HAIKU__
 			if (user_strlcpy((char* )buffer, gDeviceNames[info->id],
-					B_PATH_NAME_LENGTH) < B_OK)
+					bufferLength) < B_OK)
 				return B_BAD_ADDRESS;
-#else
-			strncpy((char* )buffer, gDeviceNames[info->id], B_PATH_NAME_LENGTH);
-			((char* )buffer)[B_PATH_NAME_LENGTH - 1] = '\0';
-#endif
 			return B_OK;
 
 		// graphics mem manager
 		case INTEL_ALLOCATE_GRAPHICS_MEMORY:
 		{
 			intel_allocate_graphics_memory allocMemory;
-#ifdef __HAIKU__
 			if (user_memcpy(&allocMemory, buffer,
 					sizeof(intel_allocate_graphics_memory)) < B_OK)
 				return B_BAD_ADDRESS;
-#else
-			memcpy(&allocMemory, buffer,
-				sizeof(intel_allocate_graphics_memory));
-#endif
 
 			if (allocMemory.magic != INTEL_PRIVATE_DATA_MAGIC)
 				return B_BAD_VALUE;
@@ -234,14 +318,9 @@ device_ioctl(void* data, uint32 op, void* buffer, size_t bufferLength)
 				&allocMemory.buffer_base);
 			if (status == B_OK) {
 				// copy result
-#ifdef __HAIKU__
 				if (user_memcpy(buffer, &allocMemory,
 						sizeof(intel_allocate_graphics_memory)) < B_OK)
 					return B_BAD_ADDRESS;
-#else
-				memcpy(buffer, &allocMemory,
-					sizeof(intel_allocate_graphics_memory));
-#endif
 			}
 			return status;
 		}
@@ -249,13 +328,9 @@ device_ioctl(void* data, uint32 op, void* buffer, size_t bufferLength)
 		case INTEL_FREE_GRAPHICS_MEMORY:
 		{
 			intel_free_graphics_memory freeMemory;
-#ifdef __HAIKU__
 			if (user_memcpy(&freeMemory, buffer,
 					sizeof(intel_free_graphics_memory)) < B_OK)
 				return B_BAD_ADDRESS;
-#else
-			memcpy(&freeMemory, buffer, sizeof(intel_free_graphics_memory));
-#endif
 
 			if (freeMemory.magic == INTEL_PRIVATE_DATA_MAGIC)
 				return intel_free_memory(*info, freeMemory.buffer_base);
@@ -263,8 +338,8 @@ device_ioctl(void* data, uint32 op, void* buffer, size_t bufferLength)
 		}
 
 		default:
-			ERROR("ioctl() unknown message %ld (length = %ld)\n", op,
-				bufferLength);
+			ERROR("ioctl() unknown message %" B_PRIu32 " (length = %"
+				B_PRIuSIZE ")\n", op, bufferLength);
 			break;
 	}
 

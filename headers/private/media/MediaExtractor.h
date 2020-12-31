@@ -37,6 +37,7 @@ struct stream_info {
 class MediaExtractor {
 public:
 								MediaExtractor(BDataIO* source, int32 flags);
+
 								~MediaExtractor();
 
 			status_t			InitCheck();
@@ -69,7 +70,12 @@ public:
 			status_t			GetStreamMetaData(int32 stream,
 									BMessage* _data) const;
 
+			void				StopProcessing();
+
+
 private:
+			void				_Init(BDataIO* source, int32 flags);
+
 			void				_RecycleLastChunk(stream_info& info);
 	static	int32				_ExtractorEntry(void* arg);
 			void				_ExtractorThread();

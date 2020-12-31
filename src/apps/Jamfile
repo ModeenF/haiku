@@ -1,6 +1,5 @@
 SubDir HAIKU_TOP src apps ;
 
-HaikuSubInclude 3dmov ;
 HaikuSubInclude aboutsystem ;
 HaikuSubInclude activitymonitor ;
 HaikuSubInclude autoraise ;
@@ -25,7 +24,6 @@ HaikuSubInclude gradients ;
 HaikuSubInclude haiku3d ;
 HaikuSubInclude haikudepot ;
 HaikuSubInclude icon-o-matic ;
-HaikuSubInclude installedpackages ;
 HaikuSubInclude installer ;
 HaikuSubInclude launchbox ;
 HaikuSubInclude login ;
@@ -51,6 +49,7 @@ HaikuSubInclude resedit ;
 HaikuSubInclude screenshot ;
 HaikuSubInclude serialconnect ;
 HaikuSubInclude showimage ;
+HaikuSubInclude softwareupdater ;
 HaikuSubInclude soundrecorder ;
 HaikuSubInclude stylededit ;
 HaikuSubInclude sudoku ;
@@ -60,5 +59,4 @@ HaikuSubInclude text_search ;
 HaikuSubInclude tracker ;
 HaikuSubInclude tv ;
 HaikuSubInclude webpositive ;
-HaikuSubInclude webwatch ;
 HaikuSubInclude workspaces ;

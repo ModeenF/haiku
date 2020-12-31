@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2015, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -111,6 +111,42 @@
  * other governmental approval, or letter of assurance, without first obtaining
  * such license, approval or letter.
  *
+ *****************************************************************************
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * following license:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions, and the following disclaimer,
+ *    without modification.
+ * 2. Redistributions in binary form must reproduce at minimum a disclaimer
+ *    substantially similar to the "NO WARRANTY" disclaimer below
+ *    ("Disclaimer") and any redistribution must be conditioned upon
+ *    including a substantially similar Disclaimer requirement for further
+ *    binary redistribution.
+ * 3. Neither the names of the above-listed copyright holders nor the names
+ *    of any contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Alternatively, you may choose to be licensed under the terms of the
+ * GNU General Public License ("GPL") version 2 as published by the Free
+ * Software Foundation.
+ *
  *****************************************************************************/
 
 #include "acpi.h"
@@ -171,7 +207,8 @@ AcpiExCheckObjectType (
          * specification, a store to a constant is a noop.)
          */
         if ((ThisType == ACPI_TYPE_INTEGER) &&
-            (((ACPI_OPERAND_OBJECT *) Object)->Common.Flags & AOPOBJ_AML_CONSTANT))
+            (((ACPI_OPERAND_OBJECT *) Object)->Common.Flags &
+                AOPOBJ_AML_CONSTANT))
         {
             return (AE_OK);
         }
@@ -288,7 +325,8 @@ AcpiExResolveOperands (
              */
             if (ObjectType == ACPI_TYPE_LOCAL_ALIAS)
             {
-                ObjDesc = AcpiNsGetAttachedObject ((ACPI_NAMESPACE_NODE *) ObjDesc);
+                ObjDesc = AcpiNsGetAttachedObject (
+                    (ACPI_NAMESPACE_NODE *) ObjDesc);
                 *StackPtr = ObjDesc;
                 ObjectType = ((ACPI_NAMESPACE_NODE *) ObjDesc)->Type;
             }
@@ -369,7 +407,8 @@ AcpiExResolveOperands (
         {
         case ARGI_REF_OR_STRING:        /* Can be a String or Reference */
 
-            if ((ACPI_GET_DESCRIPTOR_TYPE (ObjDesc) == ACPI_DESC_TYPE_OPERAND) &&
+            if ((ACPI_GET_DESCRIPTOR_TYPE (ObjDesc) ==
+                ACPI_DESC_TYPE_OPERAND) &&
                 (ObjDesc->Common.Type == ACPI_TYPE_STRING))
             {
                 /*
@@ -392,6 +431,8 @@ AcpiExResolveOperands (
         case ARGI_TARGETREF:     /* Allows implicit conversion rules before store */
         case ARGI_FIXED_TARGET:  /* No implicit conversion before store to target */
         case ARGI_SIMPLE_TARGET: /* Name, Local, or Arg - no implicit conversion  */
+        case ARGI_STORE_TARGET:
+
             /*
              * Need an operand of type ACPI_TYPE_LOCAL_REFERENCE
              * A Namespace Node is OK as-is
@@ -401,8 +442,8 @@ AcpiExResolveOperands (
                 goto NextOperand;
             }
 
-            Status = AcpiExCheckObjectType (ACPI_TYPE_LOCAL_REFERENCE,
-                            ObjectType, ObjDesc);
+            Status = AcpiExCheckObjectType (
+                ACPI_TYPE_LOCAL_REFERENCE, ObjectType, ObjDesc);
             if (ACPI_FAILURE (Status))
             {
                 return_ACPI_STATUS (Status);
@@ -495,11 +536,13 @@ AcpiExResolveOperands (
         case ARGI_INTEGER:
 
             /*
-             * Need an operand of type ACPI_TYPE_INTEGER,
-             * But we can implicitly convert from a STRING or BUFFER
-             * Aka - "Implicit Source Operand Conversion"
+             * Need an operand of type ACPI_TYPE_INTEGER, but we can
+             * implicitly convert from a STRING or BUFFER.
+             *
+             * Known as "Implicit Source Operand Conversion"
              */
-            Status = AcpiExConvertToInteger (ObjDesc, StackPtr, 16);
+            Status = AcpiExConvertToInteger (ObjDesc, StackPtr,
+                ACPI_IMPLICIT_CONVERSION);
             if (ACPI_FAILURE (Status))
             {
                 if (Status == AE_TYPE)
@@ -553,8 +596,8 @@ AcpiExResolveOperands (
              * But we can implicitly convert from a BUFFER or INTEGER
              * Aka - "Implicit Source Operand Conversion"
              */
-            Status = AcpiExConvertToString (ObjDesc, StackPtr,
-                        ACPI_IMPLICIT_CONVERT_HEX);
+            Status = AcpiExConvertToString (
+                ObjDesc, StackPtr, ACPI_IMPLICIT_CONVERT_HEX);
             if (ACPI_FAILURE (Status))
             {
                 if (Status == AE_TYPE)
@@ -687,8 +730,10 @@ AcpiExResolveOperands (
 
         case ARGI_REGION_OR_BUFFER: /* Used by Load() only */
 
-            /* Need an operand of type REGION or a BUFFER (which could be a resolved region field) */
-
+            /*
+             * Need an operand of type REGION or a BUFFER
+             * (which could be a resolved region field)
+             */
             switch (ObjDesc->Common.Type)
             {
             case ACPI_TYPE_BUFFER:
@@ -732,9 +777,9 @@ AcpiExResolveOperands (
                 if (AcpiGbl_EnableInterpreterSlack)
                 {
                     /*
-                     * Enable original behavior of Store(), allowing any and all
-                     * objects as the source operand. The ACPI spec does not
-                     * allow this, however.
+                     * Enable original behavior of Store(), allowing any
+                     * and all objects as the source operand. The ACPI
+                     * spec does not allow this, however.
                      */
                     break;
                 }
@@ -747,7 +792,8 @@ AcpiExResolveOperands (
                 }
 
                 ACPI_ERROR ((AE_INFO,
-                    "Needed Integer/Buffer/String/Package/Ref/Ddb], found [%s] %p",
+                    "Needed Integer/Buffer/String/Package/Ref/Ddb]"
+                    ", found [%s] %p",
                     AcpiUtGetObjectTypeName (ObjDesc), ObjDesc));
 
                 return_ACPI_STATUS (AE_AML_OPERAND_TYPE);
@@ -769,8 +815,8 @@ AcpiExResolveOperands (
          * Make sure that the original object was resolved to the
          * required object type (Simple cases only).
          */
-        Status = AcpiExCheckObjectType (TypeNeeded,
-                        (*StackPtr)->Common.Type, *StackPtr);
+        Status = AcpiExCheckObjectType (
+            TypeNeeded, (*StackPtr)->Common.Type, *StackPtr);
         if (ACPI_FAILURE (Status))
         {
             return_ACPI_STATUS (Status);

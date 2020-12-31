@@ -10,6 +10,7 @@
 
 #include "HWInterface.h"
 
+#include <AutoDeleter.h>
 #include <Locker.h>
 #include <ObjectList.h>
 
@@ -36,6 +37,7 @@ virtual	EventStream*				CreateEventStream();
 
 virtual	status_t					SetMode(const display_mode& mode);
 virtual	void						GetMode(display_mode* mode);
+virtual	status_t					GetPreferredMode(display_mode* mode);
 
 virtual status_t					GetDeviceInfo(accelerant_device_info* info);
 virtual status_t					GetFrameBufferConfig(
@@ -59,6 +61,9 @@ virtual status_t					SetDPMSMode(uint32 state);
 virtual uint32						DPMSMode();
 virtual uint32						DPMSCapabilities();
 
+virtual status_t			SetBrightness(float);
+virtual status_t			GetBrightness(float*);
+
 		// cursor handling
 virtual	void						SetCursor(ServerCursor* cursor);
 virtual	void						SetCursorVisible(bool visible);
@@ -71,13 +76,14 @@ virtual	RenderingBuffer*			FrontBuffer() const;
 virtual	RenderingBuffer*			BackBuffer() const;
 virtual	bool						IsDoubleBuffered() const;
 
-virtual	status_t					InvalidateRegion(BRegion& region);
+virtual	status_t					InvalidateRegion(const BRegion& region);
 virtual	status_t					Invalidate(const BRect& frame);
 virtual	status_t					CopyBackToFront(const BRect& frame);
 
 		// drawing engine interface
-		StreamingRingBuffer*		ReceiveBuffer() { return fReceiveBuffer; }
-		StreamingRingBuffer*		SendBuffer() { return fSendBuffer; }
+		StreamingRingBuffer*		ReceiveBuffer()
+										{ return fReceiveBuffer.Get(); }
+		StreamingRingBuffer*		SendBuffer() { return fSendBuffer.Get(); }
 
 typedef bool (*CallbackFunction)(void* cookie, RemoteMessage& message);
 
@@ -94,31 +100,36 @@ static	int							_CallbackCompare(const uint32* key,
 static	int32						_EventThreadEntry(void* data);
 		status_t					_EventThread();
 
-		status_t					_Connect();
+static	status_t					_NewConnectionCallback(void *cookie,
+										BNetEndpoint &endpoint);
+		status_t					_NewConnection(BNetEndpoint &endpoint);
+
 		void						_Disconnect();
 
-		const char*					fTarget;
-		char*						fRemoteHost;
-		uint32						fRemotePort;
+		void						_FillDisplayModeTiming(display_mode &mode);
 
+		const char*					fTarget;
 		status_t					fInitStatus;
 		bool						fIsConnected;
 		uint32						fProtocolVersion;
 		uint32						fConnectionSpeed;
-		display_mode				fDisplayMode;
+		display_mode				fFallbackMode;
+		display_mode				fCurrentMode;
+		display_mode				fClientMode;
 		uint16						fListenPort;
 
-		BNetEndpoint*				fSendEndpoint;
-		BNetEndpoint*				fReceiveEndpoint;
+		ObjectDeleter<BNetEndpoint>	fListenEndpoint;
+		ObjectDeleter<StreamingRingBuffer>
+									fSendBuffer;
+		ObjectDeleter<StreamingRingBuffer>
+									fReceiveBuffer;
 
-		StreamingRingBuffer*		fSendBuffer;
-		StreamingRingBuffer*		fReceiveBuffer;
-
-		NetSender*					fSender;
-		NetReceiver*				fReceiver;
+		ObjectDeleter<NetSender>	fSender;
+		ObjectDeleter<NetReceiver>	fReceiver;
 
 		thread_id					fEventThread;
-		RemoteEventStream*			fEventStream;
+		ObjectDeleter<RemoteEventStream>
+									fEventStream;
 
 		BLocker						fCallbackLocker;
 		BObjectList<callback_info>	fCallbacks;

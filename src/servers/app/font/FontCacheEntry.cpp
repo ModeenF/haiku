@@ -143,14 +143,13 @@ FontCacheEntry::FontCacheEntry()
 FontCacheEntry::~FontCacheEntry()
 {
 //printf("~FontCacheEntry()\n");
-	delete fGlyphCache;
 }
 
 
 bool
 FontCacheEntry::Init(const ServerFont& font, bool forceVector)
 {
-	if (fGlyphCache == NULL)
+	if (fGlyphCache.Get() == NULL)
 		return false;
 
 	glyph_rendering renderingType = _RenderTypeFor(font, forceVector);
@@ -266,6 +265,16 @@ FontCacheEntry::CachedGlyph(uint32 glyphCode)
 }
 
 
+bool
+FontCacheEntry::CanCreateGlyph(uint32 glyphCode)
+{
+	// Note that this bypass any fallback or caching because it is used in
+	// the fallback code itself.
+	uint32 glyphIndex = fEngine.GlyphIndexForGlyphCode(glyphCode);
+	return glyphIndex != 0;
+}
+
+
 const GlyphCache*
 FontCacheEntry::CreateGlyph(uint32 glyphCode, FontCacheEntry* fallbackEntry)
 {
@@ -304,7 +313,8 @@ FontCacheEntry::CreateGlyph(uint32 glyphCode, FontCacheEntry* fallbackEntry)
 			// get the normal space glyph
 			glyphIndex = engine->GlyphIndexForGlyphCode(0x20 /* space */);
 		} else {
-			// render the "missing glyph box" (by simply keeping glyphIndex 0)
+			// The glyph was not found anywhere.
+			return NULL;
 		}
 	}
 

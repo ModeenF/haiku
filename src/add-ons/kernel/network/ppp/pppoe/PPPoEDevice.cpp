@@ -8,6 +8,7 @@
 #include <ByteOrder.h>
 #include <net/if_dl.h>
 #include <net_stack.h>
+#include <arpa/inet.h>
 
 #include <ethernet.h>
 #include <ether_driver.h>
@@ -247,8 +248,8 @@ PPPoEDevice::Down()
 		return true;
 	}
 
+	// this tells StateMachine that DownEvent() does not mean we lost connection
 	DownStarted();
-		// this tells StateMachine that DownEvent() does not mean we lost connection
 
 	// create PADT
 	DiscoveryPacket discovery(PADT, SessionID());
@@ -256,7 +257,8 @@ PPPoEDevice::Down()
 
 	net_buffer *packet = discovery.ToNetBuffer(MTU());
 	if (!packet) {
-		ERROR("PPPoEDevice::Down(): ToNetBuffer() failed; MTU=%ld\n", MTU());
+		ERROR("PPPoEDevice::Down(): ToNetBuffer() failed; MTU=%" B_PRIu32 "\n",
+			MTU());
 		DownEvent();
 		return false;
 	}

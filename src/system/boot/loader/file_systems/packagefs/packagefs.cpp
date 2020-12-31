@@ -287,6 +287,9 @@ struct PackageLoaderErrorOutput : BErrorOutput {
 
 	virtual void PrintErrorVarArgs(const char* format, va_list args)
 	{
+		char buffer[256];
+		vsnprintf(buffer, sizeof(buffer), format, args);
+		dprintf("%s", buffer);
 	}
 };
 
@@ -525,7 +528,7 @@ struct File : ::Node {
 		off_t size = fFile->Size();
 		if (pos < 0 || pos > size)
 			return B_BAD_VALUE;
-		if (pos + bufferSize > size)
+		if (pos + (off_t)bufferSize > size)
 			bufferSize = size - pos;
 
 		if (bufferSize > 0) {

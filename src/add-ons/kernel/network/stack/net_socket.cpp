@@ -221,18 +221,23 @@ add_ancillary_data(net_socket* socket, ancillary_data_container* container,
 {
 	cmsghdr* header = (cmsghdr*)data;
 
-	while (dataLen > 0) {
-		if (header->cmsg_len < sizeof(cmsghdr) || header->cmsg_len > dataLen)
-			return B_BAD_VALUE;
+	if (dataLen == 0)
+		return B_OK;
 
-		if (socket->first_info->add_ancillary_data == NULL)
-			return B_NOT_SUPPORTED;
+	if (socket->first_info->add_ancillary_data == NULL)
+		return B_NOT_SUPPORTED;
+
+	while (true) {
+		if (header->cmsg_len < CMSG_LEN(0) || header->cmsg_len > dataLen)
+			return B_BAD_VALUE;
 
 		status_t status = socket->first_info->add_ancillary_data(
 			socket->first_protocol, container, header);
 		if (status != B_OK)
 			return status;
 
+		if (dataLen <= _ALIGN(header->cmsg_len))
+			break;
 		dataLen -= _ALIGN(header->cmsg_len);
 		header = (cmsghdr*)((uint8*)header + _ALIGN(header->cmsg_len));
 	}
@@ -318,8 +323,9 @@ socket_receive_no_buffer(net_socket* socket, msghdr* header, void* data,
 	if (bytesRead < 0)
 		return bytesRead;
 
-	CObjectDeleter<ancillary_data_container> ancillaryDataDeleter(ancillaryData,
-		&delete_ancillary_data_container);
+	CObjectDeleter<
+		ancillary_data_container, void, delete_ancillary_data_container>
+		ancillaryDataDeleter(ancillaryData);
 
 	// process ancillary data
 	if (header != NULL) {
@@ -340,7 +346,9 @@ socket_receive_no_buffer(net_socket* socket, msghdr* header, void* data,
 static void
 print_socket_line(net_socket_private* socket, const char* prefix)
 {
-	BReference<net_socket_private> parent = socket->parent.GetReference();
+	BReference<net_socket_private> parent;
+	if (socket->parent.PrivatePointer() != NULL)
+		parent = socket->parent.GetReference();
 	kprintf("%s%p %2d.%2d.%2d %6" B_PRId32 " %p %p  %p%s\n", prefix, socket,
 		socket->family, socket->type, socket->protocol, socket->owner,
 		socket->first_protocol, socket->first_info, parent.Get(),
@@ -361,7 +369,9 @@ dump_socket(int argc, char** argv)
 	kprintf("SOCKET %p\n", socket);
 	kprintf("  family.type.protocol: %d.%d.%d\n",
 		socket->family, socket->type, socket->protocol);
-	BReference<net_socket_private> parent = socket->parent.GetReference();
+	BReference<net_socket_private> parent;
+	if (socket->parent.PrivatePointer() != NULL)
+		parent = socket->parent.GetReference();
 	kprintf("  parent:               %p\n", parent.Get());
 	kprintf("  first protocol:       %p\n", socket->first_protocol);
 	kprintf("  first module_info:    %p\n", socket->first_info);
@@ -524,7 +534,7 @@ socket_writev(net_socket* socket, const iovec* vecs, size_t vecCount,
 
 
 status_t
-socket_control(net_socket* socket, int32 op, void* data, size_t length)
+socket_control(net_socket* socket, uint32 op, void* data, size_t length)
 {
 	switch (op) {
 		case FIONBIO:
@@ -820,6 +830,11 @@ socket_connected(net_socket* _socket)
 
 	TRACE("socket_connected(%p)\n", socket);
 
+	if (socket->parent == NULL) {
+		socket->is_connected = true;
+		return B_OK;
+	}
+
 	BReference<net_socket_private> parent = socket->parent.GetReference();
 	if (parent.Get() == NULL)
 		return B_BAD_VALUE;
@@ -1045,10 +1060,11 @@ socket_connect(net_socket* socket, const struct sockaddr* address,
 
 
 int
-socket_getpeername(net_socket* socket, struct sockaddr* address,
+socket_getpeername(net_socket* _socket, struct sockaddr* address,
 	socklen_t* _addressLength)
 {
-	if (socket->peer.ss_len == 0)
+	net_socket_private* socket = (net_socket_private*)_socket;
+	if (!socket->is_connected || socket->peer.ss_len == 0)
 		return ENOTCONN;
 
 	memcpy(address, &socket->peer, min_c(*_addressLength, socket->peer.ss_len));
@@ -1061,8 +1077,15 @@ int
 socket_getsockname(net_socket* socket, struct sockaddr* address,
 	socklen_t* _addressLength)
 {
-	if (socket->address.ss_len == 0)
-		return ENOTCONN;
+	if (socket->address.ss_len == 0) {
+		struct sockaddr buffer;
+		memset(&buffer, 0, sizeof(buffer));
+		buffer.sa_family = socket->family;
+
+		memcpy(address, &buffer, min_c(*_addressLength, sizeof(buffer)));
+		*_addressLength = sizeof(buffer);
+		return B_OK;
+	}
 
 	memcpy(address, &socket->address, min_c(*_addressLength,
 		socket->address.ss_len));
@@ -1324,8 +1347,9 @@ socket_send(net_socket* socket, msghdr* header, const void* data, size_t length,
 		return B_BAD_VALUE;
 
 	ancillary_data_container* ancillaryData = NULL;
-	CObjectDeleter<ancillary_data_container> ancillaryDataDeleter(NULL,
-		&delete_ancillary_data_container);
+	CObjectDeleter<
+		ancillary_data_container, void, delete_ancillary_data_container>
+		ancillaryDataDeleter;
 
 	if (header != NULL) {
 		address = (const sockaddr*)header->msg_name;
@@ -1452,7 +1476,7 @@ socket_send(net_socket* socket, msghdr* header, const void* data, size_t length,
 		}
 
 		// attach ancillary data to the first buffer
-		status_t status = B_OK;
+		status_t status;
 		if (ancillaryData != NULL) {
 			gNetBufferModule.set_ancillary_data(buffer, ancillaryData);
 			ancillaryDataDeleter.Detach();
@@ -1465,10 +1489,7 @@ socket_send(net_socket* socket, msghdr* header, const void* data, size_t length,
 		memcpy(buffer->destination, address, addressLength);
 		buffer->destination->sa_len = addressLength;
 
-		if (status == B_OK) {
-			status = socket->first_info->send_data(socket->first_protocol,
-				buffer);
-		}
+		status = socket->first_info->send_data(socket->first_protocol, buffer);
 		if (status != B_OK) {
 			size_t sizeAfterSend = buffer->size;
 			gNetBufferModule.free(buffer);
@@ -1639,8 +1660,7 @@ socket_socketpair(int family, int type, int protocol, net_socket* sockets[2])
 	if (error != B_OK)
 		return error;
 
-	if (error == B_OK)
-		error = socket_open(family, type, protocol, &sockets[1]);
+	error = socket_open(family, type, protocol, &sockets[1]);
 
 	// bind one
 	if (error == B_OK)

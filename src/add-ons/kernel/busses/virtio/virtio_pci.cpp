@@ -1,5 +1,5 @@
 /*
- * Copyright 2013, Jérôme Duval, korli@users.berlios.de.
+ * Copyright 2013, 2018, Jérôme Duval, jerome.duval@gmail.com.
  * Distributed under the terms of the MIT License.
  */
 
@@ -238,15 +238,15 @@ write_device_config(void* cookie, uint8 _offset, const void* _buffer,
 		uint8 size = 4;
 		if (bufferSize == 1) {
 			size = 1;
-			bus->pci->write_pci_config(bus->device,
-			offset, size, *buffer);
+			bus->pci->write_io_8(bus->device,
+				offset, *buffer);
 		} else if (bufferSize <= 3) {
 			size = 2;
-			bus->pci->write_pci_config(bus->device,
-			offset, size, *(const uint16*)buffer);
+			bus->pci->write_io_16(bus->device,
+				offset, *(const uint16*)buffer);
 		} else {
-			bus->pci->write_pci_config(bus->device,
-				offset, size, *(const uint32*)buffer);
+			bus->pci->write_io_32(bus->device,
+				offset, *(const uint32*)buffer);
 		}
 		buffer += size;
 		bufferSize -= size;
@@ -390,6 +390,36 @@ setup_interrupt(void* cookie, uint16 queueCount)
 }
 
 
+status_t
+free_interrupt(void* cookie)
+{
+	CALLED();
+	virtio_pci_sim_info* bus = (virtio_pci_sim_info*)cookie;
+	pci_info *pciInfo = &bus->info;
+
+	if (bus->irq_type == VIRTIO_IRQ_MSI_X) {
+		remove_io_interrupt_handler(bus->irq, virtio_pci_config_interrupt,
+			bus);
+		int32 irq = bus->irq + 1;
+		for (int32 queue = 0; queue < bus->queue_count; queue++, irq++) {
+			remove_io_interrupt_handler(irq, virtio_pci_queue_interrupt,
+				&bus->cookies[queue]);
+		}
+		delete[] bus->cookies;
+
+	} else
+		remove_io_interrupt_handler(bus->irq, virtio_pci_interrupt, bus);
+
+	if (sPCIx86Module != NULL && bus->irq_type != VIRTIO_IRQ_LEGACY) {
+		sPCIx86Module->disable_msi(pciInfo->bus, pciInfo->device,
+			pciInfo->function);
+		sPCIx86Module->unconfigure_msi(pciInfo->bus, pciInfo->device,
+			pciInfo->function);
+	}
+	return B_OK;
+}
+
+
 void
 notify_queue(void* cookie, uint16 queue)
 {
@@ -476,10 +506,13 @@ uninit_bus(void* bus_cookie)
 			remove_io_interrupt_handler(bus->irq, virtio_pci_config_interrupt,
 					bus);
 		}
-		sPCIx86Module->disable_msi(bus->info.bus,
-			bus->info.device, bus->info.function);
-		sPCIx86Module->unconfigure_msi(bus->info.bus,
-			bus->info.device, bus->info.function);
+
+		if (sPCIx86Module != NULL) {
+			sPCIx86Module->disable_msi(bus->info.bus,
+				bus->info.device, bus->info.function);
+			sPCIx86Module->unconfigure_msi(bus->info.bus,
+				bus->info.device, bus->info.function);
+		}
 	} else
 		remove_io_interrupt_handler(bus->irq, virtio_pci_interrupt, bus);
 	if (sPCIx86Module != NULL) {
@@ -640,6 +673,7 @@ static virtio_sim_interface gVirtioPCIDeviceModule = {
 	get_queue_ring_size,
 	setup_queue,
 	setup_interrupt,
+	free_interrupt,
 	notify_queue
 };
 

@@ -22,9 +22,11 @@ PlaylistItem::Listener::Listener()
 {
 }
 
+
 PlaylistItem::Listener::~Listener()
 {
 }
+
 
 void PlaylistItem::Listener::ItemChanged(const PlaylistItem* item)
 {
@@ -34,7 +36,7 @@ void PlaylistItem::Listener::ItemChanged(const PlaylistItem* item)
 // #pragma mark -
 
 
-//#define DEBUG_INSTANCE_COUNT
+// #define DEBUG_INSTANCE_COUNT
 #ifdef DEBUG_INSTANCE_COUNT
 static vint32 sInstanceCount = 0;
 #endif
@@ -42,7 +44,8 @@ static vint32 sInstanceCount = 0;
 
 PlaylistItem::PlaylistItem()
 	:
-	fPlaybackFailed(false)
+	fPlaybackFailed(false),
+	fTrackSupplier(NULL)
 {
 #ifdef DEBUG_INSTANCE_COUNT
 	atomic_add(&sInstanceCount, 1);
@@ -57,6 +60,31 @@ PlaylistItem::~PlaylistItem()
 	atomic_add(&sInstanceCount, -1);
 	printf("%p->PlaylistItem::~PlaylistItem() (%ld)\n", this, sInstanceCount);
 #endif
+}
+
+
+TrackSupplier*
+PlaylistItem::GetTrackSupplier()
+{
+	if (fTrackSupplier == NULL)
+		fTrackSupplier = _CreateTrackSupplier();
+
+	return fTrackSupplier;
+}
+
+
+void
+PlaylistItem::ReleaseTrackSupplier()
+{
+	delete fTrackSupplier;
+	fTrackSupplier = NULL;
+}
+
+
+bool
+PlaylistItem::HasTrackSupplier() const
+{
+	return fTrackSupplier != NULL;
 }
 
 
@@ -123,6 +151,40 @@ PlaylistItem::Duration()
 }
 
 
+int64
+PlaylistItem::LastFrame() const
+{
+	int64 lastFrame;
+	if (GetAttribute(ATTR_INT64_FRAME, lastFrame) != B_OK)
+		lastFrame = 0;
+	return lastFrame;
+}
+
+
+float
+PlaylistItem::LastVolume() const
+{
+	float lastVolume;
+	if (GetAttribute(ATTR_FLOAT_VOLUME, lastVolume) != B_OK)
+		lastVolume = -1;
+	return lastVolume;
+}
+
+
+status_t
+PlaylistItem::SetLastFrame(int64 value)
+{
+	return SetAttribute(ATTR_INT64_FRAME, value);
+}
+
+
+status_t
+PlaylistItem::SetLastVolume(float value)
+{
+	return SetAttribute(ATTR_FLOAT_VOLUME, value);
+}
+
+
 void
 PlaylistItem::SetPlaybackFailed()
 {
@@ -160,10 +222,10 @@ PlaylistItem::_NotifyListeners() const
 }
 
 
-bigtime_t PlaylistItem::_CalculateDuration() const
+bigtime_t PlaylistItem::_CalculateDuration()
 {
 	// To be overridden in subclasses with more efficient methods
-	TrackSupplier* supplier = CreateTrackSupplier();
+	TrackSupplier* supplier = GetTrackSupplier();
 
 	AudioTrackSupplier* au = supplier->CreateAudioTrackForIndex(0);
 	VideoTrackSupplier* vi = supplier->CreateVideoTrackForIndex(0);
@@ -173,7 +235,7 @@ bigtime_t PlaylistItem::_CalculateDuration() const
 
 	delete vi;
 	delete au;
-	delete supplier;
+	ReleaseTrackSupplier();
 
 	return duration;
 }

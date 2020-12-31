@@ -1,6 +1,8 @@
-/*	$FreeBSD$	*/
+/*	$FreeBSD: releng/12.0/sys/dev/iwi/if_iwivar.h 326255 2017-11-27 14:52:40Z pfg $	*/
 
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2004, 2005
  *      Damien Bergamini <damien.bergamini@free.fr>. All rights reserved.
  *
@@ -125,11 +127,13 @@ struct iwi_vap {
 #define	IWI_VAP(vap)	((struct iwi_vap *)(vap))
 
 struct iwi_softc {
-	struct ifnet		*sc_ifp;
-	void			(*sc_node_free)(struct ieee80211_node *);
+	struct mtx		sc_mtx;
+	struct ieee80211com	sc_ic;
+	struct mbufq		sc_snd;
 	device_t		sc_dev;
 
-	struct mtx		sc_mtx;
+	void			(*sc_node_free)(struct ieee80211_node *);
+
 	uint8_t			sc_mcast[IEEE80211_ADDR_LEN];
 	struct unrhdr		*sc_unr;
 
@@ -190,10 +194,10 @@ struct iwi_softc {
 	struct task		sc_radiofftask;	/* radio off processing */
 	struct task		sc_restarttask;	/* restart adapter processing */
 	struct task		sc_disassoctask;
-	struct task		sc_wmetask;	/* set wme parameters */
 	struct task		sc_monitortask;
 
-	unsigned int		sc_softled : 1,	/* enable LED gpio status */
+	unsigned int		sc_running : 1,	/* initialized */
+				sc_softled : 1,	/* enable LED gpio status */
 				sc_ledstate: 1,	/* LED on/off state */
 				sc_blinking: 1;	/* LED blink operation active */
 	u_int			sc_nictype;	/* NIC type from EEPROM */
@@ -215,6 +219,9 @@ struct iwi_softc {
 
 	struct iwi_rx_radiotap_header sc_rxtap;
 	struct iwi_tx_radiotap_header sc_txtap;
+
+	struct iwi_notif_link_quality sc_linkqual;
+	int			sc_linkqual_valid;
 
 #if defined(__HAIKU__)
 	uint32_t sc_intr_status;

@@ -32,7 +32,6 @@ public:
 			void				SetInteractive(bool interactive);
 
 	virtual	void				JobFailed(BSupportKit::BJob* job);
-	virtual	void				JobAborted(BSupportKit::BJob* job);
 
 private:
 	// UserInteractionHandler
@@ -72,6 +71,11 @@ private:
 			BPackageManager::ClientInstallationInterface
 									fClientInstallationInterface;
 			bool				fInteractive;
+
+			bool				fShowProgress;
+			off_t				fLastBytes;
+			bigtime_t			fLastRateCalcTime;
+			float				fDownloadRate;
 };
 
 

@@ -20,7 +20,6 @@
 #include <arch/cpu.h>
 #include <platform_arch.h>
 #include <platform/openfirmware/openfirmware.h>
-#include <board_config.h>
 
 #include <string.h>
 
@@ -48,6 +47,17 @@ typedef struct uboot_gd {
 	uint32 fb_base;
 } uboot_gd;
 
+#ifdef __POWERPC__
+struct board_data {
+	unsigned long	bi_memstart;	/* start of DRAM memory */
+	uint64	bi_memsize;	/* size	 of DRAM memory in bytes */
+	unsigned long	bi_flashstart;	/* start of FLASH memory */
+	unsigned long	bi_flashsize;	/* size	 of FLASH memory */
+	unsigned long	bi_flashoffset; /* reserved area for startup monitor */
+	unsigned long	bi_sramstart;	/* start of SRAM memory */
+	unsigned long	bi_sramsize;	/* size	 of SRAM memory */
+};
+#endif
 
 // GCC defined globals
 extern void (*__ctor_list)(void);
@@ -60,9 +70,6 @@ extern "C" void _start(void);
 extern "C" int start_gen(int argc, const char **argv,
 	struct image_header *uimage=NULL, void *fdt=NULL);
 extern "C" void dump_uimage(struct image_header *image);
-#if defined(__ARM__)
-extern "C" status_t arch_mailbox_init();
-#endif
 
 
 // declared in shell.S
@@ -116,12 +123,13 @@ platform_start_kernel(void)
 	mmu_init_for_kernel();
 //	smp_boot_other_cpus();
 
-	dprintf("kernel entry at %lx\n", kernelEntry);
+	dprintf("ncpus %" B_PRId32 "\n", gKernelArgs.num_cpus);
+	dprintf("kernel entry at 0x%" B_PRIxADDR "\n", kernelEntry);
 
 	status_t error = arch_start_kernel(&gKernelArgs, kernelEntry,
 		stackTop);
 
-	panic("kernel returned %lx!\n", error);
+	panic("kernel returned 0x%" B_PRIx32 "!\n", error);
 }
 
 
@@ -219,12 +227,10 @@ start_gen(int argc, const char **argv, struct image_header *uimage, void *fdt)
 
 	serial_init(gFDT);
 
-	#if defined(__ARM__)
-	arch_mailbox_init();
-	#endif
-
 	// initialize the OpenFirmware wrapper
-	of_init(NULL);
+	// TODO: We need to call this when HAIKU_KERNEL_PLATFORM == openfirmware
+	// boot_platform_init()?
+	//of_init(NULL);
 
 	console_init();
 
@@ -264,12 +270,24 @@ start_gen(int argc, const char **argv, struct image_header *uimage, void *fdt)
 	{ //DEBUG:
 		int i;
 		dprintf("argc = %d\n", argc);
-		for (i = 0; i < argc; i++)
-			dprintf("argv[%d] @%lx = '%s'\n", i, (uint32)argv[i], argv[i]);
+		for (i = 0; i < argc; i++) {
+			dprintf("argv[%d] @%" B_PRIxADDR " = '%s'\n", i,
+				(addr_t)argv[i], argv[i]);
+		}
 		dprintf("os: %d\n", (int)gUBootOS);
 		dprintf("gd @ %p\n", gUBootGlobalData);
 		if (gUBootGlobalData) {
 			dprintf("gd->bd @ %p\n", gUBootGlobalData->bd);
+#ifdef __POWERPC__
+			dprintf("gd->bd: \nmemstart = %lx\nmemsize = %Lx\nflashstart = %lx\nflashsize = %lx\nflashoffset = %lx\nsramstart = %lx\nsramsize = %lx\n",
+				gUBootGlobalData->bd->bi_memstart,
+				gUBootGlobalData->bd->bi_memsize,
+				gUBootGlobalData->bd->bi_flashstart,
+				gUBootGlobalData->bd->bi_flashsize,
+				gUBootGlobalData->bd->bi_flashoffset,
+				gUBootGlobalData->bd->bi_sramstart,
+				gUBootGlobalData->bd->bi_sramsize);
+#endif
 			dprintf("gd->fb_base @ %p\n", (void*)gUBootGlobalData->fb_base);
 		}
 		if (gUImage)
@@ -287,7 +305,7 @@ start_gen(int argc, const char **argv, struct image_header *uimage, void *fdt)
 	size_t fdtSize = gFDT ? fdt_totalsize(gFDT) : 0;
 	dprintf("fdtSize: 0x%" B_PRIxSIZE "\n", fdtSize);
 
-	mmu_init();
+	mmu_init(gFDT);
 
 	// Handle our tarFS post-mmu
 	if (args.platform.boot_tgz_size > 0) {
@@ -319,8 +337,8 @@ start_gen(int argc, const char **argv, struct image_header *uimage, void *fdt)
 		}
 		dprintf("args.arguments_count = %" B_PRId32 "\n", args.arguments_count);
 		for (int i = 0; i < args.arguments_count; i++)
-			dprintf("args.arguments[%d] @%lx = '%s'\n", i,
-				(uint32)args.arguments[i], args.arguments[i]);
+			dprintf("args.arguments[%d] @%" B_PRIxADDR " = '%s'\n", i,
+				(addr_t)args.arguments[i], args.arguments[i]);
 	}
 
 	// wait a bit to give the user the opportunity to press a key

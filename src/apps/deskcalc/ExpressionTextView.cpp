@@ -14,6 +14,7 @@
 #include <stdio.h>
 
 #include <Beep.h>
+#include <ControlLook.h>
 #include <Window.h>
 
 #include "CalcView.h"
@@ -41,6 +42,7 @@ ExpressionTextView::ExpressionTextView(BRect frame, CalcView* calcView)
 	SetDoesUndo(true);
 	SetColorSpace(B_RGB32);
 	SetFontAndColor(be_bold_font, B_FONT_ALL);
+	SetAlignment(B_ALIGN_RIGHT);
 }
 
 
@@ -133,6 +135,9 @@ ExpressionTextView::GetDragParameters(BMessage* dragMessage,
 void
 ExpressionTextView::SetTextRect(BRect rect)
 {
+	float hInset = floorf(be_control_look->DefaultLabelSpacing() / 2);
+	float vInset = floorf((rect.Height() - LineHeight(0)) / 2);
+	InputTextView::SetInsets(hInset, vInset, hInset, vInset);
 	InputTextView::SetTextRect(rect);
 
 	int32 count = fPreviousExpressions.CountItems();
@@ -198,7 +203,8 @@ ExpressionTextView::SetValue(BString value)
 	float stringWidth = font.StringWidth(value);
 
 	// make the string shorter if it does not fit in the view
-	float viewWidth = Frame().Width();
+	float viewWidth = Frame().Width()
+		- floorf(be_control_look->DefaultLabelSpacing() / 2);
 	if (value.CountChars() > 3 && stringWidth > viewWidth) {
 		// get the position of the first digit
 		int32 firstDigit = 0;
@@ -288,13 +294,13 @@ ExpressionTextView::SetValue(BString value)
 				if (digit != 10)
 					break;
 
-				value[offset] = '0';
+				value.SetByteAt(offset, '0');
 			}
 			if (digit == 10) {
 				// carry over, shift the result
 				if (value[firstDigit + 1] == '.') {
-					value[firstDigit + 1] = '0';
-					value[firstDigit] = '.';
+					value.SetByteAt(firstDigit + 1, '0');
+					value.SetByteAt(firstDigit, '.');
 				}
 				value.Insert('1', 1, firstDigit);
 
@@ -311,7 +317,7 @@ ExpressionTextView::SetValue(BString value)
 				value << 'E' << exponent;
 			} else {
 				// increase the current digit value with one
-				value[offset] = char(digit + 48);
+				value.SetByteAt(offset, char(digit + 48));
 
 				// set offset to last digit
 				offset = value.FindFirst('E');

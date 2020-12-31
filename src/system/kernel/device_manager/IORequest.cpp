@@ -1,6 +1,6 @@
 /*
  * Copyright 2008-2011, Ingo Weinhold, ingo_weinhold@gmx.de.
- * Copyright 2008, Axel Dörfler, axeld@pinc-software.de.
+ * Copyright 2008-2017, Axel Dörfler, axeld@pinc-software.de.
  * Distributed under the terms of the MIT License.
  */
 
@@ -38,6 +38,33 @@ enum {
 };
 
 
+struct virtual_vec_cookie {
+	uint32			vec_index;
+	generic_size_t	vec_offset;
+	area_id			mapped_area;
+	void*			physical_page_handle;
+	addr_t			virtual_address;
+
+	virtual_vec_cookie()
+		:
+		vec_index(0),
+		vec_offset(0),
+		mapped_area(-1),
+		physical_page_handle(NULL),
+		virtual_address((addr_t)-1)
+	{
+	}
+
+	void PutPhysicalPageIfNeeded()
+	{
+		if (virtual_address != (addr_t)-1) {
+			vm_put_physical_page(virtual_address, physical_page_handle);
+			virtual_address = (addr_t)-1;
+		}
+	}
+};
+
+
 // #pragma mark -
 
 
@@ -55,15 +82,6 @@ IORequestChunk::~IORequestChunk()
 
 
 //	#pragma mark -
-
-
-struct virtual_vec_cookie {
-	uint32			vec_index;
-	generic_size_t	vec_offset;
-	area_id			mapped_area;
-	void*			physical_page_handle;
-	addr_t			virtual_address;
-};
 
 
 IOBuffer*
@@ -89,16 +107,13 @@ IOBuffer::Create(uint32 count, bool vip)
 void
 IOBuffer::Delete()
 {
-	if (this == NULL)
-		return;
-
 	free_etc(this, fVIP ? HEAP_PRIORITY_VIP : 0);
 }
 
 
 void
-IOBuffer::SetVecs(generic_size_t firstVecOffset, const generic_io_vec* vecs,
-	uint32 count, generic_size_t length, uint32 flags)
+IOBuffer::SetVecs(generic_size_t firstVecOffset, generic_size_t lastVecSize,
+	const generic_io_vec* vecs, uint32 count, generic_size_t length, uint32 flags)
 {
 	memcpy(fVecs, vecs, sizeof(generic_io_vec) * count);
 
@@ -106,11 +121,21 @@ IOBuffer::SetVecs(generic_size_t firstVecOffset, const generic_io_vec* vecs,
 		fVecs[0].base += firstVecOffset;
 		fVecs[0].length -= firstVecOffset;
 	}
+	if (lastVecSize > 0)
+		fVecs[count - 1].length = lastVecSize;
 
 	fVecCount = count;
 	fLength = length;
 	fPhysical = (flags & B_PHYSICAL_IO_REQUEST) != 0;
 	fUser = !fPhysical && IS_USER_ADDRESS(vecs[0].base);
+
+#if KDEBUG
+	generic_size_t actualLength = 0;
+	for (size_t i = 0; i < fVecCount; i++)
+		actualLength += fVecs[i].length;
+
+	ASSERT(actualLength == fLength);
+#endif
 }
 
 
@@ -124,21 +149,11 @@ IOBuffer::GetNextVirtualVec(void*& _cookie, iovec& vector)
 		if (cookie == NULL)
 			return B_NO_MEMORY;
 
-		cookie->vec_index = 0;
-		cookie->vec_offset = 0;
-		cookie->mapped_area = -1;
-		cookie->physical_page_handle = NULL;
-		cookie->virtual_address = 0;
 		_cookie = cookie;
 	}
 
 	// recycle a potential previously mapped page
-	if (cookie->physical_page_handle != NULL) {
-// TODO: This check is invalid! The physical page mapper is not required to
-// return a non-NULL handle (the generic implementation does not)!
-		vm_put_physical_page(cookie->virtual_address,
-			cookie->physical_page_handle);
-	}
+	cookie->PutPhysicalPageIfNeeded();
 
 	if (cookie->vec_index >= fVecCount)
 		return B_BAD_INDEX;
@@ -203,7 +218,8 @@ IOBuffer::FreeVirtualVecCookie(void* _cookie)
 	virtual_vec_cookie* cookie = (virtual_vec_cookie*)_cookie;
 	if (cookie->mapped_area >= 0)
 		delete_area(cookie->mapped_area);
-// TODO: A vm_get_physical_page() may still be unmatched!
+
+	cookie->PutPhysicalPageIfNeeded();
 
 	free_etc(cookie, fVIP ? HEAP_PRIORITY_VIP : 0);
 }
@@ -706,7 +722,8 @@ IORequest::~IORequest()
 {
 	mutex_lock(&fLock);
 	DeleteSubRequests();
-	fBuffer->Delete();
+	if (fBuffer != NULL)
+		fBuffer->Delete();
 	mutex_destroy(&fLock);
 }
 
@@ -735,8 +752,8 @@ IORequest::Init(off_t offset, generic_addr_t buffer, generic_size_t length,
 
 status_t
 IORequest::Init(off_t offset, generic_size_t firstVecOffset,
-	const generic_io_vec* vecs, size_t count, generic_size_t length, bool write,
-	uint32 flags)
+	generic_size_t lastVecSize, const generic_io_vec* vecs, size_t count,
+	generic_size_t length, bool write, uint32 flags)
 {
 	ASSERT(offset >= 0);
 
@@ -744,7 +761,7 @@ IORequest::Init(off_t offset, generic_size_t firstVecOffset,
 	if (fBuffer == NULL)
 		return B_NO_MEMORY;
 
-	fBuffer->SetVecs(firstVecOffset, vecs, count, length, flags);
+	fBuffer->SetVecs(firstVecOffset, lastVecSize, vecs, count, length, flags);
 
 	fOwner = NULL;
 	fOffset = offset;
@@ -810,8 +827,9 @@ IORequest::CreateSubRequest(off_t parentOffset, off_t offset,
 	if (subRequest == NULL)
 		return B_NO_MEMORY;
 
-	status_t error = subRequest->Init(offset, vecOffset, vecs + startVec,
-		endVec - startVec + 1, length, fIsWrite, fFlags & ~B_DELETE_IO_REQUEST);
+	status_t error = subRequest->Init(offset, vecOffset, remainingLength,
+		vecs + startVec, endVec - startVec + 1, length, fIsWrite,
+		fFlags & ~B_DELETE_IO_REQUEST);
 	if (error != B_OK) {
 		delete subRequest;
 		return error;
@@ -1274,6 +1292,16 @@ IORequest::_CopySimple(void* bounceBuffer, generic_addr_t external, size_t size,
 {
 	TRACE("  IORequest::_CopySimple(%p, %#" B_PRIxGENADDR ", %lu, %d)\n",
 		bounceBuffer, external, size, copyIn);
+	if (IS_USER_ADDRESS(external)) {
+		status_t status = B_OK;
+		if (copyIn)
+			status = user_memcpy(bounceBuffer, (void*)(addr_t)external, size);
+		else
+			status = user_memcpy((void*)(addr_t)external, bounceBuffer, size);
+		if (status < B_OK)
+			return status;
+		return B_OK;
+	}
 	if (copyIn)
 		memcpy(bounceBuffer, (void*)(addr_t)external, size);
 	else

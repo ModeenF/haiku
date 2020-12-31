@@ -16,7 +16,7 @@
 #include <Autolock.h>
 
 #include "ChunkCache.h"
-#include "debug.h"
+#include "MediaDebug.h"
 #include "PluginManager.h"
 
 
@@ -55,12 +55,20 @@ private:
 MediaExtractor::MediaExtractor(BDataIO* source, int32 flags)
 	:
 	fExtractorThread(-1),
-	fSource(source),
 	fReader(NULL),
 	fStreamInfo(NULL),
 	fStreamCount(0)
 {
+	_Init(source, flags);
+}
+
+
+void
+MediaExtractor::_Init(BDataIO* source, int32 flags)
+{
 	CALLED();
+
+	fSource = source;
 
 #if !DISABLE_CHUNK_CACHE
 	// start extractor thread
@@ -88,8 +96,7 @@ MediaExtractor::MediaExtractor(BDataIO* source, int32 flags)
 		fStreamInfo[i].chunkCache
 			= new ChunkCache(fExtractorWaitSem, kMaxCacheBytes);
 		fStreamInfo[i].lastChunk = NULL;
-		memset(&fStreamInfo[i].encodedFormat, 0,
-			sizeof(fStreamInfo[i].encodedFormat));
+		fStreamInfo[i].encodedFormat.Clear();
 
 		if (fStreamInfo[i].chunkCache->InitCheck() != B_OK) {
 			fInitStatus = B_NO_MEMORY;
@@ -139,13 +146,8 @@ MediaExtractor::~MediaExtractor()
 {
 	CALLED();
 
-#if !DISABLE_CHUNK_CACHE
-	// terminate extractor thread
-	delete_sem(fExtractorWaitSem);
-
-	status_t status;
-	wait_for_thread(fExtractorThread, &status);
-#endif
+	// stop the extractor thread, if still running
+	StopProcessing();
 
 	// free all stream cookies
 	// and chunk caches
@@ -394,6 +396,22 @@ MediaExtractor::GetStreamMetaData(int32 stream, BMessage* _data) const
 		return info.status;
 
 	return fReader->GetStreamMetaData(fStreamInfo[stream].cookie, _data);
+}
+
+
+void
+MediaExtractor::StopProcessing()
+{
+#if !DISABLE_CHUNK_CACHE
+	if (fExtractorWaitSem > -1) {
+		// terminate extractor thread
+		delete_sem(fExtractorWaitSem);
+		fExtractorWaitSem = -1;
+
+		status_t status;
+		wait_for_thread(fExtractorThread, &status);
+	}
+#endif
 }
 
 
