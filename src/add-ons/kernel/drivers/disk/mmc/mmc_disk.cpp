@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2020 Haiku, Inc. All rights reserved.
+ * Copyright 2018-2021 Haiku, Inc. All rights reserved.
  * Copyright 2020, Viveris Technologies.
  * Distributed under the terms of the MIT License.
  *
@@ -10,10 +10,10 @@
 
 #include <new>
 
-#include <string.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <ctype.h>
+#include <string.h>
 
 #include "mmc_disk.h"
 #include "mmc_icon.h"
@@ -23,8 +23,10 @@
 #include <drivers/KernelExport.h>
 #include <drivers/Drivers.h>
 #include <kernel/OS.h>
+#include <util/fs_trim_support.h>
 
-// #include <fs/devfs.h>
+#include <AutoDeleter.h>
+
 
 #define TRACE_MMC_DISK
 #ifdef TRACE_MMC_DISK
@@ -39,19 +41,36 @@
 #define MMC_DISK_DEVICE_MODULE_NAME "drivers/disk/mmc/mmc_disk/device_v1"
 #define MMC_DEVICE_ID_GENERATOR "mmc/device_id"
 
+
+static const uint32 kBlockSize = 512; // FIXME get it from the CSD
+
 static device_manager_info* sDeviceManager;
 
 
 struct mmc_disk_csd {
+	// The content of this register is described in Physical Layer Simplified
+	// Specification Version 8.00, section 5.3
 	uint64 bits[2];
 
-	uint8 structure_version() { return bits[1] >> 60; }
+	uint8 structure_version() { return bits[1] >> 54; }
 	uint8 read_bl_len() { return (bits[1] >> 8) & 0xF; }
-	uint16 c_size()
+	uint32 c_size()
 	{
-		return ((bits[0] >> 54) & 0x3FF) | ((bits[1] & 0x3) << 10);
+		if (structure_version() == 0)
+			return ((bits[0] >> 54) & 0x3FF) | ((bits[1] & 0x3) << 10);
+		if (structure_version() == 1)
+			return (bits[0] >> 40) & 0x3FFFFF;
+		return ((bits[0] >> 40) & 0xFFFFFF) | ((bits[1] & 0xF) << 24);
 	}
-	uint8 c_size_mult() { return (bits[0] >> 39) & 0x7; }
+
+	uint8 c_size_mult()
+	{
+		if (structure_version() == 0)
+			return (bits[0] >> 39) & 0x7;
+		// In later versions this field is not present in the structure and a
+		// fixed value is used.
+		return 8;
+	}
 };
 
 
@@ -99,8 +118,77 @@ mmc_disk_register_device(device_node* node)
 		{ NULL }
 	};
 
-	return sDeviceManager->register_node(node
-		, MMC_DISK_DRIVER_MODULE_NAME, attrs, NULL, NULL);
+	return sDeviceManager->register_node(node, MMC_DISK_DRIVER_MODULE_NAME,
+		attrs, NULL, NULL);
+}
+
+
+static status_t
+mmc_disk_execute_iorequest(void* data, IOOperation* operation)
+{
+	mmc_disk_driver_info* info = (mmc_disk_driver_info*)data;
+	status_t error;
+
+	uint8_t command;
+	if (operation->IsWrite())
+		command = SD_WRITE_MULTIPLE_BLOCKS;
+	else
+		command = SD_READ_MULTIPLE_BLOCKS;
+	error = info->mmc->do_io(info->parent, info->parentCookie, info->rca,
+		command, operation, (info->flags & kIoCommandOffsetAsSectors) != 0);
+
+	if (error != B_OK) {
+		info->scheduler->OperationCompleted(operation, error, 0);
+		return error;
+	}
+
+	info->scheduler->OperationCompleted(operation, B_OK, operation->Length());
+	return B_OK;
+}
+
+
+static status_t
+mmc_block_get_geometry(mmc_disk_driver_info* info, device_geometry* geometry)
+{
+	struct mmc_disk_csd csd;
+	TRACE("Get geometry\n");
+	status_t error = info->mmc->execute_command(info->parent,
+		info->parentCookie, 0, SD_SEND_CSD, info->rca << 16, (uint32_t*)&csd);
+	if (error != B_OK) {
+		TRACE("Could not get CSD! %s\n", strerror(error));
+		return error;
+	}
+
+	TRACE("CSD: %" PRIx64 " %" PRIx64 "\n", csd.bits[0], csd.bits[1]);
+
+	if (csd.structure_version() >= 3) {
+		TRACE("unknown CSD version %d\n", csd.structure_version());
+		return B_NOT_SUPPORTED;
+	}
+
+	geometry->bytes_per_sector = 1 << csd.read_bl_len();
+	geometry->sectors_per_track = csd.c_size() + 1;
+	geometry->cylinder_count = 1 << (csd.c_size_mult() + 2);
+	geometry->head_count = 1;
+	geometry->device_type = B_DISK;
+	geometry->removable = true; // TODO detect eMMC which isn't
+	geometry->read_only = false; // TODO check write protect switch?
+	geometry->write_once = false;
+
+	// This function will be called before all data transfers, so we use this
+	// opportunity to switch the card to 4-bit data transfers (instead of the
+	// default 1 bit mode)
+	uint32_t cardStatus;
+	const uint32 k4BitMode = 2;
+	info->mmc->execute_command(info->parent, info->parentCookie, info->rca,
+		SD_APP_CMD, info->rca << 16, &cardStatus);
+	info->mmc->execute_command(info->parent, info->parentCookie, info->rca,
+		SD_SET_BUS_WIDTH, k4BitMode, &cardStatus);
+
+	// From now on we use 4 bit mode
+	info->mmc->set_bus_width(info->parent, info->parentCookie, 4);
+
+	return B_OK;
 }
 
 
@@ -116,11 +204,19 @@ mmc_disk_init_driver(device_node* node, void** cookie)
 
 	memset(info, 0, sizeof(*info));
 
-	void* unused;
+	void* unused2;
 	info->node = node;
 	info->parent = sDeviceManager->get_parent_node(info->node);
 	sDeviceManager->get_driver(info->parent, (driver_module_info **)&info->mmc,
-		&unused);
+		&unused2);
+
+	// We need to grab the bus cookie as well
+	// FIXME it would be easier if that was available from the get_driver call
+	// above directly, but currently it isn't.
+	device_node* busNode = sDeviceManager->get_parent_node(info->parent);
+	driver_module_info* unused;
+	sDeviceManager->get_driver(busNode, &unused, &info->parentCookie);
+	sDeviceManager->put_node(busNode);
 
 	TRACE("MMC bus handle: %p %s\n", info->mmc, info->mmc->info.info.name);
 
@@ -131,8 +227,63 @@ mmc_disk_init_driver(device_node* node, void** cookie)
 		return B_BAD_DATA;
 	}
 
-	TRACE("MMC card device initialized for RCA %x\n", info->rca);
+	uint8_t deviceType;
+	if (sDeviceManager->get_attr_uint8(info->parent, kMmcTypeAttribute,
+			&deviceType, true) != B_OK) {
+		ERROR("Could not get device type\n");
+		free(info);
+		return B_BAD_DATA;
+	}
 
+	// SD and MMC cards use byte offsets for IO commands, later ones (SDHC,
+	// SDXC, ...) use sectors.
+	if (deviceType == CARD_TYPE_SD || deviceType == CARD_TYPE_MMC)
+		info->flags = 0;
+	else
+		info->flags = kIoCommandOffsetAsSectors;
+
+	status_t error;
+
+	static const uint32 kDMAResourceBufferCount			= 16;
+	static const uint32 kDMAResourceBounceBufferCount	= 16;
+
+	info->dmaResource = new(std::nothrow) DMAResource;
+	if (info->dmaResource == NULL) {
+		TRACE("Failed to allocate DMA resource");
+		free(info);
+		return B_NO_MEMORY;
+	}
+
+	error = info->dmaResource->Init(info->node, kBlockSize,
+		kDMAResourceBufferCount, kDMAResourceBounceBufferCount);
+	if (error != B_OK) {
+		TRACE("Failed to init DMA resource");
+		delete info->dmaResource;
+		free(info);
+		return error;
+	}
+
+	info->scheduler = new(std::nothrow) IOSchedulerSimple(info->dmaResource);
+	if (info->scheduler == NULL) {
+		TRACE("Failed to allocate scheduler");
+		delete info->dmaResource;
+		free(info);
+		return B_NO_MEMORY;
+	}
+
+	error = info->scheduler->Init("mmc storage");
+	if (error != B_OK) {
+		TRACE("Failed to init scheduler");
+		delete info->scheduler;
+		delete info->dmaResource;
+		free(info);
+		return error;
+	}
+	info->scheduler->SetCallback(&mmc_disk_execute_iorequest, info);
+
+	memset(&info->geometry, 0, sizeof(info->geometry));
+
+	TRACE("MMC card device initialized for RCA %x\n", info->rca);
 	*cookie = info;
 	return B_OK;
 }
@@ -143,6 +294,8 @@ mmc_disk_uninit_driver(void* _cookie)
 {
 	CALLED();
 	mmc_disk_driver_info* info = (mmc_disk_driver_info*)_cookie;
+	delete info->scheduler;
+	delete info->dmaResource;
 	sDeviceManager->put_node(info->parent);
 	free(info);
 }
@@ -181,6 +334,9 @@ mmc_block_init_device(void* _info, void** _cookie)
 	mmc_disk_driver_info* info = (mmc_disk_driver_info*)_info;
 	*_cookie = info;
 
+	// Note: it is not possible to execute commands here, because this is called
+	// with the mmc_bus locked for enumeration (and still using slow clock).
+
 	return B_OK;
 }
 
@@ -216,7 +372,7 @@ mmc_block_open(void* _info, const char* path, int openMode, void** _cookie)
 static status_t
 mmc_block_close(void* cookie)
 {
-	mmc_disk_handle* handle = (mmc_disk_handle*)cookie;
+	//mmc_disk_handle* handle = (mmc_disk_handle*)cookie;
 	CALLED();
 
 	return B_OK;
@@ -234,24 +390,82 @@ mmc_block_free(void* cookie)
 }
 
 
-static status_t 
+static status_t
 mmc_block_read(void* cookie, off_t pos, void* buffer, size_t* _length)
 {
 	CALLED();
 	mmc_disk_handle* handle = (mmc_disk_handle*)cookie;
-	TRACE("Ready to execute %p\n", handle->info->mmc->read_naive);
-	return handle->info->mmc->read_naive(handle->info->parent, handle->info->rca, pos, buffer, _length);
+
+	size_t length = *_length;
+
+	if (handle->info->geometry.bytes_per_sector == 0) {
+		status_t error = mmc_block_get_geometry(handle->info,
+			&handle->info->geometry);
+		if (error != B_OK) {
+			TRACE("Failed to get disk capacity");
+			return error;
+		}
+	}
+
+	// Do not allow reading past device end
+	if (pos >= handle->info->DeviceSize())
+		return B_BAD_VALUE;
+	if (pos + (off_t)length > handle->info->DeviceSize())
+		length = handle->info->DeviceSize() - pos;
+
+	IORequest request;
+	status_t status = request.Init(pos, (addr_t)buffer, length, false, 0);
+	if (status != B_OK)
+		return status;
+
+	status = handle->info->scheduler->ScheduleRequest(&request);
+	if (status != B_OK)
+		return status;
+
+	status = request.Wait(0, 0);
+	if (status == B_OK)
+		*_length = length;
+	return status;
 }
 
 
 static status_t
 mmc_block_write(void* cookie, off_t position, const void* buffer,
-	size_t* length)
+	size_t* _length)
 {
 	CALLED();
 	mmc_disk_handle* handle = (mmc_disk_handle*)cookie;
 
-	return B_NOT_SUPPORTED;
+	size_t length = *_length;
+
+	if (handle->info->geometry.bytes_per_sector == 0) {
+		status_t error = mmc_block_get_geometry(handle->info,
+			&handle->info->geometry);
+		if (error != B_OK) {
+			TRACE("Failed to get disk capacity");
+			return error;
+		}
+	}
+
+	if (position >= handle->info->DeviceSize())
+		return B_BAD_VALUE;
+	if (position + (off_t)length > handle->info->DeviceSize())
+		length = handle->info->DeviceSize() - position;
+
+	IORequest request;
+	status_t status = request.Init(position, (addr_t)buffer, length, true, 0);
+	if (status != B_OK)
+		return status;
+
+	status = handle->info->scheduler->ScheduleRequest(&request);
+	if (status != B_OK)
+		return status;
+
+	status = request.Wait(0, 0);
+	if (status == B_OK)
+		*_length = length;
+
+	return status;
 }
 
 
@@ -261,45 +475,82 @@ mmc_block_io(void* cookie, io_request* request)
 	CALLED();
 	mmc_disk_handle* handle = (mmc_disk_handle*)cookie;
 
-	return B_NOT_SUPPORTED;
+	return handle->info->scheduler->ScheduleRequest(request);
 }
 
 
 static status_t
-mmc_block_get_geometry(mmc_disk_handle* handle, device_geometry* geometry)
+mmc_block_trim(mmc_disk_driver_info* info, fs_trim_data* trimData)
 {
-	struct mmc_disk_csd csd;
-	TRACE("Ready to execute %p\n", handle->info->mmc->execute_command);
-	handle->info->mmc->execute_command(handle->info->parent, SD_SEND_CSD,
-		handle->info->rca << 16, (uint32_t*)&csd);
+	enum {
+		kEraseModeErase = 0, // force to actually erase the data
+		kEraseModeDiscard = 1,
+			// just mark the data as unused for internal wear leveling
+			// algorithms
+		kEraseModeFullErase = 2, // erase the whole card
+	};
+	TRACE("trim_device()\n");
 
-	TRACE("CSD: %lx %lx\n", csd.bits[0], csd.bits[1]);
+	uint64 trimmedSize = 0;
+	status_t result = B_OK;
+	for (uint32 i = 0; i < trimData->range_count; i++) {
+		off_t offset = trimData->ranges[i].offset;
+		off_t length = trimData->ranges[i].size;
 
-	if (csd.structure_version() == 0) {
-		geometry->bytes_per_sector = 1 << csd.read_bl_len();
-		geometry->sectors_per_track = csd.c_size() + 1;
-		geometry->cylinder_count = 1 << (csd.c_size_mult() + 2);
-		geometry->head_count = 1;
-		geometry->device_type = B_DISK;
-		geometry->removable = true; // TODO detect eMMC which isn't
-		geometry->read_only = true; // TODO add write support
-		geometry->write_once = false;
-		return B_OK;
+		// Round up offset and length to multiple of the sector size
+		// The offset is rounded up, so some space may be left
+		// (not trimmed) at the start of the range.
+		offset = ROUNDUP(offset, kBlockSize);
+		// Adjust the length for the possibly skipped range
+		length -= trimData->ranges[i].offset - offset;
+		// The length is rounded down, so some space at the end may also
+		// be left (not trimmed).
+		length &= ~(kBlockSize - 1);
+
+		if (length == 0) {
+			trimmedSize += trimData->ranges[i].size;
+			continue;
+		}
+
+		TRACE("trim %" B_PRIdOFF " bytes from %" B_PRIdOFF "\n",
+			length, offset);
+
+		ASSERT(offset % kBlockSize == 0);
+		ASSERT(length % kBlockSize == 0);
+
+		if (info->flags & kIoCommandOffsetAsSectors) {
+			offset /= kBlockSize;
+			length /= kBlockSize;
+		}
+
+		uint32_t response;
+		result = info->mmc->execute_command(info->parent, info->parentCookie,
+			info->rca, SD_ERASE_WR_BLK_START, offset, &response);
+		if (result != B_OK)
+			break;
+		result = info->mmc->execute_command(info->parent, info->parentCookie,
+			info->rca, SD_ERASE_WR_BLK_END, offset + length, &response);
+		if (result != B_OK)
+			break;
+		result = info->mmc->execute_command(info->parent, info->parentCookie,
+			info->rca, SD_ERASE, kEraseModeDiscard, &response);
+		if (result != B_OK)
+			break;
+
+		trimmedSize += trimData->ranges[i].size;
 	}
 
-	TRACE("unknown CSD version %d\n", csd.structure_version());
-	return B_NOT_SUPPORTED;
+	trimData->trimmed_size = trimmedSize;
+
+	return result;
 }
 
 
 static status_t
 mmc_block_ioctl(void* cookie, uint32 op, void* buffer, size_t length)
 {
-	CALLED();
 	mmc_disk_handle* handle = (mmc_disk_handle*)cookie;
 	mmc_disk_driver_info* info = handle->info;
-
-	TRACE("ioctl(op = %" B_PRId32 ")\n", op);
 
 	switch (op) {
 		case B_GET_MEDIA_STATUS:
@@ -308,17 +559,26 @@ mmc_block_ioctl(void* cookie, uint32 op, void* buffer, size_t length)
 				return B_BAD_VALUE;
 
 			*(status_t *)buffer = B_OK;
-			TRACE("B_GET_MEDIA_STATUS: 0x%08" B_PRIx32 "\n",
-				*(status_t *)buffer);
 			return B_OK;
 			break;
 		}
 
 		case B_GET_DEVICE_SIZE:
 		{
-			//size_t size = info->capacity * info->block_size;
-			//return user_memcpy(buffer, &size, sizeof(size_t));
-			return B_NOT_SUPPORTED;
+			// Legacy ioctl, use B_GET_GEOMETRY
+			if (info->geometry.bytes_per_sector == 0) {
+				status_t error = mmc_block_get_geometry(info, &info->geometry);
+				if (error != B_OK) {
+					TRACE("Failed to get disk capacity");
+					return error;
+				}
+			}
+
+			uint64_t size = info->DeviceSize();
+			if (size > SIZE_MAX)
+				return B_NOT_SUPPORTED;
+			size_t size32 = size;
+			return user_memcpy(buffer, &size32, sizeof(size_t));
 		}
 
 		case B_GET_GEOMETRY:
@@ -326,12 +586,16 @@ mmc_block_ioctl(void* cookie, uint32 op, void* buffer, size_t length)
 			if (buffer == NULL || length < sizeof(device_geometry))
 				return B_BAD_VALUE;
 
-		 	device_geometry geometry;
-			status_t status = mmc_block_get_geometry(handle, &geometry);
-			if (status != B_OK)
-				return status;
+			if (info->geometry.bytes_per_sector == 0) {
+				status_t error = mmc_block_get_geometry(info, &info->geometry);
+				if (error != B_OK) {
+					TRACE("Failed to get disk capacity");
+					return error;
+				}
+			}
 
-			return user_memcpy(buffer, &geometry, sizeof(device_geometry));
+			return user_memcpy(buffer, &info->geometry,
+				sizeof(device_geometry));
 		}
 
 		case B_GET_ICON_NAME:
@@ -355,6 +619,13 @@ mmc_block_ioctl(void* cookie, uint32 op, void* buffer, size_t length)
 
 			iconData.icon_size = sizeof(kDriveIcon);
 			return user_memcpy(buffer, &iconData, sizeof(device_icon));
+		}
+
+		case B_TRIM_DEVICE:
+		{
+			// We know the buffer is kernel-side because it has been
+			// preprocessed in devfs
+			return mmc_block_trim(info, (fs_trim_data*)buffer);
 		}
 
 		/*case B_FLUSH_DRIVE_CACHE:

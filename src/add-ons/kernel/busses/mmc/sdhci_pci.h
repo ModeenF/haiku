@@ -17,7 +17,15 @@
 #define SDHCI_PCI_SLOTS(x) 								((( x >> 4) & 7))
 #define SDHCI_PCI_SLOT_INFO_FIRST_BASE_INDEX(x)			(( x ) & 7)
 
+// Ricoh specific PCI registers
+// Ricoh devices start in a vendor-specific mode but can be switched
+// to standard sdhci using these PCI registers
+#define SDHCI_PCI_RICOH_MODE_KEY						0xf9
+#define SDHCI_PCI_RICOH_MODE							0x150
+#define SDHCI_PCI_RICOH_MODE_SD20						0x10
+
 #define SDHCI_BUS_TYPE_NAME 							"bus/sdhci/v1"
+
 
 class TransferMode {
 	public:
@@ -38,10 +46,10 @@ class TransferMode {
 		static const uint8_t kAutoCmdDisabled = 0 << 2;
 		static const uint8_t kAutoCmd12Enable = 1 << 2;
 		static const uint8_t kAutoCmd23Enable = 2 << 2;
-		static const uint8_t kAutoCmdAutoSelect = 
-			kAutoCmd23Enable | kAutoCmd12Enable;
+		static const uint8_t kAutoCmdAutoSelect
+			= kAutoCmd23Enable | kAutoCmd12Enable;
 
-		// TODO block count enable
+		static const uint8_t kBlockCountEnable = 1 << 1;
 
 		static const uint8_t kDmaEnable = 1;
 		static const uint8_t kNoDmaOrNoData = 0;
@@ -49,6 +57,7 @@ class TransferMode {
 	private:
 		volatile uint16_t fBits;
 } __attribute__((packed));
+
 
 class Command {
 	public:
@@ -65,7 +74,7 @@ class Command {
 		static const uint8_t kSubCommand = 0x4;
 		static const uint8_t kReplySizeMask = 0x3;
 		static const uint8_t k32BitResponse = 0x2;
-		static const uint8_t k128BitResponse = 0x1; 
+		static const uint8_t k128BitResponse = 0x1;
 		static const uint8_t k32BitResponseCheckBusy = 0x3;
 
 		// For simplicity pre-define the standard response types from the SD
@@ -78,15 +87,12 @@ class Command {
  		static const uint8_t kR2Type = kCRCEnable | k128BitResponse;
 		static const uint8_t kR3Type = k32BitResponse;
 		static const uint8_t kR6Type = kCheckIndex | k32BitResponse;
-		static const uint8_t kR7Type = kDataPresent | kCheckIndex | kCRCEnable
+		static const uint8_t kR7Type = kCheckIndex | kCRCEnable
 			| k32BitResponse;
 
 	private:
 		volatile uint16_t fBits;
 } __attribute__((packed));
-#define SDHCI_RESPONSE_R1                               2
-#define SDHCI_CMD_CRC_EN                                1 << 3
-#define SDHCI_CMD_INDEX_EN                              1 << 4
 
 
 class PresentState {
@@ -210,11 +216,65 @@ class HostControllerVersion {
 		const uint8_t vendorVersion;
 } __attribute__((packed));
 
+
+class HostControl {
+	public:
+		void SetDMAMode(uint8_t dmaMode)
+		{
+			value = (value & ~kDmaMask) | dmaMode;
+		}
+
+		void SetDataTransferWidth(uint8_t width)
+		{
+			value = (value & ~kDataTransferWidthMask) | width;
+		}
+
+		static const uint8_t kDmaMask = 3 << 3;
+		static const uint8_t kSdma = 0 << 3;
+		static const uint8_t kAdma32 = 2 << 3;
+		static const uint8_t kAdma64 = 3 << 3;
+
+		// It's convenient to think of this as a single "bit width" setting,
+		// but the bits for 4-bit and 8-bit modes were introduced at different
+		// times and are not next to each other in the register.
+		static const uint8_t kDataTransfer1Bit = 0;
+		static const uint8_t kDataTransfer4Bit = 1 << 1;
+		static const uint8_t kDataTransfer8Bit = 1 << 5;
+
+		static const uint8_t kDataTransferWidthMask
+			= kDataTransfer4Bit | kDataTransfer8Bit;
+	private:
+		volatile uint8_t value;
+} __attribute__((packed));
+
+
+class BlockSize {
+	public:
+		void ConfigureTransfer(uint16_t transferBlockSize,
+			uint16_t dmaBoundary)
+		{
+			value = transferBlockSize | dmaBoundary << 12;
+		}
+
+		static const uint16_t kDmaBoundary4K = 0;
+		static const uint16_t kDmaBoundary8K = 1;
+		static const uint16_t kDmaBoundary16K = 2;
+		static const uint16_t kDmaBoundary32K = 3;
+		static const uint16_t kDmaBoundary64K = 4;
+		static const uint16_t kDmaBoundary128K = 5;
+		static const uint16_t kDmaBoundary256K = 6;
+		static const uint16_t kDmaBoundary512K = 7;
+
+	private:
+		volatile uint16_t value;
+} __attribute__((packed));
+
+
 // #pragma mark -
 struct registers {
 	// SD command generation
 	volatile uint32_t system_address;
-	volatile uint16_t block_size;
+	BlockSize block_size;
 	volatile uint16_t block_count;
 	volatile uint32_t argument;
 	volatile uint16_t transfer_mode;
@@ -227,14 +287,14 @@ struct registers {
 	volatile uint32_t buffer_data_port;
 
 	// Host control 1
-	PresentState present_state;
-	volatile uint8_t host_control;
-	PowerControl power_control;
-	volatile uint8_t block_gap_control;
-	volatile uint8_t wakeup_control;
-	ClockControl clock_control;
-	volatile uint8_t timeout_control;
-	SoftwareReset software_reset;
+	PresentState		present_state;
+	HostControl			host_control;
+	PowerControl		power_control;
+	volatile uint8_t	block_gap_control;
+	volatile uint8_t	wakeup_control;
+	ClockControl		clock_control;
+	volatile uint8_t	timeout_control;
+	SoftwareReset		software_reset;
 
 	// Interrupt control
 	volatile uint32_t interrupt_status;

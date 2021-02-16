@@ -25,7 +25,8 @@ additionalMakeArgs=$*
 gdbSourceDir="$HAIKU_USE_GDB"
 
 ccFlags="-O2"
-cxxFlags="-O2"
+#CLang needs c++14 to build ISL: https://dev.haiku-os.org/ticket/16434
+cxxFlags="-O2 -std=c++14"
 binutilsTargets="$haikuMachine"
 gdbTarget="$haikuMachine"
 case $haikuMachine in
@@ -62,13 +63,13 @@ arm-*)
 	gdbTarget="arm-unknown-elf"
 	;;
 riscv*-*)
-	binutilsConfigureArgs="--disable-multilib"
-	gccConfigureArgs="--disable-multilib"
-	gdbConfigureArgs="--disable-multilib"
+	binutilsConfigureArgs=" --with-arch=rv64gc"
+	gccConfigureArgs=" --with-arch=rv64gc"
+	gdbConfigureArgs=""
 
-	# TODO: Disable building with TLS support for riscv until implemented.
-	binutilsConfigureArgs="$binutilsConfigureArgs --disable-tls"
-	gccConfigureArgs="$gccConfigureArgs --disable-tls"
+	binutilsConfigureArgs="$binutilsConfigureArgs --disable-multilib"
+	gccConfigureArgs="$gccConfigureArgs --disable-multilib"
+	gdbConfigureArgs="$gdbConfigureArgs --disable-multilib"
 	;;
 powerpc-*)
 	binutilsConfigureArgs="--disable-multilib"

@@ -213,43 +213,9 @@ static void update_screen_size(void)
 }
 
 
-static void
-console_control(bool graphics)
-{
-	TRACE("Checking for EFI Console Control...\n");
-	efi_guid consoleControlProtocolGUID = EFI_CONSOLE_CONTROL_PROTOCOL_GUID;
-	efi_console_control_protocol* consoleControl = NULL;
-
-	efi_status status = kSystemTable->BootServices->LocateProtocol(
-		&consoleControlProtocolGUID, NULL, (void**)&consoleControl);
-
-	// Some EFI implementations boot up in an EFI graphics mode (Apple)
-	// If this protocol doesn't exist, we can assume we're already in text mode.
-	if (status != EFI_SUCCESS || consoleControl == NULL) {
-		TRACE("EFI Console Control not found. Skipping.\n");
-		return;
-	}
-
-	TRACE("Located EFI Console Control. Setting EFI %s mode...\n",
-		graphics ? "graphics" : "text");
-
-	if (graphics) {
-		status = consoleControl->SetMode(consoleControl,
-			EfiConsoleControlScreenGraphics);
-	} else {
-		status = consoleControl->SetMode(consoleControl,
-			EfiConsoleControlScreenText);
-	}
-
-	TRACE("Setting EFI %s mode was%s successful.\n",
-		graphics ? "graphics" : "text", (status == EFI_SUCCESS) ? "" : " not");
-}
-
-
 status_t
 console_init(void)
 {
-	console_control(true);
 	update_screen_size();
 	console_hide_cursor();
 	console_clear_screen();
@@ -265,22 +231,23 @@ console_init(void)
 uint32
 console_check_boot_keys(void)
 {
-	efi_status status;
 	efi_input_key key;
 
-	// give the user a chance to press a key
-	kBootServices->Stall(500000);
+	for (int i = 0; i < 3; i++) {
+		// give the user a chance to press a key
+		kBootServices->Stall(100000);
 
-	status = kSystemTable->ConIn->ReadKeyStroke(kSystemTable->ConIn, &key);
+		efi_status status = kSystemTable->ConIn->ReadKeyStroke(
+			kSystemTable->ConIn, &key);
 
-	if (status != EFI_SUCCESS)
-		return 0;
+		if (status != EFI_SUCCESS)
+			continue;
 
-	if (key.UnicodeChar == 0 && key.ScanCode == SCAN_ESC)
-		return BOOT_OPTION_DEBUG_OUTPUT;
-	if (key.UnicodeChar == ' ')
-		return BOOT_OPTION_MENU;
-
+		if (key.UnicodeChar == 0 && key.ScanCode == SCAN_ESC)
+			return BOOT_OPTION_DEBUG_OUTPUT;
+		if (key.UnicodeChar == ' ')
+			return BOOT_OPTION_MENU;
+	}
 	return 0;
 }
 
@@ -288,7 +255,6 @@ console_check_boot_keys(void)
 extern "C" void
 platform_switch_to_text_mode(void)
 {
-	console_control(false);
 	kSystemTable->ConOut->Reset(kSystemTable->ConOut, false);
 	kSystemTable->ConOut->SetMode(kSystemTable->ConOut, sScreenMode);
 }

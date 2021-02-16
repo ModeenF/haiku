@@ -1,7 +1,7 @@
 /*
  * Copyright 2013-2014, Stephan Aßmus <superstippi@gmx.de>.
  * Copyright 2013, Rene Gollent <rene@gollent.com>.
- * Copyright 2016-2020, Andrew Lindesay <apl@lindesay.co.nz>.
+ * Copyright 2016-2021, Andrew Lindesay <apl@lindesay.co.nz>.
  * All rights reserved. Distributed under the terms of the MIT License.
  */
 
@@ -358,9 +358,9 @@ PackageCategory::Compare(const PackageCategory& other) const
 bool IsPackageCategoryBefore(const CategoryRef& c1,
 	const CategoryRef& c2)
 {
-	if (c1.Get() == NULL || c2.Get() == NULL)
+	if (!c1.IsSet() || !c2.IsSet())
 		HDFATAL("unexpected NULL reference in a referencable");
-	return c1.Get()->Compare(*(c2.Get())) < 0;
+	return c1->Compare(*c2) < 0;
 }
 
 
@@ -441,7 +441,7 @@ PackageInfo::PackageInfo()
 	fChangelog(),
 	fUserRatings(),
 	fCachedRatingSummary(),
-	fProminence(0.0f),
+	fProminence(0),
 	fScreenshotInfos(),
 	fScreenshots(),
 	fState(NONE),
@@ -471,7 +471,7 @@ PackageInfo::PackageInfo(const BPackageInfo& info)
 	fChangelog(),
 	fUserRatings(),
 	fCachedRatingSummary(),
-	fProminence(0.0f),
+	fProminence(0),
 	fScreenshotInfos(),
 	fScreenshots(),
 	fState(NONE),
@@ -485,7 +485,6 @@ PackageInfo::PackageInfo(const BPackageInfo& info)
 	fDepotName(""),
 	fIsCollatingChanges(false),
 	fCollatedChanges(0)
-
 {
 	BString publisherURL;
 	if (info.URLList().CountStrings() > 0)
@@ -518,7 +517,7 @@ PackageInfo::PackageInfo(const BString& name,
 	fCategories(),
 	fUserRatings(),
 	fCachedRatingSummary(),
-	fProminence(0.0f),
+	fProminence(0),
 	fScreenshotInfos(),
 	fScreenshots(),
 	fState(NONE),
@@ -792,22 +791,32 @@ PackageInfo::IsLocalFile() const
 void
 PackageInfo::ClearUserRatings()
 {
-	if (!fUserRatings.IsEmpty()) {
-		fUserRatings.Clear();
+	if (!fUserRatings.empty()) {
+		fUserRatings.clear();
 		_NotifyListeners(PKG_CHANGED_RATINGS);
 	}
 }
 
 
-bool
-PackageInfo::AddUserRating(const UserRating& rating)
+int32
+PackageInfo::CountUserRatings() const
 {
-	if (!fUserRatings.Add(rating))
-		return false;
+	return fUserRatings.size();
+}
 
+
+UserRatingRef
+PackageInfo::UserRatingAtIndex(int32 index) const
+{
+	return fUserRatings[index];
+}
+
+
+void
+PackageInfo::AddUserRating(const UserRatingRef& rating)
+{
+	fUserRatings.push_back(rating);
 	_NotifyListeners(PKG_CHANGED_RATINGS);
-
-	return true;
 }
 
 
@@ -826,11 +835,11 @@ PackageInfo::SetRatingSummary(const RatingSummary& summary)
 RatingSummary
 PackageInfo::CalculateRatingSummary() const
 {
-	if (fUserRatings.CountItems() == 0)
+	if (fUserRatings.empty())
 		return fCachedRatingSummary;
 
 	RatingSummary summary;
-	summary.ratingCount = fUserRatings.CountItems();
+	summary.ratingCount = fUserRatings.size();
 	summary.averageRating = 0.0f;
 	int starRatingCount = sizeof(summary.ratingCountByStar) / sizeof(int);
 	for (int i = 0; i < starRatingCount; i++)
@@ -843,7 +852,7 @@ PackageInfo::CalculateRatingSummary() const
 
 	int ratingsSpecified = summary.ratingCount;
 	for (int i = 0; i < summary.ratingCount; i++) {
-		float rating = fUserRatings.ItemAtFast(i).Rating();
+		float rating = fUserRatings[i]->Rating();
 
 		if (rating < 0.0f)
 			rating = -1.0f;
@@ -897,14 +906,28 @@ PackageInfo::IsProminent() const
 void
 PackageInfo::ClearScreenshotInfos()
 {
-	fScreenshotInfos.Clear();
+	fScreenshotInfos.clear();
 }
 
 
-bool
-PackageInfo::AddScreenshotInfo(const ScreenshotInfo& info)
+int32
+PackageInfo::CountScreenshotInfos() const
 {
-	return fScreenshotInfos.Add(info);
+	return fScreenshotInfos.size();
+}
+
+
+ScreenshotInfoRef
+PackageInfo::ScreenshotInfoAtIndex(int32 index) const
+{
+	return fScreenshotInfos[index];
+}
+
+
+void
+PackageInfo::AddScreenshotInfo(const ScreenshotInfoRef& info)
+{
+	fScreenshotInfos.push_back(info);
 }
 
 
@@ -977,14 +1000,15 @@ PackageInfo::SetDepotName(const BString& depotName)
 bool
 PackageInfo::AddListener(const PackageInfoListenerRef& listener)
 {
-	return fListeners.Add(listener);
+	fListeners.push_back(listener);
+	return true;
 }
 
 
 void
 PackageInfo::RemoveListener(const PackageInfoListenerRef& listener)
 {
-	fListeners.Remove(listener);
+	std::remove(fListeners.begin(), fListeners.end(), listener);
 }
 
 
@@ -1026,22 +1050,18 @@ PackageInfo::_NotifyListeners(uint32 changes)
 void
 PackageInfo::_NotifyListenersImmediate(uint32 changes)
 {
-	int count = fListeners.CountItems();
-	if (count == 0)
+	if (fListeners.empty())
 		return;
 
 	// Clone list to avoid listeners detaching themselves in notifications
 	// to screw up the list while iterating it.
-	PackageListenerList listeners(fListeners);
-	// Check if it worked:
-	if (listeners.CountItems() != count)
-		return;
-
+	std::vector<PackageInfoListenerRef> listeners(fListeners);
 	PackageInfoEvent event(PackageInfoRef(this), changes);
 
-	for (int i = 0; i < count; i++) {
-		const PackageInfoListenerRef& listener = listeners.ItemAtFast(i);
-		if (listener.Get() != NULL)
+	std::vector<PackageInfoListenerRef>::iterator it;
+	for (it = listeners.begin(); it != listeners.end(); it++) {
+		const PackageInfoListenerRef listener = *it;
+		if (listener.IsSet())
 			listener->PackageChanged(event);
 	}
 }
@@ -1050,27 +1070,21 @@ PackageInfo::_NotifyListenersImmediate(uint32 changes)
 // #pragma mark - Sorting Functions
 
 
-/*! This function is used with the List class in order to facilitate fast
-    ordered inserting of packages.
- */
-
-static int32
-PackageCompare(const PackageInfoRef& p1, const PackageInfoRef& p2)
+static bool
+_IsPackageBeforeByName(const PackageInfoRef& p1, const BString& packageName)
 {
-	return p1->Name().Compare(p2->Name());
+	return p1->Name().Compare(packageName) < 0;
 }
 
 
-/*! This function is used with the List class in order to facilitate fast
-    searching of packages.
+/*!	This function is used in order to provide an ordering on the packages
+	that are stored on a Depot.
  */
 
-static int32
-PackageFixedNameCompare(const void* context,
-	const PackageInfoRef& package)
+static bool
+_IsPackageBefore(const PackageInfoRef& p1, const PackageInfoRef& p2)
 {
-	const BString* packageName = static_cast<const BString*>(context);
-	return packageName->Compare(package->Name());
+	return _IsPackageBeforeByName(p1, p2->Name());
 }
 
 
@@ -1080,7 +1094,6 @@ PackageFixedNameCompare(const void* context,
 DepotInfo::DepotInfo()
 	:
 	fName(),
-	fPackages(&PackageCompare, &PackageFixedNameCompare),
 	fWebAppRepositoryCode()
 {
 }
@@ -1089,7 +1102,6 @@ DepotInfo::DepotInfo()
 DepotInfo::DepotInfo(const BString& name)
 	:
 	fName(name),
-	fPackages(&PackageCompare, &PackageFixedNameCompare),
 	fWebAppRepositoryCode(),
 	fWebAppRepositorySourceCode()
 {
@@ -1134,56 +1146,100 @@ DepotInfo::operator!=(const DepotInfo& other) const
 }
 
 
+int32
+DepotInfo::CountPackages() const
+{
+	return fPackages.size();
+}
+
+
+PackageInfoRef
+DepotInfo::PackageAtIndex(int32 index)
+{
+	return fPackages[index];
+}
+
+
 /*! This method will insert the package into the list of packages
     in order so that the list of packages remains in order.
  */
 
-bool
-DepotInfo::AddPackage(const PackageInfoRef& package)
+void
+DepotInfo::AddPackage(PackageInfoRef& package)
 {
- 	return fPackages.Add(package);
+	std::vector<PackageInfoRef>::iterator itInsertionPt
+		= std::lower_bound(
+			fPackages.begin(),
+			fPackages.end(),
+			package,
+			&_IsPackageBefore);
+	fPackages.insert(itInsertionPt, package);
 }
 
 
-int32
-DepotInfo::PackageIndexByName(const BString& packageName) const
+bool
+DepotInfo::HasPackage(const BString& packageName)
 {
-	return fPackages.Search(&packageName);
+	std::vector<PackageInfoRef>::const_iterator it
+		= std::lower_bound(
+			fPackages.begin(),
+			fPackages.end(),
+			packageName,
+			&_IsPackageBeforeByName);
+	if (it != fPackages.end()) {
+		PackageInfoRef candidate = *it;
+		return (candidate.Get() != NULL
+			&& candidate.Get()->Name() == packageName);
+	}
+	return false;
+}
+
+
+PackageInfoRef
+DepotInfo::PackageByName(const BString& packageName)
+{
+	std::vector<PackageInfoRef>::const_iterator it
+		= std::lower_bound(
+			fPackages.begin(),
+			fPackages.end(),
+			packageName,
+			&_IsPackageBeforeByName);
+
+	if (it != fPackages.end()) {
+		PackageInfoRef candidate = *it;
+		if (candidate.Get() != NULL && candidate.Get()->Name() == packageName)
+			return candidate;
+	}
+	return PackageInfoRef();
 }
 
 
 void
-DepotInfo::SyncPackages(const PackageList& otherPackages)
+DepotInfo::SyncPackagesFromDepot(const DepotInfoRef& other)
 {
-	PackageList packages(fPackages);
+	for (int32 i = other->CountPackages() - 1; i >= 0; i--) {
+		PackageInfoRef otherPackage = other->PackageAtIndex(i);
+		PackageInfoRef myPackage = PackageByName(otherPackage->Name());
 
-	for (int32 i = otherPackages.CountItems() - 1; i >= 0; i--) {
-		const PackageInfoRef& otherPackage = otherPackages.ItemAtFast(i);
-		bool found = false;
-		for (int32 j = packages.CountItems() - 1; j >= 0; j--) {
-			const PackageInfoRef& package = packages.ItemAtFast(j);
-			if (package->Name() == otherPackage->Name()) {
-				package->SetState(otherPackage->State());
-				package->SetLocalFilePath(otherPackage->LocalFilePath());
-				package->SetSystemDependency(
-					otherPackage->IsSystemDependency());
-				found = true;
-				packages.Remove(j);
-				break;
-			}
+		if (myPackage.Get() != NULL) {
+			myPackage->SetState(otherPackage->State());
+			myPackage->SetLocalFilePath(otherPackage->LocalFilePath());
+			myPackage->SetSystemDependency(otherPackage->IsSystemDependency());
 		}
-		if (!found) {
+		else {
 			HDINFO("%s: new package: '%s'", fName.String(),
 				otherPackage->Name().String());
-			fPackages.Add(otherPackage);
+			AddPackage(otherPackage);
 		}
 	}
 
-	for (int32 i = packages.CountItems() - 1; i >= 0; i--) {
-		const PackageInfoRef& package = packages.ItemAtFast(i);
-		HDINFO("%s: removing package: '%s'", fName.String(),
-			package->Name().String());
-		fPackages.Remove(package);
+	for (int32 i = CountPackages() - 1; i >= 0; i--) {
+		PackageInfoRef myPackage = PackageAtIndex(i);
+		if (!other->HasPackage(myPackage->Name())) {
+			HDINFO("%s: removing package: '%s'", fName.String(),
+				myPackage->Name().String());
+			fPackages.erase(fPackages.begin() + i);
+		}
 	}
 }
 
@@ -1191,9 +1247,9 @@ DepotInfo::SyncPackages(const PackageList& otherPackages)
 bool
 DepotInfo::HasAnyProminentPackages() const
 {
-	int32 count = fPackages.CountItems();
-	for (int32 i = 0; i < count; i++) {
-		const PackageInfoRef& package = fPackages.ItemAtFast(i);
+	std::vector<PackageInfoRef>::const_iterator it;
+	for (it = fPackages.begin(); it != fPackages.end(); it++) {
+		const PackageInfoRef& package = *it;
 		if (package->IsProminent())
 			return true;
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020, Andrew Lindesay <apl@lindesay.co.nz>.
+ * Copyright 2017-2021, Andrew Lindesay <apl@lindesay.co.nz>.
  * All rights reserved. Distributed under the terms of the MIT License.
  */
 
@@ -119,7 +119,7 @@ PackageFillingPkgListener::ConsumePackage(const PackageInfoRef& package,
 		BString* categoryCode = pkg->PkgCategoriesItemAt(i)->Code();
 		CategoryRef category = fModel->CategoryByCode(*categoryCode);
 
-		if (category.Get() == NULL) {
+		if (!category.IsSet()) {
 			HDERROR("unable to find the category for [%s]",
 				categoryCode->String());
 		} else
@@ -143,12 +143,12 @@ PackageFillingPkgListener::ConsumePackage(const PackageInfoRef& package,
 
 	for (i = 0; i < countPkgScreenshots; i++) {
 		DumpExportPkgScreenshot* screenshot = pkg->PkgScreenshotsItemAt(i);
-		package->AddScreenshotInfo(ScreenshotInfo(
+		package->AddScreenshotInfo(ScreenshotInfoRef(new ScreenshotInfo(
 			*(screenshot->Code()),
 			static_cast<int32>(screenshot->Width()),
 			static_cast<int32>(screenshot->Height()),
 			static_cast<int32>(screenshot->Length())
-		));
+		), true));
 	}
 
 	HDDEBUG("did populate data for [%s] (%s)", pkg->Name()->String(),
@@ -172,20 +172,15 @@ PackageFillingPkgListener::Count()
 bool
 PackageFillingPkgListener::Handle(DumpExportPkg* pkg)
 {
-	const DepotInfo* depotInfo = fModel->DepotForName(fDepotName);
+	AutoLocker<BLocker> locker(fModel->Lock());
+	DepotInfoRef depot = fModel->DepotForName(fDepotName);
 
-	if (depotInfo != NULL) {
+	if (depot.Get() != NULL) {
 		const BString packageName = *(pkg->Name());
-		int32 packageIndex = depotInfo->PackageIndexByName(packageName);
-
-		if (-1 != packageIndex) {
-			const PackageList& packages = depotInfo->Packages();
-			const PackageInfoRef& packageInfoRef =
-				packages.ItemAtFast(packageIndex);
-
-			AutoLocker<BLocker> locker(fModel->Lock());
-			ConsumePackage(packageInfoRef, pkg);
-		} else {
+		PackageInfoRef package = depot->PackageByName(packageName);
+		if (package.Get() != NULL)
+			ConsumePackage(package, pkg);
+		else {
 			HDINFO("[PackageFillingPkgListener] unable to find the pkg [%s]",
 				packageName.String());
 		}

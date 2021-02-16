@@ -1,9 +1,10 @@
 /*
- * Copyright 2018 Haiku, Inc. All rights reserved.
+ * Copyright 2018-2021 Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
  *		B Krishnan Iyer, krishnaniyer97@gmail.com
+ *		Adrien Destugues, pulkomandy@pulkomandy.tk
  */
 #include "mmc_bus.h"
 
@@ -48,9 +49,7 @@ mmc_bus_uninit(void* _device)
 static status_t
 mmc_bus_register_child(void* _device)
 {
-	CALLED();
-	MMCBus* device = (MMCBus*)_device;
-	device->Rescan();
+	// Nothing to do, child devices are registered by the scanning thread
 	return B_OK;
 }
 
@@ -79,46 +78,44 @@ mmc_bus_added_device(device_node* parent)
 
 
 static status_t
-mmc_bus_execute_command(device_node* node, uint8_t command, uint32_t argument,
-	uint32_t* result)
+mmc_bus_execute_command(device_node* node, void* cookie, uint16_t rca,
+	uint8_t command, uint32_t argument, uint32_t* result)
 {
-	// FIXME store the parent cookie in the bus cookie or something instead of
-	// getting/putting the parent each time.
-	driver_module_info* mmc;
-	void* cookie;
-
 	TRACE("In mmc_bus_execute_command\n");
-	device_node* parent = gDeviceManager->get_parent_node(node);
-	gDeviceManager->get_driver(parent, &mmc, &cookie);
-	gDeviceManager->put_node(parent);
 
 	MMCBus* bus = (MMCBus*)cookie;
 
 	bus->AcquireBus();
-	status_t error = bus->ExecuteCommand(command, argument, result);
+	status_t error = bus->ExecuteCommand(rca, command, argument, result);
 	bus->ReleaseBus();
+
 	return error;
 }
 
 
 static status_t
-mmc_bus_read_naive(device_node* node, uint16_t rca, off_t pos, void* buffer,
-	size_t* _length)
+mmc_bus_do_io(device_node* node, void* cookie, uint16_t rca, uint8_t command,
+	IOOperation* operation, bool offsetAsSectors)
 {
-	// FIXME store the parent cookie in the bus cookie or something instead of
-	// getting/putting the parent each time.
-	driver_module_info* mmc;
-	void* cookie;
-
-	device_node* parent = gDeviceManager->get_parent_node(node);
-	gDeviceManager->get_driver(parent, &mmc, &cookie);
-	gDeviceManager->put_node(parent);
-
 	MMCBus* bus = (MMCBus*)cookie;
+	status_t result = B_OK;
+
 	bus->AcquireBus();
-	status_t result = bus->Read(rca, pos, buffer, _length);
+	result = bus->DoIO(rca, command, operation, offsetAsSectors);
 	bus->ReleaseBus();
+
 	return result;
+}
+
+
+static void
+mmc_bus_set_width(device_node* node, void* cookie, int width)
+{
+	MMCBus* bus = (MMCBus*)cookie;
+
+	bus->AcquireBus();
+	bus->SetBusWidth(width);
+	bus->ReleaseBus();
 }
 
 
@@ -172,7 +169,8 @@ mmc_device_interface mmc_bus_controller_module = {
 		NULL
 	},
 	mmc_bus_execute_command,
-	mmc_bus_read_naive
+	mmc_bus_do_io,
+	mmc_bus_set_width
 };
 
 

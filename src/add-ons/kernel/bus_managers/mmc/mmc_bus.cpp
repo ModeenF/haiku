@@ -40,6 +40,8 @@ MMCBus::MMCBus(device_node* node)
 	fWorkerThread = spawn_kernel_thread(_WorkerThread, "SD bus controller",
 		B_NORMAL_PRIORITY, this);
 	resume_thread(fWorkerThread);
+
+	fController->set_scan_semaphore(fCookie, fScanSemaphore);
 }
 
 
@@ -76,9 +78,10 @@ MMCBus::Rescan()
 
 
 status_t
-MMCBus::ExecuteCommand(uint8_t command, uint32_t argument, uint32_t* response)
+MMCBus::ExecuteCommand(uint16_t rca, uint8_t command, uint32_t argument,
+	uint32_t* response)
 {
-	status_t status = _ActivateDevice(0);
+	status_t status = _ActivateDevice(rca);
 	if (status != B_OK)
 		return status;
 	return fController->execute_command(fCookie, command, argument, response);
@@ -86,12 +89,27 @@ MMCBus::ExecuteCommand(uint8_t command, uint32_t argument, uint32_t* response)
 
 
 status_t
-MMCBus::Read(uint16_t rca, off_t position, void* buffer, size_t* length)
+MMCBus::DoIO(uint16_t rca, uint8_t command, IOOperation* operation,
+	bool offsetAsSectors)
 {
 	status_t status = _ActivateDevice(rca);
 	if (status != B_OK)
 		return status;
-	return fController->read_naive(fCookie, position, buffer, length);
+	return fController->do_io(fCookie, command, operation, offsetAsSectors);
+}
+
+
+void
+MMCBus::SetClock(int frequency)
+{
+	fController->set_clock(fCookie, frequency);
+}
+
+
+void
+MMCBus::SetBusWidth(int width)
+{
+	fController->set_bus_width(fCookie, width);
 }
 
 
@@ -114,6 +132,14 @@ MMCBus::_ActivateDevice(uint16_t rca)
 }
 
 
+void MMCBus::_AcquireScanSemaphore()
+{
+	release_sem(fLockSemaphore);
+	acquire_sem(fScanSemaphore);
+	acquire_sem(fLockSemaphore);
+}
+
+
 status_t
 MMCBus::_WorkerThread(void* cookie)
 {
@@ -126,17 +152,30 @@ MMCBus::_WorkerThread(void* cookie)
 	// cards.
 
 	// Reset all cards on the bus
-	bus->ExecuteCommand(SD_GO_IDLE_STATE, 0, NULL);
+	// This does not work if the bus has not been powered on yet (the command
+	// will timeout), in that case we wait until asked to scan again when a
+	// card has been inserted and powered on.
+	status_t result;
+	do {
+		bus->_AcquireScanSemaphore();
+
+		TRACE("Reset the bus...\n");
+		result = bus->ExecuteCommand(0, SD_GO_IDLE_STATE, 0, NULL);
+		TRACE("CMD0 result: %s\n", strerror(result));
+	} while (result != B_OK);
+
+	// Need to wait at least 8 clock cycles after CMD0 before sending the next
+	// command. With the default 400kHz clock that would be 20 microseconds,
+	// but we need to wait at least 20ms here, otherwise the next command times
+	// out
+	snooze(30000);
 
 	while (bus->fStatus != B_SHUTTING_DOWN) {
-		release_sem(bus->fLockSemaphore);
-		// wait for bus to signal a card is inserted
-		// Most of the time the thread will be waiting here, with
-		// fLockSemaphore released
-		acquire_sem(bus->fScanSemaphore);
-		acquire_sem(bus->fLockSemaphore);
-
 		TRACE("Scanning the bus\n");
+
+		// Use the low speed clock and 1bit bus width for scanning
+		bus->SetClock(400);
+		bus->SetBusWidth(1);
 
 		// Probe the voltage range
 		enum {
@@ -154,21 +193,23 @@ MMCBus::_WorkerThread(void* cookie)
 		// If ACMD41 also does not work, it may be an SDIO card, too
 		uint32_t probe = (HOST_27_36V << 8) | kVoltageCheckPattern;
 		uint32_t hcs = 1 << 30;
-		if (bus->ExecuteCommand(SD_SEND_IF_COND, probe, &response) != B_OK) {
+		if (bus->ExecuteCommand(0, SD_SEND_IF_COND, probe, &response) != B_OK) {
 			TRACE("Card does not implement CMD8, may be a V1 SD card\n");
 			// Do not check for SDHC support in this case
 			hcs = 0;
 		} else if (response != probe) {
 			ERROR("Card does not support voltage range (expected %x, "
 				"reply %x)\n", probe, response);
-			// TODO what now?
+			// TODO we should power off the bus in this case.
 		}
 
 		// Probe OCR, waiting for card to become ready
+		// We keep repeating ACMD41 until the card replies that it is
+		// initialized.
 		uint32_t ocr;
 		do {
 			uint32_t cardStatus;
-			while (bus->ExecuteCommand(SD_APP_CMD, 0, &cardStatus)
+			while (bus->ExecuteCommand(0, SD_APP_CMD, 0, &cardStatus)
 					== B_BUSY) {
 				ERROR("Card locked after CMD8...\n");
 				snooze(1000000);
@@ -178,7 +219,7 @@ MMCBus::_WorkerThread(void* cookie)
 			if ((cardStatus & (1 << 5)) == 0)
 				ERROR("Card did not enter ACMD mode\n");
 
-			bus->ExecuteCommand(SD_SEND_OP_COND, hcs | 0xFF8000, &ocr);
+			bus->ExecuteCommand(0, SD_SEND_OP_COND, hcs | 0xFF8000, &ocr);
 
 			if ((ocr & (1 << 31)) == 0) {
 				TRACE("Card is busy\n");
@@ -209,8 +250,8 @@ MMCBus::_WorkerThread(void* cookie)
 		// (and a matching published device on our side).
 		uint32_t cid[4];
 		
-		while (bus->ExecuteCommand(SD_ALL_SEND_CID, 0, cid) == B_OK) {
-			bus->ExecuteCommand(SD_SEND_RELATIVE_ADDR, 0, &response);
+		while (bus->ExecuteCommand(0, SD_ALL_SEND_CID, 0, cid) == B_OK) {
+			bus->ExecuteCommand(0, SD_SEND_RELATIVE_ADDR, 0, &response);
 
 			TRACE("RCA: %x Status: %x\n", response >> 16, response & 0xFFFF);
 
@@ -255,9 +296,18 @@ MMCBus::_WorkerThread(void* cookie)
 				attrs, NULL, NULL);
 		}
 
+		// TODO if there is a single card active, check if it supports CMD6
+		// (spec version 1.10 or later in SCR). If it does, check if CMD6 can
+		// enable high speed mode, use that to go to 50MHz instead of 25.
+		bus->SetClock(25000);
+
 		// FIXME we also need to unpublish devices that are gone. Probably need
 		// to "ping" all RCAs somehow? Or is there an interrupt we can look for
 		// to detect added/removed cards?
+
+		// Wait for the next scan request
+		// The thread will spend most of its time waiting here
+		bus->_AcquireScanSemaphore();
 	}
 
 	release_sem(bus->fLockSemaphore);

@@ -4,7 +4,9 @@
  *
  * Authors:
  *		B Krishnan Iyer, krishnaniyer97@gmail.com
+ *		Adrien Destugues, pulkomandy@pulkomandy.tk
  */
+#include <algorithm>
 #include <new>
 #include <stdio.h>
 #include <string.h>
@@ -14,6 +16,7 @@
 
 #include <KernelExport.h>
 
+#include "IOSchedulerSimple.h"
 #include "mmc.h"
 #include "sdhci_pci.h"
 
@@ -43,14 +46,18 @@ class SdhciBus {
 							~SdhciBus();
 
 		void				EnableInterrupts(uint32_t mask);
+		void				DisableInterrupts();
 		status_t			ExecuteCommand(uint8_t command, uint32_t argument,
 								uint32_t* response);
 		int32				HandleInterrupt();
 		status_t			InitCheck();
 		void				Reset();
 		void				SetClock(int kilohertz);
-		status_t			ReadNaive(off_t pos, void* buffer, size_t* _length);
-		
+		status_t			DoIO(uint8_t command, IOOperation* operation,
+								bool offsetAsSectors);
+		void				SetScanSemaphore(sem_id sem);
+		void				SetBusWidth(int width);
+
 	private:
 		bool				PowerOn();
 		void				RecoverError();
@@ -60,7 +67,15 @@ class SdhciBus {
 		uint32_t			fCommandResult;
 		uint8_t				fIrq;
 		sem_id				fSemaphore;
+		sem_id				fScanSemaphore;
 		status_t			fStatus;
+};
+
+
+class SdhciDevice {
+	public:
+		device_node* fNode;
+		uint8_t fRicohOriginalMode;
 };
 
 
@@ -103,19 +118,16 @@ SdhciBus::SdhciBus(struct registers* registers, uint8_t irq)
 	// way is to reset everything.
 	Reset();
 
-	// Then we configure the clock to the frequency needed for initialization
-	SetClock(400);
-
-	// And we turn on the power supply to the card
-	// FIXME maybe this should only be done when a card is inserted?
-	if (!PowerOn()) {
-		ERROR("Failed to power on the card\n");
-		fStatus = B_NO_INIT;
-		return;
+	// Turn on the power supply to the card, if there is a card inserted
+	if (PowerOn()) {
+		// Then we configure the clock to the frequency needed for
+		// initialization
+		SetClock(400);
 	}
 
-	EnableInterrupts(SDHCI_INT_CMD_CMP
-		| SDHCI_INT_BUF_READ_READY | SDHCI_INT_CARD_INS | SDHCI_INT_CARD_REM);
+	// Finally, configure some useful interrupts
+	EnableInterrupts(SDHCI_INT_CMD_CMP | SDHCI_INT_CARD_REM
+		| SDHCI_INT_TRANS_CMP);
 
 	// We want to see the error bits in the status register, but not have an
 	// interrupt trigger on them (we get a "command complete" interrupt on
@@ -128,7 +140,7 @@ SdhciBus::SdhciBus(struct registers* registers, uint8_t irq)
 
 SdhciBus::~SdhciBus()
 {
-	EnableInterrupts(0);
+	DisableInterrupts();
 
 	if (fSemaphore != 0)
 		delete_sem(fSemaphore);
@@ -144,8 +156,16 @@ SdhciBus::~SdhciBus()
 void
 SdhciBus::EnableInterrupts(uint32_t mask)
 {
-	fRegisters->interrupt_status_enable = mask;
-	fRegisters->interrupt_signal_enable = mask;
+	fRegisters->interrupt_status_enable |= mask;
+	fRegisters->interrupt_signal_enable |= mask;
+}
+
+
+void
+SdhciBus::DisableInterrupts()
+{
+	fRegisters->interrupt_status_enable = 0;
+	fRegisters->interrupt_signal_enable = 0;
 }
 
 
@@ -159,6 +179,9 @@ SdhciBus::ExecuteCommand(uint8_t command, uint32_t argument, uint32_t* response)
 {
 	TRACE("ExecuteCommand(%d, %x)\n", command, argument);
 
+	// First of all clear the result
+	fCommandResult = 0;
+
 	// Check if it's possible to send a command right now.
 	// It is not possible to send a command as long as the command line is busy.
 	// The spec says we should wait, but we can't do that on kernel side, since
@@ -168,7 +191,11 @@ SdhciBus::ExecuteCommand(uint8_t command, uint32_t argument, uint32_t* response)
 	// only during command execution, and we don't leave this function with ac
 	// command running.
 	if (fRegisters->present_state.CommandInhibit()) {
-		ERROR("Execution aborted, command inhibit\n");
+		panic("Command execution impossible, command inhibit\n");
+		return B_BUSY;
+	}
+	if (fRegisters->present_state.DataInhibit()) {
+		panic("Command execution unwise, data inhibit\n");
 		return B_BUSY;
 	}
 
@@ -186,6 +213,7 @@ SdhciBus::ExecuteCommand(uint8_t command, uint32_t argument, uint32_t* response)
 			replyType = Command::kR6Type;
 			break;
 		case SD_SELECT_DESELECT_CARD:
+		case SD_ERASE:
 			replyType = Command::kR1bType;
 			break;
 		case SD_SEND_IF_COND:
@@ -193,16 +221,21 @@ SdhciBus::ExecuteCommand(uint8_t command, uint32_t argument, uint32_t* response)
 			break;
 		case SD_READ_SINGLE_BLOCK:
 		case SD_READ_MULTIPLE_BLOCKS:
+		case SD_WRITE_SINGLE_BLOCK:
+		case SD_WRITE_MULTIPLE_BLOCKS:
 			replyType = Command::kR1Type | Command::kDataPresent;
 			break;
 		case SD_APP_CMD:
+		case SD_ERASE_WR_BLK_START:
+		case SD_ERASE_WR_BLK_END:
+		case SD_SET_BUS_WIDTH: // SD Application command
 			replyType = Command::kR1Type;
 			break;
-		case 41: // ACMD
+		case SD_SEND_OP_COND: // SD Application command
 			replyType = Command::kR3Type;
 			break;
 		default:
-			ERROR("Unknown command\n");
+			ERROR("Unknown command %x\n", command);
 			return B_BAD_DATA;
 	}
 
@@ -214,24 +247,38 @@ SdhciBus::ExecuteCommand(uint8_t command, uint32_t argument, uint32_t* response)
 			return B_BUSY;
 		}
 	}
-	
-	//FIXME : Assign only at this point, if needed :
-	// -32 bit block count/SDMA system address
-	// -block size
-	// -16-bit block count
-	// -transfer mode
 
+	if (fRegisters->present_state.CommandInhibit())
+		panic("Command line busy at start of execute command\n");
+
+	if (replyType == Command::kR1bType)
+		fRegisters->transfer_mode = 0;
+	
 	fRegisters->argument = argument;
 	fRegisters->command.SendCommand(command, replyType);
 
-	// Wait for command response to be available (either "command complete" or
-	// "buffer read ready" interrupt will happen, depending on the command)
-	acquire_sem(fSemaphore);
+	// Wait for command response to be available ("command complete" interrupt)
+	TRACE("Wait for command complete...");
+	while (fRegisters->present_state.CommandInhibit()
+		&& (fCommandResult == 0)) {
+		acquire_sem(fSemaphore);
+		TRACE("command complete sem acquired, status: %x\n", fCommandResult);
+		TRACE("real status = %x command line busy: %d\n",
+			fRegisters->interrupt_status,
+			fRegisters->present_state.CommandInhibit());
+	}
+
+	TRACE("Command response available\n");
 
 	if (fCommandResult & SDHCI_INT_ERROR) {
 		fRegisters->interrupt_status |= fCommandResult;
 		if (fCommandResult & SDHCI_INT_TIMEOUT) {
 			ERROR("Command execution timed out\n");
+			if (fRegisters->present_state.CommandInhibit()) {
+				TRACE("Command line is still busy, clearing it\n");
+				// Clear the stall
+				fRegisters->software_reset.ResetCommandLine();
+			}
 			return B_TIMED_OUT;
 		}
 		if (fCommandResult & SDHCI_INT_CRC) {
@@ -265,6 +312,17 @@ SdhciBus::ExecuteCommand(uint8_t command, uint32_t argument, uint32_t* response)
 		default:
 			// No response
 			break;
+	}
+
+	if (replyType == Command::kR1bType
+			&& (fCommandResult & SDHCI_INT_TRANS_CMP) == 0) {
+		// R1b commands may use the data line so we must wait for the
+		// "transfer complete" interrupt here.
+		TRACE("Waiting for data line...\n");
+		do {
+			acquire_sem(fSemaphore);
+		} while (fRegisters->present_state.DataInhibit());
+		TRACE("Dataline is released.\n");
 	}
 
 	ERROR("Command execution %d complete\n", command);
@@ -328,58 +386,133 @@ SdhciBus::SetClock(int kilohertz)
 
 
 status_t
-SdhciBus::ReadNaive(off_t pos, void* buffer, size_t* _length)
+SdhciBus::DoIO(uint8_t command, IOOperation* operation, bool offsetAsSectors)
 {
-	// TODO read multiple blocks at once (don't ignore _length)
-	fRegisters->block_size = 512;
-	fRegisters->block_count = 1;
-	fRegisters->transfer_mode = TransferMode::kSingle | TransferMode::kRead
-		| TransferMode::kAutoCmdDisabled | TransferMode::kNoDmaOrNoData;
+	bool isWrite = operation->IsWrite();
 
-	uint32_t response;
-	status_t result;
-	result = ExecuteCommand(SD_READ_SINGLE_BLOCK, pos, &response);
+	static const uint32 kBlockSize = 512;
+	off_t offset = operation->Offset();
+	generic_size_t length = operation->Length();
 
-	if (result != B_OK)
-		return result;
+	TRACE("%s %"B_PRIu64 " bytes at %" B_PRIdOFF "\n",
+		isWrite ? "Write" : "Read", length, offset);
 
-	TRACE("Command response: %02x\n", response);
+	// Check that the IO scheduler did its job in following our DMA restrictions
+	// We can start a read only at a sector boundary
+	ASSERT(offset % kBlockSize == 0);
+	// We can only read complete sectors
+	ASSERT(length % kBlockSize == 0);
 
-	if (fCommandResult & SDHCI_INT_BUF_READ_READY == 0) {
-		TRACE("No data!\n");
-		return B_ERROR;
+	const generic_io_vec* vecs = operation->Vecs();
+	generic_size_t vecOffset = 0;
+
+	// FIXME can this be moved to the init function instead?
+	//
+	// For simplicity we use a transfer size equal to the sector size. We could
+	// go up to 2K here if the length to read in each individual vec is a
+	// multiple of 2K, but we have no easy way to know this (we would need to
+	// iterate through the IOOperation vecs and check the size of each of them).
+	// We could also do smaller transfers, but it is not possible to start a
+	// transfer anywhere else than the start of a sector, so it's a lot simpler
+	// to always work in complete sectors. We set the B_DMA_ALIGNMENT device
+	// node property accordingly, making sure that we don't get asked to do
+	// transfers that are not aligned with sectors.
+	//
+	// Additionnally, set SDMA buffer boundary aligment to 512K. This is the
+	// largest possible size. We also set the B_DMA_BOUNDARY property on the
+	// published device node, so that the DMA resource manager knows that it
+	// must respect this boundary. As a result, we will never be asked to
+	// do a transfer that crosses this boundary, and we don't need to handle
+	// the DMA boundary interrupt (the transfer will be split in two at an
+	// upper layer).
+	fRegisters->block_size.ConfigureTransfer(kBlockSize,
+		BlockSize::kDmaBoundary512K);
+	status_t result = B_OK;
+
+	while (length > 0) {
+		size_t toCopy = std::min((generic_size_t)length,
+			vecs->length - vecOffset);
+
+		// If the current vec is empty, we can move to the next
+		if (toCopy == 0) {
+			vecs++;
+			vecOffset = 0;
+			continue;
+		}
+
+		// With SDMA we can only transfer multiples of 1 sector
+		ASSERT(toCopy % kBlockSize == 0);
+
+		fRegisters->system_address = vecs->base + vecOffset;
+		// fRegisters->adma_system_address = fDmaMemory;
+
+		fRegisters->block_count = toCopy / kBlockSize;
+
+		uint16 direction;
+		if (isWrite)
+			direction = TransferMode::kWrite;
+		else
+			direction = TransferMode::kRead;
+		fRegisters->transfer_mode = TransferMode::kMulti | direction
+			| TransferMode::kAutoCmd12Enable
+			| TransferMode::kBlockCountEnable | TransferMode::kDmaEnable;
+
+		uint32_t response;
+		result = ExecuteCommand(command,
+			offset / (offsetAsSectors ? kBlockSize : 1), &response);
+		if (result != B_OK)
+			break;
+
+		// Wait for DMA transfer to complete
+		// In theory we could go on and send other commands as long as they
+		// don't need the DAT lines, but it's overcomplicating things.
+		TRACE("Wait for transfer complete...");
+		acquire_sem(fSemaphore);
+		TRACE("transfer complete OK.\n");
+
+		length -= toCopy;
+		vecOffset += toCopy;
+		offset += toCopy;
 	}
 
-	// We don't know how to read more than 512 bytes (CMD18 would be needed)
-	if (*_length > 512)
-		*_length = 512;
+	return result;
+}
 
-	// read block data from Buffer Data Port register
-	// TODO use DMA instead
-	size_t to_read = *_length / sizeof(uint32_t);
-	size_t to_drop = 512 / sizeof(uint32_t) - to_read;
-	uint32_t* dest = (uint32_t*)buffer;
-	while(to_read > 0) {
-		*dest = fRegisters->buffer_data_port;
-		TRACE("read : 0x%x", *dest);
-		dest++;
-		to_read--;
+
+void
+SdhciBus::SetScanSemaphore(sem_id sem)
+{
+	fScanSemaphore = sem;
+
+	// If there is already a card in, start a scan immediately
+	if (fRegisters->present_state.IsCardInserted())
+		release_sem(fScanSemaphore);
+
+	// We can now enable the card insertion interrupt for next time a card
+	// is inserted
+	EnableInterrupts(SDHCI_INT_CARD_INS);
+}
+
+
+void
+SdhciBus::SetBusWidth(int width)
+{
+	uint8_t widthBits;
+	switch(width) {
+		case 1:
+			widthBits = HostControl::kDataTransfer1Bit;
+			break;
+		case 4:
+			widthBits = HostControl::kDataTransfer4Bit;
+			break;
+		case 8:
+			widthBits = HostControl::kDataTransfer8Bit;
+			break;
+		default:
+			panic("Incorrect bitwidth value");
+			return;
 	}
-
-	// We cannot read less than one sector, so we have to drop the extra data.
-	// This will be fixed when we use DMA and the IO scheduler (since it makes
-	// sure to only ask for complete sectors).
-	// Currently the IO scheduler does not support bounce buffers for non-DMA
-	// transfers.
-	while(to_drop > 0) {
-		(void*)fRegisters->buffer_data_port;
-		to_drop--;
-	}
-
-	// wait for command complete interrupt
-	acquire_sem(fSemaphore);
-
-	return B_OK;
+	fRegisters->host_control.SetDataTransferWidth(widthBits);
 }
 
 
@@ -406,6 +539,107 @@ SdhciBus::PowerOn()
 
 	return true;
 }
+
+
+void
+SdhciBus::RecoverError()
+{
+	fRegisters->interrupt_signal_enable &= ~(SDHCI_INT_CMD_CMP
+		| SDHCI_INT_TRANS_CMP | SDHCI_INT_CARD_INS | SDHCI_INT_CARD_REM);
+
+	if (fRegisters->interrupt_status & 7)
+		fRegisters->software_reset.ResetCommandLine();
+
+	int16_t error_status = fRegisters->interrupt_status;
+	fRegisters->interrupt_status &= ~(error_status);
+}
+
+
+int32
+SdhciBus::HandleInterrupt()
+{
+#if 0
+	// We could use the slot register to quickly see for which slot the
+	// interrupt is. But since we have an interrupt handler call for each slot
+	// anyway, it's just as simple to let each of them scan its own interrupt
+	// status register.
+	if ( !(fRegisters->slot_interrupt_status & (1 << fSlot)) ) {
+		TRACE("interrupt not for me.\n");
+		return B_UNHANDLED_INTERRUPT;
+	}
+#endif
+	
+	uint32_t intmask = fRegisters->interrupt_status;
+
+	// Shortcut: exit early if there is no interrupt or if the register is
+	// clearly invalid.
+	if ((intmask == 0) || (intmask == 0xffffffff)) {
+		return B_UNHANDLED_INTERRUPT;
+	}
+
+	TRACE("interrupt function called %x\n", intmask);
+
+	// handling card presence interrupts
+	if ((intmask & SDHCI_INT_CARD_REM) != 0) {
+		// We can get spurious interrupts as the card is inserted or removed,
+		// so check the actual state before acting
+		if (!fRegisters->present_state.IsCardInserted())
+			fRegisters->power_control.PowerOff();
+		else
+			TRACE("Card removed interrupt, but card is inserted\n");
+
+		fRegisters->interrupt_status |= SDHCI_INT_CARD_REM;
+		TRACE("Card removal interrupt handled\n");
+	}
+
+	if ((intmask & SDHCI_INT_CARD_INS) != 0) {
+		// We can get spurious interrupts as the card is inserted or removed,
+		// so check the actual state before acting
+		if (fRegisters->present_state.IsCardInserted()) {
+			if (PowerOn())
+				SetClock(400);
+			release_sem_etc(fScanSemaphore, 1, B_DO_NOT_RESCHEDULE);
+		} else
+			TRACE("Card insertion interrupt, but card is removed\n");
+
+		fRegisters->interrupt_status |= SDHCI_INT_CARD_INS;
+		TRACE("Card presence interrupt handled\n");
+	}
+
+	// handling command interrupt
+	if (intmask & SDHCI_INT_CMD_MASK) {
+		fCommandResult = intmask;
+			// Save the status before clearing so the thread can handle it
+		fRegisters->interrupt_status |= (intmask & SDHCI_INT_CMD_MASK);
+
+		// Notify the thread
+		release_sem_etc(fSemaphore, 1, B_DO_NOT_RESCHEDULE);
+		TRACE("Command complete interrupt handled\n");
+	}
+
+	if (intmask & SDHCI_INT_TRANS_CMP) {
+		fCommandResult = intmask;
+		fRegisters->interrupt_status |= SDHCI_INT_TRANS_CMP;
+		release_sem_etc(fSemaphore, 1, B_DO_NOT_RESCHEDULE);
+		TRACE("Transfer complete interrupt handled\n");
+	}
+
+	// handling bus power interrupt
+	if (intmask & SDHCI_INT_BUS_POWER) {
+		fRegisters->interrupt_status |= SDHCI_INT_BUS_POWER;
+		TRACE("card is consuming too much power\n");
+	}
+
+	// Check that all interrupts have been cleared (we check all the ones we
+	// enabled, so that should always be the case)
+	intmask = fRegisters->interrupt_status;
+	if (intmask != 0) {
+		ERROR("Remaining interrupts at end of handler: %x\n", intmask);
+	}
+
+	return B_HANDLED_INTERRUPT;
+}
+// #pragma mark -
 
 
 static status_t
@@ -437,10 +671,17 @@ init_bus(device_node* node, void** bus_cookie)
 		|| gDeviceManager->get_attr_uint8(node, BAR_INDEX, &bar, false) < B_OK)
 		return -1;
 
+	// Ignore invalid bars
 	TRACE("Register SD bus at slot %d, using bar %d\n", slot + 1, bar);
 
 	pci_info pciInfo;
 	pci->get_pci_info(device, &pciInfo);
+
+	if (pciInfo.u.h0.base_register_sizes[bar] == 0) {
+		ERROR("No registers to map\n");
+		return -1;
+	}
+
 	int msiCount = sPCIx86Module->get_msi_count(pciInfo.bus,
 		pciInfo.device, pciInfo.function);
 	TRACE("interrupts count: %d\n",msiCount);
@@ -509,101 +750,6 @@ uninit_bus(void* bus_cookie)
 }
 
 
-void
-SdhciBus::RecoverError()
-{
-	fRegisters->interrupt_signal_enable &= ~(SDHCI_INT_CMD_CMP
-		| SDHCI_INT_TRANS_CMP | SDHCI_INT_CARD_INS | SDHCI_INT_CARD_REM);
-
-	if (fRegisters->interrupt_status & 7)
-		fRegisters->software_reset.ResetCommandLine();
-
-	int16_t error_status = fRegisters->interrupt_status;
-	fRegisters->interrupt_status &= ~(error_status);
-}
-
-
-int32
-SdhciBus::HandleInterrupt()
-{
-	CALLED();
-
-#if 0
-	// We could use the slot register to quickly see for which slot the
-	// interrupt is. But since we have an interrupt handler call for each slot
-	// anyway, it's just as simple to let each of them scan its own interrupt
-	// status register.
-	if ( !(fRegisters->slot_interrupt_status & (1 << fSlot)) ) {
-		TRACE("interrupt not for me.\n");
-		return B_UNHANDLED_INTERRUPT;
-	}
-#endif
-	
-	uint32_t intmask = fRegisters->interrupt_status;
-
-	// Shortcut: exit early if there is no interrupt or if the register is
-	// clearly invalid.
-	if ((intmask == 0) || (intmask == 0xffffffff)) {
-		return B_UNHANDLED_INTERRUPT;
-	}
-
-	TRACE("interrupt function called %x\n", intmask);
-
-	// handling card presence interrupt
-	if (intmask & (SDHCI_INT_CARD_INS | SDHCI_INT_CARD_REM)) {
-		uint32_t card_present = ((intmask & SDHCI_INT_CARD_INS) != 0);
-		fRegisters->interrupt_status_enable &= ~(SDHCI_INT_CARD_INS
-			| SDHCI_INT_CARD_REM);
-		fRegisters->interrupt_signal_enable &= ~(SDHCI_INT_CARD_INS
-			| SDHCI_INT_CARD_REM);
-
-		fRegisters->interrupt_status_enable |= card_present
-		 	? SDHCI_INT_CARD_REM : SDHCI_INT_CARD_INS;
-		fRegisters->interrupt_signal_enable |= card_present
-			? SDHCI_INT_CARD_REM : SDHCI_INT_CARD_INS;
-
-		fRegisters->interrupt_status |= (intmask &
-			(SDHCI_INT_CARD_INS | SDHCI_INT_CARD_REM));
-		TRACE("Card presence interrupt handled\n");
-	}
-
-	// handling command interrupt
-	if (intmask & SDHCI_INT_CMD_MASK) {
-		fCommandResult = intmask;
-			// Save the status before clearing so the thread can handle it
-		fRegisters->interrupt_status |= (intmask & SDHCI_INT_CMD_MASK);
-
-		// Notify the thread
-		release_sem_etc(fSemaphore, 1, B_DO_NOT_RESCHEDULE);
-		TRACE("Command complete interrupt handled\n");
-	}
-
-	// handling data transfer interrupt
-	if (intmask & SDHCI_INT_BUF_READ_READY) {
-		TRACE("buffer read ready interrupt raised");
-		fRegisters->interrupt_status |= (intmask & SDHCI_INT_BUF_READ_READY);
-
-		release_sem_etc(fSemaphore, 1, B_DO_NOT_RESCHEDULE);
-	}
-
-	// handling bus power interrupt
-	if (intmask & SDHCI_INT_BUS_POWER) {
-		fRegisters->interrupt_status |= SDHCI_INT_BUS_POWER;
-		TRACE("card is consuming too much power\n");
-	}
-
-	// Check that all interrupts have been cleared (we check all the ones we
-	// enabled, so that should always be the case)
-	intmask = fRegisters->slot_interrupt_status;
-	if (intmask != 0) {
-		ERROR("Remaining interrupts at end of handler: %x\n", intmask);
-	}
-
-	return B_HANDLED_INTERRUPT;
-}
-// #pragma mark -
-
-
 static void
 bus_removed(void* bus_cookie)
 {
@@ -615,8 +761,8 @@ static status_t
 register_child_devices(void* cookie)
 {
 	CALLED();
-	device_node* node = (device_node*)cookie;
-	device_node* parent = gDeviceManager->get_parent_node(node);
+	SdhciDevice* context = (SdhciDevice*)cookie;
+	device_node* parent = gDeviceManager->get_parent_node(context->fNode);
 	pci_device_module_info* pci;
 	pci_device* device;
 	uint8 slots_count, bar, slotsInfo;
@@ -639,17 +785,31 @@ register_child_devices(void* cookie)
 		bar = bar + slot;
 		sprintf(prettyName, "SDHC bus %" B_PRIu8, slot);
 		device_attr attrs[] = {
-			// properties of this controller for SDHCI bus manager
+			// properties of this controller for mmc bus manager
 			{ B_DEVICE_PRETTY_NAME, B_STRING_TYPE, { string: prettyName } },
 			{ B_DEVICE_FIXED_CHILD, B_STRING_TYPE,
 				{string: MMC_BUS_MODULE_NAME} },
 			{ B_DEVICE_BUS, B_STRING_TYPE, {string: "mmc"} },
+
+			// DMA properties
+			// The high alignment is to force access only to complete sectors
+			// These constraints could be removed by using ADMA which allows
+			// use of the full 64bit address space and can do scatter-gather.
+			{ B_DMA_ALIGNMENT, B_UINT32_TYPE, { ui32: 511 }},
+			{ B_DMA_HIGH_ADDRESS, B_UINT64_TYPE, { ui64: 0x100000000LL }},
+			{ B_DMA_BOUNDARY, B_UINT32_TYPE, { ui32: (1 << 19) - 1 }},
+			{ B_DMA_MAX_SEGMENT_COUNT, B_UINT32_TYPE, { ui32: 1 }},
+			{ B_DMA_MAX_SEGMENT_BLOCKS, B_UINT32_TYPE, { ui32: (1 << 10) - 1 }},
+
+			// private data to identify device
 			{ SLOT_NUMBER, B_UINT8_TYPE, { ui8: slot} },
 			{ BAR_INDEX, B_UINT8_TYPE, { ui8: bar} },
 			{ NULL }
 		};
-		if (gDeviceManager->register_node(node, SDHCI_PCI_MMC_BUS_MODULE_NAME,
-				attrs, NULL, &node) != B_OK)
+		device_node* node;
+		if (gDeviceManager->register_node(context->fNode,
+				SDHCI_PCI_MMC_BUS_MODULE_NAME, attrs, NULL,
+				&node) != B_OK)
 			return B_BAD_VALUE;
 	}
 	return B_OK;
@@ -660,8 +820,78 @@ static status_t
 init_device(device_node* node, void** device_cookie)
 {
 	CALLED();
-	*device_cookie = node;
+
+	// Get the PCI driver and device
+	pci_device_module_info* pci;
+	pci_device* device;
+	uint16 vendorId, deviceId;
+
+	device_node* pciParent = gDeviceManager->get_parent_node(node);
+	gDeviceManager->get_driver(pciParent, (driver_module_info**)&pci,
+	        (void**)&device);
+	gDeviceManager->put_node(pciParent);
+
+	SdhciDevice* context = new(std::nothrow)SdhciDevice;
+	if (context == NULL)
+		return B_NO_MEMORY;
+	context->fNode = node;
+	*device_cookie = context;
+
+	if (gDeviceManager->get_attr_uint16(node, B_DEVICE_VENDOR_ID,
+			&vendorId, true) != B_OK
+		|| gDeviceManager->get_attr_uint16(node, B_DEVICE_ID, &deviceId,
+			true) != B_OK) {
+		panic("No vendor or device id attribute\n");
+		return B_OK; // Let's hope it didn't need the quirk?
+	}
+
+	if (vendorId == 0x1180 && deviceId == 0xe823) {
+		// Switch the device to SD2.0 mode
+		// This should change its device id to 0xe822 if succesful.
+		// The device then remains in SD2.0 mode even after reboot.
+		pci->write_pci_config(device, SDHCI_PCI_RICOH_MODE_KEY, 1, 0xfc);
+		context->fRicohOriginalMode = pci->read_pci_config(device,
+			SDHCI_PCI_RICOH_MODE, 1);
+		pci->write_pci_config(device, SDHCI_PCI_RICOH_MODE, 1,
+			SDHCI_PCI_RICOH_MODE_SD20);
+		pci->write_pci_config(device, SDHCI_PCI_RICOH_MODE_KEY, 1, 0);
+
+		deviceId = pci->read_pci_config(device, 2, 2);
+		TRACE("Device ID after Ricoh quirk: %x\n", deviceId);
+	}
+
 	return B_OK;
+}
+
+
+static void
+uninit_device(void* device_cookie)
+{
+	// Get the PCI driver and device
+	pci_device_module_info* pci;
+	pci_device* device;
+	uint16 vendorId, deviceId;
+
+	SdhciDevice* context = (SdhciDevice*)device_cookie;
+	device_node* pciParent = gDeviceManager->get_parent_node(context->fNode);
+	gDeviceManager->get_driver(pciParent, (driver_module_info**)&pci,
+	        (void**)&device);
+
+	if (gDeviceManager->get_attr_uint16(context->fNode, B_DEVICE_VENDOR_ID,
+			&vendorId, true) != B_OK
+		|| gDeviceManager->get_attr_uint16(context->fNode, B_DEVICE_ID,
+			&deviceId, false) != B_OK) {
+		ERROR("No vendor or device id attribute\n");
+	} else if (vendorId == 0x1180 && deviceId == 0xe823) {
+		pci->write_pci_config(device, SDHCI_PCI_RICOH_MODE_KEY, 1, 0xfc);
+		pci->write_pci_config(device, SDHCI_PCI_RICOH_MODE, 1,
+			context->fRicohOriginalMode);
+		pci->write_pci_config(device, SDHCI_PCI_RICOH_MODE_KEY, 1, 0);
+	}
+
+	gDeviceManager->put_node(pciParent);
+
+	delete context;
 }
 
 
@@ -681,7 +911,6 @@ register_device(device_node* parent)
 static float
 supports_device(device_node* parent)
 {
-	CALLED();
 	const char* bus;
 	uint16 type, subType;
 	uint16 vendorId, deviceId;
@@ -704,7 +933,7 @@ supports_device(device_node* parent)
 		return 0.0f;
 	}
 
-	TRACE("Probe device %p (%04x:%04x)\n", parent, vendorId, deviceId);
+	TRACE("supports_device(vid:%04x pid:%04x)\n", vendorId, deviceId);
 
 	if (gDeviceManager->get_attr_uint16(parent, B_DEVICE_SUB_TYPE, &subType,
 			false) < B_OK
@@ -718,7 +947,8 @@ supports_device(device_node* parent)
 		if (subType != PCI_sd_host) {
 			// Also accept some compliant devices that do not advertise
 			// themselves as such.
-			if (vendorId != 0x1180 && deviceId != 0xe823) {
+			if (vendorId != 0x1180
+				|| (deviceId != 0xe823 && deviceId != 0xe822)) {
 				TRACE("Not the right subclass, and not a Ricoh device\n");
 				return 0.0f;
 			}
@@ -730,6 +960,7 @@ supports_device(device_node* parent)
 			(void**)&device);
 		TRACE("SDHCI Device found! Subtype: 0x%04x, type: 0x%04x\n",
 			subType, type);
+
 		return 0.8f;
 	}
 
@@ -755,14 +986,34 @@ execute_command(void* controller, uint8_t command, uint32_t argument,
 }
 
 
-//Very naive read protocol : non DMA, 32 bits at a time (size of Buffer Data Port)
 static status_t
-read_naive(void* controller, off_t pos, void* buffer, size_t* _length) 
+do_io(void* controller, uint8_t command, IOOperation* operation,
+	bool offsetAsSectors)
 {
 	CALLED();
-	
+
 	SdhciBus* bus = (SdhciBus*)controller;
-	return bus->ReadNaive(pos, buffer, _length);
+	return bus->DoIO(command, operation, offsetAsSectors);
+}
+
+
+static void
+set_scan_semaphore(void* controller, sem_id sem)
+{
+	CALLED();
+
+	SdhciBus* bus = (SdhciBus*)controller;
+	return bus->SetScanSemaphore(sem);
+}
+
+
+static void
+set_bus_width(void* controller, int width)
+{
+	CALLED();
+
+	SdhciBus* bus = (SdhciBus*)controller;
+	return bus->SetBusWidth(width);
 }
 
 
@@ -793,7 +1044,9 @@ static mmc_bus_interface gSDHCIPCIDeviceModule = {
 
 	set_clock,
 	execute_command,
-	read_naive
+	do_io,
+	set_scan_semaphore,
+	set_bus_width
 };
 
 
@@ -808,7 +1061,7 @@ static driver_module_info sSDHCIDevice = {
 	supports_device,
 	register_device,
 	init_device,
-	NULL,	// uninit
+	uninit_device,
 	register_child_devices,
 	NULL,	// rescan
 	NULL,	// device removed

@@ -41,15 +41,20 @@ public:
 				status_t		InitCheck();
 				void			Rescan();
 
-				status_t		ExecuteCommand(uint8_t command,
+				status_t		ExecuteCommand(uint16_t rca, uint8_t command,
 									uint32_t argument, uint32_t* response);
-				status_t		Read(uint16_t rca, off_t position, void* buffer,
-									size_t* length);
+				status_t		DoIO(uint16_t rca, uint8_t command,
+									IOOperation* operation,
+									bool offsetAsSectors);
+
+				void			SetClock(int frequency);
+				void			SetBusWidth(int width);
 
 				void			AcquireBus() { acquire_sem(fLockSemaphore); }
 				void			ReleaseBus() { release_sem(fLockSemaphore); }
 private:
 				status_t		_ActivateDevice(uint16_t rca);
+				void			_AcquireScanSemaphore();
 		static	status_t		_WorkerThread(void*);
 
 private:

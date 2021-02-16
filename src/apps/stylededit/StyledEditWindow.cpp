@@ -85,7 +85,8 @@ bs_printf(BString* string, const char* format, ...)
 
 StyledEditWindow::StyledEditWindow(BRect frame, int32 id, uint32 encoding)
 	:
-	BWindow(frame, "untitled", B_DOCUMENT_WINDOW, B_ASYNCHRONOUS_CONTROLS),
+	BWindow(frame, "untitled", B_DOCUMENT_WINDOW, B_ASYNCHRONOUS_CONTROLS
+		| B_AUTO_UPDATE_SIZE_LIMITS),
 	fFindWindow(NULL),
 	fReplaceWindow(NULL)
 {
@@ -101,7 +102,8 @@ StyledEditWindow::StyledEditWindow(BRect frame, int32 id, uint32 encoding)
 
 StyledEditWindow::StyledEditWindow(BRect frame, entry_ref* ref, uint32 encoding)
 	:
-	BWindow(frame, "untitled", B_DOCUMENT_WINDOW, B_ASYNCHRONOUS_CONTROLS),
+	BWindow(frame, "untitled", B_DOCUMENT_WINDOW, B_ASYNCHRONOUS_CONTROLS
+		| B_AUTO_UPDATE_SIZE_LIMITS),
 	fFindWindow(NULL),
 	fReplaceWindow(NULL)
 {
@@ -1175,7 +1177,7 @@ StyledEditWindow::_InitWindow(uint32 encoding)
 		new BMessage(MENU_FIND_AGAIN), 'G');
 	fFindAgainItem->SetEnabled(false);
 
-	fReplaceItem = new BMenuItem(B_TRANSLATE(B_UTF8_ELLIPSIS),
+	fReplaceItem = new BMenuItem(B_TRANSLATE("Replace" B_UTF8_ELLIPSIS),
 		new BMessage(MENU_REPLACE), 'R');
 
 	fReplaceSameItem = new BMenuItem(B_TRANSLATE("Replace next"),
@@ -1308,7 +1310,7 @@ StyledEditWindow::_InitWindow(uint32 encoding)
 			.AddItem(B_TRANSLATE("Find" B_UTF8_ELLIPSIS), MENU_FIND, 'F')
 			.AddItem(fFindAgainItem)
 			.AddItem(B_TRANSLATE("Find selection"), MENU_FIND_SELECTION, 'H')
-			.AddItem(B_TRANSLATE("Replace" B_UTF8_ELLIPSIS), MENU_REPLACE, 'R')
+			.AddItem(fReplaceItem)
 			.AddItem(fReplaceSameItem)
 		.End()
 		.AddItem(fFontMenu)
@@ -1324,11 +1326,14 @@ StyledEditWindow::_InitWindow(uint32 encoding)
 	fSavePanel = NULL;
 	fSavePanelEncodingMenu = NULL;
 
-	BGroupLayout* layout = new BGroupLayout(B_VERTICAL, 0);
-	SetLayout(layout);
-	layout->AddView(mainMenu);
-	layout->AddView(fScrollView);
-	layout->SetInsets(0, 0, -1, -1);
+	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
+		.Add(mainMenu)
+		.AddGroup(B_VERTICAL, 0)
+			.SetInsets(-1)
+			.Add(fScrollView)
+		.End()
+	.End();
+
 	SetKeyMenuBar(mainMenu);
 
 }

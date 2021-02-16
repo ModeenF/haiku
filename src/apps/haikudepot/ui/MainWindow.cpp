@@ -3,7 +3,7 @@
  * Copyright 2013-2014, Stephan Aßmus <superstippi@gmx.de>.
  * Copyright 2013, Rene Gollent, rene@gollent.com.
  * Copyright 2013, Ingo Weinhold, ingo_weinhold@gmx.de.
- * Copyright 2016-2020, Andrew Lindesay <apl@lindesay.co.nz>.
+ * Copyright 2016-2021, Andrew Lindesay <apl@lindesay.co.nz>.
  * Copyright 2017, Julian Harnath <julian.harnath@rwth-aachen.de>.
  * All rights reserved. Distributed under the terms of the MIT License.
  */
@@ -429,7 +429,7 @@ MainWindow::MessageReceived(BMessage* message)
 					BAutolock locker(fModel.Lock());
 					package = fModel.PackageForName(name);
 				}
-				if (package.Get() == NULL)
+				if (!package.IsSet() || name != package->Name())
 					debugger("unable to find the named package");
 				else
 					_AdoptPackage(package);
@@ -494,7 +494,7 @@ MainWindow::MessageReceived(BMessage* message)
 				}
 				_AddRemovePackageFromLists(ref);
 				if ((changes & PKG_CHANGED_STATE) != 0
-						&& fCoordinator.Get() == NULL) {
+						&& !fCoordinator.IsSet()) {
 					fWorkStatusView->PackageStatusChanged(ref);
 				}
 			}
@@ -605,15 +605,11 @@ MainWindow::PackageChanged(const PackageInfoEvent& event)
 
 
 status_t
-MainWindow::SchedulePackageActions(PackageActionList& list)
+MainWindow::SchedulePackageAction(PackageActionRef action)
 {
 	AutoLocker<BLocker> lock(&fPendingActionsLock);
-	for (int32 i = 0; i < list.CountItems(); i++) {
-		if (!fPendingActions.Add(list.ItemAtFast(i)))
-			return B_NO_MEMORY;
-	}
-
-	return release_sem_etc(fPendingActionsSem, list.CountItems(), 0);
+	fPendingActions.push(action);
+	return release_sem_etc(fPendingActionsSem, 1, 0);
 }
 
 
@@ -830,9 +826,10 @@ MainWindow::_AdoptModel()
 	std::vector<DepotInfoRef>::iterator it;
 	for (it = depots.begin(); it != depots.end(); it++) {
 		DepotInfoRef depotInfoRef = *it;
-		const PackageList& packages = depotInfoRef->Packages();
-		for (int32 p = 0; p < packages.CountItems(); p++)
-			_AddRemovePackageFromLists(packages.ItemAtFast(p));
+		for (int i = 0; i < depotInfoRef->CountPackages(); i++) {
+			PackageInfoRef package = depotInfoRef->PackageAtIndex(i);
+			_AddRemovePackageFromLists(package);
+		}
 	}
 
 	_AdoptModelControls();
@@ -988,7 +985,7 @@ MainWindow::_HandleWorkStatusChangeMessageReceived(const BMessage* message)
 }
 
 
-status_t
+/*static*/ status_t
 MainWindow::_PackageActionWorker(void* arg)
 {
 	MainWindow* window = reinterpret_cast<MainWindow*>(arg);
@@ -997,10 +994,10 @@ MainWindow::_PackageActionWorker(void* arg)
 		PackageActionRef ref;
 		{
 			AutoLocker<BLocker> lock(&window->fPendingActionsLock);
-			ref = window->fPendingActions.ItemAt(0);
-			if (ref.Get() == NULL)
+			ref = window->fPendingActions.front();
+			window->fPendingActions.pop();
+			if (!ref.IsSet())
 				break;
-			window->fPendingActions.Remove(0);
 		}
 
 		BMessenger messenger(window);
@@ -1058,7 +1055,7 @@ MainWindow::_PopulatePackageWorker(void* arg)
 			force = window->fForcePopulatePackage;
 		}
 
-		if (package.Get() != NULL) {
+		if (package.IsSet()) {
 			uint32 populateFlags = Model::POPULATE_USER_RATINGS
 				| Model::POPULATE_SCREEN_SHOTS
 				| Model::POPULATE_CHANGELOG;
@@ -1326,7 +1323,7 @@ MainWindow::_AddProcessCoordinator(ProcessCoordinator* item)
 {
 	AutoLocker<BLocker> lock(&fCoordinatorLock);
 
-	if (fCoordinator.Get() == NULL) {
+	if (!fCoordinator.IsSet()) {
 		if (acquire_sem(fCoordinatorRunningSem) != B_OK)
 			debugger("unable to acquire the process coordinator sem");
 		HDINFO("adding and starting a process coordinator [%s]",
@@ -1352,7 +1349,7 @@ MainWindow::_SpinUntilProcessCoordinatorComplete()
 			debugger("unable to release the process coordinator sem");
 		{
 			AutoLocker<BLocker> lock(&fCoordinatorLock);
-			if (fCoordinator.Get() == NULL)
+			if (!fCoordinator.IsSet())
 				return;
 		}
 	}
@@ -1375,7 +1372,7 @@ MainWindow::_StopProcessCoordinators()
 			fCoordinatorQueue.pop();
 		}
 
-		if (fCoordinator.Get() != NULL) {
+		if (fCoordinator.IsSet()) {
 			fCoordinator->Stop();
 		}
 	}

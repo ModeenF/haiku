@@ -1,11 +1,12 @@
 /*
- * Copyright 2011-2015, Haiku, Inc. All Rights Reserved.
+ * Copyright 2011-2021, Haiku, Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
  *		Axel Dörfler <axeld@pinc-software.de>
  *		Rene Gollent <rene@gollent.com>
  *		Oliver Tappe <zooey@hirschkaefer.de>
+ *		Stephan Aßmus <superstippi@gmx.de>
  */
 
 
@@ -20,7 +21,10 @@
 #	include <HttpRequest.h>
 #	include <UrlRequest.h>
 #	include <UrlProtocolRoster.h>
+using namespace BPrivate::Network;
 #endif
+
+#include "FetchUtils.h"
 
 
 namespace BPackageKit {
@@ -36,7 +40,7 @@ FetchFileJob::FetchFileJob(const BContext& context, const BString& title,
 	inherited(context, title),
 	fFileURL(fileURL),
 	fTargetEntry(targetEntry),
-	fTargetFile(&targetEntry, B_CREATE_FILE | B_ERASE_FILE | B_WRITE_ONLY),
+	fTargetFile(&targetEntry, B_CREATE_FILE | B_WRITE_ONLY),
 	fError(B_ERROR),
 	fDownloadProgress(0.0)
 {
@@ -90,13 +94,38 @@ FetchFileJob::Execute()
 	if (result != B_OK)
 		return result;
 
-	BUrlRequest* request = BUrlProtocolRoster::MakeRequest(fFileURL.String(),
-		this);
-	if (request == NULL)
-		return B_BAD_VALUE;
+	result = FetchUtils::SetFileType(fTargetFile,
+		"application/x-vnd.haiku-package");
+	if (result != B_OK) {
+		fprintf(stderr, "failed to set file type for '%s': %s\n",
+			DownloadFileName(), strerror(result));
+	}
 
-	thread_id thread = request->Run();
-	wait_for_thread(thread, NULL);
+	do {
+		BUrlRequest* request = BUrlProtocolRoster::MakeRequest(DownloadURL(),
+			this);
+		if (request == NULL)
+			return B_BAD_VALUE;
+
+		// Try to resume the download where we left off
+		off_t currentPosition;
+		BHttpRequest* http= dynamic_cast<BHttpRequest*>(request);
+		if (http != NULL && fTargetFile.GetSize(&currentPosition) == B_OK
+			&& currentPosition > 0) {
+			http->SetRangeStart(currentPosition);
+		}
+
+		thread_id thread = request->Run();
+		wait_for_thread(thread, NULL);
+	} while (fError == B_IO_ERROR || fError == B_DEV_TIMEOUT);
+
+	if (fError == B_OK) {
+		result = FetchUtils::MarkDownloadComplete(fTargetFile);
+		if (result != B_OK) {
+			fprintf(stderr, "failed to mark download '%s' as complete: %s\n",
+				DownloadFileName(), strerror(result));
+		}
+	}
 
 	return fError;
 }
@@ -111,8 +140,8 @@ FetchFileJob::DataReceived(BUrlRequest*, const char* data, off_t position,
 
 
 void
-FetchFileJob::DownloadProgress(BUrlRequest*, ssize_t bytesReceived,
-	ssize_t bytesTotal)
+FetchFileJob::DownloadProgress(BUrlRequest*, off_t bytesReceived,
+	off_t bytesTotal)
 {
 	if (bytesTotal != 0) {
 		fBytes = bytesReceived;
@@ -146,10 +175,8 @@ FetchFileJob::RequestCompleted(BUrlRequest* request, bool success)
 			}
 			switch (code) {
 				case B_HTTP_STATUS_OK:
-					fError = B_OK;
-					break;
 				case B_HTTP_STATUS_PARTIAL_CONTENT:
-					fError = B_PARTIAL_READ;
+					fError = B_OK;
 					break;
 				case B_HTTP_STATUS_REQUEST_TIMEOUT:
 				case B_HTTP_STATUS_GATEWAY_TIMEOUT:
@@ -198,7 +225,7 @@ FetchFileJob::FetchFileJob(const BContext& context, const BString& title,
 	inherited(context, title),
 	fFileURL(fileURL),
 	fTargetEntry(targetEntry),
-	fTargetFile(&targetEntry, B_CREATE_FILE | B_ERASE_FILE | B_WRITE_ONLY),
+	fTargetFile(&targetEntry, B_CREATE_FILE | B_WRITE_ONLY),
 	fDownloadProgress(0.0)
 {
 }

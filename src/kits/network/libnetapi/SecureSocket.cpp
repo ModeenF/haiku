@@ -199,7 +199,7 @@ BSecureSocket::Private::ErrorCode(int returnValue)
 			return B_NO_ERROR;
 		case SSL_ERROR_ZERO_RETURN:
 			// Socket is closed
-			return B_CANCELED;
+			return B_IO_ERROR;
 		case SSL_ERROR_SSL:
 			// Probably no certificate
 			return B_NOT_ALLOWED;
@@ -540,7 +540,7 @@ BSecureSocket::Read(void* buffer, size_t size)
 	int retry;
 	do {
 		bytesRead = SSL_read(fPrivate->fSSL, buffer, size);
-		if (bytesRead >= 0)
+		if (bytesRead > 0)
 			return bytesRead;
 
 		if (errno != EINTR) {

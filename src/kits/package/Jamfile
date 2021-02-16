@@ -5,6 +5,7 @@ AddResources libpackage.so : libpackage.rdef ;
 UsePrivateHeaders
 	app
 	kernel
+	netservices
 	shared
 	libroot
 	storage
@@ -84,6 +85,7 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			DownloadFileRequest.cpp
 			DropRepositoryRequest.cpp
 			FetchFileJob.cpp
+			FetchUtils.cpp
 			InstallationLocationInfo.cpp
 			Job.cpp
 			PackageInfo.cpp
@@ -129,6 +131,7 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			shared
 			bnetapi
 			be localestub
+			[ MultiArchDefaultGristFiles libnetservices.a ]
 			[ TargetLibstdc++ ]
 			$(TARGET_NETWORK_LIBS)
 			;

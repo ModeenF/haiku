@@ -1,7 +1,7 @@
 /*
  * Copyright 2013-2014, Stephan Aßmus <superstippi@gmx.de>.
  * Copyright 2014, Axel Dörfler <axeld@pinc-software.de>.
- * Copyright 2016-2020, Andrew Lindesay <apl@lindesay.co.nz>.
+ * Copyright 2016-2021, Andrew Lindesay <apl@lindesay.co.nz>.
  * All rights reserved. Distributed under the terms of the MIT License.
  */
 
@@ -65,35 +65,6 @@ public:
 };
 
 
-class DepotFilter : public PackageFilter {
-public:
-	DepotFilter(const DepotInfo& depot)
-		:
-		fDepot(depot)
-	{
-	}
-
-	virtual bool AcceptsPackage(const PackageInfoRef& package) const
-	{
-		// TODO: Maybe a PackageInfo ought to know the Depot it came from?
-		// But right now the same package could theoretically be provided
-		// from different depots and the filter would work correctly.
-		// Also the PackageList could actually contain references to packages
-		// instead of the packages as objects. The equal operator is quite
-		// expensive as is.
-		return fDepot.Packages().Contains(package);
-	}
-
-	const BString& Depot() const
-	{
-		return fDepot.Name();
-	}
-
-private:
-	DepotInfo	fDepot;
-};
-
-
 class CategoryFilter : public PackageFilter {
 public:
 	CategoryFilter(const BString& category)
@@ -104,12 +75,12 @@ public:
 
 	virtual bool AcceptsPackage(const PackageInfoRef& package) const
 	{
-		if (package.Get() == NULL)
+		if (!package.IsSet())
 			return false;
 
 		for (int i = package->CountCategories() - 1; i >= 0; i--) {
 			const CategoryRef& category = package->CategoryAtIndex(i);
-			if (category.Get() == NULL)
+			if (!category.IsSet())
 				continue;
 			if (category->Code() == fCategory)
 				return true;
@@ -124,78 +95,6 @@ public:
 
 private:
 	BString		fCategory;
-};
-
-
-class ContainedInFilter : public PackageFilter {
-public:
-	ContainedInFilter(const PackageList& packageList)
-		:
-		fPackageList(packageList)
-	{
-	}
-
-	virtual bool AcceptsPackage(const PackageInfoRef& package) const
-	{
-		return fPackageList.Contains(package);
-	}
-
-private:
-	const PackageList&	fPackageList;
-};
-
-
-class ContainedInEitherFilter : public PackageFilter {
-public:
-	ContainedInEitherFilter(const PackageList& packageListA,
-		const PackageList& packageListB)
-		:
-		fPackageListA(packageListA),
-		fPackageListB(packageListB)
-	{
-	}
-
-	virtual bool AcceptsPackage(const PackageInfoRef& package) const
-	{
-		return fPackageListA.Contains(package)
-			|| fPackageListB.Contains(package);
-	}
-
-private:
-	const PackageList&	fPackageListA;
-	const PackageList&	fPackageListB;
-};
-
-
-class NotContainedInFilter : public PackageFilter {
-public:
-	NotContainedInFilter(const PackageList* packageList, ...)
-	{
-		va_list args;
-		va_start(args, packageList);
-		while (true) {
-			const PackageList* packageList = va_arg(args, const PackageList*);
-			if (packageList == NULL)
-				break;
-			fPackageLists.Add(packageList);
-		}
-		va_end(args);
-	}
-
-	virtual bool AcceptsPackage(const PackageInfoRef& package) const
-	{
-		if (package.Get() == NULL)
-			return false;
-
-		for (int32 i = 0; i < fPackageLists.CountItems(); i++) {
-			if (fPackageLists.ItemAtFast(i)->Contains(package))
-				return false;
-		}
-		return true;
-	}
-
-private:
-	List<const PackageList*, true>	fPackageLists;
 };
 
 
@@ -239,7 +138,7 @@ public:
 
 	virtual bool AcceptsPackage(const PackageInfoRef& package) const
 	{
-		if (package.Get() == NULL)
+		if (!package.IsSet())
 			return false;
 		// Every search term must be found in one of the package texts
 		for (int32 i = fSearchTerms.CountStrings() - 1; i >= 0; i--) {
@@ -348,10 +247,10 @@ Model::InitPackageIconRepository()
 }
 
 
-bool
+void
 Model::AddListener(const ModelListenerRef& listener)
 {
-	return fListeners.Add(listener);
+	fListeners.push_back(listener);
 }
 
 
@@ -363,9 +262,9 @@ Model::PackageForName(const BString& name)
 	std::vector<DepotInfoRef>::iterator it;
 	for (it = fDepots.begin(); it != fDepots.end(); it++) {
 		DepotInfoRef depotInfoRef = *it;
-		int32 packageIndex = depotInfoRef->PackageIndexByName(name);
-		if (packageIndex >= 0)
-			return depotInfoRef->Packages().ItemAtFast(packageIndex);
+		PackageInfoRef packageInfoRef = depotInfoRef->PackageByName(name);
+		if (packageInfoRef.Get() != NULL)
+			return packageInfoRef;
 	}
 	return PackageInfoRef();
 }
@@ -385,13 +284,13 @@ Model::MatchesFilter(const PackageInfoRef& package) const
 
 
 void
-Model::MergeOrAddDepot(const DepotInfoRef depot)
+Model::MergeOrAddDepot(const DepotInfoRef& depot)
 {
 	BString depotName = depot->Name();
 	for(uint32 i = 0; i < fDepots.size(); i++) {
 		if (fDepots[i]->Name() == depotName) {
 			DepotInfoRef ersatzDepot(new DepotInfo(*(fDepots[i].Get())), true);
-			ersatzDepot->SyncPackages(depot->Packages());
+			ersatzDepot->SyncPackagesFromDepot(depot);
 			fDepots[i] = ersatzDepot;
 			return;
 		}
@@ -450,41 +349,15 @@ Model::HasAnyProminentPackages()
 void
 Model::Clear()
 {
+	GetPackageIconRepository().Clear();
 	fDepots.clear();
+	fPopulatedPackageNames.MakeEmpty();
 }
 
 
 void
 Model::SetPackageState(const PackageInfoRef& package, PackageState state)
 {
-	switch (state) {
-		default:
-		case NONE:
-			fInstalledPackages.Remove(package);
-			fActivatedPackages.Remove(package);
-			fUninstalledPackages.Remove(package);
-			break;
-		case INSTALLED:
-			if (!fInstalledPackages.Contains(package))
-				fInstalledPackages.Add(package);
-			fActivatedPackages.Remove(package);
-			fUninstalledPackages.Remove(package);
-			break;
-		case ACTIVATED:
-			if (!fInstalledPackages.Contains(package))
-				fInstalledPackages.Add(package);
-			if (!fActivatedPackages.Contains(package))
-				fActivatedPackages.Add(package);
-			fUninstalledPackages.Remove(package);
-			break;
-		case UNINSTALLED:
-			fInstalledPackages.Remove(package);
-			fActivatedPackages.Remove(package);
-			if (!fUninstalledPackages.Contains(package))
-				fUninstalledPackages.Add(package);
-			break;
-	}
-
 	package->SetState(state);
 }
 
@@ -593,6 +466,28 @@ Model::SetShowDevelopPackages(bool show)
 
 // #pragma mark - information retrieval
 
+/*!	It may transpire that the package has no corresponding record on the
+	server side because the repository is not represented in the server.
+	In such a case, there is little point in communicating with the server
+	only to hear back that the package does not exist.
+*/
+
+bool
+Model::CanPopulatePackage(const PackageInfoRef& package)
+{
+	const BString& depotName = package->DepotName();
+
+	if (depotName.IsEmpty())
+		return false;
+
+	const DepotInfoRef& depot = DepotForName(depotName);
+
+	if (depot.Get() == NULL)
+		return false;
+
+	return !depot->WebAppRepositoryCode().IsEmpty();
+}
+
 
 /*! Initially only superficial data is loaded from the server into the data
     model of the packages.  When the package is viewed, additional data needs
@@ -602,6 +497,11 @@ Model::SetShowDevelopPackages(bool show)
 void
 Model::PopulatePackage(const PackageInfoRef& package, uint32 flags)
 {
+	if (!CanPopulatePackage(package)) {
+		HDINFO("unable to populate package [%s]", package->Name().String());
+		return;
+	}
+
 	// TODO: There should probably also be a way to "unpopulate" the
 	// package information. Maybe a cache of populated packages, so that
 	// packages loose their extra information after a certain amount of
@@ -610,11 +510,12 @@ Model::PopulatePackage(const PackageInfoRef& package, uint32 flags)
 	// Especially screen-shots will be a problem eventually.
 	{
 		BAutolock locker(&fLock);
-		bool alreadyPopulated = fPopulatedPackages.Contains(package);
+		bool alreadyPopulated = fPopulatedPackageNames.HasString(
+			package->Name());
 		if ((flags & POPULATE_FORCE) == 0 && alreadyPopulated)
 			return;
 		if (!alreadyPopulated)
-			fPopulatedPackages.Add(package);
+			fPopulatedPackageNames.Add(package->Name());
 	}
 
 	if ((flags & POPULATE_CHANGELOG) != 0 && package->HasChangelog()) {
@@ -725,30 +626,36 @@ Model::PopulatePackage(const PackageInfoRef& package, uint32 flags)
 					item.FindDouble("createTimestamp", &createTimestamp);
 
 					// Add the rating to the PackageInfo
-					UserRating userRating = UserRating(UserInfo(user), rating,
+					UserRatingRef userRating(new UserRating(
+						UserInfo(user), rating,
 						comment, languageCode, versionString,
-						(uint64) createTimestamp);
+						(uint64) createTimestamp), true);
 					package->AddUserRating(userRating);
 					HDDEBUG("rating [%s] retrieved from server", code.String());
 				}
 				HDDEBUG("did retrieve %" B_PRIi32 " user ratings for [%s]",
 						index - 1, packageName.String());
 			} else {
-				_MaybeLogJsonRpcError(info, "retrieve user ratings");
+				BString message;
+				message.SetToFormat("failure to retrieve user ratings for [%s]",
+					packageName.String());
+				_MaybeLogJsonRpcError(info, message.String());
 			}
 		} else
 			HDERROR("unable to retrieve user ratings");
 	}
 
 	if ((flags & POPULATE_SCREEN_SHOTS) != 0) {
-		ScreenshotInfoList screenshotInfos;
+		std::vector<ScreenshotInfoRef> screenshotInfos;
 		{
 			BAutolock locker(&fLock);
-			screenshotInfos = package->ScreenshotInfos();
+			for (int32 i = 0; i < package->CountScreenshotInfos(); i++)
+				screenshotInfos.push_back(package->ScreenshotInfoAtIndex(i));
 			package->ClearScreenshots();
 		}
-		for (int i = 0; i < screenshotInfos.CountItems(); i++) {
-			const ScreenshotInfo& info = screenshotInfos.ItemAtFast(i);
+		std::vector<ScreenshotInfoRef>::iterator it;
+		for (it = screenshotInfos.begin(); it != screenshotInfos.end(); it++) {
+			const ScreenshotInfoRef& info = *it;
 			_PopulatePackageScreenshot(package, info, 320, false);
 		}
 	}
@@ -942,7 +849,7 @@ Model::DumpExportPkgDataPath(BPath& path,
 
 void
 Model::_PopulatePackageScreenshot(const PackageInfoRef& package,
-	const ScreenshotInfo& info, int32 scaledWidth, bool fromCacheOnly)
+	const ScreenshotInfoRef& info, int32 scaledWidth, bool fromCacheOnly)
 {
 	// See if there is a cached screenshot
 	BFile screenshotFile;
@@ -957,7 +864,7 @@ Model::_PopulatePackageScreenshot(const PackageInfoRef& package,
 	}
 
 	bool fileExists = false;
-	BString screenshotName(info.Code());
+	BString screenshotName(info->Code());
 	screenshotName << "@" << scaledWidth;
 	screenshotName << ".png";
 	time_t modifiedTime;
@@ -989,9 +896,9 @@ Model::_PopulatePackageScreenshot(const PackageInfoRef& package,
 	// Retrieve screenshot from web-app
 	BMallocIO buffer;
 
-	int32 scaledHeight = scaledWidth * info.Height() / info.Width();
+	int32 scaledHeight = scaledWidth * info->Height() / info->Width();
 
-	status_t status = fWebAppInterface.RetrieveScreenshot(info.Code(),
+	status_t status = fWebAppInterface.RetrieveScreenshot(info->Code(),
 		scaledWidth, scaledHeight, &buffer);
 	if (status == B_OK) {
 		BitmapRef bitmapRef(new(std::nothrow)SharedBitmap(buffer), true);
@@ -1004,7 +911,7 @@ Model::_PopulatePackageScreenshot(const PackageInfoRef& package,
 		}
 	} else {
 		HDERROR("Failed to retrieve screenshot for code '%s' "
-			"at %" B_PRIi32 "x%" B_PRIi32 ".", info.Code().String(),
+			"at %" B_PRIi32 "x%" B_PRIi32 ".", info->Code().String(),
 			scaledWidth, scaledHeight);
 	}
 }
@@ -1016,9 +923,10 @@ Model::_PopulatePackageScreenshot(const PackageInfoRef& package,
 void
 Model::_NotifyAuthorizationChanged()
 {
-	for (int32 i = fListeners.CountItems() - 1; i >= 0; i--) {
-		const ModelListenerRef& listener = fListeners.ItemAtFast(i);
-		if (listener.Get() != NULL)
+	std::vector<ModelListenerRef>::const_iterator it;
+	for (it = fListeners.begin(); it != fListeners.end(); it++) {
+		const ModelListenerRef& listener = *it;
+		if (listener.IsSet())
 			listener->AuthorizationChanged();
 	}
 }
@@ -1027,9 +935,10 @@ Model::_NotifyAuthorizationChanged()
 void
 Model::_NotifyCategoryListChanged()
 {
-	for (int32 i = fListeners.CountItems() - 1; i >= 0; i--) {
-		const ModelListenerRef& listener = fListeners.ItemAtFast(i);
-		if (listener.Get() != NULL)
+	std::vector<ModelListenerRef>::const_iterator it;
+	for (it = fListeners.begin(); it != fListeners.end(); it++) {
+		const ModelListenerRef& listener = *it;
+		if (listener.IsSet())
 			listener->CategoryListChanged();
 	}
 }

@@ -26,6 +26,9 @@
 #include "ServerHelper.h"
 
 
+using namespace BPrivate::Network;
+
+
 #define BASEURL_DEFAULT "https://depot.haiku-os.org"
 #define USERAGENT_FALLBACK_VERSION "0.0.0"
 #define LOG_PAYLOAD_LIMIT 8192
@@ -66,12 +69,12 @@ public:
 			fDownloadIO->Write(data, size);
 	}
 
-	virtual	void DownloadProgress(BUrlRequest* caller, ssize_t bytesReceived,
+	virtual	void DownloadProgress(BUrlRequest* caller, off_t bytesReceived,
 		ssize_t bytesTotal)
 	{
 	}
 
-	virtual void UploadProgress(BUrlRequest* caller, ssize_t bytesSent,
+	virtual void UploadProgress(BUrlRequest* caller, off_t bytesSent,
 		ssize_t bytesTotal)
 	{
 	}
