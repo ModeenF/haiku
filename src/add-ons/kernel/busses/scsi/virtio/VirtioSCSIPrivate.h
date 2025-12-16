@@ -81,7 +81,7 @@ private:
 
 			status_t			fStatus;
 			struct virtio_scsi_config	fConfig;
-			uint32				fFeatures;
+			uint64				fFeatures;
 			::virtio_queue		fControlVirtioQueue;
 			::virtio_queue		fEventVirtioQueue;
 			::virtio_queue		fRequestVirtioQueue;
@@ -93,7 +93,6 @@ private:
 
 			int32				fCurrentRequest;
 			ConditionVariable	fInterruptCondition;
-			ConditionVariableEntry fInterruptConditionEntry;
 
 			scsi_dpc_cookie		fEventDPC;
 			struct virtio_scsi_event fEventBuffers[VIRTIO_SCSI_NUM_EVENTS];

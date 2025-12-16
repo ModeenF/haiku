@@ -30,14 +30,17 @@
 
 
 #include "WebWindow.h"
+
 #include <Messenger.h>
 #include <String.h>
+#include <UrlContext.h>
 
 class BButton;
 class BCheckBox;
 class BDirectory;
 class BFile;
 class BFilePanel;
+class BGroupLayout;
 class BLayoutItem;
 class BMenu;
 class BMenuItem;
@@ -46,7 +49,6 @@ class BPath;
 class BStatusBar;
 class BStringView;
 class BTextControl;
-class BUrlContext;
 class BWebView;
 
 class BookmarkBar;
@@ -92,18 +94,14 @@ enum {
 	SHOW_COOKIE_WINDOW				= 'skwd'
 };
 
-#define INTEGRATE_MENU_INTO_TAB_BAR 0
-
 
 class BrowserWindow : public BWebWindow {
 public:
-								BrowserWindow(BRect frame,
-									SettingsMessage* appSettings,
-									const BString& url,
-									BUrlContext* context,
-									uint32 interfaceElements
-										= INTERFACE_ELEMENT_ALL,
-									BWebView* webView = NULL);
+								BrowserWindow(BRect frame, SettingsMessage* appSettings,
+									const BString& url, BPrivate::Network::BUrlContext* context,
+									uint32 interfaceElements = INTERFACE_ELEMENT_ALL,
+									BWebView* webView = NULL,
+									uint32 workspaces = B_CURRENT_WORKSPACE);
 	virtual						~BrowserWindow();
 
 	virtual	void				DispatchMessage(BMessage* message,
@@ -114,6 +112,8 @@ public:
 	virtual	void				MenusBeginning();
 	virtual	void				MenusEnded();
 
+	virtual	void				NewWindowRequested(const BString& url,
+									bool primaryAction);
 	virtual void				ScreenChanged(BRect screenSize,
 									color_space format);
 	virtual void				WorkspacesChanged(uint32 oldWorkspaces,
@@ -133,8 +133,6 @@ private:
 	// WebPage notification API implementations
 	virtual	void				NavigationRequested(const BString& url,
 									BWebView* view);
-	virtual	void				NewWindowRequested(const BString& url,
-									bool primaryAction);
 	virtual	void				CloseWindowRequested(BWebView* view);
 	virtual	void				NewPageCreated(BWebView* view,
 									BRect windowFrame, bool modalDialog,
@@ -179,6 +177,11 @@ private:
 			void				_TabChanged(int32 index);
 
 			status_t			_BookmarkPath(BPath& path) const;
+			void				_CreateBookmark(const BPath& path,
+									BString fileName, const BString& title,
+									const BString& url,	const BBitmap* miniIcon,
+									const BBitmap* largeIcon);
+			void				_CreateBookmark(BMessage* message);
 			void				_CreateBookmark();
 			void				_ShowBookmarks();
 			bool				_CheckBookmarkExists(BDirectory& directory,
@@ -242,7 +245,7 @@ private:
 			BStringView*		fStatusText;
 			BStatusBar*			fLoadingProgressBar;
 
-			BLayoutItem*		fMenuGroup;
+			BGroupLayout*		fMenuGroup;
 			BLayoutItem*		fTabGroup;
 			BLayoutItem*		fNavigationGroup;
 			BLayoutItem*		fFindGroup;
@@ -265,7 +268,7 @@ private:
 			bigtime_t			fLastMouseMovedTime;
 			BPoint				fLastMousePos;
 
-			BUrlContext*		fContext;
+			BReference<BPrivate::Network::BUrlContext>	fContext;
 
 			// cached settings
 			SettingsMessage*	fAppSettings;

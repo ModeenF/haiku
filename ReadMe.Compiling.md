@@ -31,12 +31,13 @@ nightly builds.
  * `makeinfo` (part of `texinfo`, only needed for building GCC 4)
  * `autoheader` (part of `autoconf`, needed for building GCC)
  * `automake` (needed for building GCC)
- * `gawk`
+ * `awk` (GNU awk is most tested, but other implementations should work)
  * `nasm`
  * `wget`
  * `[un]zip`
  * `xorriso`
  * `mtools` (<https://gnu.org/software/mtools/intro.html>)
+ * `python3`
  * case-sensitive file system
 
 Whether they are installed can be tested by running them in a shell with
@@ -44,6 +45,7 @@ the `--version` parameter.
 
 The following libraries (and their respective headers) are required:
  * `zlib`
+ * `zstd`
 
 ### Haiku for ARM
 If you want to compile Haiku for ARM, you will also need:
@@ -136,7 +138,7 @@ cd haiku/generated.x86_64
 cd haiku/generated.x86gcc2
 ../configure \
 	--cross-tools-source ../../buildtools/ \
-	--build-cross-tools x86_gcc2 
+	--build-cross-tools x86_gcc2 \
 	--build-cross-tools x86
 ```
 
@@ -175,18 +177,27 @@ There are various ways in which you can run `jam`:
 Be sure to read `build/jam/UserBuildConfig.ReadMe` and `UserBuildConfig.sample`,
 as they contain information on customizing your build of Haiku.
 
-### Building a Haiku anyboot file
+### Building a Haiku anyboot image (Nightly)
 ```
-jam -q @anyboot-image
+jam -q @nightly-anyboot
 ```
 
-This generates an image file named `haiku-anyboot.image` in your output
+This generates an image file named `haiku-nightly-anyboot.iso` in your output
 directory under `generated/`.
+
+### Building a Haiku raw image (Nightly)
+```
+jam -q @nightly-raw
+```
+
+This generates an image file named `haiku.image` in your output directory under
+`generated/`.
 
 ### Building a VMware image file
 ```
-jam -q @vmware-image
+jam -q @nightly-vmware
 ```
+
 This generates an image file named `haiku.vmdk` in your output
 directory under `generated/`.
 
@@ -244,7 +255,7 @@ Configure Haiku's build system for a bootstrap build specifying the location
 of all of the repositories above.
 ```
 ../configure -j4 \
-  --build-cross-tools myarch ../../buildtools \
+  --build-cross-tools myarch --cross-tools-source ../../buildtools \
   --bootstrap ../../haikuporter/haikuporter ../../haikuports.cross ../../haikuports
 ```
 

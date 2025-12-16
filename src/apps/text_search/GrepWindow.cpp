@@ -17,6 +17,7 @@
 #include <Alert.h>
 #include <Clipboard.h>
 #include <LayoutBuilder.h>
+#include <MessageFilter.h>
 #include <MessageRunner.h>
 #include <MimeType.h>
 #include <Path.h>
@@ -51,24 +52,56 @@ static const bigtime_t kChangesPulseInterval = 150000;
 
 //#define TRACE_FUNCTIONS
 #ifdef TRACE_FUNCTIONS
-	class FunctionTracer {
-	public:
-		FunctionTracer(const char* functionName)
-			: fName(functionName)
-		{
-			printf("%s - enter\n", fName.String());
-		}
-		~FunctionTracer()
-		{
-			printf("%s - exit\n", fName.String());
-		}
-	private:
-		BString	fName;
-	};
-# define CALLED()	FunctionTracer functionTracer(__PRETTY_FUNCTION__)
+#include <private/shared/FunctionTracer.h>
+
+static int32 sDepth;
+
+# define CALLED()	FunctionTracer functionTracer(printf, this, __PRETTY_FUNCTION__, sDepth)
 #else
 # define CALLED()
 #endif // TRACE_FUNCTIONS
+
+
+class HistoryInputFilter : public BMessageFilter {
+public:
+	HistoryInputFilter(BHandler* target)
+		: BMessageFilter(B_ANY_DELIVERY, B_ANY_SOURCE, B_KEY_DOWN),
+		fTarget(target)
+	{
+	}
+
+	virtual filter_result Filter(BMessage* message, BHandler** _target)
+	{
+		const char* bytes;
+		int32 modifiers;
+		if (message->FindString("bytes", &bytes) != B_OK)
+			return B_DISPATCH_MESSAGE;
+
+		message->FindInt32("modifiers", &modifiers);
+		if (modifiers & (B_SHIFT_KEY | B_OPTION_KEY | B_COMMAND_KEY | B_CONTROL_KEY))
+			return B_DISPATCH_MESSAGE;
+
+		switch (bytes[0]) {
+			case B_UP_ARROW:
+			{
+				fTarget.SendMessage(new BMessage(MSG_PREV_HISTORY));
+				return B_SKIP_MESSAGE;
+			} break;
+
+			case B_DOWN_ARROW:
+			{
+				fTarget.SendMessage(new BMessage(MSG_NEXT_HISTORY));
+				return B_SKIP_MESSAGE;
+			} break;
+
+			default:
+				return B_DISPATCH_MESSAGE;
+		}
+	}
+
+	private:
+		BMessenger	fTarget;
+};
 
 
 GrepWindow::GrepWindow(BMessage* message)
@@ -109,11 +142,13 @@ GrepWindow::GrepWindow(BMessage* message)
 
 	fGrepper(NULL),
 	fOldPattern(""),
+	fIncludeFilesGlob(""),
 	fModel(new (nothrow) Model()),
 	fLastNodeMonitorEvent(system_time()),
 	fChangesIterator(NULL),
 	fChangesPulse(NULL),
 
+	fCurrentHistoryIndex(-1),
 	fFilePanel(NULL)
 {
 	if (fModel == NULL)
@@ -163,6 +198,13 @@ void GrepWindow::FrameMoved(BPoint origin)
 void GrepWindow::MenusBeginning()
 {
 	fModel->FillHistoryMenu(fHistoryMenu);
+
+	if (fHistoryMenu->CountItems() > 0) {
+		fHistoryMenu->AddSeparatorItem();
+		BMessage* message = new BMessage(MSG_CLEAR_HISTORY);
+		fHistoryMenu->AddItem(new BMenuItem(B_TRANSLATE("Clear history"), message));
+	}
+
 	BWindow::MenusBeginning();
 }
 
@@ -232,11 +274,61 @@ void GrepWindow::MessageReceived(BMessage* message)
 			break;
 
 		case MSG_SEARCH_TEXT:
+			fCurrentHistoryIndex = -1;	// reset on user input
 			_OnSearchText();
+			break;
+
+		case MSG_SEARCH_GLOB_FILTER:
+			_OnGlobFilterChange();
 			break;
 
 		case MSG_SELECT_HISTORY:
 			_OnHistoryItem(message);
+			break;
+
+		case MSG_PREV_HISTORY:
+		{
+			if (fCurrentHistoryIndex == HISTORY_LIMIT - 1)
+				break;
+
+			fCurrentHistoryIndex++;
+			BString text = fModel->GetHistoryItem(fCurrentHistoryIndex);
+			if (text != NULL) {
+				fSearchText->SetModificationMessage(NULL);
+				fSearchText->SetText(text);
+				fSearchText->SetModificationMessage(new BMessage(MSG_SEARCH_TEXT));
+			} else
+				fCurrentHistoryIndex--;
+
+			_OnSearchText();
+			break;
+		}
+		case MSG_NEXT_HISTORY:
+		{
+			if (fCurrentHistoryIndex <= 0) {
+				fCurrentHistoryIndex = -1;
+				fSearchText->SetText("");
+				_OnSearchText();
+				break;
+			}
+
+			fCurrentHistoryIndex--;
+			BString text = fModel->GetHistoryItem(fCurrentHistoryIndex);
+			if (text != NULL) {
+				fSearchText->SetModificationMessage(NULL);
+				fSearchText->SetText(text);
+				fSearchText->SetModificationMessage(new BMessage(MSG_SEARCH_TEXT));
+			} else {
+				fCurrentHistoryIndex--;
+				fSearchText->SetText("");
+			}
+
+			_OnSearchText();
+			break;
+		}
+
+		case MSG_CLEAR_HISTORY:
+			fModel->ClearHistory();
 			break;
 
 		case MSG_START_CANCEL:
@@ -544,8 +636,17 @@ GrepWindow::_CreateViews()
 		"SearchText", NULL, NULL, NULL,
 		B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE | B_NAVIGABLE);
 
+	fSearchText->TextView()->AddFilter(new HistoryInputFilter(this));
 	fSearchText->TextView()->SetMaxBytes(1000);
 	fSearchText->SetModificationMessage(new BMessage(MSG_SEARCH_TEXT));
+
+	fGlobText = new BTextControl(
+		"GlobText", B_TRANSLATE("File filter:"), NULL, NULL,
+		B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE | B_NAVIGABLE);
+
+	fGlobText->TextView()->SetMaxBytes(20);
+	fGlobText->SetModificationMessage(new BMessage(MSG_SEARCH_GLOB_FILTER));
+	fGlobText->SetToolTip(B_TRANSLATE("Only search files matching the given pattern, e.g. \"*.h\"."));
 
 	fButton = new BButton(
 		"Button", B_TRANSLATE("Search"),
@@ -573,13 +674,16 @@ GrepWindow::_LayoutViews()
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.SetInsets(0, 0, -1, -1)
 		.Add(fMenuBar)
-		.AddGrid(B_USE_HALF_ITEM_INSETS)
+		.AddGroup(B_VERTICAL, B_USE_SMALL_SPACING)
 			.SetInsets(B_USE_WINDOW_SPACING, B_USE_WINDOW_SPACING,
 				B_USE_WINDOW_SPACING, B_USE_DEFAULT_SPACING)
-			.Add(fSearchText, 0, 0, 3)
-			.Add(fShowLinesCheckbox, 0, 1)
-			.Add(BSpaceLayoutItem::CreateGlue(), 1, 1)
-			.Add(fButton, 2, 1)
+			.Add(fSearchText)
+			.AddGroup(B_HORIZONTAL, B_USE_DEFAULT_SPACING)
+				.Add(fGlobText, 1.0)
+				.Add(fShowLinesCheckbox)
+				.AddGlue(0.5)
+				.Add(fButton)
+			.End()
 		.End()
 		.AddGroup(B_VERTICAL, 0)
 			.SetInsets(-2, 0, -1, -1)
@@ -676,7 +780,7 @@ GrepWindow::_StartNodeMonitoring()
 	_StopNodeMonitoring();
 
 	BMessenger messenger(this);
-	uint32 fileFlags = B_WATCH_NAME | B_WATCH_STAT | B_WATCH_ATTR;
+	uint32 fileFlags = B_WATCH_NAME | B_WATCH_STAT;
 
 
 	// watch the top level folder only, rest should be done through filtering
@@ -737,6 +841,8 @@ GrepWindow::_OnStartCancel()
 		// displaying the names of the files we are grepping.
 
 		fSearchText->SetModificationMessage(NULL);
+		fGlobText->SetModificationMessage(NULL);
+		fCurrentHistoryIndex = -1;
 
 		fFileMenu->SetEnabled(false);
 		fActionMenu->SetEnabled(false);
@@ -745,6 +851,7 @@ GrepWindow::_OnStartCancel()
 		fEncodingMenu->SetEnabled(false);
 
 		fSearchText->SetEnabled(false);
+		fGlobText->SetEnabled(false);
 
 		fButton->MakeFocus(true);
 		fButton->SetLabel(B_TRANSLATE("Cancel"));
@@ -762,7 +869,7 @@ GrepWindow::_OnStartCancel()
 		_SetWindowTitle();
 
 		FileIterator* iterator = new (nothrow) InitialIterator(fModel);
-		fGrepper = new (nothrow) Grepper(fOldPattern.String(), fModel,
+		fGrepper = new (nothrow) Grepper(fOldPattern.String(), fIncludeFilesGlob.String(), fModel,
 			this, iterator);
 		if (fGrepper != NULL && fGrepper->IsValid())
 			fGrepper->Start();
@@ -810,6 +917,8 @@ GrepWindow::_OnSearchFinished()
 	fSearchText->SetText(fOldPattern.String());
 	fSearchText->TextView()->SelectAll();
 	fSearchText->SetModificationMessage(new BMessage(MSG_SEARCH_TEXT));
+	fGlobText->SetEnabled(true);
+	fGlobText->SetModificationMessage(new BMessage(MSG_SEARCH_GLOB_FILTER));
 
 	PostMessage(MSG_START_NODE_MONITORING);
 }
@@ -905,10 +1014,16 @@ GrepWindow::_OnNodeMonitorEvent(BMessage* message)
 			break;
 		}
 		case B_STAT_CHANGED:
-		case B_ATTR_CHANGED:
 		{
-			TRACE_NM("%s\n", opCode == B_STAT_CHANGED ? "B_STAT_CHANGED"
-				: "B_ATTR_CHANGED");
+			int32 fields;
+			message->FindInt32("fields", &fields);
+
+			TRACE_NM("B_STAT_CHANGED (fields = 0x%" B_PRIx32 ")\n", fields);
+
+			// No point in triggering a new search if this was the only change.
+			if (fields == B_STAT_CHANGE_TIME)
+				break;
+
 			// For directly watched files, the path will include the
 			// name. When the event occurs for a file in a watched directory,
 			// the message will have an extra name field for the respective
@@ -962,7 +1077,7 @@ GrepWindow::_OnNodeMonitorPulse()
 	fChangesIterator->PrintToStream();
 #endif
 
-	fGrepper = new (nothrow) Grepper(fOldPattern.String(), fModel,
+	fGrepper = new (nothrow) Grepper(fOldPattern.String(), fIncludeFilesGlob.String(), fModel,
 		this, fChangesIterator);
 	if (fGrepper != NULL && fGrepper->IsValid()) {
 		fGrepper->Start();
@@ -1265,7 +1380,14 @@ GrepWindow::_OnTrimSelection()
 		if (item == NULL)
 			break;
 
-		if (!item->IsSelected() || item->OutlineLevel() != 0)
+		// only open selected items
+		if (!item->IsSelected())
+			continue;
+
+		// get top level (file) item
+		if (item->OutlineLevel() != 0)
+			item = dynamic_cast<BStringItem*>(fSearchResults->Superitem(item));
+		if (item == NULL)
 			continue;
 
 		if (path == item->Text())
@@ -1361,8 +1483,14 @@ GrepWindow::_OnSelectInTracker()
 		if (item == NULL)
 			break;
 
-		// only open selected and top level (file) items
-		if (!item->IsSelected() || item->OutlineLevel() > 0)
+		// only open selected items
+		if (!item->IsSelected())
+			continue;
+
+		// get top level (file) item
+		if (item->OutlineLevel() != 0)
+			item = dynamic_cast<BStringItem*>(fSearchResults->Superitem(item));
+		if (item == NULL)
 			continue;
 
 		// check if this was previously opened
@@ -1477,8 +1605,19 @@ GrepWindow::_OnOpenPanel()
 		return;
 
 	entry_ref path;
-	if (get_ref_for_path(fModel->fFilePanelPath.String(), &path) != B_OK)
-		return;
+	if (get_ref_for_path(fModel->fFilePanelPath.String(), &path) != B_OK) {
+		printf("get_ref_for_path() failed for saved fFilePanelPath: '%s'\n",
+			fModel->fFilePanelPath.String());
+
+		BPath home;
+		if (find_directory(B_USER_DIRECTORY, &home) != B_OK)
+			home = "/boot/home";
+
+		if (get_ref_for_path(home.Path(), &path) != B_OK) {
+			printf("'get_ref_for_path()' failed for: '%s'. Bailing out.\n", home.Path());
+			return;
+		}
+	}
 
 	BMessenger messenger(this);
 	BMessage message(MSG_REFS_RECEIVED);
@@ -1538,6 +1677,15 @@ GrepWindow::_OnSetTargetToParent()
 		parentRefs.AddRef("dir_ref", &parent_ref);
 		_OnFileDrop(&parentRefs);
 	}
+}
+
+
+void
+GrepWindow::_OnGlobFilterChange()
+{
+	CALLED();
+	fIncludeFilesGlob = fGlobText->Text();
+	_StopNodeMonitoring();
 }
 
 

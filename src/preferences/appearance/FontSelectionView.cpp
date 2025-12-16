@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2015, Haiku.
+ * Copyright 2001-2024 Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -8,6 +8,7 @@
  *		Axel Dörfler, axeld@pinc-software.de
  *		Philippe Saint-Pierre, stpere@gmail.com
  *		Stephan Aßmus <superstippi@gmx.de>
+ *		John Scipione, jscipione@gmail.com
  */
 
 
@@ -15,15 +16,16 @@
 
 #include <Box.h>
 #include <Catalog.h>
-#include <GroupLayoutBuilder.h>
+#include <ControlLook.h>
+#include <LayoutBuilder.h>
 #include <LayoutItem.h>
 #include <Locale.h>
 #include <MenuField.h>
 #include <MenuItem.h>
 #include <PopUpMenu.h>
-#include <String.h>
-#include <StringView.h>
 #include <Spinner.h>
+#include <String.h>
+#include <TextView.h>
 
 #include <FontPrivate.h>
 
@@ -34,14 +36,10 @@
 #define B_TRANSLATION_CONTEXT "Font Selection view"
 
 
-#define INSTANT_UPDATE
-	// if defined, the system font will be updated immediately, and not
-	// only on exit
-
 static const float kMinSize = 8.0;
 static const float kMaxSize = 72.0;
 
-static const char *kPreviewText = B_TRANSLATE_COMMENT(
+static const char* kPreviewText = B_TRANSLATE_COMMENT(
 	"The quick brown fox jumps over the lazy dog.",
 	"Don't translate this literally ! Use a phrase showing all chars "
 	"from A to Z.");
@@ -54,29 +52,7 @@ extern status_t _get_system_default_font_(const char* which,
 	font_family family, font_style style, float* _size);
 
 
-#ifdef B_BEOS_VERSION_DANO
-// this call only exists under R5
-void
-_set_system_font_(const char *which, font_family family,
-	font_style style, float size)
-{
-	puts("you don't have _set_system_font_()");
-}
-#endif
-
-#if !defined(HAIKU_TARGET_PLATFORM_HAIKU) && !defined(HAIKU_TARGET_PLATFORM_LIBBE_TEST)
-// this call only exists under Haiku (and the test environment)
-status_t
-_get_system_default_font_(const char* which, font_family family,
-	font_style style, float* _size)
-{
-	puts("you don't have _get_system_default_font_()");
-	return B_ERROR;
-}
-#endif
-
-
-//	#pragma mark -
+// #pragma mark -
 
 
 FontSelectionView::FontSelectionView(const char* name,
@@ -114,26 +90,49 @@ FontSelectionView::FontSelectionView(const char* name,
 	BMessage* fontSizeMessage = new BMessage(kMsgSetSize);
 	fontSizeMessage->AddString("name", Name());
 
-	fFontSizeSpinner = new BSpinner("font size", B_TRANSLATE("Size:"),
-		fontSizeMessage);
+	fFontSizeSpinner = new BSpinner("font size", B_TRANSLATE("Size:"), fontSizeMessage);
 
 	fFontSizeSpinner->SetRange(kMinSize, kMaxSize);
 	fFontSizeSpinner->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
 
 	// preview
-	fPreviewTextView = new BStringView("preview text", kPreviewText);
+	// A string view would be enough if only it handled word-wrap.
+	fPreviewTextView = new BTextView("preview text");
+	fPreviewTextView->SetFontAndColor(&fCurrentFont);
+	fPreviewTextView->SetText(kPreviewText);
+	fPreviewTextView->MakeResizable(false);
+	fPreviewTextView->SetWordWrap(true);
+	fPreviewTextView->MakeEditable(false);
+	fPreviewTextView->MakeSelectable(false);
+	fPreviewTextView->SetInsets(0, 0, 0, 0);
+	fPreviewTextView->SetViewUIColor(ViewUIColor());
+	fPreviewTextView->SetLowUIColor(LowUIColor());
+	fPreviewTextView->SetHighUIColor(HighUIColor());
 
-	fPreviewTextView->SetFont(&fCurrentFont);
-	fPreviewTextView->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
+	// determine initial line count using fCurrentFont
+	fPreviewTextWidth = be_control_look->DefaultLabelSpacing() * 58.0f;
+	float lineCount = ceilf(fCurrentFont.StringWidth(kPreviewText) / fPreviewTextWidth);
+	fPreviewTextView->SetExplicitSize(BSize(fPreviewTextWidth,
+		fPreviewTextView->LineHeight(0) * lineCount));
 
 	// box around preview
 	fPreviewBox = new BBox("preview box", B_WILL_DRAW | B_FRAME_EVENTS);
-	fPreviewBox->AddChild(BGroupLayoutBuilder(B_HORIZONTAL)
+	fPreviewBox->AddChild(BLayoutBuilder::Group<>(B_HORIZONTAL, 0)
 		.Add(fPreviewTextView)
-		.SetInsets(B_USE_SMALL_SPACING, B_USE_SMALL_SPACING,
-			B_USE_SMALL_SPACING, B_USE_SMALL_SPACING)
-		.TopView()
-	);
+		.AddGlue()
+		.SetInsets(B_USE_SMALL_SPACING)
+		.View());
+
+	BLayoutBuilder::Grid<>(this, 5, 5)
+		// add fonts menu and font size spinner
+		.Add(fFontsMenuField->CreateLabelLayoutItem(), 0, 0)
+		.Add(fFontsMenuField->CreateMenuBarLayoutItem(), 1, 0)
+		.Add(BSpaceLayoutItem::CreateGlue(), 2, 0)
+		.Add(fFontSizeSpinner, 4, 0)
+		// add font preview
+		.Add(BSpaceLayoutItem::CreateGlue(), 0, 1)
+		.Add(fPreviewBox, 1, 1, 4)
+		.SetInsets(0, B_USE_SMALL_SPACING, 0, B_USE_SMALL_SPACING);
 
 	_SelectCurrentSize();
 }
@@ -141,9 +140,6 @@ FontSelectionView::FontSelectionView(const char* name,
 
 FontSelectionView::~FontSelectionView()
 {
-#ifndef INSTANT_UPDATE
-	_UpdateSystemFont();
-#endif
 }
 
 
@@ -159,6 +155,16 @@ void
 FontSelectionView::MessageReceived(BMessage* msg)
 {
 	switch (msg->what) {
+		case B_COLORS_UPDATED:
+		{
+			if (msg->HasColor(ui_color_name(B_PANEL_TEXT_COLOR))) {
+				rgb_color textColor;
+				if (msg->FindColor(ui_color_name(B_PANEL_TEXT_COLOR), &textColor) == B_OK)
+					fPreviewTextView->SetFontAndColor(&fCurrentFont, B_FONT_ALL, &textColor);
+			}
+			break;
+		}
+
 		case kMsgSetSize:
 		{
 			int32 size = fFontSizeSpinner->Value();
@@ -221,33 +227,6 @@ FontSelectionView::MessageReceived(BMessage* msg)
 	}
 }
 
-BView*
-FontSelectionView::GetPreviewBox() const
-{
-	return fPreviewBox;
-}
-
-
-BView*
-FontSelectionView::GetFontSizeSpinner() const
-{
-	return fFontSizeSpinner;
-}
-
-
-BLayoutItem*
-FontSelectionView::CreateFontsLabelLayoutItem() const
-{
-	return fFontsMenuField->CreateLabelLayoutItem();
-}
-
-
-BLayoutItem*
-FontSelectionView::CreateFontsMenuBarLayoutItem() const
-{
-	return fFontsMenuField->CreateMenuBarLayoutItem();
-}
-
 
 void
 FontSelectionView::_SelectCurrentFont(bool select)
@@ -275,18 +254,15 @@ FontSelectionView::_SelectCurrentSize()
 	fFontSizeSpinner->SetValue((int32)fCurrentFont.Size());
 }
 
+
 void
 FontSelectionView::_UpdateFontPreview()
 {
-	const BRect textFrame = fPreviewTextView->Bounds();
-	BString text = BString(kPreviewText);
-	fCurrentFont.TruncateString(&text, B_TRUNCATE_END, textFrame.Width());
-	fPreviewTextView->SetFont(&fCurrentFont);
-	fPreviewTextView->SetText(text);
-
-#ifdef INSTANT_UPDATE
 	_UpdateSystemFont();
-#endif
+
+	fPreviewTextView->SetFontAndColor(&fCurrentFont);
+	fPreviewTextView->SetExplicitSize(BSize(fPreviewTextWidth,
+		fPreviewTextView->LineHeight(0) * fPreviewTextView->CountLines()));
 }
 
 
@@ -427,10 +403,6 @@ FontSelectionView::UpdateFontsMenu()
 				& (B_IS_FIXED | B_PRIVATE_FONT_IS_FULL_AND_HALF_FIXED)) == 0) {
 			continue;
 		}
-
-		float width = font.StringWidth(family);
-		if (width > fMaxFontNameWidth)
-			fMaxFontNameWidth = width;
 
 		BMenu* stylesMenu = new BMenu(family);
 		stylesMenu->SetRadioMode(true);

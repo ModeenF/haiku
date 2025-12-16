@@ -18,22 +18,24 @@
 
 
 bool
+ufs2_super_block::IsMagicValid()
+{
+	return fs_magic == FS_UFS2_MAGIC;
+}
+
+
+bool
 ufs2_super_block::IsValid()
 {
-	if (fs_magic != FS_UFS2_MAGIC)
-		return false;
-
-	return true;
+	return IsMagicValid();
 }
 
 
 const char*
 Volume::Name() const
 {
-	if (fSuperBlock.fs_volname[0])
-		return fSuperBlock.fs_volname;
-
-	return fName;
+	// The name may be empty, in that case, userspace will generate one.
+	return fSuperBlock.fs_volname;
 }
 
 
@@ -68,6 +70,8 @@ Volume::Identify(int fd, ufs2_super_block *superBlock)
 		sizeof(ufs2_super_block)) != sizeof(ufs2_super_block))
 		return B_IO_ERROR;
 
+	if (!superBlock->IsMagicValid())
+		return B_BAD_VALUE;
 
 	if (!superBlock->IsValid()) {
 		ERROR("Invalid superblock! Identify failed!!\n");

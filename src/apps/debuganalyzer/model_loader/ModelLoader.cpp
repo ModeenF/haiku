@@ -241,7 +241,7 @@ struct ModelLoader::ExtendedThreadSchedulingState
 	bool PrepareThreadIORequests(Model::IORequest**& _requests,
 		size_t& _requestCount)
 	{
-		fIORequests.MoveFrom(&fPendingIORequests);
+		fIORequests.TakeFrom(&fPendingIORequests);
 		size_t requestCount = fIORequests.Count();
 
 		if (requestCount == 0) {
@@ -263,7 +263,7 @@ struct ModelLoader::ExtendedThreadSchedulingState
 			if (modelRequest == NULL) {
 				for (size_t i = 0; i < index; i++)
 					requests[i]->Delete();
-				delete requests;
+				delete[] requests;
 				return false;
 			}
 
@@ -1004,6 +1004,7 @@ ModelLoader::_HandleThreadScheduled(uint32 cpu,
 				case THREAD_BLOCK_TYPE_MUTEX:
 				case THREAD_BLOCK_TYPE_RW_LOCK:
 				case THREAD_BLOCK_TYPE_OTHER:
+				case THREAD_BLOCK_TYPE_OTHER_OBJECT:
 				default:
 					break;
 			}

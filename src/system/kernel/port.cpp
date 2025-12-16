@@ -22,6 +22,7 @@
 #include <OS.h>
 
 #include <AutoDeleter.h>
+#include <StackOrHeapArray.h>
 
 #include <arch/int.h>
 #include <heap.h>
@@ -33,6 +34,7 @@
 #include <tracing.h>
 #include <util/AutoLock.h>
 #include <util/list.h>
+#include <util/iovec_support.h>
 #include <vm/vm.h>
 #include <wait_for_objects.h>
 
@@ -1919,26 +1921,23 @@ _user_writev_port_etc(port_id port, int32 messageCode, const iovec *userVecs,
 
 	if (userVecs == NULL && bufferSize != 0)
 		return B_BAD_VALUE;
-	if (userVecs != NULL && !IS_USER_ADDRESS(userVecs))
-		return B_BAD_ADDRESS;
+	if (vecCount > IOV_MAX)
+		return B_BAD_VALUE;
 
-	iovec *vecs = NULL;
-	if (userVecs && vecCount != 0) {
-		vecs = (iovec*)malloc(sizeof(iovec) * vecCount);
-		if (vecs == NULL)
-			return B_NO_MEMORY;
+	BStackOrHeapArray<iovec, 16> vecs(vecCount);
+	if (!vecs.IsValid())
+		return B_NO_MEMORY;
 
-		if (user_memcpy(vecs, userVecs, sizeof(iovec) * vecCount) < B_OK) {
-			free(vecs);
-			return B_BAD_ADDRESS;
-		}
+	if (userVecs != NULL && vecCount != 0) {
+		status_t status = get_iovecs_from_user(userVecs, vecCount, vecs);
+		if (status != B_OK)
+			return status;
 	}
 
 	status_t status = writev_port_etc(port, messageCode, vecs, vecCount,
 		bufferSize, flags | PORT_FLAG_USE_USER_MEMCPY | B_CAN_INTERRUPT,
 		timeout);
 
-	free(vecs);
 	return syscall_restart_handle_timeout_post(status, timeout);
 }
 

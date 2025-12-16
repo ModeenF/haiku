@@ -67,6 +67,9 @@ options:
                               on to the make building the build tools.
   --no-downloads              Do not download anything. Useful when trying to
                               bootstrap and build Haiku from source only.
+  --sysroot                   The location of the cross-compiler sysroot,
+                              primarily for CI environments or cross-compilers
+                              used outside of the Haiku build system.
   --target-arch <arch>        Haiku only: Specify the target architecture to
                               build for. Must be one of the architectures of the
                               host system. The installed build tools for that
@@ -92,6 +95,8 @@ options:
   --with-gdb <gdb sources dir>
                               specify the path to a GDB source dir, to build
                               GDB for each arch we build the cross-tools for.
+  --use-stack-protector       Build with stack protection enabled
+  --efi-signing-key           Private keyfile to sign any EFI bootloaders
 
 environment variables:
   CC                          The host compiler. Defaults to "gcc".
@@ -260,9 +265,9 @@ standard_gcc_settings()
 {
 	local gcc="$1"
 
-	if which greadlink > /dev/null 2>&1; then
+	if command -v greadlink > /dev/null 2>&1; then
 		readlink="greadlink -e"
-	elif which realpath > /dev/null 2>&1; then
+	elif command -v realpath > /dev/null 2>&1; then
 		readlink=realpath
 	elif readlink -e / > /dev/null 2>&1; then
 		readlink="readlink -e"
@@ -312,18 +317,24 @@ standard_gcc_settings()
 	local bootLibgcc
 	local bootLibSupCxx
 	local bootCxxHeaders
+	local boot32Libgcc
+	local boot32LibSupCxx
+	local boot32CxxHeaders
 	case $gccMachine in
 		x86_64-*)
 			# Boot loader is 32-bit, need the 32-bit libs and c++ config
-			bootLibgcc=`$gcc -m32 -print-file-name=libgcc.a`
-			bootLibSupCxx=`$gcc -m32 -print-file-name=libsupc++.a`
+			boot32Libgcc=`$gcc -m32 -print-file-name=libgcc.a`
+			boot32LibSupCxx=`$gcc -m32 -print-file-name=libsupc++.a`
+			bootLibgcc=`$gcc -print-file-name=libgcc.a`
+			bootLibSupCxx=`$gcc -print-file-name=libsupc++.a`
 
 			local headersBase=$gccdir/../../../..
 			local headers=$headersBase/$gccMachine/include/c++/$gccRawVersion
 			if [ ! -d $headers ]; then
 				headers=$headersBase/include/c++/$gccRawVersion
 			fi
-			bootCxxHeaders="$headers/$gccMachine/32"
+			boot32CxxHeaders="$headers/$gccMachine/32"
+			bootCxxHeaders="$headers/$gccMachine"
 			;;
 	esac
 
@@ -347,12 +358,14 @@ standard_gcc_settings()
 	set_variable HAIKU_CC_IS_LEGACY_GCC_$targetArch \
 		`is_legacy_gcc $gccRawVersion`
 	set_variable HAIKU_CC_IS_CLANG_$targetArch $useClang
-	set_variable HAIKU_GCC_RAW_VERSION_$targetArch $gccRawVersion
 	set_variable HAIKU_GCC_MACHINE_$targetArch $gccMachine
 	set_variable HAIKU_GCC_LIB_DIR_$targetArch $gccdir
 	set_variable HAIKU_BOOT_CXX_HEADERS_DIR_$targetArch "$bootCxxHeaders"
 	set_variable HAIKU_BOOT_LIBSUPCXX_$targetArch "$bootLibSupCxx"
 	set_variable HAIKU_BOOT_LIBGCC_$targetArch $bootLibgcc
+	set_variable HAIKU_BOOT_32_CXX_HEADERS_DIR_$targetArch "$boot32CxxHeaders"
+	set_variable HAIKU_BOOT_32_LIBSUPCXX_$targetArch "$boot32LibSupCxx"
+	set_variable HAIKU_BOOT_32_LIBGCC_$targetArch $boot32Libgcc
 	set_variable HAIKU_USE_GCC_GRAPHITE_$targetArch $useGraphite
 
 	standard_gcc_settings_targetArch=$targetArch
@@ -409,7 +422,7 @@ get_build_tool_path()
 		path="`pwd`/`basename "$path"`"
 		cd $oldPwd
 	else
-		which "$path" > /dev/null 2>&1 || {
+		command -v "$path" > /dev/null 2>&1 || {
 			echo "Build tool \"$path\" not found (maybe specify it in $var?)" >&2
 			exit 1
 		}
@@ -449,7 +462,7 @@ check_native_xattrs()
 			xattr_set="setextattr"; xattr_set_args="user \$NAME \"\$VALUE\""
 			xattr_get="getextattr"; xattr_get_args="user \$NAME"
 			;;
-		linux|msys)
+		linux)
 			xattr_set="setfattr"; xattr_set_args="-n user.\$NAME -v \"\$VALUE\""
 			xattr_get="getfattr"; xattr_get_args="-n user.\$NAME"
 			;;
@@ -551,12 +564,13 @@ fi
 # backup the passed arguments
 configureArgs="$@"
 configurePath=$0
+configureDir=`dirname $configurePath`
 
 # backup relevant environs
 configureEnvirons=
 for var in `env`; do
 	case "$var" in
-		CC\=*|HAIKU*\=*|JAMSHELL\=*)
+		CC\=*|HAIKU*\=*|JAMSHELL\=*|HOST_PYTHON\=*)
 			configureEnvirons="$configureEnvirons $var"
 			;;
 	esac
@@ -588,6 +602,15 @@ gdbSources=
 if [ -z "$CC" ]; then
 	CC=gcc
 fi
+if [ $(is_legacy_gcc $($CC -dumpversion)) -ne 0 ]; then
+	if [ $platform == "Haiku" ] && [ $platformMachine == "BePC" ]; then
+		CC=gcc-x86
+	else
+		echo The host tools cannot be built with a legacy version of GCC.
+		echo Please specify a more modern compiler in the "CC" environ.
+		exit 1
+	fi
+fi
 
 # detect the build platform
 case "${platform}" in
@@ -600,7 +623,6 @@ case "${platform}" in
 	Haiku)   HOST_PLATFORM=haiku_host ;;
 	Linux)   HOST_PLATFORM=linux ;;
 	OpenBSD) HOST_PLATFORM=openbsd ;;
-	MSYS*)   HOST_PLATFORM=msys ;;
 	*)       echo Unsupported platform: ${platform}
 	         exit 1 ;;
 esac
@@ -622,8 +644,7 @@ fi
 
 # exported (BuildSetup) default parameter values
 #
-HOST_GCC_RAW_VERSION=`$CC -dumpversion`
-HOST_CC_IS_LEGACY_GCC=`is_legacy_gcc $HOST_GCC_RAW_VERSION`
+GIT_DIR=`git -C "$configureDir" rev-parse --git-dir | sed 's/^gitdir: //'`
 HOST_GCC_MACHINE=`$CC -dumpmachine`
 HAIKU_INCLUDE_SOURCES=0
 HAIKU_INCLUDE_3RDPARTY=0
@@ -678,6 +699,11 @@ supportedTargetArchs="
 #
 while [ $# -gt 0 ] ; do
 	case "$1" in
+		--sysroot)
+			assertparam "$1" $#
+			crossToolsSysroot=$2
+			shift 2
+			;;
 		--bootstrap)
 			assertparams "$1" 3 $#
 			HOST_HAIKU_PORTER="`absolute_path $2`"
@@ -685,18 +711,18 @@ while [ $# -gt 0 ] ; do
 			HAIKU_PORTS="`absolute_path $4`"
 			HAIKU_IS_BOOTSTRAP=1
 			HAIKU_NO_DOWNLOADS=1
-			check_file_exists "$HOST_HAIKU_PORTER" || (
+			if ! check_file_exists "$HOST_HAIKU_PORTER"; then
 				echo "Invalid path to haikuporter: $HOST_HAIKU_PORTER" >&2
 				exit 1
-			)
-			check_dir_exists "$HAIKU_PORTS" || (
+			fi
+			if ! check_dir_exists "$HAIKU_PORTS"; then
 				echo "Non-existent directory $HAIKU_PORTS" >&2
 				exit 1
-			)
-			check_dir_exists "$HAIKU_PORTS_CROSS" || (
+			fi
+			if ! check_dir_exists "$HAIKU_PORTS_CROSS"; then
 				echo "Non-existent directory $HAIKU_PORTS_CROSS" >&2
 				exit 1
-			)
+			fi
 			shift 4
 			;;
 		--cross-tools-source)
@@ -803,6 +829,12 @@ while [ $# -gt 0 ] ; do
 		--no-full-xattr)HAIKU_HOST_USE_XATTR=0; shift 1;;
 		--no-xattr)		HAIKU_HOST_USE_XATTR_REF=0; shift 1;;
 		--with-gdb)	gdbSources=$2; shift 2;;
+		--use-stack-protector)	HAIKU_USE_STACK_PROTECTOR=1; shift 1;;
+		--efi-signing-key)
+			assertparam "$1" $#
+			HAIKU_EFI_SIGNING_KEY="$2"
+			shift 2
+			;;
 		*)				echo Invalid argument: \`$1\'; exit 1;;
 	esac
 done
@@ -852,13 +884,34 @@ if ! $JAMSHELL -c true; then
 fi
 
 # locate python
-if python3 --version < /dev/null > /dev/null 2>&1; then
-	HOST_PYTHON="python3"
-elif python --version < /dev/null > /dev/null 2>&1; then
-	HOST_PYTHON="python"
-else
-	echo "a python interpreter is required"
-	exit 1
+if [ -z "$HOST_PYTHON" ]; then
+	if python3 --version < /dev/null > /dev/null 2>&1; then
+		HOST_PYTHON="python3"
+	elif python --version < /dev/null > /dev/null 2>&1; then
+		HOST_PYTHON="python"
+	else
+		echo "Python interpreter not found (maybe specify one in HOST_PYTHON?)"
+		exit 1
+	fi
+fi
+
+# check is python is new enough
+# usage of python by HDS requires at least 3.9
+PYTHON_VERSION=$("$HOST_PYTHON" --version 2>&1 | sed -e 's/Python //')
+
+case $PYTHON_VERSION in
+	2.* | 3.[1-8].*)
+		echo "Python $PYTHON_VERSION is too old; need at least Python 3.9."
+		echo "(maybe specify a newer one in HOST_PYTHON?)"
+		exit 1
+		;;
+	*)
+		;;
+esac
+
+# check if wget supports --retry-on-host-error
+if wget --retry-on-host-error --version > /dev/null 2>&1; then
+	HOST_WGET_RETRY_ON_HOST_ERROR=1
 fi
 
 # check if nasm can actually output ELF files
@@ -954,8 +1007,14 @@ else
 		# prefix was specified. The standard_gcc_settings call below will get
 		# the actual architecture.
 
-		if test "${HAIKU_PACKAGING_ARCHS#*$targetArch\b}" != "$HAIKU_PACKAGING_ARCHS"; then
-			# somehow we wound up with a duplicate arch; skip this one
+		for existingArch in $HAIKU_PACKAGING_ARCHS; do
+			if [ $existingArch = $targetArch ]; then
+				# somehow we wound up with a duplicate arch; skip this one
+				targetArch=
+				break
+			fi
+		done
+		if [ -z "$targetArch" ]; then
 			continue
 		fi
 
@@ -990,6 +1049,7 @@ else
 					HAIKU_USE_GCC_GRAPHITE_$targetArch` \
 				HAIKU_USE_GCC_PIPE=$HAIKU_USE_GCC_PIPE \
 				HAIKU_USE_GDB="$gdbSources" \
+				HAIKU_USE_SYSROOT="$crossToolsSysroot" \
 				"$script" $scriptArgs "$sourceDir" "$buildCrossTools" \
 					"$crossToolsDir" $buildCrossToolsJobs || exit 1
 			else
@@ -1019,6 +1079,13 @@ else
 		else
 			gcc="${crossToolsPrefix}gcc"
 		fi
+
+		if [ -z "$gcc" ]; then
+			echo "Please specify the build tools to use or build (via" \
+				"--cross-tools-prefix or --build-cross-tools)." >&2
+			echo "For more info, invoke $0 --help"
+			exit 1
+		fi
 		standard_gcc_settings "$gcc"
 		targetArch=$standard_gcc_settings_targetArch
 
@@ -1033,23 +1100,16 @@ else
 
 		# Override the cross tools variables, if the tools were built or a
 		# prefix was specified.
-		if [ $useClang = 1 ]; then
-			get_build_tool_path LD_$targetArch ld.lld
-			get_build_tool_path ELFEDIT_$targetArch elfedit
-		elif [ -n "$crossToolsPrefix" ]; then
-			get_build_tool_path LD_$targetArch ${crossToolsPrefix}ld
-			case `get_variable HAIKU_GCC_RAW_VERSION_$targetArch` in
-				4.*|5.*|6.*|7.*|8.*)
-					get_build_tool_path ELFEDIT_$targetArch \
-						${crossToolsPrefix}elfedit
-				;;
-			esac
-		fi
 		if [ -n "$crossToolsPrefix" ]; then
 			get_build_tool_path AR_$targetArch ${crossToolsPrefix}ar
 			get_build_tool_path OBJCOPY_$targetArch ${crossToolsPrefix}objcopy
 			get_build_tool_path RANLIB_$targetArch ${crossToolsPrefix}ranlib
 			get_build_tool_path STRIP_$targetArch ${crossToolsPrefix}strip
+
+			get_build_tool_path LD_$targetArch ${crossToolsPrefix}ld
+			if [ `get_variable HAIKU_CC_IS_LEGACY_GCC_$targetArch` -eq 0 ]; then
+				get_build_tool_path ELFEDIT_$targetArch ${crossToolsPrefix}elfedit
+			fi
 		fi
 
 		# check whether the Haiku compiler really targets Haiku
@@ -1080,6 +1140,8 @@ cat << EOF > "$buildConfigFile"
 #e ${configureEnvirons}
 #a ${configureArgs}
 
+GIT_DIR						?= "${GIT_DIR}" ;
+
 HOST_PLATFORM				?= "${HOST_PLATFORM}" ;
 TARGET_PLATFORM 			?= "${TARGET_PLATFORM}" ;
 HAIKU_PACKAGING_ARCHS		?= ${HAIKU_PACKAGING_ARCHS} ;
@@ -1095,16 +1157,16 @@ HAIKU_HOST_USE_XATTR		?= "${HAIKU_HOST_USE_XATTR}" ;
 HAIKU_HOST_USE_XATTR_REF	?= "${HAIKU_HOST_USE_XATTR_REF}" ;
 HAIKU_HOST_BUILD_ONLY		?= "${HAIKU_HOST_BUILD_ONLY}" ;
 
-JAMSHELL					?= ${JAMSHELL} -c ;
+JAMSHELL					?= ${JAMSHELL} -e -c ;
 
 HOST_CC						?= ${CC} ;
-HOST_CC_IS_LEGACY_GCC		?= ${HOST_CC_IS_LEGACY_GCC} ;
 HOST_GCC_MACHINE			?= ${HOST_GCC_MACHINE} ;
 HOST_LD						?= ${HOST_GCC_LD} ;
 HOST_OBJCOPY				?= ${HOST_GCC_OBJCOPY} ;
 HOST_EXTENDED_REGEX_SED		?= ${HOST_EXTENDED_REGEX_SED} ;
 HOST_SHA256					?= ${HOST_SHA256} ;
 HOST_PYTHON					?= ${HOST_PYTHON} ;
+HOST_WGET_RETRY_ON_HOST_ERROR			?= ${HOST_WGET_RETRY_ON_HOST_ERROR} ;
 HAIKU_NASM					?= ${HAIKU_NASM} ;
 
 HAIKU_BUILD_ATTRIBUTES_DIR	?= "${HAIKU_BUILD_ATTRIBUTES_DIR}" ;
@@ -1114,6 +1176,7 @@ HAIKU_PORTS					?= ${HAIKU_PORTS} ;
 HAIKU_PORTS_CROSS			?= ${HAIKU_PORTS_CROSS} ;
 HAIKU_IS_BOOTSTRAP			?= ${HAIKU_IS_BOOTSTRAP} ;
 
+HAIKU_BOOT_EFI_PRIVATE_KEYFILE	?= ${HAIKU_EFI_SIGNING_KEY} ;
 EOF
 
 for targetArch in $HAIKU_PACKAGING_ARCHS; do
@@ -1127,6 +1190,8 @@ for targetArch in $HAIKU_PACKAGING_ARCHS; do
 		HAIKU_GCC_LIB_DIR			HAIKU_GCC_LIB_DIR
 		HAIKU_BOOT_LIBGCC			HAIKU_BOOT_LIBGCC
 		HAIKU_BOOT_LIBSUPC++		HAIKU_BOOT_LIBSUPCXX
+		HAIKU_BOOT_32_LIBGCC		HAIKU_BOOT_32_LIBGCC
+		HAIKU_BOOT_32_LIBSUPC++		HAIKU_BOOT_32_LIBSUPCXX
 		HAIKU_AR					HAIKU_AR
 		HAIKU_LD					HAIKU_LD
 		HAIKU_OBJCOPY				HAIKU_OBJCOPY
@@ -1152,6 +1217,7 @@ for targetArch in $HAIKU_PACKAGING_ARCHS; do
 	# lines so that jam doesn't hit the maximum line length.
 	variables="
 		HAIKU_BOOT_C++_HEADERS_DIR	HAIKU_BOOT_CXX_HEADERS_DIR
+		HAIKU_BOOT_32_C++_HEADERS_DIR	HAIKU_BOOT_32_CXX_HEADERS_DIR
 		"
 	set -- $variables
 	while [ $# -ge 2 ]; do

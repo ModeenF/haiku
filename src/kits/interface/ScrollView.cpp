@@ -921,6 +921,20 @@ BScrollView::_ComputeFrame(BRect frame, BScrollBar* horizontal,
 	if (horizontal != NULL)
 		frame.bottom += horizontal->PreferredSize().Height();
 
+	// Take the other minimum dimensions into account, too, but only if
+	// the frame already has a greater-than-zero value for them. Otherwise,
+	// non-layouted applications could wind up with broken layouts.
+	if (vertical != NULL) {
+		const float minHeight = vertical->MinSize().Height();
+		if (frame.Height() > 0 && frame.Height() < minHeight)
+			frame.bottom += minHeight - frame.Height();
+	}
+	if (horizontal != NULL) {
+		const float minWidth = horizontal->MinSize().Width();
+		if (frame.Width() > 0 && frame.Width() < minWidth)
+			frame.right += minWidth - frame.Width();
+	}
+
 	_InsetBorders(frame, border, borders, true);
 
 	if (_BorderSize(border) == 0) {

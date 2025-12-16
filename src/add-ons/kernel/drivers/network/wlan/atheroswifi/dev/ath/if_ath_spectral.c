@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (c) 2013 Adrian Chadd <adrian@FreeBSD.org>
  * All rights reserved.
@@ -27,12 +27,8 @@
  * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGES.
- *
- * $FreeBSD: releng/12.0/sys/dev/ath/if_ath_spectral.c 327500 2018-01-02 19:34:23Z emaste $
  */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: releng/12.0/sys/dev/ath/if_ath_spectral.c 327500 2018-01-02 19:34:23Z emaste $");
-
 /*
  * Implement some basic spectral scan control logic.
  */
@@ -54,7 +50,7 @@ __FBSDID("$FreeBSD: releng/12.0/sys/dev/ath/if_ath_spectral.c 327500 2018-01-02 
 #include <sys/bus.h>
 
 #include <sys/socket.h>
- 
+
 #include <net/if.h>
 #include <net/if_var.h>
 #include <net/if_media.h>
@@ -299,4 +295,3 @@ bad:
 
 	return (error);
 }
-

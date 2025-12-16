@@ -1,4 +1,4 @@
-1	greek, modern (1453-)	x-vnd.Haiku-PowerStatus	3042526887
+1	greek, modern (1453-)	x-vnd.Haiku-PowerStatus	1876447050
 Run in window	PowerStatus		Εκτέλεση σε παράθυρο
 Extended battery info	PowerStatus		Λεπτομερείς πληροφορίες μπαταρίας
 Show status icon	PowerStatus		Εικονίδιο κατάστασης ενέργειας
@@ -11,11 +11,11 @@ Last full charge: 	PowerStatus		Τελευταία πλήρης φόρτιση:
 Current rate: 	PowerStatus		Τρέχων ρυθμός: 
 Show text label	PowerStatus		Εμφάνιση κειμένου ετικέτας
 Quit	PowerStatus		Έξοδος
+Battery not charging	PowerStatus		Η μπαταρία δε φορτίζεται
 Battery low	PowerStatus		Χαμηλή μπαταρία
 Model number: 	PowerStatus		Αριθμός μοντέλου: 
 Battery unused	PowerStatus		Αχρησιμοποίητη μπαταρία
 Type: 	PowerStatus		Τύπος: 
-Damaged battery	PowerStatus		Κατεστραμμένη μπαταρία
 You can run PowerStatus in a window or install it in the Deskbar.	PowerStatus		Μπορείτε να εκτελέσετε το πρόγραμμα Κατάστασης Μπαταρίας σε ένα παράθυρο ή να το τοποθετήσετε στην γραμμή εργασιών.
  mAh	PowerStatus		 mAh
 Battery discharging	PowerStatus		Η μπαταρία αποφορτίζεται
@@ -36,7 +36,9 @@ Capacity granularity 1: 	PowerStatus		Κατάτμηση χωρητικότητ�
 The battery level is getting low, please plug in the device.	PowerStatus		Το επίπεδο της μπαταρίας είναι χαμηλό, παρακαλώ φορτίστε την συσκευή σας.
 Design capacity warning: 	PowerStatus		Προειδοποίηση σχεδιασμού χωρητικότητας: 
 Capacity granularity 2: 	PowerStatus		Κατάτμηση χωρητικότητας 2: 
+Too bad!	PowerStatus		Τι κρίμα!
 Technology: 	PowerStatus		Τεχνολογία: 
+not charging	PowerStatus		δε φορτίζεται
  mWh	PowerStatus		 mWh
 PowerStatus	System name		Κατάσταση Μπαταρίας
 Design capacity: 	PowerStatus		Σχεδιασμένη χωρητικότητα: 

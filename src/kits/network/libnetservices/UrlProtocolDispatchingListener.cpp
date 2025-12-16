@@ -15,10 +15,8 @@
 
 #include <assert.h>
 
-
-#ifndef LIBNETAPI_DEPRECATED
 using namespace BPrivate::Network;
-#endif
+
 
 const char* kUrlProtocolMessageType = "be:urlProtocolMessageType";
 const char* kUrlProtocolCaller = "be:urlProtocolCaller";
@@ -26,16 +24,16 @@ const char* kUrlProtocolCaller = "be:urlProtocolCaller";
 
 BUrlProtocolDispatchingListener::BUrlProtocolDispatchingListener
 	(BHandler* handler)
-		:
-		fMessenger(handler)
+	:
+	fMessenger(handler)
 {
 }
 
 
 BUrlProtocolDispatchingListener::BUrlProtocolDispatchingListener
 	(const BMessenger& messenger)
-		:
-		fMessenger(messenger)
+	:
+	fMessenger(messenger)
 {
 }
 
@@ -59,7 +57,7 @@ BUrlProtocolDispatchingListener::HostnameResolved(BUrlRequest* caller,
 {
 	BMessage message(B_URL_PROTOCOL_NOTIFICATION);
 	message.AddString("url:hostIp", ip);
-	
+
 	_SendMessage(&message, B_URL_PROTOCOL_HOSTNAME_RESOLVED, caller);
 }
 
@@ -73,63 +71,22 @@ BUrlProtocolDispatchingListener::ResponseStarted(BUrlRequest* caller)
 
 
 void
-BUrlProtocolDispatchingListener::HeadersReceived(BUrlRequest* caller,
-	const BUrlResult& result)
+BUrlProtocolDispatchingListener::HeadersReceived(BUrlRequest* caller)
 {
-	/* The URL request does not keep the headers valid after calling this
-	 * method. For asynchronous delivery to work, we need to archive them
-	 * into the message. */
 	BMessage message(B_URL_PROTOCOL_NOTIFICATION);
-	BMessage archive;
-	result.Archive(&archive, true);
-	message.AddMessage("url:result", &archive);
-
 	_SendMessage(&message, B_URL_PROTOCOL_HEADERS_RECEIVED, caller);
 }
 
 
 void
-BUrlProtocolDispatchingListener::DataReceived(BUrlRequest* caller,
-	const char* data, off_t position, ssize_t size)
+BUrlProtocolDispatchingListener::BytesWritten(BUrlRequest* caller,
+	size_t bytesWritten)
 {
 	BMessage message(B_URL_PROTOCOL_NOTIFICATION);
-	status_t result = message.AddData("url:data", B_STRING_TYPE, data, size,
-		true, 1);
-	assert(result == B_OK);
+	message.AddInt32("url:bytesWritten", bytesWritten);
 
-	result = message.AddInt32("url:position", position);
-	assert(result == B_OK);
-	
-	_SendMessage(&message, B_URL_PROTOCOL_DATA_RECEIVED, caller);
+	_SendMessage(&message, B_URL_PROTOCOL_BYTES_WRITTEN, caller);
 }
-
-
-#ifdef LIBNETAPI_DEPRECATED
-void
-BUrlProtocolDispatchingListener::DownloadProgress(BUrlRequest* caller,
-	ssize_t bytesReceived, ssize_t bytesTotal)
-{
-	BMessage message(B_URL_PROTOCOL_NOTIFICATION);
-	message.AddInt32("url:bytesReceived", bytesReceived);
-	message.AddInt32("url:bytesTotal", bytesTotal);
-	
-	_SendMessage(&message, B_URL_PROTOCOL_DOWNLOAD_PROGRESS, caller);
-}
-
-
-void
-BUrlProtocolDispatchingListener::UploadProgress(BUrlRequest* caller,
-	ssize_t bytesSent, ssize_t bytesTotal)
-{
-	BMessage message(B_URL_PROTOCOL_NOTIFICATION);
-	message.AddInt32("url:bytesSent", bytesSent);
-	message.AddInt32("url:bytesTotal", bytesTotal);
-	
-	_SendMessage(&message, B_URL_PROTOCOL_UPLOAD_PROGRESS, caller);
-}
-
-
-#else
 
 
 void
@@ -139,7 +96,7 @@ BUrlProtocolDispatchingListener::DownloadProgress(BUrlRequest* caller,
 	BMessage message(B_URL_PROTOCOL_NOTIFICATION);
 	message.AddInt64("url:bytesReceived", bytesReceived);
 	message.AddInt64("url:bytesTotal", bytesTotal);
-	
+
 	_SendMessage(&message, B_URL_PROTOCOL_DOWNLOAD_PROGRESS, caller);
 }
 
@@ -151,12 +108,10 @@ BUrlProtocolDispatchingListener::UploadProgress(BUrlRequest* caller,
 	BMessage message(B_URL_PROTOCOL_NOTIFICATION);
 	message.AddInt64("url:bytesSent", bytesSent);
 	message.AddInt64("url:bytesTotal", bytesTotal);
-	
+
 	_SendMessage(&message, B_URL_PROTOCOL_UPLOAD_PROGRESS, caller);
 }
 
-
-#endif // LIBNETAPI_DEPRECATED
 
 void
 BUrlProtocolDispatchingListener::RequestCompleted(BUrlRequest* caller,
@@ -164,7 +119,7 @@ BUrlProtocolDispatchingListener::RequestCompleted(BUrlRequest* caller,
 {
 	BMessage message(B_URL_PROTOCOL_NOTIFICATION);
 	message.AddBool("url:success", success);
-	
+
 	_SendMessage(&message, B_URL_PROTOCOL_REQUEST_COMPLETED, caller);
 }
 

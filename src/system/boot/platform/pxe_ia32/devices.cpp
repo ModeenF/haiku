@@ -66,7 +66,7 @@ platform_add_boot_device(struct stage2_args *args, NodeList *devicesList)
 		if (error == B_OK) {
 			char name[64];
 			ip_addr_t serverAddress = sTFTP.ServerIPAddress();
-			snprintf(name, sizeof(name), "%lu.%lu.%lu.%lu:%s",
+			snprintf(name, sizeof(name), "%u.%u.%u.%u:%s",
 				(serverAddress >> 24), (serverAddress >> 16) & 0xff,
 				(serverAddress >> 8) & 0xff, serverAddress & 0xff, fileName);
 
@@ -77,7 +77,8 @@ platform_add_boot_device(struct stage2_args *args, NodeList *devicesList)
 				return B_NO_MEMORY;
 			}
 
-			gBootVolume.SetBool(BOOT_VOLUME_BOOTED_FROM_IMAGE, true);
+			gBootParams.SetBool(BOOT_VOLUME_BOOTED_FROM_IMAGE, true);
+			gBootParams.SetInt32(BOOT_METHOD, BOOT_METHOD_NET);
 			devicesList->Add(disk);
 			return B_OK;
 		} else {
@@ -118,15 +119,15 @@ platform_add_boot_device(struct stage2_args *args, NodeList *devicesList)
 
 
 status_t
-platform_get_boot_partition(struct stage2_args *args, Node *device,
-	NodeList *list, boot::Partition **_partition)
+platform_get_boot_partitions(struct stage2_args *args, Node *device,
+	NodeList *list, NodeList *partitionList)
 {
 	TRACE("platform_get_boot_partition\n");
 	NodeIterator iterator = list->GetIterator();
 	boot::Partition *partition = NULL;
 	while ((partition = (boot::Partition *)iterator.Next()) != NULL) {
 		// ToDo: just take the first partition for now
-		*_partition = partition;
+		partitionList->Insert(partition);
 		return B_OK;
 	}
 
@@ -154,14 +155,14 @@ platform_register_boot_device(Node *device)
 			rootPath = fileNameEnd + 1;
 	}
 
-	if (gBootVolume.SetInt32(BOOT_METHOD, BOOT_METHOD_NET) != B_OK
-		|| gBootVolume.AddInt64("client MAC",
+	if (gBootParams.SetInt32(BOOT_METHOD, BOOT_METHOD_NET) != B_OK
+		|| gBootParams.AddInt64("client MAC",
 			sTFTP.MACAddress().ToUInt64()) != B_OK
-		|| gBootVolume.AddInt32("client IP", sTFTP.IPAddress()) != B_OK
-		|| gBootVolume.AddInt32("server IP", sTFTP.ServerIPAddress()) != B_OK
-		|| gBootVolume.AddInt32("server port", sTFTP.ServerPort()) != B_OK
+		|| gBootParams.AddInt32("client IP", sTFTP.IPAddress()) != B_OK
+		|| gBootParams.AddInt32("server IP", sTFTP.ServerIPAddress()) != B_OK
+		|| gBootParams.AddInt32("server port", sTFTP.ServerPort()) != B_OK
 		|| (sTFTP.RootPath()
-			&& gBootVolume.AddString("net root path", rootPath)
+			&& gBootParams.AddString("net root path", rootPath)
 				!= B_OK)) {
 		return B_NO_MEMORY;
 	}

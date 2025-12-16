@@ -83,15 +83,13 @@ of their respective holders. All rights reserved.
 #define B_TRANSLATION_CONTEXT "Mail"
 
 
-const rgb_color kNormalTextColor = {0, 0, 0, 255};
 const rgb_color kSpellTextColor = {255, 0, 0, 255};
-const rgb_color kHyperLinkColor = {0, 0, 255, 255};
 const rgb_color kHeaderColor = {72, 72, 72, 255};
 
 const rgb_color kQuoteColors[] = {
-	{0, 0, 0x80, 0},		// 3rd, 6th, ... quote level color (blue)
-	{0, 0x80, 0, 0},		// 1st, 4th, ... quote level color (green)
-	{0x80, 0, 0, 0}			// 2nd, ... (red)
+	{0, 0, 0xff, 0},		// 3rd, 6th, ... quote level color (blue)
+	{0, 0xff, 0, 0},		// 1st, 4th, ... quote level color (green)
+	{0xff, 0, 0, 0}			// 2nd, 5th, ... quote level color (red)
 };
 const int32 kNumQuoteColors = 3;
 
@@ -486,8 +484,8 @@ FillInQuoteTextRuns(BTextView* view, quote_context* context, const char* line,
 
 				runs[index].offset = pos;
 				runs[index].font = font;
-				runs[index].color = level > 0
-					? kQuoteColors[level % kNumQuoteColors] : kNormalTextColor;
+				runs[index].color = level > 0 ? mix_color(ui_color(B_PANEL_TEXT_COLOR),
+					kQuoteColors[level % kNumQuoteColors], 120) : ui_color(B_PANEL_TEXT_COLOR);
 
 				pos = next;
 				if (++index >= maxStyles)
@@ -513,8 +511,8 @@ FillInQuoteTextRuns(BTextView* view, quote_context* context, const char* line,
 			if (wasDiff)
 				runs[index].color = kDiffColors[diff_mode('@') - 1];
 			else if (diffMode <= 0) {
-				runs[index].color = level > 0
-					? kQuoteColors[level % kNumQuoteColors] : kNormalTextColor;
+				runs[index].color = level > 0 ? mix_color(ui_color(B_PANEL_TEXT_COLOR),
+					kQuoteColors[level % kNumQuoteColors], 120) : ui_color(B_PANEL_TEXT_COLOR);
 			} else
 				runs[index].color = kDiffColors[diffMode - 1];
 
@@ -1371,7 +1369,7 @@ TTextView::MessageReceived(BMessage *msg)
 		case B_INPUT_METHOD_EVENT:
 		{
 			int32 im_op;
-			if (msg->FindInt32("be:opcode", &im_op) == B_OK){
+			if (msg->FindInt32("be:opcode", &im_op) == B_OK) {
 				switch (im_op) {
 					case B_INPUT_METHOD_STARTED:
 						fInputMethodUndoState.replace = true;
@@ -1382,7 +1380,7 @@ TTextView::MessageReceived(BMessage *msg)
 						if (fInputMethodUndoBuffer.CountItems() > 0) {
 							KUndoItem *undo = fInputMethodUndoBuffer.ItemAt(
 								fInputMethodUndoBuffer.CountItems() - 1);
-							if (undo->History == K_INSERTED){
+							if (undo->History == K_INSERTED) {
 								fUndoBuffer.MakeNewUndoItem();
 								fUndoBuffer.AddUndo(undo->RedoText, undo->Length,
 									undo->Offset, undo->History, undo->CursorPos);
@@ -2297,7 +2295,7 @@ TTextView::Reader::ParseMail(BMailContainer *container,
 				strcpy(typeDescription, type.Type() ? type.Type() : B_EMPTY_STRING);
 
 			name = "\n<";
-			name.Append(B_TRANSLATE_COMMENT("Enclosure: %name% (Type: %type%)",
+			name.Append(B_TRANSLATE_COMMENT("Attachment: %name% (Type: %type%)",
 				"Don't translate the variables %name% and %type%."));
 			name.Append(">\n");
 			name.ReplaceFirst("%name%", enclosure->name);
@@ -2412,11 +2410,11 @@ TTextView::Reader::Insert(const char *line, int32 count, bool isHyperLink,
 		array.count = 1;
 		array.runs[0].offset = 0;
 		if (isHeader) {
-			array.runs[0].color = isHyperLink ? kHyperLinkColor : kHeaderColor;
+			array.runs[0].color = isHyperLink ? ui_color(B_LINK_TEXT_COLOR) : kHeaderColor;
 			font.SetSize(font.Size() * 0.9);
 		} else {
 			array.runs[0].color = isHyperLink
-				? kHyperLinkColor : kNormalTextColor;
+				? ui_color(B_LINK_TEXT_COLOR) : ui_color(B_PANEL_TEXT_COLOR);
 		}
 		array.runs[0].font = font;
 	}
@@ -2688,7 +2686,7 @@ TTextView::InsertText(const char *insertText, int32 length, int32 offset,
 		style.count = 1;
 		style.runs[0].offset = 0;
 		style.runs[0].font = fFont;
-		style.runs[0].color = kNormalTextColor;
+		style.runs[0].color = ui_color(B_PANEL_TEXT_COLOR);
 		runs = &style;
 	}
 
@@ -2780,6 +2778,8 @@ TTextView::CheckSpelling(int32 start, int32 end, int32 flags)
 	bool		isAlpha;
 	bool		isApost;
 
+	rgb_color normalColor = ui_color(B_PANEL_TEXT_COLOR);
+
 	for (next = text + start, endPtr = text + end; next <= endPtr; next++) {
 		//printf("next=%c\n", *next);
 		// ToDo: this has to be refined to other languages...
@@ -2857,7 +2857,7 @@ TTextView::CheckSpelling(int32 start, int32 end, int32 flags)
 	if (nextHighlight <= end
 		&& (flags & S_CLEAR_ERRORS) != 0
 		&& nextHighlight < TextLength())
-		SetFontAndColor(nextHighlight, end, NULL, B_FONT_ALL, &kNormalTextColor);
+		SetFontAndColor(nextHighlight, end, NULL, B_FONT_ALL, &normalColor);
 }
 
 
@@ -3047,7 +3047,7 @@ TTextView::WindowActivated(bool flag)
 		// WindowActivated(false) は、IM も Inactive になり、そのまま確定される。
 		// しかしこの場合、input_server が B_INPUT_METHOD_EVENT(B_INPUT_METHOD_STOPPED)
 		// を送ってこないまま矛盾してしまうので、やむを得ずここでつじつまあわせ処理している。
-		// OpenBeOSで修正されることを願って暫定処置としている。
+		// Haikuで修正されることを願って暫定処置としている。
 		fInputMethodUndoState.active = false;
 		// fInputMethodUndoBufferに溜まっている最後のデータがK_INSERTEDなら（確定）正規のバッファへ追加
 		if (fInputMethodUndoBuffer.CountItems() > 0) {

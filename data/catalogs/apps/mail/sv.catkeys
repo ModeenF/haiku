@@ -1,4 +1,4 @@
-1	swedish	x-vnd.Be-MAIL	1477453861
+1	swedish	x-vnd.Be-MAIL	262401742
 Set to Saved	Mail		Set till Sparad
 Your main text contains %ld unencodable characters. Perhaps a different character set would work better? Hit Send to send it anyway (a substitute character will be used in place of the unencodable ones), or choose Cancel to go back and try fixing it up.	Mail		Din text innehåller %ld tecken som inte kan hanteras. En annan teckenuppsättning kanske skulle fungera bättre? Klicka Skicka för att skicka det ändå (Ersättnings tecken kommer att användas till de tecken som inte kunde översättas), eller välj avbryt och försök att fixa felet.
 Text wrapping:	Mail		Textradbrytning:
@@ -37,10 +37,8 @@ Same recipient	Mail		Samma mottagare
 Previous message	Mail		Föregående meddelande
 (Address unavailable)	Mail		(Adresser kunde inte nås)
 Mail	System name		E-post
-Enclosure: %name% (Type: %type%)	Mail	Don't translate the variables %name% and %type%.	Område: %name% (Typ: %type%)
 Copy link location	Mail		Kopiera länkplats
-Attachments: 	Mail		Bilagor: 
-Remove enclosure	Mail		Ta bort bilaga
+Add attachment…	Mail		Bifoga fil…
 Next	Mail		Nästa
 Attachments:	Mail		Bilagor:
 Show icons only	Mail		Visa iconer bara
@@ -59,6 +57,7 @@ Reply to sender	Mail		Svara avsändare
 \\n - Newline	Mail		\\n - Ny rad
 Copy	Mail		Kopiera
 Add signature	Mail		Lägg till signatur
+Attachment: %name% (Type: %type%)	Mail	Don't translate the variables %name% and %type%.	Bilaga: %name% (Typ: %type%)
 %n - Full name	Mail		%n - Hela namnet
 Signature	Mail		Signatur
 Use default account	Mail		Använd standardkonto
@@ -98,7 +97,6 @@ Need Tracker to move items to trash	Mail		Tracker behöver flytta objekt till pa
 The mail_daemon could not be started:\n\t	Mail		mail_daemon kunde inte startas:\n\t
 <no account found>	Mail		<inget konto hittades>
 Mail couldn't find its dictionary.	Mail		Mail kunde inte hitta arbetskatalogen.
-Mail preferences	Mail		E-postinställningar
 helpful message	Mail		hjälpsamt meddelande
  Read 	Mail		 Läs 
 Font:	Mail		Typsnitt:
@@ -109,8 +107,10 @@ Start now	Mail		Starta nu
 (Name unavailable)	Mail		(Namnet kunde inte nås)
 Move to trash	Mail		Flytta till papperskorg
 <none>	Mail		<ingen>
+Mail settings	Mail		E-postinställningar
 %d - Date	Mail		%d - Datum
 Check spelling	Mail		Kontrollera stavning
+Status:	Mail		Status:
 Redo	Mail		Upprepa
 Leave as '%s'	Mail		Lämna som '%s'
 Print…	Mail		Skriv ut…
@@ -136,7 +136,7 @@ No file attributes, just plain data	Mail		Inga fil attribut, bara vanlig data
 Add	Mail		Lägg till
 out	B_USER_DIRECTORY/mail/out		ut
 Send this message before closing?	Mail		Skicka meddelandet innan programmet stängs?
-in	B_USER_DIRECTORY/mail/in		i
+in	B_USER_DIRECTORY/mail/in		in
 Open	Mail		Öppna
 Don't save	Mail		Spara ej
 Leave same	Mail		Lämna samma
@@ -166,4 +166,3 @@ Couldn't open this signature. Sorry.	Mail		Kunde inte öppna denna signatur.
 Revert	Mail		Återgå
 Unknown	Mail		Okänd
 Increase quote level	Mail		Öka kvotnivå
-Add enclosure…	Mail		Lägg till område…

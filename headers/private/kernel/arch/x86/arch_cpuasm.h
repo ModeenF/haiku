@@ -13,6 +13,20 @@
 
 #define nop() __asm__ ("nop"::)
 
+static inline uint64_t
+x86_read_msr(uint32_t msr)
+{
+	uint32_t high, low;
+	asm volatile("rdmsr" : "=a" (low), "=d" (high) : "c" (msr));
+	return (((uint64_t) high) << 32) | low;
+}
+
+static inline void
+x86_write_msr(uint32_t msr, uint64_t value)
+{
+	asm volatile("wrmsr" : : "a" ((uint32_t)value) , "d" ((uint32_t)(value >> 32)), "c" (msr));
+}
+
 #define x86_read_cr0() ({ \
 	size_t _v; \
 	__asm__("mov    %%cr0,%0" : "=r" (_v)); \
@@ -34,8 +48,11 @@
 	_v; \
 })
 
-#define x86_write_cr3(value) \
-	__asm__("mov    %0,%%cr3" : : "r" (value))
+static inline void
+x86_write_cr3(size_t value)
+{
+	__asm__("mov %0,%%cr3" : : "r" (value) : "memory");
+}
 
 #define x86_read_cr4() ({ \
 	size_t _v; \
@@ -61,10 +78,10 @@
 #define wbinvd() \
 	__asm__ volatile ("wbinvd" : : : "memory")
 
-#define set_ac() \
+#define arch_cpu_enable_user_access() \
 	__asm__ volatile (ASM_STAC : : : "memory")
 
-#define clear_ac() \
+#define arch_cpu_disable_user_access() \
 	__asm__ volatile (ASM_CLAC : : : "memory")
 
 #define xgetbv(reg) ({ \

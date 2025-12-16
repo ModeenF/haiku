@@ -62,14 +62,12 @@ struct PackageFile::DataAccessor {
 		fReader(NULL),
 		fFileCache(NULL)
 	{
-		mutex_init(&fLock, "file data accessor");
 	}
 
 	~DataAccessor()
 	{
 		file_cache_delete(fFileCache);
 		delete fReader;
-		mutex_destroy(&fLock);
 	}
 
 	status_t Init(dev_t deviceID, ino_t nodeID, int fd)
@@ -106,8 +104,6 @@ struct PackageFile::DataAccessor {
 
 		if (toRead > 0) {
 			IORequestOutput output(request);
-			MutexLocker locker(fLock, false, fData->Version() == 1);
-				// V2 readers are reentrant
 			status_t error = fReader->ReadDataToOutput(offset, toRead, &output);
 			if (error != B_OK)
 				RETURN_ERROR(error);
@@ -117,7 +113,6 @@ struct PackageFile::DataAccessor {
 	}
 
 private:
-	mutex							fLock;
 	Package*						fPackage;
 	PackageData*					fData;
 	BAbstractBufferedDataReader*	fReader;
@@ -153,13 +148,14 @@ PackageFile::VFSInit(dev_t deviceID, ino_t nodeID)
 
 	// open the package -- that's already done by PackageNode::VFSInit(), so it
 	// shouldn't fail here. We only need to do it again, since we need the FD.
-	int fd = fPackage->Open();
+	BReference<Package> package(GetPackage());
+	int fd = package->Open();
 	if (fd < 0)
 		RETURN_ERROR(fd);
-	PackageCloser packageCloser(fPackage);
+	PackageCloser packageCloser(package);
 
 	// create the data accessor
-	fDataAccessor = new(std::nothrow) DataAccessor(GetPackage(), &fData);
+	fDataAccessor = new(std::nothrow) DataAccessor(package, &fData);
 	if (fDataAccessor == NULL)
 		RETURN_ERROR(B_NO_MEMORY);
 

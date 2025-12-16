@@ -7,6 +7,7 @@
 
 
 #include <OS.h>
+#include <String.h>
 
 #include <system_info.h>
 
@@ -45,6 +46,8 @@ public:
 			uint32		CPUCount() const { return fSystemInfo.cpu_count; }
 			bigtime_t	CPUActiveTime(uint32 cpu) const
 							{ return fCPUInfos[cpu].active_time; }
+			uint64		CPUCurrentFrequency(uint32 cpu) const
+							{ return fCPUInfos[cpu].current_frequency; }
 			const system_info& Info() const { return fSystemInfo; }
 
 			uint64		NetworkReceived();
@@ -57,9 +60,11 @@ public:
 			uint32		ClipboardTextSize() const;
 
 			uint32		MediaNodes() const;
-			uint32		MediaConnections() const;	// UNIMPLEMENTED
-			uint32		MediaBuffers() const;		// UNIMPLEMENTED
+			uint32		MediaConnections() const;
+			uint32		MediaBuffers() const;
 
+			float		Temperature() const { return fTemperature; }
+	const	BString&	ThermalZone() const { return fThermalZone; }
 private:
 			void		_RetrieveNetwork();
 
@@ -75,6 +80,8 @@ private:
 	uint32				fMediaNodes;
 	uint32				fMediaConnections;
 	uint32				fMediaBuffers;
+	float				fTemperature;
+	BString				fThermalZone;
 };
 
 #endif	// SYSTEM_INFO_H

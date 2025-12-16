@@ -50,7 +50,6 @@ typedef void miibus_mediainit_t(device_t dev);
 struct device_method {
 	const char* name;
 	const int32 id;
-		/* interfaces w/o function pointer structs use IDs for method lookups */
 	device_method_signature_t method;
 };
 
@@ -69,25 +68,26 @@ typedef struct {
 #define DEFINE_CLASS_0(name, driver, methods, size) \
 	driver_t driver = { #name, methods, size }
 
-#define DRIVER_MODULE(name, busname, driver, devclass, evh, arg) \
-	driver_t *DRIVER_MODULE_NAME(name, busname) = &(driver); \
-	devclass_t *__class_ ## name ## _ ## busname ## _ ## devclass = &(devclass)
+#define DRIVER_MODULE(name, busname, driver, evh, arg) \
+	driver_t *DRIVER_MODULE_NAME(name, busname) = &(driver)
 
-#define DRIVER_MODULE_ORDERED(name, busname, driver, devclass, evh, arg, order) \
-	DRIVER_MODULE(name, busname, driver, devclass, evh, arg)
+#define DRIVER_MODULE_ORDERED(name, busname, driver, evh, arg, order) \
+	DRIVER_MODULE(name, busname, driver, evh, arg)
 
 #define DRIVER_MODULE_NAME(name, busname) \
 	__fbsd_ ## name ## _ ## busname
 
 
-status_t _fbsd_init_hardware(driver_t *driver[]);
-status_t _fbsd_init_drivers(driver_t *driver[]);
-status_t _fbsd_uninit_drivers(driver_t *driver[]);
+void __haiku_init_hardware(void);
+status_t _fbsd_init_hardware();
+status_t _fbsd_init_hardware_pci(driver_t* drivers[]);
+status_t _fbsd_init_hardware_uhub(driver_t* drivers[]);
+status_t _fbsd_init_drivers();
+status_t _fbsd_uninit_drivers();
 
 extern const char *gDriverName;
 driver_t *__haiku_select_miibus_driver(device_t dev);
-driver_t *__haiku_probe_miibus(device_t dev, driver_t *drivers[]);
-status_t __haiku_handle_fbsd_drivers_list(status_t (*handler)(driver_t *[]));
+driver_t *__haiku_probe_drivers(device_t dev, driver_t *drivers[]);
 
 status_t init_wlan_stack(void);
 void uninit_wlan_stack(void);
@@ -108,15 +108,15 @@ status_t wlan_close(void*);
 	int32 api_version = B_CUR_DRIVER_API_VERSION;						\
 	status_t init_hardware()											\
 	{																	\
-		return __haiku_handle_fbsd_drivers_list(_fbsd_init_hardware);	\
+		return _fbsd_init_hardware();									\
 	}																	\
 	status_t init_driver()												\
 	{																	\
-		return __haiku_handle_fbsd_drivers_list(_fbsd_init_drivers);	\
+		return _fbsd_init_drivers();									\
 	}																	\
 	void uninit_driver()												\
 	{																	\
-		__haiku_handle_fbsd_drivers_list(_fbsd_uninit_drivers);			\
+		_fbsd_uninit_drivers();											\
 	}																	\
 	const char **publish_devices()										\
 		{ return gDeviceNameList; }										\
@@ -140,12 +140,13 @@ status_t wlan_close(void*);
 
 #define HAIKU_FBSD_DRIVER_GLUE(publicname, name, busname)				\
 	extern driver_t* DRIVER_MODULE_NAME(name, busname);					\
-	status_t __haiku_handle_fbsd_drivers_list(status_t (*proc)(driver_t *[])) {\
+	void __haiku_init_hardware()										\
+	{																	\
 		driver_t *drivers[] = {											\
 			DRIVER_MODULE_NAME(name, busname),							\
 			NULL														\
 		};																\
-		return (*proc)(drivers);										\
+		_fbsd_init_hardware_pci(drivers);								\
 	}																	\
 	HAIKU_FBSD_DRIVERS_GLUE(publicname);
 
@@ -154,20 +155,15 @@ status_t wlan_close(void*);
 
 #define HAIKU_FBSD_WLAN_DRIVER_GLUE(publicname, name, busname)			\
 	extern driver_t *DRIVER_MODULE_NAME(name, busname);					\
-	status_t __haiku_handle_fbsd_drivers_list(status_t (*proc)(driver_t *[])) {\
+	void __haiku_init_hardware()										\
+	{																	\
 		driver_t *drivers[] = {											\
 			DRIVER_MODULE_NAME(name, busname),							\
 			NULL														\
 		};																\
-		return (*proc)(drivers);										\
+		_fbsd_init_hardware_pci(drivers);								\
 	}																	\
 	HAIKU_FBSD_WLAN_DRIVERS_GLUE(publicname);
-
-#define HAIKU_FBSD_RETURN_MII_DRIVER(drivers)					\
-	driver_t *__haiku_select_miibus_driver(device_t dev)		\
-	{															\
-		return __haiku_probe_miibus(dev, drivers);				\
-	}
 
 #define HAIKU_FBSD_MII_DRIVER(name)								\
 	extern driver_t *DRIVER_MODULE_NAME(name, miibus);			\
@@ -177,11 +173,14 @@ status_t wlan_close(void*);
 			DRIVER_MODULE_NAME(name, miibus),					\
 			NULL												\
 		};														\
-		return __haiku_probe_miibus(dev, drivers);				\
+		return __haiku_probe_drivers(dev, drivers);				\
 	}
 
 #define NO_HAIKU_FBSD_MII_DRIVER()								\
-	HAIKU_FBSD_RETURN_MII_DRIVER(NULL)
+	driver_t *__haiku_select_miibus_driver(device_t dev)		\
+	{															\
+		return NULL;											\
+	}
 
 extern spinlock __haiku_intr_spinlock;
 extern int __haiku_disable_interrupts(device_t dev);
@@ -202,13 +201,15 @@ extern void __haiku_reenable_interrupts(device_t dev);
 extern int __haiku_driver_requirements;
 
 enum {
-	FBSD_TASKQUEUES			= 1 << 0,
-	FBSD_FAST_TASKQUEUE		= 1 << 1,
-	FBSD_SWI_TASKQUEUE		= 1 << 2,
-	FBSD_THREAD_TASKQUEUE	= 1 << 3,
-	FBSD_WLAN_FEATURE		= 1 << 4,
-	FBSD_WLAN				= FBSD_WLAN_FEATURE | FBSD_TASKQUEUES
-								| FBSD_THREAD_TASKQUEUE,
+	FBSD_FAST_TASKQUEUE		= 1 << 0,
+	FBSD_SWI_TASKQUEUE		= 1 << 1,
+	FBSD_THREAD_TASKQUEUE	= 1 << 2,
+	FBSD_WLAN_FEATURE		= 1 << 3,
+
+	FBSD_WLAN				= FBSD_WLAN_FEATURE | FBSD_THREAD_TASKQUEUE,
+	OBSD_WLAN				= FBSD_WLAN_FEATURE | FBSD_FAST_TASKQUEUE,
+
+	FBSD_TASKQUEUES = FBSD_FAST_TASKQUEUE | FBSD_SWI_TASKQUEUE | FBSD_THREAD_TASKQUEUE,
 };
 
 #define HAIKU_DRIVER_REQUIREMENTS(flags) \

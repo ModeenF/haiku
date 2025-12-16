@@ -311,6 +311,12 @@ struct nvme_tracker {
 	LIST_ENTRY(nvme_tracker)	list;
 
 	struct nvme_request		*req;
+#if INTPTR_MAX == INT32_MAX
+	int32_t __pad[3];
+#elif !defined(INTPTR_MAX)
+#	error Need definition of INTPTR_MAX!
+#endif
+
 	uint16_t			cid;
 
 	uint16_t			rsvd1: 15;
@@ -624,6 +630,7 @@ extern int nvme_admin_set_feature(struct nvme_ctrlr *ctrlr,
 				  bool save,
 				  enum nvme_feat feature,
 				  uint32_t cdw11, uint32_t cdw12,
+				  void *buf, uint32_t len,
 				  uint32_t *attributes);
 
 extern int nvme_admin_format_nvm(struct nvme_ctrlr *ctrlr,

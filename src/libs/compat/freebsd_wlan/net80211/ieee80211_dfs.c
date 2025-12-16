@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (c) 2007-2008 Sam Leffler, Errno Consulting
  * All rights reserved.
@@ -24,11 +24,6 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
-#include <sys/cdefs.h>
-#ifdef __FreeBSD__
-__FBSDID("$FreeBSD: releng/12.0/sys/net80211/ieee80211_dfs.c 326272 2017-11-27 15:23:17Z pfg $");
-#endif
 
 /*
  * IEEE 802.11 DFS/Radar support.
@@ -156,8 +151,7 @@ cac_timeout(void *arg)
 		/* XXX clobbers any existing desired channel */
 		/* NB: dfs->newchan may be NULL, that's ok */
 		vap->iv_des_chan = dfs->newchan;
-		/* XXX recursive lock need ieee80211_new_state_locked */
-		ieee80211_new_state(vap, IEEE80211_S_SCAN, 0);
+		ieee80211_new_state_locked(vap, IEEE80211_S_SCAN, 0);
 	} else {
 		if_printf(vap->iv_ifp,
 		    "CAC timer on channel %u (%u MHz) expired; "
@@ -422,7 +416,7 @@ ieee80211_dfs_pickchannel(struct ieee80211com *ic)
 	 * one at random (skipping channels where radar has
 	 * been detected).
 	 */
-	get_random_bytes(&v, sizeof(v));
+	net80211_get_random_bytes(&v, sizeof(v));
 	v %= ic->ic_nchans;
 	for (i = v; i < ic->ic_nchans; i++) {
 		c = &ic->ic_channels[i];

@@ -21,7 +21,6 @@
 #include "DrawingEngine.h"
 #include "RenderingBuffer.h"
 #include "SystemPalette.h"
-#include "UpdateQueue.h"
 
 
 using std::nothrow;
@@ -40,7 +39,7 @@ HWInterfaceListener::~HWInterfaceListener()
 // #pragma mark - HWInterface
 
 
-HWInterface::HWInterface(bool doubleBuffered, bool enableUpdateQueue)
+HWInterface::HWInterface()
 	:
 	MultiLocker("hw interface lock"),
 	fFloatingOverlaysLock("floating overlays lock"),
@@ -52,18 +51,14 @@ HWInterface::HWInterface(bool doubleBuffered, bool enableUpdateQueue)
 	fCursorObscured(false),
 	fHardwareCursorEnabled(false),
 	fCursorLocation(0, 0),
-	fDoubleBuffered(doubleBuffered),
 	fVGADevice(-1),
-	fUpdateExecutor(NULL),
 	fListeners(20)
 {
-	SetAsyncDoubleBuffered(doubleBuffered && enableUpdateQueue);
 }
 
 
 HWInterface::~HWInterface()
 {
-	SetAsyncDoubleBuffered(false);
 }
 
 
@@ -290,30 +285,6 @@ HWInterface::DrawingBuffer() const
 }
 
 
-void
-HWInterface::SetAsyncDoubleBuffered(bool doubleBuffered)
-{
-	if (doubleBuffered) {
-		if (fUpdateExecutor.IsSet())
-			return;
-		fUpdateExecutor.SetTo(new (nothrow) UpdateQueue(this));
-		AddListener(fUpdateExecutor.Get());
-	} else {
-		if (!fUpdateExecutor.IsSet())
-			return;
-		RemoveListener(fUpdateExecutor.Get());
-		fUpdateExecutor.Unset();
-	}
-}
-
-
-bool
-HWInterface::IsDoubleBuffered() const
-{
-	return fDoubleBuffered;
-}
-
-
 /*! The object needs to be already locked!
 */
 status_t
@@ -335,23 +306,9 @@ HWInterface::InvalidateRegion(const BRegion& region)
 status_t
 HWInterface::Invalidate(const BRect& frame)
 {
-	if (IsDoubleBuffered()) {
-#if 0
-// NOTE: The UpdateQueue works perfectly fine, but it screws the
-// flicker-free-ness of the double buffered rendering. The problem being the
-// asynchronous nature. The UpdateQueue will transfer regions of the screen
-// which have been clean at the time we are in this function, but which have
-// been damaged meanwhile by drawing into them again. All in all, the
-// UpdateQueue is good for reducing the number of times that the transfer
-// is performed, and makes it happen during refresh only, but until there
-// is a smarter way to synchronize this all better, I've disabled it.
-		if (fUpdateExecutor != NULL) {
-			fUpdateExecutor->AddRect(frame);
-			return B_OK;
-		}
-#endif
+	if (IsDoubleBuffered())
 		return CopyBackToFront(frame);
-	}
+
 	return B_OK;
 }
 
@@ -685,7 +642,7 @@ HWInterface::_CopyToFront(uint8* src, uint32 srcBPR, int32 x, int32 y,
 				// copy
 				for (; y <= bottom; y++) {
 					// bytes is guaranteed to be multiple of 4
-					gfxcpy32(dst, src, bytes);
+					memcpy(dst, src, bytes);
 					dst += dstBPR;
 					src += srcBPR;
 				}

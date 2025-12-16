@@ -47,8 +47,7 @@
 #ifdef TRACE_MENU_FIELD
 #	include <FunctionTracer.h>
 	static int32 sFunctionDepth = -1;
-#	define CALLED(x...)	FunctionTracer _ft("BMenuField", __FUNCTION__, \
-							sFunctionDepth)
+#	define CALLED(x...)	FunctionTracer _ft(printf, this, __PRETTY_FUNCTION__, sFunctionDepth)
 #	define TRACE(x...)	{ BString _to; \
 							_to.Append(' ', (sFunctionDepth + 1) * 2); \
 							printf("%s", _to.String()); printf(x); }
@@ -247,36 +246,24 @@ BMenuField::BMenuField(const char* name, const char* label, BMenu* menu,
 }
 
 
-BMenuField::BMenuField(const char* label, BMenu* menu, uint32 flags)
-	:
-	BView(NULL, flags | B_FRAME_EVENTS)
-{
-	InitObject(label);
-
-	_InitMenuBar(menu, BRect(0, 0, 100, 15), true);
-
-	InitObject2();
-}
-
-
-//! Copy&Paste error, should be removed at some point (already private)
 BMenuField::BMenuField(const char* name, const char* label, BMenu* menu,
-		BMessage* message, uint32 flags)
+	bool fixedSize, uint32 flags)
 	:
 	BView(name, flags | B_FRAME_EVENTS)
 {
 	InitObject(label);
 
-	_InitMenuBar(menu, BRect(0, 0, 100, 15), true);
+	fFixedSizeMB = fixedSize;
+
+	_InitMenuBar(menu, BRect(0, 0, 100, 15), fixedSize);
 
 	InitObject2();
 }
 
 
-//! Copy&Paste error, should be removed at some point (already private)
-BMenuField::BMenuField(const char* label, BMenu* menu, BMessage* message)
+BMenuField::BMenuField(const char* label, BMenu* menu, uint32 flags)
 	:
-	BView(NULL, B_WILL_DRAW | B_NAVIGABLE | B_FRAME_EVENTS)
+	BView(NULL, flags | B_FRAME_EVENTS)
 {
 	InitObject(label);
 
@@ -635,14 +622,18 @@ BMenuField::MenuItem() const
 void
 BMenuField::SetLabel(const char* label)
 {
-	if (fLabel) {
-		if (label && strcmp(fLabel, label) == 0)
-			return;
-
-		free(fLabel);
+	if ((fLabel != NULL && label != NULL && strcmp(fLabel, label) == 0)
+		|| (fLabel == NULL && label == NULL)) {
+		// labels are the same, do not set label
+		return;
 	}
 
-	fLabel = strdup(label);
+	if (fLabel != NULL) {
+		free(fLabel);
+		fLabel = NULL;
+	}
+	if (label != NULL)
+		fLabel = strdup(label);
 
 	if (Window())
 		Invalidate();

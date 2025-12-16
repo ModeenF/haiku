@@ -68,7 +68,7 @@ private:
 #ifdef DEBUG_ALLOCATION_GROUPS
 			void			_CheckGroup(int32 group) const;
 #endif
-			status_t		_AddTrim(fs_trim_data& trimData, uint32 maxRanges,
+			bool			_AddTrim(fs_trim_data& trimData, uint32 maxRanges,
 								uint64 offset, uint64 size);
 			status_t		_TrimNext(fs_trim_data& trimData, uint32 maxRanges,
 								uint64 offset, uint64 size, bool force,
@@ -82,7 +82,7 @@ private:
 			AllocationGroup* fGroups;
 			int32			fNumGroups;
 			uint32			fBlocksPerGroup;
-			uint32			fNumBlocks;
+			uint32			fNumBitmapBlocks;
 };
 
 #ifdef BFS_DEBUGGER_COMMANDS

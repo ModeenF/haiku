@@ -30,6 +30,13 @@ CreateInstance()
 }
 
 
+extern "C" void
+DestroyInstance(LocaleBackend* instance)
+{
+	delete instance;
+}
+
+
 ICULocaleBackend::ICULocaleBackend()
 	:
 	fThreadLocalStorageKey(_CreateThreadLocalStorageKey()),
@@ -81,6 +88,13 @@ ICULocaleBackend::SetLocale(int category, const char* posixLocaleName)
 		return _SetPosixLocale(category);
 
 	Locale locale = Locale::createCanonical(posixLocaleName);
+
+	// Locale::create doesn't check validity, so make sure the locale
+	// has a real ISO-3166 language code to validate that it actually exists.
+	const char* iso3166 = locale.getISO3Language();
+	if (iso3166 == NULL || iso3166[0] == '\0')
+		return NULL;
+
 	switch (category) {
 		case LC_ALL:
 			if (fCollateData.SetTo(locale, posixLocaleName) != B_OK
@@ -289,12 +303,12 @@ ICULocaleBackend::Strcoll(const char* a, const char* b, int& result)
 
 
 status_t
-ICULocaleBackend::Strxfrm(char* out, const char* in, size_t size,
-	size_t& outSize)
+ICULocaleBackend::Strxfrm(char* out, const char* in,
+	size_t outSize, size_t& requiredSize)
 {
 	ErrnoMaintainer errnoMaintainer;
 
-	return fCollateData.Strxfrm(out, in, size, outSize);
+	return fCollateData.Strxfrm(out, in, outSize, requiredSize);
 }
 
 
@@ -308,12 +322,12 @@ ICULocaleBackend::Wcscoll(const wchar_t* a, const wchar_t* b, int& result)
 
 
 status_t
-ICULocaleBackend::Wcsxfrm(wchar_t* out, const wchar_t* in, size_t size,
-	size_t& outSize)
+ICULocaleBackend::Wcsxfrm(wchar_t* out, const wchar_t* in, size_t outSize,
+	size_t& requiredSize)
 {
 	ErrnoMaintainer errnoMaintainer;
 
-	return fCollateData.Wcsxfrm(out, in, size, outSize);
+	return fCollateData.Wcsxfrm(out, in, outSize, requiredSize);
 }
 
 
@@ -350,6 +364,15 @@ ICULocaleBackend::Mktime(struct tm* inOutTm, time_t& timeOut)
 	ErrnoMaintainer errnoMaintainer;
 
 	return fTimeConversion.Mktime(inOutTm, timeOut);
+}
+
+
+status_t
+ICULocaleBackend::Timegm(struct tm* inOutTm, time_t& timeOut)
+{
+	ErrnoMaintainer errnoMaintainer;
+
+	return fTimeConversion.Timegm(inOutTm, timeOut);
 }
 
 

@@ -4,7 +4,7 @@
  *
  * Author:
  *		Preetpal Kaur <preetpalok123@gmail.com>
-*/
+ */
 
 
 #ifndef TOUCHPAD_PREF_H
@@ -12,10 +12,10 @@
 
 
 #include <Debug.h>
-
-#include "touchpad_settings.h"
 #include <Input.h>
 #include <Path.h>
+
+#include "touchpad_settings.h"
 
 
 #if DEBUG
@@ -40,11 +40,16 @@ public:
 
 			touchpad_settings&	Settings()
 									{ return fSettings; }
-			status_t			UpdateSettings();
+			BMessage			BuildSettingsMessage();
+			status_t			LoadSettings();
+
+			status_t			UpdateRunningSettings();
+
+			void				SetSpeed(int32 value);
+			void				SetAcceleration(int32 value);
 
 private:
 			status_t			GetSettingsPath(BPath& path);
-			status_t			LoadSettings();
 			status_t			SaveSettings();
 
 			BInputDevice* 		fTouchPad;

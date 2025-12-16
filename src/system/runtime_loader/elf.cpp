@@ -18,12 +18,14 @@
 
 #include <OS.h>
 
+#include <commpage_defs.h>
 #include <syscalls.h>
 #include <util/kernel_cpp.h>
 
 #include <locks.h>
 
 #include "add_ons.h"
+#include "commpage.h"
 #include "elf_load_image.h"
 #include "elf_symbol_lookup.h"
 #include "elf_tls.h"
@@ -54,17 +56,31 @@ static recursive_lock sLock = RECURSIVE_LOCK_INITIALIZER(kLockName);
 
 
 static const char *
-find_dt_rpath(image_t *image)
+find_dt_string(image_t *image, int32 d_tag)
 {
 	int i;
 	elf_dyn *d = (elf_dyn *)image->dynamic_ptr;
 
 	for (i = 0; d[i].d_tag != DT_NULL; i++) {
-		if (d[i].d_tag == DT_RPATH)
+		if (d[i].d_tag == d_tag)
 			return STRING(image, d[i].d_un.d_val);
 	}
 
 	return NULL;
+}
+
+
+static const char *
+find_dt_rpath(image_t *image)
+{
+	return find_dt_string(image, DT_RPATH);
+}
+
+
+static const char *
+find_dt_runpath(image_t *image)
+{
+	return find_dt_string(image, DT_RUNPATH);
 }
 
 
@@ -76,7 +92,7 @@ preload_image(char const* path, image_t **image)
 
 	KTRACE("rld: preload_image(\"%s\")", path);
 
-	status_t status = load_image(path, B_LIBRARY_IMAGE, NULL, NULL, image);
+	status_t status = load_image(path, B_LIBRARY_IMAGE, NULL, NULL, NULL, image);
 	if (status < B_OK) {
 		KTRACE("rld: preload_image(\"%s\") failed to load container: %s", path,
 			strerror(status));
@@ -148,8 +164,7 @@ load_immediate_dependencies(image_t *image, bool preload)
 	bool reportErrors = report_errors();
 	status_t status = B_OK;
 	uint32 i, j;
-	const char *rpath;
-
+	const char *rpath = NULL, *runpath;
 	if (!d || (image->flags & RFLAG_DEPENDENCIES_LOADED))
 		return B_OK;
 
@@ -177,7 +192,9 @@ load_immediate_dependencies(image_t *image, bool preload)
 	memset(image->needed, 0, image->num_needed * sizeof(image_t *));
 	if (preload)
 		preload_images(image->needed);
-	rpath = find_dt_rpath(image);
+	runpath = find_dt_runpath(image);
+	if (runpath == NULL)
+		rpath = find_dt_rpath(image);
 
 	for (i = 0, j = preloadedCount; d[i].d_tag != DT_NULL; i++) {
 		switch (d[i].d_tag) {
@@ -187,7 +204,7 @@ load_immediate_dependencies(image_t *image, bool preload)
 				const char *name = STRING(image, neededOffset);
 
 				status_t loadStatus = load_image(name, B_LIBRARY_IMAGE,
-					rpath, image->path, &image->needed[j]);
+					rpath, runpath, image->path, &image->needed[j]);
 				if (loadStatus < B_OK) {
 					status = loadStatus;
 					// correct error code in case the file could not been found
@@ -433,7 +450,7 @@ preload_addon(char const* path)
 	KTRACE("rld: preload_addon(\"%s\")", path);
 
 	image_t *image = NULL;
-	status_t status = load_image(path, B_LIBRARY_IMAGE, NULL, NULL, &image);
+	status_t status = load_image(path, B_LIBRARY_IMAGE, NULL, NULL, NULL, &image);
 	if (status < B_OK) {
 		KTRACE("rld: preload_addon(\"%s\") failed to load container: %s", path,
 			strerror(status));
@@ -535,7 +552,7 @@ load_program(char const *path, void **_entry)
 
 	TRACE(("rld: load %s\n", path));
 
-	status = load_image(path, B_APP_IMAGE, NULL, NULL, &gProgramImage);
+	status = load_image(path, B_APP_IMAGE, NULL, NULL, NULL, &gProgramImage);
 	if (status < B_OK)
 		goto err;
 
@@ -600,11 +617,14 @@ err:
 
 
 image_id
-load_library(char const *path, uint32 flags, bool addOn, void** _handle)
+load_library(char const *path, uint32 flags, bool addOn, void* caller,
+	void** _handle)
 {
 	image_t *image = NULL;
 	image_type type = (addOn ? B_ADD_ON_IMAGE : B_LIBRARY_IMAGE);
 	status_t status;
+	const char* rpath = NULL, *runpath = NULL;
+	const char* requestingObjectPath = NULL;
 
 	if (path == NULL && addOn)
 		return B_BAD_VALUE;
@@ -633,10 +653,21 @@ load_library(char const *path, uint32 flags, bool addOn, void** _handle)
 				path, image->id);
 			*_handle = image;
 			return image->id;
+		} else if ((flags & RTLD_NOLOAD) != 0) {
+			return B_NAME_NOT_FOUND;
+		}
+
+		// First of all, find the caller image.
+		image_t* callerImage = find_loaded_image_by_address((addr_t)caller);
+		if (callerImage != NULL) {
+			runpath = find_dt_runpath(callerImage);
+			if (runpath == NULL)
+				rpath = find_dt_rpath(callerImage);
+			requestingObjectPath = callerImage->path;
 		}
 	}
 
-	status = load_image(path, type, NULL, NULL, &image);
+	status = load_image(path, type, rpath, runpath, requestingObjectPath, &image);
 	if (status < B_OK) {
 		KTRACE("rld: load_library(\"%s\") failed to load container: %s", path,
 			strerror(status));
@@ -646,6 +677,8 @@ load_library(char const *path, uint32 flags, bool addOn, void** _handle)
 	if (image->find_undefined_symbol == NULL) {
 		if (addOn)
 			image->find_undefined_symbol = find_undefined_symbol_add_on;
+		else if (flags & RTLD_GROUP)
+			image->find_undefined_symbol = find_undefined_symbol_dependencies_only;
 		else
 			image->find_undefined_symbol = find_undefined_symbol_global;
 	}
@@ -681,8 +714,7 @@ load_library(char const *path, uint32 flags, bool addOn, void** _handle)
 err:
 	KTRACE("rld: load_library(\"%s\") failed: %s", path, strerror(status));
 
-	dequeue_loaded_image(image);
-	delete_image(image);
+	unload_library(image, -1, addOn);
 	return status;
 }
 
@@ -709,26 +741,24 @@ unload_library(void* handle, image_id imageID, bool addOn)
 
 	// we only check images that have been already initialized
 
-	status_t status = B_BAD_IMAGE_ID;
-
 	if (handle != NULL) {
 		image = (image_t*)handle;
 		put_image(image);
-		status = B_OK;
 	} else {
 		image = find_loaded_image_by_id(imageID, true);
-		if (image != NULL) {
-			// unload image
-			if (type == image->type) {
-				put_image(image);
-				status = B_OK;
-			} else
-				status = B_BAD_VALUE;
-		}
+		if (image == NULL)
+			return B_BAD_IMAGE_ID;
+
+		// unload image
+		if (type != image->type)
+			return B_BAD_VALUE;
+		put_image(image);
 	}
 
-	if (status == B_OK) {
-		while ((image = get_disposable_images().head) != NULL) {
+	while ((image = get_disposable_images().head) != NULL) {
+		dequeue_disposable_image(image);
+
+		if ((image->flags & RFLAG_INITIALIZED) != 0) {
 			// Call the exit hooks that live in this image.
 			// Note: With the Itanium ABI this shouldn't really be done this
 			// way anymore, since global destructors are registered via
@@ -741,27 +771,28 @@ unload_library(void* handle, image_id imageID, bool addOn)
 			// probably more expensive than calling
 			// call_atexit_hooks_for_range() only here, which happens only when
 			// libraries are unloaded dynamically.
-			if (gRuntimeLoader.call_atexit_hooks_for_range) {
-				gRuntimeLoader.call_atexit_hooks_for_range(
-					image->regions[0].vmstart, image->regions[0].vmsize);
+			if (gRuntimeLoader.call_atexit_hooks_for_range != NULL) {
+				for (uint32 i = 0; i < image->num_regions; i++) {
+					gRuntimeLoader.call_atexit_hooks_for_range(
+						image->regions[i].vmstart, image->regions[i].vmsize);
+				}
 			}
 
 			image_event(image, IMAGE_EVENT_UNINITIALIZING);
 
 			call_term_functions(image);
-
-			TLSBlockTemplates::Get().Unregister(image->dso_tls_id);
-
-			dequeue_disposable_image(image);
-			unmap_image(image);
-
-			image_event(image, IMAGE_EVENT_UNLOADING);
-
-			delete_image(image);
 		}
+
+		TLSBlockTemplates::Get().Unregister(image->dso_tls_id);
+
+		unmap_image(image);
+
+		image_event(image, IMAGE_EVENT_UNLOADING);
+
+		delete_image(image);
 	}
 
-	return status;
+	return B_OK;
 }
 
 
@@ -828,8 +859,18 @@ get_nearest_symbol_at_address(void* address, image_id* _imageID,
 	RecursiveLocker _(sLock);
 
 	image_t* image = find_loaded_image_by_address((addr_t)address);
-	if (image == NULL)
+	if (image == NULL) {
+		addr_t commpageBegin = (addr_t)__gCommPageAddress;
+		addr_t commpageEnd = (addr_t)commpageBegin + COMMPAGE_SIZE;
+
+		// The caller may be looking for a commpage symbol.
+		if ((addr_t)address >= commpageBegin && (addr_t)address < commpageEnd) {
+			return get_nearest_commpage_symbol_at_address_locked(address, _imageID, _imagePath,
+				_imageName, _symbolName, _type, _location, _exactMatch);
+		}
+
 		return B_BAD_VALUE;
+	}
 
 	if (_imageID != NULL)
 		*_imageID = image->id;
@@ -975,16 +1016,7 @@ get_library_symbol(void* handle, void* caller, const char* symbolName,
 		// calling image. Return the next after the caller symbol.
 
 		// First of all, find the caller image.
-		image_t* callerImage = get_loaded_images().head;
-		for (; callerImage != NULL; callerImage = callerImage->next) {
-			elf_region_t& text = callerImage->regions[0];
-			if ((addr_t)caller >= text.vmstart
-				&& (addr_t)caller < text.vmstart + text.vmsize) {
-				// found the image
-				break;
-			}
-		}
-
+		image_t* callerImage = find_loaded_image_by_address((addr_t)caller);
 		if (callerImage != NULL) {
 			// found the caller -- now search the global scope until we find
 			// the next symbol
@@ -1179,7 +1211,7 @@ rldelf_init(void)
 		runtime_loader_debug_area *area;
 		area_id areaID = _kern_create_area(RUNTIME_LOADER_DEBUG_AREA_NAME,
 			(void **)&area, B_RANDOMIZED_ANY_ADDRESS, size, B_NO_LOCK,
-			B_READ_AREA | B_WRITE_AREA | B_CLONEABLE_AREA);
+			B_READ_AREA | B_WRITE_AREA);
 		if (areaID < B_OK) {
 			FATAL("Failed to create debug area.\n");
 			_kern_loading_app_failed(areaID);

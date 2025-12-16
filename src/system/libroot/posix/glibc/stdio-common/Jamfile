@@ -14,6 +14,7 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			generic ;
 		SubDirSysHdrs $(HAIKU_TOP) src system libroot posix glibc include ;
 		SubDirSysHdrs $(HAIKU_TOP) src system libroot posix glibc stdio-common ;
+		SubDirSysHdrs $(HAIKU_TOP) src system libroot posix glibc ctype ;
 		SubDirSysHdrs $(HAIKU_TOP) src system libroot posix glibc locale ;
 		SubDirSysHdrs $(HAIKU_TOP) src system libroot posix glibc ;
 
@@ -25,6 +26,7 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			asprintf.c
 			dprintf.c
 			fprintf.c
+			fxprintf.c
 			fscanf.c
 			getline.c
 			getw.c
@@ -33,6 +35,8 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			itowa-digits.c
 			perror.c
 			printf-prs.c
+			printf-parsemb.c
+			printf-parsewc.c
 			printf.c
 			printf_fp.c
 			printf_fphex.c
@@ -43,11 +47,6 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			snprintf.c
 			sprintf.c
 			sscanf.c
-			tempnam.c
-			tempname.c
-			tmpfile.c
-			tmpnam.c
-			tmpnam_r.c
 			vfprintf.c
 #			vfprintf_stub.c
 #			vfscanf_stub.c

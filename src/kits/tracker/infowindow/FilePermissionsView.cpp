@@ -73,7 +73,7 @@ public:
 		BRect rectArray[1];
 		escapement_delta delta = { 0.0, 0.0 };
 		currentFont.GetBoundingBoxesForStrings(stringArray, 1, B_SCREEN_METRIC,
-			&delta,	rectArray);
+			&delta, rectArray);
 
 		// Adjust the size to avoid partial drawing of first and last chars
 		// due to the orientation
@@ -113,6 +113,7 @@ FilePermissionsView::FilePermissionsView(BRect rect, Model* model)
 	fModel(model)
 {
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+	SetHighUIColor(B_PANEL_TEXT_COLOR);
 
 	RotatedStringView* ownerRightLabel = new RotatedStringView("",
 		B_TRANSLATE("Owner"));

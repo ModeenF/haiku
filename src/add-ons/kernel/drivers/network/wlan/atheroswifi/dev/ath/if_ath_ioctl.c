@@ -28,8 +28,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: releng/12.0/sys/dev/ath/if_ath_ioctl.c 331797 2018-03-30 18:50:13Z brooks $");
-
 /*
  * Driver for the Atheros Wireless LAN controller.
  *
@@ -204,7 +202,6 @@ ath_ioctl_diag(struct ath_softc *sc, struct ath_diag *ad)
 		}
 	}
 
-
 	ATH_LOCK(sc);
 	if (id != HAL_DIAG_REGS)
 		ath_power_set_power_state(sc, HAL_PM_AWAKE);
@@ -243,7 +240,7 @@ ath_ioctl(struct ieee80211com *ic, u_long cmd, void *data)
 	switch (cmd) {
 	case SIOCGATHSTATS: {
 		struct ieee80211vap *vap;
-		struct ifnet *ifp;
+		if_t ifp;
 		const HAL_RATE_TABLE *rt;
 
 		/* NB: embed these numbers to get a consistent view */
@@ -251,9 +248,9 @@ ath_ioctl(struct ieee80211com *ic, u_long cmd, void *data)
 		sc->sc_stats.ast_rx_packets = 0;
 		TAILQ_FOREACH(vap, &ic->ic_vaps, iv_next) {
 			ifp = vap->iv_ifp;
-			sc->sc_stats.ast_tx_packets += ifp->if_get_counter(ifp,
+			sc->sc_stats.ast_tx_packets += if_getcounter(ifp,
 			    IFCOUNTER_OPACKETS);
-			sc->sc_stats.ast_rx_packets += ifp->if_get_counter(ifp,
+			sc->sc_stats.ast_rx_packets += if_getcounter(ifp,
 			    IFCOUNTER_IPACKETS);
 		}
 		sc->sc_stats.ast_tx_rssi = ATH_RSSI(sc->sc_halstats.ns_avgtxrssi);
@@ -306,4 +303,3 @@ ath_ioctl(struct ieee80211com *ic, u_long cmd, void *data)
 		return (ENOTTY);
 	}
 }
-

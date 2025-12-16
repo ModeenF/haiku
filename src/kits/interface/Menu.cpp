@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2018 Haiku, Inc. All rights reserved.
+ * Copyright 2001-2025 Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT license.
  *
  * Authors:
@@ -51,9 +51,8 @@
 #include "utf8_functions.h"
 
 
-#define USE_CACHED_MENUWINDOW 1
-
 using BPrivate::gSystemCatalog;
+
 
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "Menu"
@@ -103,6 +102,25 @@ public:
 		trackingState = NULL;
 		frameShiftedLeft = false;
 	}
+};
+
+
+typedef int (*compare_func)(const BMenuItem*, const BMenuItem*);
+
+struct MenuItemComparator
+{
+	MenuItemComparator(compare_func compareFunc)
+		:
+		fCompareFunc(compareFunc)
+	{
+	}
+
+	bool operator () (const BMenuItem* item1, const BMenuItem* item2) {
+		return fCompareFunc(item1, item2) < 0;
+	}
+
+private:
+	compare_func fCompareFunc;
 };
 
 
@@ -254,9 +272,6 @@ BMenu::BMenu(const char* name, menu_layout layout)
 	fHasSubmenus(false),
 	fAttachAborted(false)
 {
-	const float fontSize = be_plain_font->Size();
-	fPad = BRect(fontSize * 1.15f, fontSize / 6.0f, fontSize * 1.7f, 0.0f);
-
 	_InitData(NULL);
 }
 
@@ -265,7 +280,6 @@ BMenu::BMenu(const char* name, float width, float height)
 	:
 	BView(BRect(0.0f, 0.0f, 0.0f, 0.0f), name, 0, B_WILL_DRAW),
 	fChosenItem(NULL),
-	fPad(14.0f, 2.0f, 20.0f, 0.0f),
 	fSelected(NULL),
 	fCachedMenuWindow(NULL),
 	fSuper(NULL),
@@ -300,7 +314,6 @@ BMenu::BMenu(BMessage* archive)
 	:
 	BView(archive),
 	fChosenItem(NULL),
-	fPad(14.0f, 2.0f, 20.0f, 0.0f),
 	fSelected(NULL),
 	fCachedMenuWindow(NULL),
 	fSuper(NULL),
@@ -402,6 +415,9 @@ BMenu::AttachedToWindow()
 	_GetOptionKey(sOptionKey);
 	_GetMenuKey(sMenuKey);
 
+	if (Superitem() == NULL)
+		_Install(Window());
+
 	// The menu should be added to the menu hierarchy and made visible if:
 	// * the mouse is over the menu,
 	// * the user has requested the menu via the keyboard.
@@ -423,6 +439,9 @@ void
 BMenu::DetachedFromWindow()
 {
 	BView::DetachedFromWindow();
+
+	if (Superitem() == NULL)
+		_Uninstall();
 }
 
 
@@ -485,6 +504,13 @@ BMenu::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case B_MODIFIERS_CHANGED:
+			if (fSuper != NULL && fSuper->fState != MENU_STATE_CLOSED) {
+				// inform parent to update its modifier keys and relayout
+				BMessenger(fSuper).SendMessage(Window()->CurrentMessage());
+			}
+			break;
+
 		default:
 			BView::MessageReceived(message);
 			break;
@@ -498,10 +524,6 @@ BMenu::KeyDown(const char* bytes, int32 numBytes)
 	// TODO: Test how it works on BeOS R5 and implement this correctly
 	switch (bytes[0]) {
 		case B_UP_ARROW:
-			if (fLayout == B_ITEMS_IN_COLUMN)
-				_SelectNextItem(fSelected, false);
-			break;
-
 		case B_DOWN_ARROW:
 		{
 			BMenuBar* bar = dynamic_cast<BMenuBar*>(Supermenu());
@@ -510,7 +532,7 @@ BMenu::KeyDown(const char* bytes, int32 numBytes)
 				bar->fState = MENU_STATE_KEY_TO_SUBMENU;
 			}
 			if (fLayout == B_ITEMS_IN_COLUMN)
-				_SelectNextItem(fSelected, true);
+				_SelectNextItem(fSelected, bytes[0] == B_DOWN_ARROW);
 			break;
 		}
 
@@ -594,16 +616,18 @@ BMenu::KeyDown(const char* bytes, int32 numBytes)
 
 		default:
 		{
-			uint32 trigger = BUnicodeChar::FromUTF8(&bytes);
+			if (AreTriggersEnabled()) {
+				uint32 trigger = BUnicodeChar::FromUTF8(&bytes);
 
-			for (uint32 i = CountItems(); i-- > 0;) {
-				BMenuItem* item = ItemAt(i);
-				if (item->fTriggerIndex < 0 || item->fTrigger != trigger)
-					continue;
+				for (uint32 i = CountItems(); i-- > 0;) {
+					BMenuItem* item = ItemAt(i);
+					if (item->fTriggerIndex < 0 || item->fTrigger != trigger)
+						continue;
 
-				_InvokeItem(item);
-				_QuitTracking(false);
-				break;
+					_InvokeItem(item);
+					_QuitTracking(false);
+					break;
+				}
 			}
 			break;
 		}
@@ -729,11 +753,19 @@ BMenu::AddItem(BMenuItem* item, int32 index)
 			"be called if the menu layout is not B_ITEMS_IN_MATRIX");
 	}
 
-	if (item == NULL || !_AddItem(item, index))
+	if (item == NULL)
 		return false;
 
+	const bool locked = LockLooper();
+
+	if (!_AddItem(item, index)) {
+		if (locked)
+			UnlockLooper();
+		return false;
+	}
+
 	InvalidateLayout();
-	if (LockLooper()) {
+	if (locked) {
 		if (!Window()->IsHidden()) {
 			_LayoutItems(index);
 			_UpdateWindowViewSize(false);
@@ -757,13 +789,18 @@ BMenu::AddItem(BMenuItem* item, BRect frame)
 	if (item == NULL)
 		return false;
 
+	const bool locked = LockLooper();
+
 	item->fBounds = frame;
 
 	int32 index = CountItems();
-	if (!_AddItem(item, index))
+	if (!_AddItem(item, index)) {
+		if (locked)
+			UnlockLooper();
 		return false;
+	}
 
-	if (LockLooper()) {
+	if (locked) {
 		if (!Window()->IsHidden()) {
 			_LayoutItems(index);
 			Invalidate();
@@ -1352,7 +1389,6 @@ BMenu::Show()
 void
 BMenu::Show(bool selectFirst)
 {
-	_Install(NULL);
 	_Show(selectFirst);
 }
 
@@ -1361,7 +1397,6 @@ void
 BMenu::Hide()
 {
 	_Hide();
-	_Uninstall();
 }
 
 
@@ -1439,6 +1474,60 @@ BMenu::SetTrackingHook(menu_tracking_hook func, void* state)
 }
 
 
+// #pragma mark - Reorder item methods
+
+
+void
+BMenu::SortItems(int (*compare)(const BMenuItem*, const BMenuItem*))
+{
+	BMenuItem** begin = (BMenuItem**)fItems.Items();
+	BMenuItem** end = begin + fItems.CountItems();
+
+	std::stable_sort(begin, end, BPrivate::MenuItemComparator(compare));
+
+	InvalidateLayout();
+	if (Window() != NULL && !Window()->IsHidden() && LockLooper()) {
+		_LayoutItems(0);
+		Invalidate();
+		UnlockLooper();
+	}
+}
+
+
+bool
+BMenu::SwapItems(int32 indexA, int32 indexB)
+{
+	bool swapped = fItems.SwapItems(indexA, indexB);
+	if (swapped) {
+		InvalidateLayout();
+		if (Window() != NULL && !Window()->IsHidden() && LockLooper()) {
+			_LayoutItems(std::min(indexA, indexB));
+			Invalidate();
+			UnlockLooper();
+		}
+	}
+
+	return swapped;
+}
+
+
+bool
+BMenu::MoveItem(int32 indexFrom, int32 indexTo)
+{
+	bool moved = fItems.MoveItem(indexFrom, indexTo);
+	if (moved) {
+		InvalidateLayout();
+		if (Window() != NULL && !Window()->IsHidden() && LockLooper()) {
+			_LayoutItems(std::min(indexFrom, indexTo));
+			Invalidate();
+			UnlockLooper();
+		}
+	}
+
+	return moved;
+}
+
+
 void BMenu::_ReservedMenu3() {}
 void BMenu::_ReservedMenu4() {}
 void BMenu::_ReservedMenu5() {}
@@ -1457,6 +1546,10 @@ BMenu::_InitData(BMessage* archive)
 	SetFont(&font, B_FONT_FAMILY_AND_STYLE | B_FONT_SIZE);
 
 	fExtraMenuData = new (nothrow) BPrivate::ExtraMenuData();
+
+	const float labelSpacing = be_control_look->DefaultLabelSpacing();
+	fPad = BRect(ceilf(labelSpacing * 2.3f), ceilf(labelSpacing / 3.0f),
+		ceilf((labelSpacing / 3.0f) * 10.0f), 0.0f);
 
 	fLayoutData = new LayoutData;
 	fLayoutData->lastResizingMode = ResizingMode();
@@ -1586,11 +1679,9 @@ BMenu::_Hide()
 	window->DetachMenu();
 		// we don't want to be deleted when the window is removed
 
-#if USE_CACHED_MENUWINDOW
 	if (fSuper != NULL)
 		window->Unlock();
 	else
-#endif
 		window->Quit();
 			// it's our window, quit it
 
@@ -2604,14 +2695,14 @@ BMenu::_ComputeColumnLayout(int32 index, bool bestFit, bool moveItems,
 	if (fMaxContentWidth > 0)
 		frame.right = std::min(frame.right, fMaxContentWidth);
 
+	frame.top = 0;
+	frame.right = ceilf(frame.right);
+
 	// Finally update the "right" coordinate of all items
 	if (moveItems) {
 		for (int32 i = 0; i < fItems.CountItems(); i++)
 			ItemAt(i)->fBounds.right = frame.right;
 	}
-
-	frame.top = 0;
-	frame.right = ceilf(frame.right);
 }
 
 
@@ -2726,7 +2817,6 @@ BMenu::_CalcFrame(BPoint where, bool* scrollOn)
 	if (inMenuField)
 		frame.OffsetBy(-8.0f, 0.0f);
 
-	bool scroll = false;
 	if (superMenu == NULL || superItem == NULL || inMenuField) {
 		// just move the window on screen
 		if (frame.bottom > screenFrame.bottom)
@@ -2754,24 +2844,27 @@ BMenu::_CalcFrame(BPoint where, bool* scrollOn)
 			frame.OffsetBy(0, screenFrame.bottom - frame.bottom);
 	} else {
 		if (frame.bottom > screenFrame.bottom) {
-			frame.OffsetBy(0, -superItem->Frame().Height()
-				- frame.Height() - 3);
+			float spaceBelow = screenFrame.bottom - frame.top;
+			float spaceOver = frame.top - screenFrame.top
+				- superItem->Frame().Height();
+			if (spaceOver > spaceBelow) {
+				frame.OffsetBy(0, -superItem->Frame().Height()
+					- frame.Height() - 3);
+			}
 		}
 
 		if (frame.right > screenFrame.right)
 			frame.OffsetBy(screenFrame.right - frame.right, 0);
 	}
 
-	if (!scroll) {
+	if (scrollOn != NULL) {
 		// basically, if this returns false, it means
 		// that the menu frame won't fit completely inside the screen
 		// TODO: Scrolling will currently only work up/down,
 		// not left/right
-		scroll = screenFrame.Height() < frame.Height();
+		*scrollOn = screenFrame.top > frame.top
+			|| screenFrame.bottom < frame.bottom;
 	}
-
-	if (scrollOn != NULL)
-		*scrollOn = scroll;
 
 	return frame;
 }
@@ -2873,13 +2966,12 @@ BMenu::_OverSubmenu(BMenuItem* item, BPoint loc)
 BMenuWindow*
 BMenu::_MenuWindow()
 {
-#if USE_CACHED_MENUWINDOW
 	if (fCachedMenuWindow == NULL) {
 		char windowName[64];
 		snprintf(windowName, 64, "%s cached menu", Name());
 		fCachedMenuWindow = new (nothrow) BMenuWindow(windowName);
 	}
-#endif
+
 	return fCachedMenuWindow;
 }
 
@@ -2968,11 +3060,9 @@ BMenu::_Uninstall()
 
 
 void
-BMenu::_SelectItem(BMenuItem* item, bool showSubmenu, bool selectFirstItem,
-	bool keyDown)
+BMenu::_SelectItem(BMenuItem* item, bool showSubmenu, bool selectFirstItem, bool keyDown)
 {
-	// Avoid deselecting and then reselecting the same item
-	// which would cause flickering
+	// Avoid deselecting and reselecting the same item which would cause flickering.
 	if (item != fSelected) {
 		if (fSelected != NULL) {
 			fSelected->Select(false);
@@ -3247,33 +3337,28 @@ BMenu::_UpdateWindowViewSize(const bool &move)
 
 			window->ResizeTo(Bounds().Width(), Bounds().Height());
 		} else {
+
+			// Resize the window to fit the screen without overflowing the
+			// frame, and attach scrollers to our cached BMenuWindow.
 			BScreen screen(window);
+			frame = frame & screen.Frame();
+			window->ResizeTo(Bounds().Width(), frame.Height());
 
-			// Only scroll on menus not attached to a menubar, or when the
-			// menu frame is above the visible screen
-			if (dynamic_cast<BMenuBar*>(Supermenu()) == NULL || frame.top < 0) {
+			// we currently only support scrolling for B_ITEMS_IN_COLUMN
+			if (fLayout == B_ITEMS_IN_COLUMN) {
+				window->AttachScrollers();
 
-				// If we need scrolling, resize the window to fit the screen and
-				// attach scrollers to our cached BMenuWindow.
-				window->ResizeTo(Bounds().Width(), screen.Frame().Height());
-				frame.top = 0;
-
-				// we currently only support scrolling for B_ITEMS_IN_COLUMN
-				if (fLayout == B_ITEMS_IN_COLUMN) {
-					window->AttachScrollers();
-
-					BMenuItem* selectedItem = FindMarked();
-					if (selectedItem != NULL) {
-						// scroll to the selected item
-						if (Supermenu() == NULL) {
-							window->TryScrollTo(selectedItem->Frame().top);
-						} else {
-							BPoint point = selectedItem->Frame().LeftTop();
-							BPoint superPoint = Superitem()->Frame().LeftTop();
-							Supermenu()->ConvertToScreen(&superPoint);
-							ConvertToScreen(&point);
-							window->TryScrollTo(point.y - superPoint.y);
-						}
+				BMenuItem* selectedItem = FindMarked();
+				if (selectedItem != NULL) {
+					// scroll to the selected item
+					if (Supermenu() == NULL) {
+						window->TryScrollTo(selectedItem->Frame().top);
+					} else {
+						BPoint point = selectedItem->Frame().LeftTop();
+						BPoint superPoint = Superitem()->Frame().LeftTop();
+						Supermenu()->ConvertToScreen(&superPoint);
+						ConvertToScreen(&point);
+						window->TryScrollTo(point.y - superPoint.y);
 					}
 				}
 			}

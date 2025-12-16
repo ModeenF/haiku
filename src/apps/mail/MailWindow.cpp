@@ -51,6 +51,7 @@ of their respective holders. All rights reserved.
 #include <CharacterSet.h>
 #include <CharacterSetRoster.h>
 #include <Clipboard.h>
+#include <ControlLook.h>
 #include <Debug.h>
 #include <E-mail.h>
 #include <File.h>
@@ -65,6 +66,7 @@ of their respective holders. All rights reserved.
 #include <Roster.h>
 #include <Screen.h>
 #include <String.h>
+#include <StringList.h>
 #include <StringView.h>
 #include <TextView.h>
 #include <UTF8.h>
@@ -132,7 +134,6 @@ static const char* kSpamMenuItemTextArray[] = {
 	"Mark as genuine"						// M_TRAIN_GENUINE
 };
 
-static const uint32 kMsgQuitAndKeepAllStatus = 'Casm';
 
 static const char* kQueriesDirectory = "mail/queries";
 static const char* kAttrQueryInitialMode = "_trk/qryinitmode";
@@ -210,7 +211,7 @@ TMailWindow::TMailWindow(BRect rect, const char* title, TMailApp* app,
 
 	fDownloading(false)
 {
-	fKeepStatusOnQuit = false;
+	fKeepStatusOnClose = false;
 
 	if (messenger != NULL)
 		fTrackerMessenger = *messenger;
@@ -271,7 +272,7 @@ TMailWindow::TMailWindow(BRect rect, const char* title, TMailApp* app,
 			subMenu->AddItem(new BMenuItem(
 				B_TRANSLATE_COMMENT("Leave as 'New'",
 				"Do not translate New - this is non-localizable e-mail status"),
-				new BMessage(kMsgQuitAndKeepAllStatus), 'W', B_SHIFT_KEY));
+				new BMessage(kMsgCloseAndKeepAllStatus), 'W', B_SHIFT_KEY));
 		} else {
 			BString status;
 			file.ReadAttrString(B_MAIL_ATTR_STATUS, &status);
@@ -286,7 +287,7 @@ TMailWindow::TMailWindow(BRect rect, const char* title, TMailApp* app,
 			subMenu->AddItem(new BMenuItem(label.String(),
 							new BMessage(B_QUIT_REQUESTED), 'W'));
 			AddShortcut('W', B_COMMAND_KEY | B_SHIFT_KEY,
-				new BMessage(kMsgQuitAndKeepAllStatus));
+				new BMessage(kMsgCloseAndKeepAllStatus));
 		}
 
 		subMenu->AddItem(new BMenuItem(B_TRANSLATE("Move to trash"),
@@ -452,10 +453,10 @@ TMailWindow::TMailWindow(BRect rect, const char* title, TMailApp* app,
 			item->SetTarget(be_app);
 			menu->AddSeparatorItem();
 			menu->AddItem(fAdd = new BMenuItem(
-				B_TRANSLATE("Add enclosure" B_UTF8_ELLIPSIS),
+				B_TRANSLATE("Add attachment" B_UTF8_ELLIPSIS),
 				new BMessage(M_ADD), 'E'));
 			menu->AddItem(fRemove = new BMenuItem(
-				B_TRANSLATE("Remove enclosure"),
+				B_TRANSLATE("Remove attachment"),
 				new BMessage(M_REMOVE), 'T'));
 		}
 	}
@@ -646,7 +647,8 @@ TMailWindow::_RetrieveVectorIcon(int32 id)
 	if (!data)
 		return NULL;
 
-	BBitmap* bitmap = new BBitmap(BRect(0, 0, 21, 21), B_RGBA32);
+	BBitmap* bitmap = new BBitmap(BRect(BPoint(0, 0),
+		be_control_look->ComposeIconSize(22)), B_RGBA32);
 	status_t status = BIconUtils::GetVectorIcon((uint8*)data, size, bitmap);
 	if (status == B_OK) {
 		item = (BitmapItem*)malloc(sizeof(BitmapItem));
@@ -1022,7 +1024,7 @@ TMailWindow::MenusBeginning()
 
 		BMenuItem* LeaveStatus = fLeaveStatusMenu->FindItem(B_QUIT_REQUESTED);
 		if (LeaveStatus == NULL)
-			LeaveStatus = fLeaveStatusMenu->FindItem(kMsgQuitAndKeepAllStatus);
+			LeaveStatus = fLeaveStatusMenu->FindItem(kMsgCloseAndKeepAllStatus);
 
 		if (LeaveStatus != NULL && status.Length() > 0) {
 			BString label;
@@ -1311,14 +1313,19 @@ TMailWindow::MessageReceived(BMessage* msg)
 		}
 		case M_CLOSE_SAVED:
 		{
-			BMessage message(B_QUIT_REQUESTED);
+			BMessage message(B_CLOSE_REQUESTED);
 			message.AddString("status", "Saved");
 			PostMessage(&message);
 			break;
 		}
 		case kMsgQuitAndKeepAllStatus:
-			fKeepStatusOnQuit = true;
-			be_app->PostMessage(B_QUIT_REQUESTED);
+		{
+			be_app->PostMessage(msg);
+			break;
+		}
+		case kMsgCloseAndKeepAllStatus:
+			fKeepStatusOnClose = true;
+			PostMessage(B_CLOSE_REQUESTED);
 			break;
 		case M_CLOSE_CUSTOM:
 			if (msg->HasString("status")) {
@@ -1327,11 +1334,6 @@ TMailWindow::MessageReceived(BMessage* msg)
 				PostMessage(&message);
 			} else {
 				BRect r = Frame();
-				r.left += ((r.Width() - STATUS_WIDTH) / 2);
-				r.right = r.left + STATUS_WIDTH;
-				r.top += 40;
-				r.bottom = r.top + STATUS_HEIGHT;
-
 				BString string = "could not read";
 				BNode node(fRef);
 				if (node.InitCheck() == B_OK)
@@ -1379,7 +1381,10 @@ TMailWindow::MessageReceived(BMessage* msg)
 		case M_SAVE:
 		{
 			const char* address;
+			const char* name;
 			if (msg->FindString("address", (const char**)&address) != B_OK)
+				break;
+			if (msg->FindString("name", (const char**)&name) != B_OK)
 				break;
 
 			BVolumeRoster volumeRoster;
@@ -1420,19 +1425,8 @@ TMailWindow::MessageReceived(BMessage* msg)
 
 			if (!foundEntry) {
 				// None found.
-				// Ask to open a new Person file with this address pre-filled
-
-				status_t result = be_roster->Launch("application/x-person",
-					1, &arg);
-
-				if (result != B_NO_ERROR) {
-					BAlert* alert = new BAlert("", B_TRANSLATE(
-						"Sorry, could not find an application that "
-						"supports the 'Person' data type."),
-						B_TRANSLATE("OK"));
-					alert->SetFlags(alert->Flags() | B_CLOSE_ON_ESCAPE);
-					alert->Go();
-				}
+				// Ask to open a new Person file with this address + name pre-filled
+				_CreateNewPerson(address, name);
 			}
 			free(arg);
 			break;
@@ -1583,6 +1577,7 @@ TMailWindow::MessageReceived(BMessage* msg)
 			break;
 		}
 
+		case B_SIMPLE_DATA:
 		case REFS_RECEIVED:
 			AddEnclosure(msg);
 			break;
@@ -1772,16 +1767,8 @@ void
 TMailWindow::AddEnclosure(BMessage* msg)
 {
 	if (fEnclosuresView == NULL && !fIncoming) {
-		BRect r;
-		r.left = 0;
-		r.top = fHeaderView->Frame().bottom - 1;
-		r.right = Frame().Width() + 2;
-		r.bottom = r.top + ENCLOSURES_HEIGHT;
-
-		fEnclosuresView = new TEnclosuresView(r, Frame());
+		fEnclosuresView = new TEnclosuresView;
 		AddChild(fEnclosuresView, fContentView);
-		fContentView->ResizeBy(0, -ENCLOSURES_HEIGHT);
-		fContentView->MoveBy(0, ENCLOSURES_HEIGHT);
 	}
 
 	if (fEnclosuresView == NULL)
@@ -1877,7 +1864,7 @@ TMailWindow::QuitRequested()
 				}
 			}
 		}
-	} else if (fRef != NULL && !fKeepStatusOnQuit) {
+	} else if (fRef != NULL && !fKeepStatusOnClose) {
 		// ...Otherwise just set the message read
 		if (fAutoMarkRead == true)
 			MarkMessageRead(fRef, B_READ);
@@ -2997,7 +2984,7 @@ TMailWindow::OpenMessage(const entry_ref* ref, uint32 characterSetForDecoding)
 		while ((item = fSaveAddrMenu->RemoveItem((int32)0)) != NULL)
 			delete item;
 
-		// create the list of addresses
+		// create the list of addresses + names
 
 		BList addressList;
 		get_address_list(addressList, fMail->To(), extract_address);
@@ -3005,10 +2992,17 @@ TMailWindow::OpenMessage(const entry_ref* ref, uint32 characterSetForDecoding)
 		get_address_list(addressList, fMail->From(), extract_address);
 		get_address_list(addressList, fMail->ReplyTo(), extract_address);
 
+		BList nameList;
+		get_address_list(nameList, fMail->To(), extract_address_name);
+		get_address_list(nameList, fMail->CC(), extract_address_name);
+		get_address_list(nameList, fMail->From(), extract_address_name);
+		get_address_list(nameList, fMail->ReplyTo(), extract_address_name);
+
 		BMessage* msg;
 
 		for (int32 i = addressList.CountItems(); i-- > 0;) {
 			char* address = (char*)addressList.RemoveItem((int32)0);
+			char* name = (char*)nameList.RemoveItem((int32)0);
 
 			// insert the new address in alphabetical order
 			int32 index = 0;
@@ -3026,10 +3020,12 @@ TMailWindow::OpenMessage(const entry_ref* ref, uint32 characterSetForDecoding)
 
 			msg = new BMessage(M_SAVE);
 			msg->AddString("address", address);
+			msg->AddString("name", name);
 			fSaveAddrMenu->AddItem(new BMenuItem(address, msg), index);
 
 		skip:
 			free(address);
+			free(name);
 		}
 
 		// Clear out existing contents of text view.
@@ -3287,6 +3283,26 @@ TMailWindow::_LaunchQuery(const char* title, const char* attribute,
 	entry_ref ref;
 	if (entry.GetRef(&ref) == B_OK)
 		be_roster->Launch(&ref);
+}
+
+
+void
+TMailWindow::_CreateNewPerson(BString address, BString name)
+{
+	BMessage message(M_LAUNCH_PEOPLE);
+	message.AddString("META:name", name);
+	message.AddString("META:email", address);
+
+	status_t result = be_roster->Launch("application/x-person", &message);
+
+	if ((result != B_OK) && (result != B_ALREADY_RUNNING)) {
+		BAlert* alert = new BAlert("", B_TRANSLATE(
+			"Sorry, could not find an application that "
+			"supports the 'Person' data type."),
+			B_TRANSLATE("OK"));
+		alert->SetFlags(alert->Flags() | B_CLOSE_ON_ESCAPE);
+		alert->Go();
+	}
 }
 
 

@@ -64,8 +64,7 @@
 
 // The macros below require R12 to contain the current thread pointer. R12 is
 // callee-save so will be preserved through all function calls and only needs
-// to be obtained once. R13 is used to store the system call start time, will
-// also be preserved.
+// to be obtained once.
 
 #define LOCK_THREAD_TIME()										\
 	leaq	THREAD_time_lock(%r12), %rdi;						\
@@ -79,8 +78,6 @@
 	LOCK_THREAD_TIME()											\
 																\
 	call	system_time;										\
-																\
-	/* Preserve system_time for post syscall debug */			\
 	movq	%rax, %r13;											\
 																\
 	/* thread->user_time += now - thread->last_time; */			\
@@ -148,14 +145,14 @@
 	ASM_CLAC							\
 	push	$0;							\
 	push	$nr;						\
-	jmp		int_bottom;
+	jmp		intr_bottom;
 
 // Interrupt with an error code.
 #define DEFINE_ISR_E(nr)				\
 	.align 16;							\
 	ASM_CLAC							\
 	push	$nr;						\
-	jmp		int_bottom;
+	jmp		intr_bottom;
 
 // Array of interrupt service routines.
 .align 16
@@ -203,14 +200,13 @@ SYMBOL(isr_array):
 
 
 // Common interrupt handling code.
-STATIC_FUNCTION(int_bottom):
+STATIC_FUNCTION(intr_bottom):
 	// Coming from user-mode requires special handling.
 	testl	$3, 24(%rsp)
-	jnz		int_bottom_user
+	jnz		intr_bottom_user
 
 	// Push the rest of the interrupt frame to the stack.
 	PUSH_IFRAME_BOTTOM(IFRAME_TYPE_OTHER)
-
 	cld
 
 	// Frame pointer is the iframe.
@@ -253,11 +249,11 @@ STATIC_FUNCTION(int_bottom):
 	RESTORE_IFRAME()
 
 	iretq
-FUNCTION_END(int_bottom)
+FUNCTION_END(intr_bottom)
 
 
 // Handler for an interrupt that occurred in user-mode.
-STATIC_FUNCTION(int_bottom_user):
+STATIC_FUNCTION(intr_bottom_user):
 	// Load the kernel GS segment base.
 	swapgs
 	lfence
@@ -268,32 +264,23 @@ STATIC_FUNCTION(int_bottom_user):
 
 	// Frame pointer is the iframe.
 	movq	%rsp, %rbp
+	andq	$~15, %rsp
 
-	// xsave needs a 64-byte alignment
-	andq	$~63, %rsp
-	movq	(gFPUSaveLength), %rcx
-	subq	%rcx, %rsp
-	leaq	(%rsp), %rdi
-	shrq	$3, %rcx
-	movq	$0, %rax
-	rep stosq
+	// Get thread pointer.
+	movq	%gs:0, %r12
+
 	movl	(gXsaveMask), %eax
 	movl	(gXsaveMask+4), %edx
-
-	movq	%rsp, %rdi
+	leaq	THREAD_user_fpu_state(%r12), %rdi
 	CODEPATCH_START
 	fxsaveq	(%rdi)
 	CODEPATCH_END(ALTCODEPATCH_TAG_XSAVE)
-
-	movq	%rsp, IFRAME_fpu(%rbp)
+	movq	%rdi, IFRAME_fpu(%rbp)
 
 	// Set the RF (resume flag) in RFLAGS. This prevents an instruction
 	// breakpoint on the instruction we're returning to to trigger a debug
 	// exception.
 	orq		$X86_EFLAGS_RESUME, IFRAME_flags(%rbp)
-
-	// Get thread pointer.
-	movq	%gs:0, %r12
 
 	STOP_USER_DEBUGGING()
 	UPDATE_THREAD_USER_TIME()
@@ -317,7 +304,7 @@ STATIC_FUNCTION(int_bottom_user):
 
 	movl	(gXsaveMask), %eax
 	movl	(gXsaveMask+4), %edx
-	movq	%rsp, %rdi
+	leaq	THREAD_user_fpu_state(%r12), %rdi
 	CODEPATCH_START
 	fxrstorq	(%rdi)
 	CODEPATCH_END(ALTCODEPATCH_TAG_XRSTOR)
@@ -328,7 +315,6 @@ STATIC_FUNCTION(int_bottom_user):
 
 	// Restore the previous GS base and return.
 	swapgs
-	lfence
 	iretq
 
 .Lkernel_exit_work:
@@ -351,7 +337,7 @@ STATIC_FUNCTION(int_bottom_user):
 1:
 	movl	(gXsaveMask), %eax
 	movl	(gXsaveMask+4), %edx
-	movq	%rsp, %rdi
+	leaq	THREAD_user_fpu_state(%r12), %rdi
 	CODEPATCH_START
 	fxrstorq	(%rdi)
 	CODEPATCH_END(ALTCODEPATCH_TAG_XRSTOR)
@@ -362,7 +348,6 @@ STATIC_FUNCTION(int_bottom_user):
 
 	// Restore the previous GS base and return.
 	swapgs
-	lfence
 	iretq
 
 .Lkernel_exit_handle_signals:
@@ -371,7 +356,7 @@ STATIC_FUNCTION(int_bottom_user):
 	sti
 	call	thread_at_kernel_exit
 	jmp		.Lkernel_exit_work_done
-FUNCTION_END(int_bottom_user)
+FUNCTION_END(intr_bottom_user)
 
 
 // SYSCALL entry point.
@@ -382,7 +367,6 @@ FUNCTION(x86_64_syscall_entry):
 	// scratch space to store the user stack pointer in before we can push it
 	// to the stack.
 	swapgs
-	lfence
 	movq	%rsp, %gs:ARCH_THREAD_user_rsp
 	movq	%gs:ARCH_THREAD_syscall_rsp, %rsp
 
@@ -398,7 +382,6 @@ FUNCTION(x86_64_syscall_entry):
 	push	$0							// error_code
 	push	$99							// vector
 	PUSH_IFRAME_BOTTOM(IFRAME_TYPE_SYSCALL)
-
 	cld
 
 	// Frame pointer is the iframe.
@@ -495,7 +478,6 @@ FUNCTION(x86_64_syscall_entry):
 
 	// Restore previous GS base and return.
 	swapgs
-	lfence
 	sysretq
 
 .Lpre_syscall_debug:
@@ -509,10 +491,11 @@ FUNCTION(x86_64_syscall_entry):
 	push	IFRAME_di(%rbp)
 	movq	%r14, %rdi				// syscall number
 	movq	%rsp, %rsi
+	subq	$8, %rsp
 	push	%rax
 	call	user_debug_pre_syscall
 	pop		%rax
-	addq	$48, %rsp
+	addq	$56, %rsp
 	jmp		.Lpre_syscall_debug_done
 
 .Lpost_syscall_work:
@@ -529,7 +512,6 @@ FUNCTION(x86_64_syscall_entry):
 	movq	%r14, %rdi				// syscall number
 	movq	%rsp, %rsi
 	movq	IFRAME_ax(%rbp), %rdx	// return value
-	movq	%r13, %rcx				// start time, preserved earlier
 	call	user_debug_post_syscall
 	addq	$48, %rsp
 1:
@@ -574,7 +556,6 @@ FUNCTION(x86_64_syscall_entry):
 
 	// Restore the previous GS base and return.
 	swapgs
-	lfence
 	iretq
 
 .Lpost_syscall_handle_signals:
@@ -645,13 +626,13 @@ FUNCTION(x86_return_to_userland):
 			, THREAD_flags(%r12)
 	jnz		.Luserland_return_work
 
-	// update the thread's kernel time and return
 	UPDATE_THREAD_KERNEL_TIME()
+
+	CLEAR_FPU_STATE()
 
 	// Restore the frame and return.
 	RESTORE_IFRAME()
 	swapgs
-	lfence
 	iretq
 .Luserland_return_work:
 	// Slow path for return to userland.
@@ -671,12 +652,11 @@ FUNCTION(x86_return_to_userland):
 	movq	%rbp, %rdi
 	call	x86_init_user_debug_at_kernel_exit
 1:
-	// Restore the saved registers.
-	RESTORE_IFRAME()
+	CLEAR_FPU_STATE()
 
-	// Restore the previous GS base and return.
+	// Restore the frame and return.
+	RESTORE_IFRAME()
 	swapgs
-	lfence
 	iretq
 .Luserland_return_handle_signals:
 	// thread_at_kernel_exit requires interrupts to be enabled, it will disable

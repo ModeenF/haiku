@@ -7,7 +7,7 @@
  */
 
 
-#include <int.h>
+#include <interrupts.h>
 
 
 status_t
@@ -39,18 +39,20 @@ arch_int_init_io(kernel_args* args)
 
 
 void
-arch_int_enable_io_interrupt(int irq)
+arch_int_enable_io_interrupt(int32 irq)
 {
 }
 
 
 void
-arch_int_disable_io_interrupt(int irq)
+arch_int_disable_io_interrupt(int32 irq)
 {
 }
 
 
-void
+int32
 arch_int_assign_to_cpu(int32 irq, int32 cpu)
 {
+	// Not yet supported.
+	return 0;
 }

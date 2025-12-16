@@ -152,7 +152,7 @@ CPUEntry::Remove(ThreadData* thread)
 }
 
 
-inline ThreadData*
+ThreadData*
 CoreEntry::PeekThread() const
 {
 	SCHEDULER_ENTER_FUNCTION();
@@ -160,7 +160,7 @@ CoreEntry::PeekThread() const
 }
 
 
-inline ThreadData*
+ThreadData*
 CPUEntry::PeekThread() const
 {
 	SCHEDULER_ENTER_FUNCTION();
@@ -233,7 +233,8 @@ CPUEntry::ChooseNextThread(ThreadData* oldThread, bool putAtBack)
 	CoreRunQueueLocker coreLocker(fCore);
 
 	ThreadData* sharedThread = fCore->PeekThread();
-	ASSERT(sharedThread != NULL || pinnedThread != NULL || oldThread != NULL);
+	if (sharedThread == NULL && pinnedThread == NULL && oldThread == NULL)
+		return NULL;
 
 	int32 sharedPriority = -1;
 	if (sharedThread != NULL)
@@ -477,6 +478,7 @@ CoreEntry::AddCPU(CPUEntry* cpu)
 
 		fPackage->AddIdleCore(this);
 	}
+	fCPUSet.SetBit(cpu->ID());
 
 	fCPUHeap.Insert(cpu, B_IDLE_PRIORITY);
 }
@@ -489,6 +491,7 @@ CoreEntry::RemoveCPU(CPUEntry* cpu, ThreadProcessing& threadPostProcessing)
 	ASSERT(fIdleCPUCount > 0);
 
 	fIdleCPUCount--;
+	fCPUSet.ClearBit(cpu->ID());
 	if (--fCPUCount == 0) {
 		// unassign threads
 		thread_map(CoreEntry::_UnassignThread, this);

@@ -10,15 +10,15 @@
 
 #include <UrlSynchronousRequest.h>
 
+using namespace BPrivate::Network;
+
+
 #define PRINT(x) printf x;
 
-#ifndef LIBNETAPI_DEPRECATED
-using namespace BPrivate::Network;
-#endif
 
 BUrlSynchronousRequest::BUrlSynchronousRequest(BUrlRequest& request)
 	:
-	BUrlRequest(request.Url(), NULL, request.Context(),
+	BUrlRequest(request.Url(), request.Output(), NULL, request.Context(),
 		"BUrlSynchronousRequest", request.Protocol()),
 	fRequestComplete(false),
 	fWrappedRequest(request)
@@ -74,40 +74,18 @@ BUrlSynchronousRequest::ResponseStarted(BUrlRequest*)
 
 
 void
-BUrlSynchronousRequest::HeadersReceived(BUrlRequest*, const BUrlResult& result)
+BUrlSynchronousRequest::HeadersReceived(BUrlRequest*)
 {
 	PRINT(("SynchronousRequest::HeadersReceived()\n"));
 }
 
 
 void
-BUrlSynchronousRequest::DataReceived(BUrlRequest*, const char*,
-	off_t, ssize_t size)
+BUrlSynchronousRequest::BytesWritten(BUrlRequest* caller, size_t bytesWritten)
 {
-	PRINT(("SynchronousRequest::DataReceived(%zd)\n", size));
+	PRINT(("SynchronousRequest::BytesWritten(%" B_PRIdSSIZE ")\n",
+		bytesWritten));
 }
-
-
-#ifdef LIBNETAPI_DEPRECATED
-void
-BUrlSynchronousRequest::DownloadProgress(BUrlRequest*,
-	ssize_t bytesReceived, ssize_t bytesTotal)
-{
-	PRINT(("SynchronousRequest::DownloadProgress(%zd, %zd)\n", bytesReceived,
-		bytesTotal));
-}
-
-
-void
-BUrlSynchronousRequest::UploadProgress(BUrlRequest*, ssize_t bytesSent,
-	ssize_t bytesTotal)
-{
-	PRINT(("SynchronousRequest::UploadProgress(%zd, %zd)\n", bytesSent,
-		bytesTotal));
-}
-
-
-#else
 
 
 void
@@ -126,7 +104,6 @@ BUrlSynchronousRequest::UploadProgress(BUrlRequest*, off_t bytesSent,
 	PRINT(("SynchronousRequest::UploadProgress(%" B_PRIdOFF ", %" B_PRIdOFF
 		")\n", bytesSent, bytesTotal));
 }
-#endif // LIBNETAPI_DEPRECATED
 
 
 void

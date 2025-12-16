@@ -15,8 +15,6 @@
  * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- *
- * $FreeBSD: releng/12.0/sys/dev/ath/ath_hal/ar5312/ar5312_reset.c 326695 2017-12-08 15:57:29Z pfg $
  */
 #include "opt_ah.h"
 
@@ -271,7 +269,7 @@ ar5312Reset(struct ath_hal *ah, HAL_OPMODE opmode,
 		/* Set the mute mask to the correct default */
 		OS_REG_WRITE(ah, AR_SEQ_MASK, 0x0000000F);
 	}
-	
+
 	if (AH_PRIVATE(ah)->ah_phyRev >= AR_PHY_CHIP_ID_REV_3) {
 		/* Clear reg to alllow RX_CLEAR line debug */
 		OS_REG_WRITE(ah, AR_PHY_BLUETOOTH,  0);
@@ -827,12 +825,10 @@ ar5312MacReset(struct ath_hal *ah, unsigned int RCMask)
 			OS_REG_READ(ah,
 						(AR5315_RSTIMER_BASE- ((uint32_t) ah->ah_sh) +AR5315_RESET));
 
-
 		} 
         else 
 #endif
 		{
-
 			switch(wlanNum) {
 			case 0:
 				resetBB = AR5312_RC_BB0_CRES | AR5312_RC_WBB0_RES;

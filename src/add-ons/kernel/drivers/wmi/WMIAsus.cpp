@@ -23,6 +23,9 @@
 #define ASUS_WMI_DEVID_ALS_ENABLE		0x00050001
 #define ASUS_WMI_DEVID_BRIGHTNESS		0x00050012
 #define ASUS_WMI_DEVID_KBD_BACKLIGHT	0x00050021
+#define ASUS_WMI_DEVID_FN_LOCK			0x00100023
+
+#define ASUS_WMI_DSTS_PRESENCE_BIT		0x10000
 
 
 class WMIAsus {
@@ -47,6 +50,7 @@ private:
 			uint32				fDstsID;
 			const char*			fEventGuidString;
 			bool				fEnableALS;
+			bool				fFnLock;
 };
 
 
@@ -56,7 +60,8 @@ WMIAsus::WMIAsus(device_node *node)
 	fNode(node),
 	fDstsID(ASUS_WMI_METHODID_DSTS),
 	fEventGuidString(NULL),
-	fEnableALS(false)
+	fEnableALS(false),
+	fFnLock(true)
 {
 	CALLED();
 
@@ -89,6 +94,12 @@ WMIAsus::WMIAsus(device_node *node)
 		TRACE("ALSC enabled\n");
 	}
 
+	if (_GetDevState(ASUS_WMI_DEVID_FN_LOCK, &value) == B_OK
+		&& (value & ASUS_WMI_DSTS_PRESENCE_BIT) != 0) {
+		// set fn lock
+		_SetDevState(ASUS_WMI_DEVID_FN_LOCK, fFnLock, NULL);
+	}
+
 	// install event handler
 	if (wmi->install_event_handler(wmi_cookie, ACPI_ASUS_WMI_EVENT_GUID,
 		_NotifyHandler, this) == B_OK) {
@@ -114,7 +125,7 @@ WMIAsus::_EvaluateMethod(uint32 methodId, uint32 arg0, uint32 arg1,
 	uint32 *returnValue)
 {
 	CALLED();
-	uint32 params[] = { arg0, arg1 };
+	uint32 params[] = { arg0, arg1, 0, 0, 0 };
 	acpi_data inBuffer = { sizeof(params), params };
 	acpi_data outBuffer = { ACPI_ALLOCATE_BUFFER, NULL };
 	status_t status = wmi->evaluate_method(wmi_cookie, 0, methodId, &inBuffer,
@@ -182,7 +193,13 @@ WMIAsus::_Notify(acpi_handle handle, uint32 notify)
 		free(object);
 	}
 	if (result != 0) {
-		if (result == 0xc4 || result == 0xc5) {
+		if (result == 0x4e) {
+			TRACE("WMIAsus::_Notify() keyboard fnlock key\n");
+			fFnLock = !fFnLock;
+			_SetDevState(ASUS_WMI_DEVID_FN_LOCK, fFnLock, NULL);
+			TRACE("WMIAsus::_Notify() keyboard fnlock key %" B_PRIx32 "\n",
+				fFnLock);
+		} else if (result == 0xc4 || result == 0xc5 || result == 0xc7) {
 			TRACE("WMIAsus::_Notify() keyboard backlight key\n");
 			uint32 value;
 			if (_GetDevState(ASUS_WMI_DEVID_KBD_BACKLIGHT, &value) == B_OK) {
@@ -192,8 +209,13 @@ WMIAsus::_Notify(acpi_handle handle, uint32 notify)
 				if (result == 0xc4) {
 					if (value < 3)
 						value++;
-				} else if (value > 0)
-					value--;
+				} else if (result == 0xc5) {
+					if (value > 0)
+						value--;
+				} else {
+					value++;
+					value &= 0x3;
+				}
 				TRACE("WMIAsus::_Notify() set keyboard backlight key %"
 					B_PRIx32 "\n", value);
 				_SetDevState(ASUS_WMI_DEVID_KBD_BACKLIGHT, value | 0x80, NULL);
@@ -239,7 +261,7 @@ wmi_asus_register_device(device_node *node)
 {
 	CALLED();
 	device_attr attrs[] = {
-		{ B_DEVICE_PRETTY_NAME, B_STRING_TYPE, { string: "WMI ASUS" }},
+		{ B_DEVICE_PRETTY_NAME, B_STRING_TYPE, { .string = "WMI ASUS" }},
 		{ NULL }
 	};
 

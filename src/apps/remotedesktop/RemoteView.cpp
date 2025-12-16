@@ -94,6 +94,7 @@ RemoteView::RemoteView(BRect frame, const char *remoteHost, uint16 remotePort)
 		return;
 
 	fEndpoint = new(std::nothrow) BNetEndpoint();
+	fEndpoint->SetReuseAddr();
 	if (fEndpoint == NULL) {
 		fInitStatus = B_NO_MEMORY;
 		TRACE_ERROR("no memory available\n");
@@ -1293,8 +1294,7 @@ RemoteView::_DrawThread()
 				// TODO: support the drawCursor flag
 				BBitmap bitmap(bounds, B_BITMAP_NO_SERVER_LINK, B_RGB32);
 				bitmap.ImportBits(fOffscreenBitmap, bounds.LeftTop(),
-					BPoint(0, 0), bounds.IntegerWidth() + 1,
-					bounds.IntegerHeight() + 1);
+					BPoint(0, 0), bounds.Size());
 
 				reply.Start(RP_READ_BITMAP_RESULT);
 				reply.Add(token);

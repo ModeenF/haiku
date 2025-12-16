@@ -16,8 +16,6 @@
  * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- *
- * $FreeBSD: releng/12.0/sys/dev/ath/ath_hal/ah_regdomain.c 326695 2017-12-08 15:57:29Z pfg $
  */
 #include "opt_ah.h"
 
@@ -695,7 +693,7 @@ getchannels(struct ath_hal *ah,
 		else if (cm->flags & IEEE80211_CHAN_2GHZ)
 			rd = rd2GHz;
 		else {
-			ath_hal_printf(ah, "%s: Unkonwn HAL flags 0x%x\n",
+			ath_hal_printf(ah, "%s: Unknown HAL flags 0x%x\n",
 			    __func__, cm->flags);
 			return HAL_EINVAL;
 		}
@@ -953,7 +951,6 @@ ath_hal_getctl(struct ath_hal *ah, const struct ieee80211_channel *c)
 	return ctl;
 }
 
-
 /*
  * Update the current dfsDomain setting based on the given
  * country code.
@@ -978,7 +975,6 @@ ath_hal_update_dfsdomain(struct ath_hal *ah)
 	HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "%s ah_dfsDomain: %d\n",
 	    __func__, AH_PRIVATE(ah)->ah_dfsDomain);
 }
-
 
 /*
  * Return the max allowed antenna gain and apply any regulatory

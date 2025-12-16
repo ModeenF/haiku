@@ -155,7 +155,7 @@ BRawNetBuffer::_ReadStringAt(BString& string, off_t pos)
 
 
 status_t
-DNSTools::GetDNSServers(BObjectList<BString>* serverList)
+DNSTools::GetDNSServers(BObjectList<BString, true>* serverList)
 {
 	// TODO: reading resolv.conf ourselves shouldn't be needed.
 	// we should have some function to retrieve the dns list
@@ -170,7 +170,7 @@ DNSTools::GetDNSServers(BObjectList<BString>* serverList)
 
 	path.Append("network/resolv.conf");
 
-	register FILE* fp = fopen(path.Path(), "r");
+	FILE* fp = fopen(path.Path(), "r");
 	if (fp == NULL) {
 		fprintf(stderr, "failed to open '%s' to read nameservers: %s\n",
 			path.Path(), strerror(errno));
@@ -179,8 +179,7 @@ DNSTools::GetDNSServers(BObjectList<BString>* serverList)
 
 	int nserv = 0;
 	char buf[1024];
-	register char *cp; //, **pp;
-//	register int n;
+	char *cp; //, **pp;
 	int MAXNS = 2;
 
 	// read the config file
@@ -284,7 +283,7 @@ status_t
 DNSQuery::ReadDNSServer(in_addr* add)
 {
 	// list owns the items
-	BObjectList<BString> dnsServerList(5, true);
+	BObjectList<BString, true> dnsServerList(5);
 	status_t status = DNSTools::GetDNSServers(&dnsServerList);
 	if (status != B_OK)
 		return status;
@@ -300,7 +299,7 @@ DNSQuery::ReadDNSServer(in_addr* add)
 
 status_t
 DNSQuery::GetMXRecords(const BString&  serverName,
-	BObjectList<mx_record>* mxList, bigtime_t timeout)
+	BObjectList<mx_record, true>* mxList, bigtime_t timeout)
 {
 	// get the DNS server to ask for the mx record
 	in_addr dnsAddress;

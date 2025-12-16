@@ -13,10 +13,9 @@
 #include <GroupLayoutBuilder.h>
 
 #include "InputConstants.h"
-#include "InputMouse.h"
+#include "InputDeviceView.h"
+#include "InputTouchpadPrefView.h"
 #include "InputWindow.h"
-#include "MouseSettings.h"
-#include "MouseView.h"
 
 
 #undef B_TRANSLATION_CONTEXT
@@ -35,6 +34,7 @@ InputApplication::InputApplication()
 	DeviceListItemView::SetIcons(&fIcons);
 	window->Show();
 }
+
 
 void
 InputApplication::MessageReceived(BMessage* message)
@@ -57,6 +57,8 @@ InputApplication::MessageReceived(BMessage* message)
 		case SCROLL_AREA_CHANGED:
 		case SCROLL_CONTROL_CHANGED:
 		case TAP_CONTROL_CHANGED:
+		case PAD_SPEED_CHANGED:
+		case PAD_ACCELERATION_CHANGED:
 		case DEFAULT_SETTINGS:
 		case REVERT_SETTINGS:
 		{
@@ -69,8 +71,8 @@ InputApplication::MessageReceived(BMessage* message)
 			fWindow->PostMessage(message);
 			break;
 		}
-	default:
-		BApplication::MessageReceived(message);
+		default:
+			BApplication::MessageReceived(message);
 	}
 };
 

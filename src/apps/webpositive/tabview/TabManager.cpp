@@ -623,19 +623,36 @@ WebTabView::_DrawCloseButton(BView* owner, BRect& frame,
 	closeRect.bottom = closeRect.top + 6;
 
 	rgb_color base = ui_color(B_PANEL_BACKGROUND_COLOR);
-	float tint = B_DARKEN_1_TINT;
-
-	float isFront = ContainerView()->SelectedTab()
-		== static_cast<TabView*>(this);
-	if (!isFront) {
-		base = tint_color(base, tint);
-		tint *= 1.02;
-	}
-
-	if (fOverCloseRect)
-		tint *= 1.4;
+	
+	float tint;
+	if (base.IsLight())
+		tint = B_DARKEN_1_TINT;
 	else
-		tint *= 1.2;
+		tint = 0.50;
+
+	float isFront = ContainerView()->SelectedTab() == static_cast<TabView*>(this);
+	
+	if (base.IsLight()){
+		if (!isFront) {
+			base = tint_color(base, tint);
+			tint *= 1.02;
+		}
+
+		if (fOverCloseRect)
+			tint *= 1.4;
+		else
+			tint *= 1.2;
+	} else {
+		if (!isFront) {
+			base = tint_color(base, tint);
+			tint *= 0.80;
+		}
+
+		if (fOverCloseRect)
+			tint *= 0.6;
+		else
+			tint *= 0.9;
+	}
 
 	if (fClicked && fOverCloseRect) {
 		// Draw the button frame
@@ -731,12 +748,9 @@ TabManager::TabManager(const BMessenger& target, BMessage* newTabMessage)
 	fController->SetTabContainerGroup(fTabContainerGroup);
 
 #if INTEGRATE_MENU_INTO_TAB_BAR
-	fMenu = new BMenu("Menu");
-	BMenuBar* menuBar = new BMenuBar("Menu bar");
-	menuBar->AddItem(fMenu);
-	TabButtonContainer* menuBarContainer = new TabButtonContainer();
-	menuBarContainer->GroupLayout()->AddView(menuBar);
-	fTabContainerGroup->GroupLayout()->AddView(menuBarContainer, 0.0f);
+	fMenuContainer = new BGroupView(B_HORIZONTAL, 0);
+	fMenuContainer->GroupLayout()->SetInsets(0, -3, 0, -3);
+	fTabContainerGroup->GroupLayout()->AddView(fMenuContainer, 0.0f);
 #endif
 
 	fTabContainerGroup->GroupLayout()->AddView(fTabContainerView);
@@ -773,10 +787,10 @@ TabManager::Target() const
 
 
 #if INTEGRATE_MENU_INTO_TAB_BAR
-BMenu*
-TabManager::Menu() const
+BGroupLayout*
+TabManager::MenuContainerLayout() const
 {
-	return fMenu;
+	return fMenuContainer->GroupLayout();
 }
 #endif
 
@@ -938,5 +952,3 @@ TabManager::SetCloseButtonsAvailable(bool available)
 	fController->SetCloseButtonsAvailable(available);
 	fTabContainerView->Invalidate();
 }
-
-

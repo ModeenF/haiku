@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020, Haiku, Inc. All rights reserved.
+ * Copyright 2021-2022, Haiku, Inc. All rights reserved.
  * Released under the terms of the MIT License.
 */
 
@@ -25,6 +25,13 @@
 #endif
 
 
+void
+arch_smp_register_cpu(platform_cpu_info** cpu)
+{
+        dprintf("TODO: arch_smp_register_cpu()\n");
+}
+
+
 int
 arch_smp_get_current_cpu(void)
 {
@@ -43,7 +50,7 @@ arch_smp_init_other_cpus(void)
 
 
 void
-arch_smp_boot_other_cpus(uint32 pml4, uint64 kernel_entry)
+arch_smp_boot_other_cpus(uint32 pml4, uint64 kernelEntry, addr_t virtKernelArgs)
 {
 	// One cpu for now.
 }

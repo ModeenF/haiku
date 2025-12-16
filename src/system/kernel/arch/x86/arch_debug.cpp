@@ -11,6 +11,7 @@
 
 #include <arch/debug.h>
 
+#include <x86intrin.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -116,12 +117,6 @@ lookup_symbol(Thread* thread, addr_t address, addr_t* _baseAddress,
 		// try a lookup using the userland runtime loader structures
 		status = elf_debug_lookup_user_symbol_address(thread->team, address,
 			_baseAddress, _symbolName, _imageName, _exactMatch);
-
-		if (status != B_OK) {
-			// try to locate the image in the images loaded into user space
-			status = image_debug_lookup_user_symbol_address(thread->team,
-				address, _baseAddress, _symbolName, _imageName, _exactMatch);
-		}
 	}
 
 	return status;
@@ -135,7 +130,7 @@ static void
 set_debug_argument_variable(int32 index, uint64 value)
 {
 	char name[8];
-	snprintf(name, sizeof(name), "_arg%ld", index);
+	snprintf(name, sizeof(name), "_arg%d", index);
 	set_debug_variable(name, value);
 }
 
@@ -212,12 +207,12 @@ print_demangled_call(const char* image, const char* symbol, addr_t args,
 			case B_INT64_TYPE:
 				value = read_function_argument_value<int64>(arg, valueKnown);
 				if (valueKnown)
-					kprintf("int64: \33[34m%Ld\33[0m", value);
+					kprintf("int64: \33[34m%lld\33[0m", value);
 				break;
 			case B_INT32_TYPE:
 				value = read_function_argument_value<int32>(arg, valueKnown);
 				if (valueKnown)
-					kprintf("int32: \33[34m%ld\33[0m", (int32)value);
+					kprintf("int32: \33[34m%d\33[0m", (int32)value);
 				break;
 			case B_INT16_TYPE:
 				value = read_function_argument_value<int16>(arg, valueKnown);
@@ -240,9 +235,9 @@ print_demangled_call(const char* image, const char* symbol, addr_t args,
 			case B_UINT32_TYPE:
 				value = read_function_argument_value<uint32>(arg, valueKnown);
 				if (valueKnown) {
-					kprintf("uint32: \33[34m%#lx\33[0m", (uint32)value);
+					kprintf("uint32: \33[34m%#x\33[0m", (uint32)value);
 					if (value < 0x100000)
-						kprintf(" (\33[34m%lu\33[0m)", (uint32)value);
+						kprintf(" (\33[34m%u\33[0m)", (uint32)value);
 				}
 				break;
 			case B_UINT16_TYPE:
@@ -276,7 +271,7 @@ print_demangled_call(const char* image, const char* symbol, addr_t args,
 							&& (type == B_POINTER_TYPE || type == B_REF_TYPE))
 							kprintf("NULL");
 						else
-							kprintf("\33[34m%#lx\33[0m", (uint32)value);
+							kprintf("\33[34m%#x\33[0m", (uint32)value);
 					}
 					break;
 				}
@@ -370,7 +365,7 @@ print_demangled_call(const char* image, const char* symbol, addr_t args,
 
 
 static void
-print_stack_frame(Thread* thread, addr_t ip, addr_t bp, addr_t nextBp,
+print_stack_frame(Thread* thread, addr_t ip, addr_t calleeBp, addr_t bp,
 	int32 callIndex, bool demangle)
 {
 	const char* symbol;
@@ -380,10 +375,10 @@ print_stack_frame(Thread* thread, addr_t ip, addr_t bp, addr_t nextBp,
 	status_t status;
 	addr_t diff;
 
-	diff = nextBp - bp;
+	diff = bp - calleeBp;
 
-	// MSB set = kernel space/user space switch
-	if (diff & ~((addr_t)-1 >> 1))
+	// kernel space/user space switch
+	if (calleeBp > bp)
 		diff = 0;
 
 	status = lookup_symbol(thread, ip, &baseAddress, &symbol, &image,
@@ -395,7 +390,7 @@ print_stack_frame(Thread* thread, addr_t ip, addr_t bp, addr_t nextBp,
 	if (status == B_OK) {
 		if (exactMatch && demangle) {
 			status = print_demangled_call(image, symbol,
-				nextBp + sizeof(stack_frame), false, false);
+				bp + sizeof(stack_frame), false, false);
 		}
 
 		if (!exactMatch || !demangle || status != B_OK) {
@@ -447,20 +442,21 @@ print_iframe(iframe* frame)
 	kprintf("%s iframe at %p (end = %p)\n", isUser ? "user" : "kernel", frame,
 		isUser ? (void*)(frame + 1) : (void*)&frame->user_sp);
 
-	kprintf(" eax %#-10lx    ebx %#-10lx     ecx %#-10lx  edx %#lx\n",
+	kprintf(" eax %#-10x    ebx %#-10x     ecx %#-10x  edx %#x\n",
 		frame->ax, frame->bx, frame->cx, frame->dx);
-	kprintf(" esi %#-10lx    edi %#-10lx     ebp %#-10lx  esp %#lx\n",
+	kprintf(" esi %#-10x    edi %#-10x     ebp %#-10x  esp %#x\n",
 		frame->si, frame->di, frame->bp, frame->sp);
-	kprintf(" eip %#-10lx eflags %#-10lx", frame->ip, frame->flags);
+	kprintf(" eip %#-10x eflags %#-10x", frame->ip, frame->flags);
 	if (isUser) {
 		// from user space
-		kprintf("user esp %#lx", frame->user_sp);
+		kprintf("user esp %#x", frame->user_sp);
 	}
 	kprintf("\n");
 #endif
 
-	kprintf(" vector: %#lx, error code: %#lx\n", frame->vector,
-		frame->error_code);
+	kprintf(" vector: %#lx, error code: %#lx\n",
+		(long unsigned int)frame->vector,
+		(long unsigned int)frame->error_code);
 }
 
 
@@ -597,11 +593,11 @@ get_current_iframe(Thread* thread)
 #define CHECK_DEBUG_VARIABLE(_name, _member, _settable) \
 	if (strcmp(variableName, _name) == 0) { \
 		settable = _settable; \
-		return &_member; \
+		return (addr_t*)&_member; \
 	}
 
 
-static size_t*
+static addr_t*
 find_debug_variable(const char* variableName, bool& settable)
 {
 	iframe* frame = get_current_iframe(debug_get_debugged_thread());
@@ -711,7 +707,7 @@ stack_trace(int argc, char** argv)
 
 	bool onKernelStack = true;
 
-	for (int32 callIndex = 0;; callIndex++) {
+	for (int32 callIndex = 0; ; callIndex++) {
 		onKernelStack = onKernelStack
 			&& is_kernel_stack_address(thread, bp);
 
@@ -793,7 +789,7 @@ print_call(Thread *thread, addr_t eip, addr_t ebp, addr_t nextEbp,
 		if (thread->team->address_space != NULL)
 			area = thread->team->address_space->LookupArea(eip);
 		if (area != NULL) {
-			kprintf("%ld:%s@%p + %#lx", area->id, area->name,
+			kprintf("%d:%s@%p + %#lx", area->id, area->name,
 				(void *)area->Base(), eip - area->Base());
 		}
 	}
@@ -804,9 +800,9 @@ print_call(Thread *thread, addr_t eip, addr_t ebp, addr_t nextEbp,
 		for (int32 i = 0; i < argCount; i++) {
 			if (i > 0)
 				kprintf(", ");
-			kprintf("%#lx", *arg);
+			kprintf("%#x", *arg);
 			if (*arg > -0x10000 && *arg < 0x10000)
-				kprintf(" (%ld)", *arg);
+				kprintf(" (%d)", *arg);
 
 			set_debug_argument_variable(i + 1, *(uint32 *)arg);
 			arg++;
@@ -851,7 +847,7 @@ show_call(int argc, char **argv)
 			argCount = strtoul(argv[argc - 1] + 1, NULL, 0);
 
 		if (argCount < -2 || argCount > 16) {
-			kprintf("Invalid argument count \"%ld\".\n", argCount);
+			kprintf("Invalid argument count \"%d\".\n", argCount);
 			return 0;
 		}
 		argc--;
@@ -871,7 +867,7 @@ show_call(int argc, char **argv)
 	int32 callIndex = strtoul(argv[argc == 3 ? 2 : 1], NULL, 0);
 
 	if (thread != NULL)
-		kprintf("thread %ld, %s\n", thread->id, thread->name);
+		kprintf("thread %d, %s\n", thread->id, thread->name);
 
 	bool onKernelStack = true;
 
@@ -1117,14 +1113,6 @@ arch_debug_contains_call(Thread* thread, const char* symbol, addr_t start,
 }
 
 
-void*
-arch_debug_get_caller(void)
-{
-	stack_frame* frame = (stack_frame*)x86_get_stack_frame();
-	return (void*)frame->previous->return_address;
-}
-
-
 /*!	Captures a stack trace (the return addresses) of the current thread.
 	\param returnAddresses The array the return address shall be written to.
 	\param maxCount The maximum number of return addresses to be captured.
@@ -1149,6 +1137,14 @@ arch_debug_get_stack_trace(addr_t* returnAddresses, int32 maxCount,
 	int32 count = 0;
 	addr_t bp = x86_get_stack_frame();
 	bool onKernelStack = true;
+
+	if ((flags & (STACK_TRACE_KERNEL | STACK_TRACE_USER)) == STACK_TRACE_USER) {
+		iframe* frame = x86_get_user_iframe();
+		if (frame == NULL)
+			return 0;
+
+		bp = (addr_t)frame;
+	}
 
 	while (bp != 0 && count < maxCount) {
 		onKernelStack = onKernelStack
@@ -1178,11 +1174,10 @@ arch_debug_get_stack_trace(addr_t* returnAddresses, int32 maxCount,
 		if (ip == 0)
 			break;
 
-		if (skipFrames <= 0
-			&& ((flags & STACK_TRACE_KERNEL) != 0 || onKernelStack)) {
-			returnAddresses[count++] = ip;
-		} else
+		if (skipFrames > 0)
 			skipFrames--;
+		else
+			returnAddresses[count++] = ip;
 
 		bp = nextBp;
 	}
@@ -1363,10 +1358,66 @@ arch_debug_gdb_get_registers(char* buffer, size_t bufferSize)
 }
 
 
+static void (*sDebugSnooze)(uint32) = NULL;
+static uint64 sDebugSnoozeConversionFactor = 0;
+
+
+static void
+debug_snooze_mwaitx(uint32 delay)
+{
+	// monitorx (r/eax = pointer, ecx = extensions, edx = hints)
+	asm volatile(".byte 0x0f, 0x01, 0xfa;"
+		:: "a" (sDebugSnooze), "c" (0), "d" (0));
+
+	// mwaitx (eax = hints, ecx = extensions, ebx = timeout)
+	asm volatile(".byte 0x0f, 0x01, 0xfb;"
+		:: "a" (0xf0 /* disable C-states */), "c" (0x2 /* enable timer */), "b" (delay));
+}
+
+
+static void
+debug_snooze_tpause(uint32 delay)
+{
+	memory_read_barrier();
+	uint64 target = __rdtsc() + delay;
+
+	// tpause (ecx = options, eax = target [low 32], edx = target [high 32])
+	uint32 low = target, high = target >> 32;
+	asm volatile(".byte 0x66, 0x0f, 0xae, 0xf1;"
+		:: "c" (0x0), "a" (low), "d" (high));
+}
+
+
+void
+arch_debug_snooze(bigtime_t duration)
+{
+	uint32 delay = (duration * sDebugSnoozeConversionFactor) / 1000;
+	if (delay == 0)
+		delay = 1;
+
+	if (sDebugSnooze != NULL) {
+		sDebugSnooze(delay);
+		return;
+	}
+
+	memory_read_barrier();
+	uint64 target = __rdtsc() + delay;
+
+	while (__rdtsc() < target)
+		arch_cpu_pause();
+}
+
+
 status_t
 arch_debug_init(kernel_args* args)
 {
-	// at this stage, the debugger command system is alive
+	// Store the TSC frequency in kHz.
+	sDebugSnoozeConversionFactor =
+		(uint64(1000) << 32) / args->arch_args.system_time_cv_factor;
+	if (x86_check_feature(IA32_FEATURE_AMD_EXT_MWAITX, FEATURE_EXT_AMD_ECX))
+		sDebugSnooze = debug_snooze_mwaitx;
+	if (x86_check_feature(IA32_FEATURE_WAITPKG, FEATURE_7_ECX))
+		sDebugSnooze = debug_snooze_tpause;
 
 	add_debugger_command("where", &stack_trace, "Same as \"sc\"");
 	add_debugger_command("bt", &stack_trace, "Same as \"sc\" (as in gdb)");

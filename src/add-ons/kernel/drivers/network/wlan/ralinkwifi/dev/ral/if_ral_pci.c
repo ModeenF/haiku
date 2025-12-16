@@ -16,8 +16,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: releng/12.0/sys/dev/ral/if_ral_pci.c 338951 2018-09-26 19:41:00Z imp $");
-
 /*
  * PCI/Cardbus front-end for the Ralink RT2560/RT2561/RT2561S/RT2661 driver.
  */
@@ -100,6 +98,7 @@ static const struct ral_pci_ident ral_pci_ids[] = {
 	{ 0x1814, 0x5390, "Ralink Technology RT5390" },
 	{ 0x1814, 0x5392, "Ralink Technology RT5392" },
 	{ 0x1814, 0x539a, "Ralink Technology RT5390" },
+	{ 0x1814, 0x539b, "Ralink Technology RT5390" },
 	{ 0x1814, 0x539f, "Ralink Technology RT5390" },
 	{ 0x1a3b, 0x1059, "AWT RT2890" },
 	{ 0, 0, NULL }
@@ -175,9 +174,7 @@ static driver_t ral_pci_driver = {
 	sizeof (struct ral_pci_softc)
 };
 
-static devclass_t ral_devclass;
-
-DRIVER_MODULE(ral, pci, ral_pci_driver, ral_devclass, NULL, NULL);
+DRIVER_MODULE(ral, pci, ral_pci_driver, NULL, NULL);
 MODULE_PNP_INFO("U16:vendor;U16:device;D:#", pci, ral, ral_pci_ids,
     nitems(ral_pci_ids) - 1);
 
@@ -230,7 +227,7 @@ ral_pci_attach(device_t dev)
 	sc->sc_st = rman_get_bustag(psc->mem);
 	sc->sc_sh = rman_get_bushandle(psc->mem);
 	sc->sc_invalid = 1;
-	
+
 	rid = 0;
 	if (ral_msi_disable == 0) {
 		count = 1;
@@ -264,7 +261,7 @@ ral_pci_attach(device_t dev)
 		return error;
 	}
 	sc->sc_invalid = 0;
-	
+
 	return 0;
 }
 
@@ -273,7 +270,7 @@ ral_pci_detach(device_t dev)
 {
 	struct ral_pci_softc *psc = device_get_softc(dev);
 	struct rt2560_softc *sc = &psc->u.sc_rt2560;
-	
+
 	/* check if device was removed */
 	sc->sc_invalid = !bus_child_present(dev);
 

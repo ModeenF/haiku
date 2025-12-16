@@ -15,7 +15,7 @@
 #include <stdio.h>
 
 #include "DrawState.h"
-#include "FontManager.h"
+#include "GlobalFontManager.h"
 #include "Layer.h"
 #include "ServerApp.h"
 #include "ServerBitmap.h"
@@ -256,7 +256,7 @@ determine_bounds_draw_round_rect(void* _state, const BRect& _rect,
 
 
 static void
-determine_bounds_bezier(BoundingBoxState* state, const BPoint* viewPoints,
+determine_bounds_bezier(BoundingBoxState* state, const BPoint viewPoints[4],
 	BRect& outRect)
 {
 	// Note: this is an approximation which results in a rectangle which
@@ -281,8 +281,8 @@ determine_bounds_bezier(BoundingBoxState* state, const BPoint* viewPoints,
 
 
 static void
-determine_bounds_draw_bezier(void* _state, size_t numPoints,
-	const BPoint viewPoints[], bool fill)
+determine_bounds_draw_bezier(void* _state,
+	const BPoint viewPoints[4], bool fill)
 {
 	TRACE_BB("%p draw bezier fill=%d (%.2f %.2f) (%.2f %.2f) "
 		"(%.2f %.2f) (%.2f %.2f)\n",
@@ -294,10 +294,6 @@ determine_bounds_draw_bezier(void* _state, size_t numPoints,
 		viewPoints[3].x, viewPoints[3].y);
 	BoundingBoxState* const state =
 		reinterpret_cast<BoundingBoxState*>(_state);
-
-	const size_t kSupportedPoints = 4;
-	if (numPoints != kSupportedPoints)
-		return;
 
 	BRect rect;
 	determine_bounds_bezier(state, viewPoints, rect);
@@ -451,7 +447,7 @@ draw_picture(void* _state, const BPoint& where, int32 token)
 
 
 static void
-set_clipping_rects(void* _state, size_t numRects, const BRect rects[])
+set_clipping_rects(void* _state, size_t numRects, const clipping_rect rects[])
 {
 	TRACE_BB("%p cliping rects (%ld rects)\n", _state, numRects);
 
@@ -616,9 +612,11 @@ set_font_family(void* _state, const char* _family, size_t length)
 		reinterpret_cast<BoundingBoxState*>(_state);
 
 	BString family(_family, length);
+	gFontManager->Lock();
 	FontStyle* fontStyle = gFontManager->GetStyleByIndex(family, 0);
 	ServerFont font;
 	font.SetStyle(fontStyle);
+	gFontManager->Unlock();
 	state->GetDrawState()->SetFont(font, B_FONT_FAMILY_AND_STYLE);
 }
 
@@ -631,8 +629,10 @@ set_font_style(void* _state, const char* _style, size_t length)
 
 	BString style(_style, length);
 	ServerFont font(state->GetDrawState()->Font());
+	gFontManager->Lock();
 	FontStyle* fontStyle = gFontManager->GetStyle(font.Family(), style);
 	font.SetStyle(fontStyle);
+	gFontManager->Unlock();
 	state->GetDrawState()->SetFont(font, B_FONT_FAMILY_AND_STYLE);
 }
 

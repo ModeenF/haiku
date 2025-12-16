@@ -41,6 +41,8 @@
 #	define TRACE(x...) ;
 #endif
 
+#define ERROR(x...) _sPrintf("radeon_hd: " x)
+
 
 struct accelerant_info* gInfo;
 display_info* gDisplay[MAX_DISPLAY];
@@ -88,6 +90,9 @@ init_common(int device, bool isClone)
 			return B_NO_MEMORY;
 		memset(gConnector[id], 0, sizeof(connector_info));
 
+		// Init a few things
+		gConnector[id]->router.ddcValid = false;
+		gConnector[id]->router.cdValid = false;
 		gConnector[id]->encoder.pll.id = ATOM_PPLL_INVALID;
 	}
 
@@ -113,7 +118,6 @@ init_common(int device, bool isClone)
 
 	if (ioctl(device, RADEON_GET_PRIVATE_DATA, &data,
 			sizeof(radeon_get_private_data)) != 0) {
-		free(gInfo);
 		return B_ERROR;
 	}
 
@@ -135,6 +139,7 @@ init_common(int device, bool isClone)
 		return status;
 	}
 
+	// XXX: We *should* only need B_READ_AREA here, but AtomBIOS calls fail with it RO #19348
 	gInfo->rom_area = clone_area("radeon hd AtomBIOS",
 		(void**)&gInfo->rom, B_ANY_ADDRESS, B_READ_AREA | B_WRITE_AREA,
 		gInfo->shared_info->rom_area);
@@ -226,7 +231,8 @@ radeon_init_accelerant(int device)
 	}
 
 	if (status != B_OK) {
-		TRACE("%s: couldn't detect supported connectors!\n", __func__);
+		ERROR("%s: couldn't detect supported connectors!\n", __func__);
+		radeon_uninit_accelerant();
 		return status;
 	}
 
@@ -244,18 +250,20 @@ radeon_init_accelerant(int device)
 
 	// detect attached displays
 	status = detect_displays();
-	//if (status != B_OK)
-	//	return status;
+	if (status != B_OK) {
+		radeon_uninit_accelerant();
+		return status;
+	}
 
 	// print found displays
 	debug_displays();
 
 	// create initial list of video modes
 	status = create_mode_list();
-	//if (status != B_OK) {
-	//	radeon_uninit_accelerant();
-	//	return status;
-	//}
+	if (status != B_OK) {
+		radeon_uninit_accelerant();
+		return status;
+	}
 
 	radeon_gpu_mc_setup();
 

@@ -133,39 +133,37 @@ Utility::Save(BBitmap* screenshot, const char* fileName, uint32 imageType)
 
 
 BBitmap*
-Utility::MakeScreenshot(bool includeMouse, bool activeWindow,
-	bool includeBorder) const
+Utility::MakeScreenshot(bool includeMouse, bool includeBorder, ShotType type,
+	BRect selectedArea) const
 {
 	if (wholeScreen == NULL)
 		return NULL;
 
-	int cursorWidth = 0;
-	int cursorHeight = 0;
-
-	if (cursorBitmap != NULL) {
-		BRect bounds = cursorBitmap->Bounds();
-		cursorWidth = bounds.IntegerWidth() + 1;
-		cursorHeight = bounds.IntegerHeight() + 1;
-	}
-
 	if (includeMouse && cursorBitmap != NULL) {
 		// Import the cursor bitmap into wholeScreen
-		wholeScreen->ImportBits(cursorBitmap->Bits(),
-			cursorBitmap->BitsLength(), cursorBitmap->BytesPerRow(),
-			cursorBitmap->ColorSpace(), BPoint(0, 0), cursorPosition,
-			cursorWidth, cursorHeight);
-
+		wholeScreen->ImportBits(cursorBitmap,
+			B_ORIGIN, cursorPosition, cursorBitmap->Bounds().Size());
 	} else if (cursorAreaBitmap != NULL) {
 		// Import the cursor area bitmap into wholeScreen
-		wholeScreen->ImportBits(cursorAreaBitmap->Bits(),
-			cursorAreaBitmap->BitsLength(), cursorAreaBitmap->BytesPerRow(),
-			cursorAreaBitmap->ColorSpace(), BPoint(0, 0), cursorPosition,
-			cursorWidth, cursorHeight);
+		wholeScreen->ImportBits(cursorAreaBitmap,
+			B_ORIGIN, cursorPosition, cursorAreaBitmap->Bounds().Size());
 	}
 
 	BBitmap* screenshot = NULL;
 
-	if (activeWindow && activeWindowFrame.IsValid()) {
+	if (type == kShowSelectedArea && selectedArea.IsValid()) {
+		BBitmap* cropShot = new BBitmap(selectedArea.OffsetToCopy(B_ORIGIN),
+			wholeScreen->ColorSpace(), true);
+		BView* cropView = new BView(cropShot->Bounds(), "", B_FOLLOW_NONE, 0);
+		cropShot->AddChild(cropView);
+		cropShot->Lock();
+		cropView->DrawBitmap(wholeScreen, selectedArea, cropView->Bounds());
+		cropView->Sync();
+		screenshot = new BBitmap(cropShot);
+		cropShot->RemoveChild(cropView);
+		delete cropView;
+		delete cropShot;
+	} else if (type == kActiveWindow && activeWindowFrame.IsValid()) {
 		BRect frame(activeWindowFrame);
 		if (includeBorder) {
 			frame.InsetBy(-borderSize, -borderSize);
@@ -175,11 +173,8 @@ Utility::MakeScreenshot(bool includeMouse, bool activeWindow,
 		screenshot = new BBitmap(frame.OffsetToCopy(B_ORIGIN),
 			includeBorder ? B_RGBA32 : B_RGB32, true);
 
-		if (screenshot->ImportBits(wholeScreen->Bits(),
-				wholeScreen->BitsLength(), wholeScreen->BytesPerRow(),
-				wholeScreen->ColorSpace(), frame.LeftTop(),
-				BPoint(0, 0), frame.IntegerWidth() + 1,
-				frame.IntegerHeight() + 1) != B_OK) {
+		if (screenshot->ImportBits(wholeScreen, frame.LeftTop(),
+				B_ORIGIN, frame.Size()) != B_OK) {
 			delete screenshot;
 			return NULL;
 		}

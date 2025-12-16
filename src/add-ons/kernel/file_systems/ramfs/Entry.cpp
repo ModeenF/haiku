@@ -13,7 +13,7 @@
 // constructor
 Entry::Entry(const char *name, Node *node, Directory *parent)
 	: fParent(parent),
-	  fNode(node),
+	  fNode(NULL),
 	  fName(name),
 	  fReferrerLink(),
 	  fIterators()
@@ -36,33 +36,37 @@ Entry::InitCheck() const
 	return (fName.GetString() ? B_OK : B_NO_INIT);
 }
 
-// Link
+
 status_t
 Entry::Link(Node *node)
 {
-	status_t error = (node ? B_OK : B_BAD_VALUE);
-	if (error == B_OK) {
-		// We first link to the new node and then unlink the old one. So, no
-		// harm is done, if both are the same.
-		Node *oldNode = fNode;
-		error = node->Link(this);
-		if (error == B_OK) {
-			fNode = node;
-			if (oldNode)
-				oldNode->Unlink(this);
-		}
-	}
-	return error;
+	if (node == NULL)
+		return B_BAD_VALUE;
+	if (node == fNode)
+		return B_OK;
+
+	// We can only be linked to one Node at a time, so force callers
+	// to decide what to do when we're already linked to a Node.
+	if (fNode != NULL)
+		return B_BAD_VALUE;
+
+	status_t status = node->Link(this);
+	if (status == B_OK)
+		fNode = node;
+	return status;
 }
 
-// Unlink
+
 status_t
 Entry::Unlink()
 {
-	status_t error = (fNode ? B_OK : B_BAD_VALUE);
-	if (error == B_OK && (error = fNode->Unlink(this)) == B_OK)
+	if (fNode == NULL)
+		return B_BAD_VALUE;
+
+	status_t status = fNode->Unlink(this);
+	if (status == B_OK)
 		fNode = NULL;
-	return error;
+	return status;
 }
 
 // SetName
@@ -101,4 +105,3 @@ Entry::GetAllocationInfo(AllocationInfo &info)
 	info.AddStringAllocation(fName.GetLength());
 	fNode->GetAllocationInfo(info);
 }
-

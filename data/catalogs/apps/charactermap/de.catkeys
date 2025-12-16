@@ -1,4 +1,4 @@
-1	german	x-vnd.Haiku-CharacterMap	2040422106
+1	german	x-vnd.Haiku-CharacterMap	917523322
 Tirhuta	UnicodeBlocks		Tirhuta
 Miscellaneous mathematical symbols B	UnicodeBlocks		Diverse mathematische Symbole B
 Latin extended E	UnicodeBlocks		Lateinisch (Erweiterung E)
@@ -38,6 +38,7 @@ Enclosed ideographic supplement	UnicodeBlocks		Geschlossene ideografische Erweit
 Warang Citi	UnicodeBlocks		Warang Citi
 Vertical forms	UnicodeBlocks		Vertikale Formen
 Miscellaneous mathematical symbols A	UnicodeBlocks		Diverse mathematische Symbole A
+CharacterMap	System name		Zeichentabelle
 Latin extended D	UnicodeBlocks		Lateinisch (Erweiterung D)
 Aegean numbers	UnicodeBlocks		Ägäische Zahlen
 Hangul syllables	UnicodeBlocks		Hangul-Silben
@@ -59,6 +60,7 @@ CJK unified ideographs extension C	UnicodeBlocks		CJK: Vereinheitlichte Ideogram
 Ancient Greek musical notation	UnicodeBlocks		Antike griechische musikalische Notation
 Thai	UnicodeBlocks		Thai
 Ethiopic supplement	UnicodeBlocks		Äthiopisch (Ergänzung)
+Only show blocks contained in font	CharacterWindow		Nur in Schriftart enthaltene Blöcke zeigen
 Chess symbols	UnicodeBlocks		Schachsymbole
 Yijing hexagram symbols	UnicodeBlocks		Yijing: Hexagramm-Symbole
 Ottoman Siyaq numbers	UnicodeBlocks		Ottomanische Siyaq Zahlen
@@ -175,7 +177,7 @@ Chorasmian	UnicodeBlocks		Chorasmisch
 Lisu supplement	UnicodeBlocks		Lisu Ergänzung
 Takri	UnicodeBlocks		Takri
 Shorthand format controls	UnicodeBlocks		Kurzschrift Formatsteuerzeichen
-Inscriptional Parthian	UnicodeBlocks		 Parthische Inschrift
+Inscriptional Parthian	UnicodeBlocks		Parthische Inschrift
 Optical character recognition	UnicodeBlocks		Optische Zeichenerkennung
 Tamil	UnicodeBlocks		Tamil
 Lisu	UnicodeBlocks		Lisu

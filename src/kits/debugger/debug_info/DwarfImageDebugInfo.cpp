@@ -50,7 +50,6 @@
 #include "SourceFile.h"
 #include "StackFrame.h"
 #include "Statement.h"
-#include "StringUtils.h"
 #include "SymbolInfo.h"
 #include "TargetAddressRangeList.h"
 #include "Team.h"
@@ -247,7 +246,7 @@ struct DwarfImageDebugInfo::TypeNameKey {
 
 	uint32 HashValue() const
 	{
-		return StringUtils::HashValue(typeName);
+		return typeName.HashValue();
 	}
 
 	bool operator==(const TypeNameKey& other) const
@@ -267,7 +266,7 @@ struct DwarfImageDebugInfo::TypeNameEntry : TypeNameKey {
 	TypeNameEntry(const BString& name)
 		:
 		TypeNameKey(name),
-		types(10, true)
+		types(10)
 	{
 	}
 
@@ -402,7 +401,7 @@ DwarfImageDebugInfo::Init()
 
 
 status_t
-DwarfImageDebugInfo::GetFunctions(const BObjectList<SymbolInfo>& symbols,
+DwarfImageDebugInfo::GetFunctions(const BObjectList<SymbolInfo, true>& symbols,
 	BObjectList<FunctionDebugInfo>& functions)
 {
 	TRACE_IMAGES("DwarfImageDebugInfo::GetFunctions()\n");
@@ -648,8 +647,10 @@ DwarfImageDebugInfo::CreateFrame(Image* image,
 	target_addr_t framePointer;
 	CompilationUnit* unit = function != NULL ? function->GetCompilationUnit()
 			: NULL;
-	error = fFile->UnwindCallFrame(unit, fArchitecture->AddressSize(), entry,
-		instructionPointer, inputInterface, outputInterface, framePointer);
+	error = fFile->UnwindCallFrame(unit,
+		fArchitecture->AddressSize(), fArchitecture->IsBigEndian(),
+		entry, instructionPointer, inputInterface, outputInterface,
+		framePointer);
 
 	if (error != B_OK) {
 		TRACE_CFI("Failed to unwind call frame: %s\n", strerror(error));

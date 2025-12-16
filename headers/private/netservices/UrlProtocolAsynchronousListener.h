@@ -10,11 +10,11 @@
 #include <Message.h>
 #include <UrlProtocolDispatchingListener.h>
 
-#ifndef LIBNETAPI_DEPRECATED
+
 namespace BPrivate {
 
 namespace Network {
-#endif
+
 
 class BUrlProtocolAsynchronousListener : public BHandler,
 	public BUrlProtocolListener {
@@ -25,20 +25,18 @@ public:
 
 	// Synchronous listener access
 			BUrlProtocolListener* SynchronousListener();
-									
+
 	// BHandler interface
-	virtual void				MessageReceived(BMessage* message);
+	virtual	void				MessageReceived(BMessage* message);
 
 private:
 			BUrlProtocolDispatchingListener*
 						 		fSynchronousListener;
 };
-#ifndef LIBNETAPI_DEPRECATED
+
+
 } // namespace Network
 
 } // namespace BPrivate
-#endif
-
 
 #endif // _B_URL_PROTOCOL_ASYNCHRONOUS_LISTENER_H_
-

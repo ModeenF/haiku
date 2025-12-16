@@ -1,6 +1,5 @@
 /*
  * Copyright 2005-2008, Axel Dörfler, axeld@pinc-software.de. All rights reserved.
- * Copyright 2016-207, Jessica Hamilton, jessica.l.hamilton@gmail.com.
  * Distributed under the terms of the MIT License.
  */
 
@@ -54,11 +53,8 @@ init_common(int device, bool isClone)
 	// get basic info from driver
 
 	area_id sharedArea;
-	if (ioctl(device, VESA_GET_PRIVATE_DATA, &sharedArea, sizeof(area_id))
-			!= 0) {
-		free(gInfo);
+	if (ioctl(device, VESA_GET_PRIVATE_DATA, &sharedArea, sizeof(area_id)) != 0)
 		return B_ERROR;
-	}
 
 	AreaDeleter sharedDeleter(clone_area("vesa shared info",
 		(void **)&gInfo->shared_info, B_ANY_ADDRESS,
@@ -67,11 +63,8 @@ init_common(int device, bool isClone)
 	if (status < B_OK)
 		return status;
 
-	if (gInfo->shared_info->vesa_mode_count == 0)
-		gInfo->vesa_modes = NULL;
-	else
-		gInfo->vesa_modes = (vesa_mode *)((uint8 *)gInfo->shared_info
-			+ gInfo->shared_info->vesa_mode_offset);
+	gInfo->vesa_modes = (vesa_mode *)((uint8 *)gInfo->shared_info
+		+ gInfo->shared_info->vesa_mode_offset);
 
 	infoDeleter.Detach();
 	sharedDeleter.Detach();
@@ -192,19 +185,30 @@ vesa_get_accelerant_device_info(accelerant_device_info *info)
 {
 	info->version = B_ACCELERANT_VERSION;
 
-	// TODO: provide some more insight here...
-	if (gInfo->vesa_modes != NULL) {
-		strcpy(info->name, "VESA driver");
-		strcpy(info->chipset, "VESA");
+	strcpy(info->name, "VESA driver");
+	if (gInfo->shared_info->name[0] != '\0') {
+		strlcpy(info->chipset, gInfo->shared_info->name, 32);
 	} else {
-		strcpy(info->name, "Framebuffer");
-		strcpy(info->chipset, "");
+		switch (gInfo->shared_info->bios_type) {
+			case kIntelBiosType:
+				strcpy(info->chipset, "Intel");
+				break;
+			case kNVidiaBiosType:
+				strcpy(info->chipset, "nVidia");
+				break;
+			case kAtomBiosType1:
+			case kAtomBiosType2:
+				strcpy(info->chipset, "AMD/ATI Atombios");
+				break;
+			default:
+				strcpy(info->chipset, "Generic VESA");
+				break;
+		}
 	}
-
 	strcpy(info->serial_no, "None");
 
+	info->memory = gInfo->shared_info->vram_size;
 #if 0
-	info->memory = ???
 	info->dac_speed = ???
 #endif
 

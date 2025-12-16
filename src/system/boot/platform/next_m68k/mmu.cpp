@@ -136,8 +136,7 @@ mmu_init(void)
 
 
 extern "C" status_t
-platform_allocate_region(void **_address, size_t size, uint8 protection,
-	bool /*exactAddress*/)
+platform_allocate_region(void **_address, size_t size, uint8 protection)
 {
 	return B_UNSUPPORTED;
 }
@@ -150,19 +149,36 @@ platform_free_region(void *address, size_t size)
 }
 
 
-void
-platform_release_heap(struct stage2_args *args, void *base)
-{
-	// It will be freed automatically, since it is in the
-	// identity mapped region, and not stored in the kernel's
-	// page tables.
-}
-
-
-status_t
-platform_init_heap(struct stage2_args *args, void **_base, void **_top)
+ssize_t
+platform_allocate_heap_region(size_t size, void **_base)
 {
 	return B_UNSUPPORTED;
 }
 
 
+void
+platform_free_heap_region(void *_base, size_t size)
+{
+	// Failures don't matter very much as regions should be freed automatically,
+	// since they're in the identity map and not stored in the kernel's page tables.
+}
+
+
+extern "C" status_t
+platform_bootloader_address_to_kernel_address(void *address, addr_t *_result)
+{
+	TRACE(("%s: called\n", __func__));
+	// next_m68k really doesn't need an address conversion
+	*_result = (addr_t)address;
+	return B_OK;
+}
+
+
+extern "C" status_t
+platform_kernel_address_to_bootloader_address(addr_t address, void **_result)
+{
+	TRACE(("%s: called\n", __func__));
+	// next_m68k really doesn't need an address conversion
+	*_result = (void*)address;
+	return B_OK;
+}

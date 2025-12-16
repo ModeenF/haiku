@@ -8,37 +8,21 @@
 #include "system_dependencies.h"
 #include "Directory.h"
 #include "Inode.h"
+#include "ShortAttribute.h"
+#include "Symlink.h"
 #include "Volume.h"
+
+#include <file_systems/fs_ops_support.h>
 
 
 #define XFS_IO_SIZE	65536
 
-struct identify_cookie
-{
+struct identify_cookie {
 	/*	super_block_struct super_block;
 	*	No structure yet implemented.
 	*/
 	int cookie;
 };
-
-
-//!	xfs_io() callback hook
-static status_t
-iterative_io_get_vecs_hook(void *cookie, io_request *request, off_t offset,
-	size_t size, struct file_io_vec *vecs, size_t *_count)
-{
-	return B_NOT_SUPPORTED;
-}
-
-
-//!	xfs_io() callback hook
-static status_t
-iterative_io_finished_hook(void *cookie, io_request *request, status_t status,
-	bool partialTransfer, size_t bytesTransferred)
-{
-	return B_NOT_SUPPORTED;
-}
-
 
 //	#pragma mark - Scanning
 
@@ -120,8 +104,14 @@ xfs_read_fs_info(fs_volume *_volume, struct fs_info *info)
 	info->total_blocks = volume->SuperBlock().TotalBlocks();
 	info->free_blocks = volume->SuperBlock().FreeBlocks();
 
+	// Volume name
 	strlcpy(info->volume_name, volume->Name(), sizeof(info->volume_name));
-	strlcpy(info->fsh_name, "xfs", sizeof(info->fsh_name));
+
+	// Filesystem name
+	if(volume->IsVersion5())
+		strlcpy(info->fsh_name, "xfs V5", sizeof(info->fsh_name));
+	else
+		strlcpy(info->fsh_name, "xfs V4", sizeof(info->fsh_name));
 
 	return B_OK;
 }
@@ -211,18 +201,13 @@ xfs_lookup(fs_volume *_volume, fs_vnode *_directory, const char *name,
 	if (!directory->IsDirectory())
 		return B_NOT_A_DIRECTORY;
 
-	//TODO: pretend everything is accessible. We should actually checking
-	//for permission here.
-	DirectoryIterator* iterator =
-		new(std::nothrow) DirectoryIterator(directory);
-	if (iterator == NULL)
-		return B_NO_MEMORY;
-
-	status_t status = iterator->Init();
-	if (status != B_OK) {
-		delete iterator;
+	status_t status = directory->CheckPermissions(X_OK);
+	if (status < B_OK)
 		return status;
-	}
+
+	DirectoryIterator* iterator = DirectoryIterator::Init(directory);
+	if (iterator == NULL)
+		return B_BAD_VALUE;
 
 	status = iterator->Lookup(name, strlen(name), (xfs_ino_t*)_vnodeID);
 	if (status != B_OK) {
@@ -267,11 +252,13 @@ xfs_read_stat(fs_volume *_volume, fs_vnode *_node, struct stat *stat)
 	inode->GetModificationTime(stat->st_mtim);
 	inode->GetChangeTime(stat->st_ctim);
 
-	/* TODO: Can we obtain the Creation Time in v4 system? */
-	inode->GetChangeTime(stat->st_crtim);
+	// Only version 3 Inodes has creation time
+	if(inode->Version() == 3)
+		inode->GetCreationTime(stat->st_crtim);
+	else
+		inode->GetChangeTime(stat->st_crtim);
 
 	return B_OK;
-
 }
 
 
@@ -279,7 +266,32 @@ static status_t
 xfs_open(fs_volume * /*_volume*/, fs_vnode *_node, int openMode,
 	void **_cookie)
 {
-	return B_NOT_SUPPORTED;
+	TRACE("XFS_OPEN:\n");
+	Inode* inode = (Inode*)_node->private_node;
+
+	// opening a directory read-only is allowed, although you can't read
+	// any data from it.
+	if (inode->IsDirectory() && (openMode & O_RWMASK) != 0)
+		return B_IS_A_DIRECTORY;
+
+	status_t status =  inode->CheckPermissions(open_mode_to_access(openMode));
+	if (status != B_OK)
+		return status;
+
+	// Prepare the cookie
+	file_cookie* cookie = new(std::nothrow) file_cookie;
+	if (cookie == NULL)
+		return B_NO_MEMORY;
+	ObjectDeleter<file_cookie> cookieDeleter(cookie);
+
+	cookie->open_mode = openMode & XFS_OPEN_MODE_USER_MASK;
+	cookie->last_size = inode->Size();
+	cookie->last_notification = system_time();
+
+	cookieDeleter.Detach();
+	*_cookie = cookie;
+
+	return B_OK;
 }
 
 
@@ -287,30 +299,46 @@ static status_t
 xfs_read(fs_volume *_volume, fs_vnode *_node, void *_cookie, off_t pos,
 	void *buffer, size_t *_length)
 {
-	return B_NOT_SUPPORTED;
+	TRACE("Inode::ReadAt: pos:(%ld), *length:(%ld)\n", pos, *_length);
+	Inode* inode = (Inode*)_node->private_node;
+
+	if (!inode->IsFile()) {
+		*_length = 0;
+		return inode->IsDirectory() ? B_IS_A_DIRECTORY : B_BAD_VALUE;
+	}
+
+	return inode->ReadAt(pos, (uint8*)buffer, _length);
 }
 
 
 static status_t
 xfs_close(fs_volume *_volume, fs_vnode *_node, void *_cookie)
 {
-	return B_NOT_SUPPORTED;
+	return B_OK;
 }
 
 
 static status_t
 xfs_free_cookie(fs_volume *_volume, fs_vnode *_node, void *_cookie)
 {
-	return B_NOT_SUPPORTED;
+	TRACE("XFS_FREE_COOKIE:\n");
+	file_cookie* cookie = (file_cookie*)_cookie;
+	Volume* volume = (Volume*)_volume->private_volume;
+	Inode* inode = (Inode*)_node->private_node;
+
+	if (inode->Size() != cookie->last_size)
+		notify_stat_changed(volume->ID(), -1, inode->ID(), B_STAT_SIZE);
+
+	delete cookie;
+	return B_OK;
 }
 
 
 static status_t
 xfs_access(fs_volume *_volume, fs_vnode *_node, int accessMode)
 {
-	//TODO: pretend everything is accessible. We should actually checking
-	//for permission here.
-	return B_OK;
+	Inode* inode = (Inode*)_node->private_node;
+	return inode->CheckPermissions(accessMode);
 }
 
 
@@ -318,7 +346,18 @@ static status_t
 xfs_read_link(fs_volume *_volume, fs_vnode *_node, char *buffer,
 	size_t *_bufferSize)
 {
-	return B_NOT_SUPPORTED;
+	TRACE("XFS_READ_SYMLINK\n");
+
+	Inode* inode = (Inode*)_node->private_node;
+
+	if (!inode->IsSymLink())
+		return B_BAD_VALUE;
+
+	Symlink symlink(inode);
+
+	status_t result = symlink.ReadLink(0, buffer, _bufferSize);
+
+	return result;
 }
 
 
@@ -353,15 +392,17 @@ xfs_open_dir(fs_volume * /*_volume*/, fs_vnode *_node, void **_cookie)
 	Inode* inode = (Inode*)_node->private_node;
 	TRACE("XFS_OPEN_DIR: (%ld)\n", inode->ID());
 
+	status_t status = inode->CheckPermissions(R_OK);
+	if (status < B_OK)
+		return status;
+
 	if (!inode->IsDirectory())
 		return B_NOT_A_DIRECTORY;
 
-	DirectoryIterator* iterator = new(std::nothrow) DirectoryIterator(inode);
-	if (iterator == NULL) {
-		delete iterator;
-		return B_NO_MEMORY;
-	}
-	status_t status = iterator->Init();
+	DirectoryIterator* iterator = DirectoryIterator::Init(inode);
+	if (iterator == NULL)
+		return B_BAD_VALUE;
+
 	*_cookie = iterator;
 	return status;
 }
@@ -379,7 +420,7 @@ xfs_read_dir(fs_volume *_volume, fs_vnode *_node, void *_cookie,
 	uint32 count = 0;
 
 	while (count < maxCount && (bufferSize > sizeof(struct dirent))) {
-		size_t length = bufferSize - sizeof(struct dirent) + 1;
+		size_t length = bufferSize - sizeof(struct dirent);
 		xfs_ino_t ino;
 
 		status_t status = iterator->GetNext(buffer->d_name, &length, &ino);
@@ -395,9 +436,8 @@ xfs_read_dir(fs_volume *_volume, fs_vnode *_node, void *_cookie,
 
 		buffer->d_dev = volume->ID();
 		buffer->d_ino = ino;
-		buffer->d_reclen = sizeof(struct dirent) + length;
-		bufferSize -= buffer->d_reclen;
-		buffer = (struct dirent*)((uint8*)buffer + buffer->d_reclen);
+
+		buffer = next_dirent(buffer, length, bufferSize);
 		count++;
 	}
 
@@ -418,35 +458,46 @@ static status_t
 xfs_close_dir(fs_volume * /*_volume*/, fs_vnode * /*node*/,
 	void * /*_cookie*/)
 {
-	return B_NOT_SUPPORTED;
+	return B_OK;
 }
 
 
 static status_t
 xfs_free_dir_cookie(fs_volume *_volume, fs_vnode *_node, void *_cookie)
 {
-	return B_NOT_SUPPORTED;
+	delete (DirectoryIterator*)_cookie;
+	return B_OK;
 }
 
 
 static status_t
 xfs_open_attr_dir(fs_volume *_volume, fs_vnode *_node, void **_cookie)
 {
-	return B_NOT_SUPPORTED;
+	Inode* inode = (Inode*)_node->private_node;
+	TRACE("%s()\n", __FUNCTION__);
+
+	Attribute* iterator = Attribute::Init(inode);
+	if (iterator == NULL)
+		return B_BAD_VALUE;
+
+	*_cookie = iterator;
+	return B_OK;
 }
 
 
 static status_t
 xfs_close_attr_dir(fs_volume *_volume, fs_vnode *_node, void *cookie)
 {
-	return B_NOT_SUPPORTED;
+	TRACE("%s()\n", __FUNCTION__);
+	return B_OK;
 }
 
 
 static status_t
 xfs_free_attr_dir_cookie(fs_volume *_volume, fs_vnode *_node, void *_cookie)
 {
-	return B_NOT_SUPPORTED;
+	delete (Attribute*)_cookie;
+	return B_OK;
 }
 
 
@@ -454,7 +505,27 @@ static status_t
 xfs_read_attr_dir(fs_volume *_volume, fs_vnode *_node,
 	void *_cookie, struct dirent *dirent, size_t bufferSize, uint32 *_num)
 {
-	return B_NOT_SUPPORTED;
+	TRACE("%s()\n", __FUNCTION__);
+	Attribute* iterator = (Attribute*)_cookie;
+
+	size_t length = bufferSize;
+	status_t status = iterator->GetNext(dirent->d_name, &length);
+	if (status == B_ENTRY_NOT_FOUND) {
+		*_num = 0;
+		return B_OK;
+	}
+
+	if (status != B_OK)
+		return status;
+
+	Volume* volume = (Volume*)_volume->private_volume;
+	Inode* inode = (Inode*)_node->private_node;
+	dirent->d_dev = volume->ID();
+	dirent->d_ino = inode->ID();
+	dirent->d_reclen = offsetof(struct dirent, d_name) + length + 1;
+	*_num = 1;
+
+	return B_OK;
 }
 
 
@@ -478,7 +549,25 @@ static status_t
 xfs_open_attr(fs_volume *_volume, fs_vnode *_node, const char *name,
 	int openMode, void **_cookie)
 {
-	return B_NOT_SUPPORTED;
+	TRACE("%s()\n", __FUNCTION__);
+
+	status_t status;
+
+	Inode* inode = (Inode*)_node->private_node;
+
+	status = inode->CheckPermissions(open_mode_to_access(openMode));
+	if (status < B_OK)
+		return status;
+
+	Attribute* attribute = Attribute::Init(inode);
+
+	if (attribute == NULL)
+		return B_BAD_VALUE;
+
+	status = attribute->Open(name, openMode, (attr_cookie**)_cookie);
+	delete attribute;
+
+	return status;
 }
 
 
@@ -486,14 +575,15 @@ static status_t
 xfs_close_attr(fs_volume *_volume, fs_vnode *_node,
 	void *cookie)
 {
-	return B_NOT_SUPPORTED;
+	return B_OK;
 }
 
 
 static status_t
 xfs_free_attr_cookie(fs_volume *_volume, fs_vnode *_node, void *cookie)
 {
-	return B_NOT_SUPPORTED;
+	delete (attr_cookie*)cookie;
+	return B_OK;
 }
 
 
@@ -501,7 +591,20 @@ static status_t
 xfs_read_attr(fs_volume *_volume, fs_vnode *_node, void *_cookie,
 	off_t pos, void *buffer, size_t *_length)
 {
-	return B_NOT_SUPPORTED;
+	TRACE("%s()\n", __FUNCTION__);
+
+	attr_cookie* cookie = (attr_cookie*)_cookie;
+	Inode* inode = (Inode*)_node->private_node;
+
+	Attribute* attribute = Attribute::Init(inode);
+
+	if (attribute == NULL)
+		return B_BAD_VALUE;
+
+	status_t status = attribute->Read(cookie, pos, (uint8*)buffer, _length);
+	delete attribute;
+
+	return status;
 }
 
 
@@ -517,7 +620,20 @@ static status_t
 xfs_read_attr_stat(fs_volume *_volume, fs_vnode *_node,
 	void *_cookie, struct stat *stat)
 {
-	return B_NOT_SUPPORTED;
+	TRACE("%s()\n", __FUNCTION__);
+
+	attr_cookie* cookie = (attr_cookie*)_cookie;
+	Inode* inode = (Inode*)_node->private_node;
+
+	Attribute* attribute = Attribute::Init(inode);
+
+	if (attribute == NULL)
+		return B_BAD_VALUE;
+
+	status_t status = attribute->Stat(cookie, *stat);
+	delete attribute;
+
+	return status;
 }
 
 
@@ -723,6 +839,7 @@ file_system_module_info sxfsFileSystem = {
 	NULL,				// set_content_parameters
 	xfs_initialize,
 	xfs_uninitialize};
+
 
 module_info *modules[] = {
 	(module_info *)&sxfsFileSystem,

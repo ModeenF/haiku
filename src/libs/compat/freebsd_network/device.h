@@ -17,8 +17,6 @@
 
 #include <util/list.h>
 
-#include <net_stack.h>
-
 #include <compat/sys/kernel.h>
 #include <compat/net/if.h>
 
@@ -29,13 +27,21 @@ extern "C" {
 #endif
 
 struct root_device_softc {
+	enum {
+		BUS_INVALID = 0,
+		BUS_pci,
+		BUS_uhub,
+	} bus;
+
 	struct pci_info	pci_info;
 	bool			is_msi;
 	bool			is_msix;
+
+	struct freebsd_usb_device* usb_dev;
 };
 
 enum {
-	DEVICE_OPEN		= 1 << 0,
+	DEVICE_OPEN			= 1 << 0,
 	DEVICE_CLOSED		= 1 << 1,
 	DEVICE_NON_BLOCK	= 1 << 2,
 	DEVICE_DESC_ALLOCED	= 1 << 3,
@@ -44,9 +50,8 @@ enum {
 };
 
 
-extern struct net_stack_module_info *gStack;
+extern struct net_buffer_module_info *gBufferModule;
 extern pci_module_info *gPci;
-extern struct pci_x86_module_info *gPCIx86;
 
 
 static inline void
@@ -74,7 +79,18 @@ void uninit_hard_clock(void);
 status_t init_callout(void);
 void uninit_callout(void);
 
-device_t find_root_device(int);
+status_t init_pci();
+void uninit_pci();
+
+void uninit_usb() __attribute__((weak));
+
+void report_probed_device(int bus, void* compat_device, driver_t* driver,
+	void (*prepare_attach)(void*, device_t), void (*free_compat_device)(void*));
+status_t init_root_device(device_t *_root, int bus_type);
+device_t find_root_device(int unit);
+pci_info* get_device_pci_info(device_t dev);
+
+device_method_signature_t resolve_device_method(driver_t *driver, int id);
 
 void driver_printf(const char *format, ...)
 	__attribute__ ((format (__printf__, 1, 2)));

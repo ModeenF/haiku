@@ -15,10 +15,8 @@
 #include <HashMap.h>
 #include <HashString.h>
 
-
-#ifndef LIBNETAPI_DEPRECATED
 using namespace BPrivate::Network;
-#endif
+
 
 class BUrlContext::BHttpAuthenticationMap : public
 	SynchronizedHashMap<BPrivate::HashString, BHttpAuthentication*> {};
@@ -28,7 +26,7 @@ BUrlContext::BUrlContext()
 	:
 	fCookieJar(),
 	fAuthenticationMap(NULL),
-	fCertificates(20, true),
+	fCertificates(20),
 	fProxyHost(),
 	fProxyPort(0)
 {

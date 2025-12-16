@@ -2,12 +2,13 @@ SubDir HAIKU_TOP src preferences printers ;
 
 UsePrivateHeaders shared print ;
 
-Preference Printers :
+Application Printers :
 	AddPrinterDialog.cpp
 	Printers.cpp
 	PrintersWindow.cpp
 	PrinterListView.cpp
 	JobListView.cpp
+	ScreenSettings.cpp
 	SpoolFolder.cpp
 	TestPageView.cpp
 	TransportMenu.cpp

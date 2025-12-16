@@ -19,8 +19,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_wlan.h"
 
 #include <sys/param.h>
@@ -60,7 +58,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/rtwn/rtl8188e/r88e_rom_image.h>	/* for 'macaddr' field */
 
 #include <dev/rtwn/rtl8188e/usb/r88eu.h>
-
 
 static struct rtwn_r88e_txpwr r88e_txpwr;
 

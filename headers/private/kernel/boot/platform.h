@@ -21,12 +21,12 @@ extern void panic(const char *format, ...);
 extern void dprintf(const char *format, ...);
 
 /* heap functions */
-extern void platform_release_heap(struct stage2_args *args, void *base);
-extern status_t platform_init_heap(struct stage2_args *args, void **_base, void **_top);
+extern ssize_t platform_allocate_heap_region(size_t size, void **_base);
+extern void platform_free_heap_region(void *_base, size_t size);
 
 /* MMU/memory functions */
 extern status_t platform_allocate_region(void **_virtualAddress, size_t size,
-	uint8 protection, bool exactAddress);
+	uint8 protection);
 extern status_t platform_free_region(void *address, size_t size);
 extern status_t platform_bootloader_address_to_kernel_address(void *address, addr_t *_result);
 extern status_t platform_kernel_address_to_bootloader_address(addr_t address, void **_result);
@@ -59,8 +59,8 @@ namespace boot {
 
 extern status_t platform_add_boot_device(struct stage2_args *args, NodeList *devicesList);
 extern status_t platform_add_block_devices(struct stage2_args *args, NodeList *devicesList);
-extern status_t platform_get_boot_partition(struct stage2_args *args, Node *bootDevice,
-					NodeList *partitions, boot::Partition **_partition);
+extern status_t platform_get_boot_partitions(struct stage2_args *args, Node *bootDevice,
+					NodeList *partitions, NodeList *bootPartitions);
 extern status_t platform_register_boot_device(Node *device);
 extern void platform_cleanup_devices();
 

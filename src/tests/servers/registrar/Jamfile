@@ -1,7 +1,7 @@
 SubDir HAIKU_TOP src tests servers registrar ;
 
 UsePublicHeaders [ FDirName add-ons registrar ] ;
-UseArchHeaders $(TARGET_KERNEL_ARCH) ;
+UseArchHeaders $(TARGET_KERNEL_ARCH_DIR) ;
 
 # some test programs
 
@@ -67,7 +67,7 @@ SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src servers registrar ] ;
 SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src servers registrar mime ] ;
 SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src kits storage mime ] ;
 
-Server test_registrar
+Application test_registrar
  	:
 	AppInfoList.cpp
 	AppInfoListMessagingTargetSet.cpp

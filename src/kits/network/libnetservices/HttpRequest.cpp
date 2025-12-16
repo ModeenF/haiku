@@ -30,13 +30,10 @@
 #include <StackOrHeapArray.h>
 #include <ZlibCompressionAlgorithm.h>
 
+using namespace BPrivate::Network;
+
 
 static const int32 kHttpBufferSize = 4096;
-
-
-#ifndef LIBNETAPI_DEPRECATED
-using namespace BPrivate::Network;
-#endif
 
 
 namespace BPrivate {
@@ -101,10 +98,12 @@ namespace BPrivate {
 };
 
 
-BHttpRequest::BHttpRequest(const BUrl& url, bool ssl, const char* protocolName,
-	BUrlProtocolListener* listener, BUrlContext* context)
+BHttpRequest::BHttpRequest(const BUrl& url, BDataIO* output, bool ssl,
+	const char* protocolName, BUrlProtocolListener* listener,
+	BUrlContext* context)
 	:
-	BNetworkRequest(url, listener, context, "BUrlProtocol.HTTP", protocolName),
+	BNetworkRequest(url, output, listener, context, "BUrlProtocol.HTTP",
+		protocolName),
 	fSSL(ssl),
 	fRequestMethod(B_HTTP_GET),
 	fHttpVersion(B_HTTP_11),
@@ -125,8 +124,8 @@ BHttpRequest::BHttpRequest(const BUrl& url, bool ssl, const char* protocolName,
 
 BHttpRequest::BHttpRequest(const BHttpRequest& other)
 	:
-	BNetworkRequest(other.Url(), other.fListener, other.fContext,
-		"BUrlProtocol.HTTP", other.fSSL ? "HTTPS" : "HTTP"),
+	BNetworkRequest(other.Url(), other.Output(), other.fListener,
+		other.fContext, "BUrlProtocol.HTTP", other.fSSL ? "HTTPS" : "HTTP"),
 	fSSL(other.fSSL),
 	fRequestMethod(other.fRequestMethod),
 	fHttpVersion(other.fHttpVersion),
@@ -211,6 +210,13 @@ void
 BHttpRequest::SetAutoReferrer(bool enable)
 {
 	fOptAutoReferer = enable;
+}
+
+
+void
+BHttpRequest::SetStopOnError(bool stop)
+{
+	fOptStopOnError = stop;
 }
 
 
@@ -358,6 +364,7 @@ BHttpRequest::Result() const
 status_t
 BHttpRequest::Stop()
 {
+
 	if (fSocket != NULL) {
 		fSocket->Disconnect();
 			// Unlock any pending connect, read or write operation.
@@ -533,7 +540,7 @@ BHttpRequest::_ProtocolLoop()
 	} while (newRequest);
 
 	_EmitDebug(B_URL_PROTOCOL_DEBUG_TEXT,
-		"%ld headers and %ld bytes of data remaining",
+		"%" B_PRId32 " headers and %" B_PRIuSIZE " bytes of data remaining",
 		fHeaders.CountHeaders(), fInputBuffer.Size());
 
 	if (fResult.StatusCode() == 404)
@@ -590,6 +597,7 @@ BHttpRequest::_MakeRequest()
 
 
 	// Receive loop
+	bool disableListener = false;
 	bool receiveEnd = false;
 	bool parseEnd = false;
 	bool readByChunks = false;
@@ -623,8 +631,7 @@ BHttpRequest::_MakeRequest()
 				//   example in the case of a chunked transfer, we can't know
 				// - If the request method is "HEAD" which explicitly asks the
 				//   server to not send any data (only the headers)
-				if (bytesTotal > 0 && bytesReceived != bytesTotal
-					&& fRequestMethod != B_HTTP_HEAD) {
+				if (bytesTotal > 0 && bytesReceived != bytesTotal) {
 					readError = B_IO_ERROR;
 					break;
 				}
@@ -640,8 +647,20 @@ BHttpRequest::_MakeRequest()
 		if (fRequestStatus < kRequestStatusReceived) {
 			_ParseStatus();
 
+			if (fOptFollowLocation
+					&& IsRedirectionStatusCode(fResult.StatusCode()))
+				disableListener = true;
+
+			if (fOptStopOnError
+					&& fResult.StatusCode() >= B_HTTP_STATUS_CLASS_CLIENT_ERROR)
+			{
+				fQuit = true;
+				break;
+			}
+
 			//! ProtocolHook:ResponseStarted
-			if (fRequestStatus >= kRequestStatusReceived && fListener != NULL)
+			if (fRequestStatus >= kRequestStatusReceived && fListener != NULL
+					&& !disableListener)
 				fListener->ResponseStarted(this);
 		}
 
@@ -662,8 +681,8 @@ BHttpRequest::_MakeRequest()
 				}
 
 				//! ProtocolHook:HeadersReceived
-				if (fListener != NULL)
-					fListener->HeadersReceived(this, fResult);
+				if (fListener != NULL && !disableListener)
+					fListener->HeadersReceived(this);
 
 
 				if (BString(fHeaders["Transfer-Encoding"]) == "chunked")
@@ -690,6 +709,14 @@ BHttpRequest::_MakeRequest()
 					bytesTotal = atoll(fHeaders.HeaderAt(index).Value());
 				else
 					bytesTotal = -1;
+
+				if (fRequestMethod == B_HTTP_HEAD
+					|| fResult.StatusCode() == 204) {
+					// In the case of a HEAD request or if the server replies
+					// 204 ("no content"), we don't expect to receive anything
+					// more, and the socket will be closed.
+					receiveEnd = true;
+				}
 			}
 		}
 
@@ -768,7 +795,7 @@ BHttpRequest::_MakeRequest()
 			if (bytesRead >= 0) {
 				bytesReceived += bytesRead;
 
-				if (fListener != NULL) {
+				if (fOutput != NULL && !disableListener) {
 					if (decompress) {
 						readError = decompressingStream->WriteExactly(
 							inputTempBuffer, bytesRead);
@@ -778,20 +805,35 @@ BHttpRequest::_MakeRequest()
 						ssize_t size = decompressorStorage.Size();
 						BStackOrHeapArray<char, 4096> buffer(size);
 						size = decompressorStorage.Read(buffer, size);
-						_NotifyDataReceived(buffer, bytesUnpacked, size,
-							bytesReceived, bytesTotal);
-						bytesUnpacked += size;
+						if (size > 0) {
+							size_t written = 0;
+							readError = fOutput->WriteExactly(buffer,
+								size, &written);
+							if (fListener != NULL && written > 0)
+								fListener->BytesWritten(this, written);
+							if (readError != B_OK)
+								break;
+							bytesUnpacked += size;
+						}
 					} else if (bytesRead > 0) {
-						_NotifyDataReceived(inputTempBuffer,
-							bytesReceived - bytesRead, bytesRead,
-							bytesReceived, bytesTotal);
+						size_t written = 0;
+						readError = fOutput->WriteExactly(inputTempBuffer,
+							bytesRead, &written);
+						if (fListener != NULL && written > 0)
+							fListener->BytesWritten(this, written);
+						if (readError != B_OK)
+							break;
 					}
 				}
+
+				if (fListener != NULL && !disableListener)
+					fListener->DownloadProgress(this, bytesReceived,
+						std::max((off_t)0, bytesTotal));
 
 				if (bytesTotal >= 0 && bytesReceived >= bytesTotal)
 					receiveEnd = true;
 
-				if (decompress && receiveEnd) {
+				if (decompress && receiveEnd && !disableListener) {
 					readError = decompressingStream->Flush();
 
 					if (readError == B_BUFFER_OVERFLOW)
@@ -803,9 +845,16 @@ BHttpRequest::_MakeRequest()
 					ssize_t size = decompressorStorage.Size();
 					BStackOrHeapArray<char, 4096> buffer(size);
 					size = decompressorStorage.Read(buffer, size);
-					_NotifyDataReceived(buffer, bytesUnpacked, size,
-						bytesReceived, bytesTotal);
-					bytesUnpacked += size;
+					if (fOutput != NULL && size > 0 && !disableListener) {
+						size_t written = 0;
+						readError = fOutput->WriteExactly(buffer, size,
+							&written);
+						if (fListener != NULL && written > 0)
+							fListener->BytesWritten(this, written);
+						if (readError != B_OK)
+							break;
+						bytesUnpacked += size;
+					}
 				}
 			}
 		}
@@ -1202,32 +1251,4 @@ BHttpRequest::_IsDefaultPort()
 	if (!fSSL && Url().Port() == 80)
 		return true;
 	return false;
-}
-
-
-void
-BHttpRequest::_NotifyDataReceived(const char* data, off_t pos, ssize_t size,
-	off_t bytesReceived, ssize_t bytesTotal)
-{
-	if (fListener == NULL || size <= 0)
-		return;
-	if (fOptRangeStart > 0) {
-		pos += fOptRangeStart;
-		// bytesReceived and bytesTotal refer to the requested range,
-		// so that should technically not be adjusted for the range start.
-		// For displaying progress to the user, this is not ideal, though.
-		// But only for the case where we request the remainder of a file.
-		// Range requests can also be used to request any portion of a
-		// resource, so not modifying them is technically more correct.
-		// We can use a little trick, though: We know when the remainder
-		// is requested, because then fOptRangeEnd is -1.
-		if (fOptRangeEnd == -1) {
-			bytesReceived += fOptRangeStart;
-			if (bytesTotal > 0)
-				bytesTotal += fOptRangeStart;
-		}
-	}
-	fListener->DataReceived(this, data, pos, size);
-	fListener->DownloadProgress(this, bytesReceived,
-		std::max((ssize_t)0, bytesTotal));
 }

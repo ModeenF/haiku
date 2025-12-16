@@ -199,7 +199,7 @@ private:
 				type_code		type;
 				uint32			size;
 				uint8			name_length; // including 0 byte
-				char			name[1]; // 0 terminated, followed by data
+				char			name[]; // 0 terminated, followed by data
 			} _PACKED;
 
 			AttributeFile *		fParent;
@@ -1005,14 +1005,14 @@ AttributeEntry::SetName(const char *name)
 
 	if (!fAllocatedEntry || fEntry->name_length < nameLength) {
 		attribute_entry *newEntry = (attribute_entry *)malloc(
-			sizeof(attribute_entry) - 1 + nameLength);
+			sizeof(attribute_entry) + nameLength);
 		if (newEntry == NULL) {
 			fStatus = B_NO_MEMORY;
 			return fStatus;
 		}
 
 		if (fEntry != NULL)
-			memcpy(newEntry, fEntry, sizeof(attribute_entry) - 1);
+			memcpy(newEntry, fEntry, sizeof(attribute_entry));
 		if (fAllocatedEntry)
 			free(fEntry);
 
@@ -1033,7 +1033,7 @@ AttributeEntry::FillDirent(struct dirent *dirent, size_t bufferSize,
 	dirent->d_dev = dirent->d_pdev = fParent->VolumeID();
 	dirent->d_ino = (ino_t)this;
 	dirent->d_pino = fParent->FileInode();
-	dirent->d_reclen = sizeof(struct dirent) + fEntry->name_length;
+	dirent->d_reclen = offsetof(struct dirent, d_name) + fEntry->name_length;
 	if (bufferSize < dirent->d_reclen) {
 		*numEntries = 0;
 		return B_BAD_VALUE;
@@ -1262,13 +1262,13 @@ overlay_deselect(fs_volume *volume, fs_vnode *vnode, void *cookie, uint8 event,
 
 
 static status_t
-overlay_fsync(fs_volume *volume, fs_vnode *vnode)
+overlay_fsync(fs_volume *volume, fs_vnode *vnode, bool dataOnly)
 {
 	OverlayInode *node = (OverlayInode *)vnode->private_node;
 	fs_vnode *superVnode = node->SuperVnode();
 
 	if (superVnode->ops->fsync != NULL)
-		return superVnode->ops->fsync(volume->super_volume, superVnode);
+		return superVnode->ops->fsync(volume->super_volume, superVnode, dataOnly);
 
 	return B_OK;
 }
@@ -1994,6 +1994,9 @@ static status_t
 overlay_mount(fs_volume *volume, const char *device, uint32 flags,
 	const char *args, ino_t *rootID)
 {
+	if (volume->super_volume == NULL)
+		return B_UNSUPPORTED;
+
 	TRACE_VOLUME("mounting attribute overlay\n");
 	volume->private_volume = new(std::nothrow) OverlayVolume(volume);
 	if (volume->private_volume == NULL)

@@ -23,18 +23,7 @@
 
 #include <string.h>
 
-#if __GNUC__ > 2
 #include <x86intrin.h>
-#else
-static inline uint64_t __rdtsc()
-{
-	uint64 tsc;
-
-	asm volatile ("rdtsc\n" : "=A"(tsc));
-
-	return tsc;
-}
-#endif
 
 
 uint32 gTimeConversionFactor;
@@ -79,6 +68,9 @@ uint32 gTimeConversionFactor;
 	// if the TSC just isn't stable and we can't get our desired error range.
 
 
+#ifdef __SIZEOF_INT128__
+typedef unsigned __int128 uint128;
+#else
 struct uint128 {
 	uint128(uint64 low, uint64 high = 0)
 		:
@@ -178,6 +170,19 @@ private:
 	uint64	low;
 	uint64	high;
 };
+#endif
+
+
+static inline uint64_t
+rdtsc_fenced()
+{
+	// RDTSC is not serializing, nor does it drain the instruction stream.
+	// RDTSCP does, but is not available everywhere. Other OSes seem to use
+	// "CPUID" rather than MFENCE/LFENCE for serializing here during boot.
+	asm volatile ("cpuid" : : : "eax", "ebx", "ecx", "edx");
+
+	return __rdtsc();
+}
 
 
 static inline void
@@ -210,7 +215,7 @@ calibration_loop(uint8 desiredHighByte, uint8 channel, uint64& tscDelta,
 	} while (startHigh != 255);
 
 	// Read in the first TSC value
-	uint64 startTSC = __rdtsc();
+	uint64 startTSC = rdtsc_fenced();
 
 	// Wait for the PIT to count down to our desired value
 	uint8 endLow;
@@ -222,7 +227,7 @@ calibration_loop(uint8 desiredHighByte, uint8 channel, uint64& tscDelta,
 	} while (endHigh > desiredHighByte);
 
 	// And read the second TSC value
-	uint64 endTSC = __rdtsc();
+	uint64 endTSC = rdtsc_fenced();
 
 	tscDelta = endTSC - startTSC;
 	expired = ((startHigh << 8) | startLow) - ((endHigh << 8) | endLow);
@@ -230,7 +235,7 @@ calibration_loop(uint8 desiredHighByte, uint8 channel, uint64& tscDelta,
 }
 
 
-void
+static void
 calculate_cpu_conversion_factor(uint8 channel)
 {
 	// When using channel 2, enable the input and disable the speaker.
@@ -283,10 +288,10 @@ slower_sample:
 
 #ifdef TRACE_CPU
 	if (clockSpeed > 1000000000LL) {
-		dprintf("CPU at %Ld.%03Ld GHz\n", clockSpeed / 1000000000LL,
+		dprintf("CPU at %lld.%03Ld GHz\n", clockSpeed / 1000000000LL,
 			(clockSpeed % 1000000000LL) / 1000000LL);
 	} else {
-		dprintf("CPU at %Ld.%03Ld MHz\n", clockSpeed / 1000000LL,
+		dprintf("CPU at %lld.%03Ld MHz\n", clockSpeed / 1000000LL,
 			(clockSpeed % 1000000LL) / 1000LL);
 	}
 #endif
@@ -312,15 +317,45 @@ slower_sample:
 	}
 }
 
-extern int open_maybe_packaged(BootVolume& volume, const char* path,
-	int openMode);
+
+void
+determine_cpu_conversion_factor(uint8 channel)
+{
+	// Before using the calibration loop, check if we are on a hypervisor.
+	cpuid_info info;
+	if (get_current_cpuid(&info, 1, 0) == B_OK
+			&& (info.regs.ecx & IA32_FEATURE_EXT_HYPERVISOR) != 0) {
+		get_current_cpuid(&info, 0x40000000, 0);
+		const uint32 maxVMM = info.regs.eax;
+		if (maxVMM >= 0x40000010) {
+			get_current_cpuid(&info, 0x40000010, 0);
+
+			uint64 clockSpeed = uint64(info.regs.eax) * 1000;
+			gTimeConversionFactor = (uint64(1000) << 32) / info.regs.eax;
+
+			gKernelArgs.arch_args.system_time_cv_factor = gTimeConversionFactor;
+			gKernelArgs.arch_args.cpu_clock_speed = clockSpeed;
+
+			dprintf("TSC frequency read from hypervisor CPUID leaf\n");
+			return;
+		}
+	}
+
+	calculate_cpu_conversion_factor(channel);
+}
+
 
 void
 ucode_load(BootVolume& volume)
 {
 	cpuid_info info;
-	if (get_current_cpuid(&info, 0, 0) != B_OK
-		|| strncmp(info.eax_0.vendor_id, "GenuineIntel", 12) != 0)
+	if (get_current_cpuid(&info, 0, 0) != B_OK)
+		return;
+
+	bool isIntel = strncmp(info.eax_0.vendor_id, "GenuineIntel", 12) == 0;
+	bool isAmd = strncmp(info.eax_0.vendor_id, "AuthenticAMD", 12) == 0;
+
+	if (!isIntel && !isAmd)
 		return;
 
 	if (get_current_cpuid(&info, 1, 0) != B_OK)
@@ -333,11 +368,19 @@ ucode_load(BootVolume& volume)
 		family += info.eax_1.extended_family;
 		model += (info.eax_1.extended_model << 4);
 	}
-	snprintf(path, sizeof(path), "system/data/firmware/intel-ucode/"
-		"%02x-%02x-%02x", family, model, info.eax_1.stepping);
+	if (isIntel) {
+		snprintf(path, sizeof(path), "system/non-packaged/data/firmware/intel-ucode/"
+			"%02x-%02x-%02x", family, model, info.eax_1.stepping);
+	} else if (family < 0x15) {
+		snprintf(path, sizeof(path), "system/non-packaged/data/firmware/amd-ucode/"
+			"microcode_amd.bin");
+	} else {
+		snprintf(path, sizeof(path), "system/non-packaged/data/firmware/amd-ucode/"
+			"microcode_amd_fam%02xh.bin", family);
+	}
 	dprintf("ucode_load: %s\n", path);
 
-	int fd = open_maybe_packaged(volume, path, O_RDONLY);
+	int fd = open_from(volume.RootDirectory(), path, O_RDONLY);
 	if (fd < B_OK) {
 		dprintf("ucode_load: couldn't find microcode\n");
 		return;
@@ -350,11 +393,10 @@ ucode_load(BootVolume& volume)
 	}
 
 	ssize_t length = stat.st_size;
-	const uint32 alignment = 16;
-#define ALIGN(size, align)	(((size) + align - 1) & ~(align - 1))
-	void *buffer = kernel_args_malloc(length + alignment - 1);
+
+	// 16-byte alignment required
+	void *buffer = kernel_args_malloc(length, 16);
 	if (buffer != NULL) {
-		buffer = (void*)ALIGN((addr_t)buffer, alignment);
 		if (read(fd, buffer, length) != length) {
 			dprintf("ucode_load: couldn't read microcode file\n");
 			kernel_args_free(buffer);
@@ -372,7 +414,7 @@ ucode_load(BootVolume& volume)
 extern "C" bigtime_t
 system_time()
 {
-	uint64 tsc = __rdtsc();
+	uint64 tsc = rdtsc_fenced();
 	uint64 lo = (uint32)tsc;
 	uint64 hi = tsc >> 32;
 	return ((lo * gTimeConversionFactor) >> 32) + hi * gTimeConversionFactor;

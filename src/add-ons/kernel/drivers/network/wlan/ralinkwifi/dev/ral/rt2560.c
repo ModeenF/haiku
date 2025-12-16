@@ -1,4 +1,3 @@
-/*	$FreeBSD: releng/12.0/sys/dev/ral/rt2560.c 330688 2018-03-09 11:33:56Z avos $	*/
 
 /*-
  * Copyright (c) 2005, 2006
@@ -18,8 +17,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: releng/12.0/sys/dev/ral/rt2560.c 330688 2018-03-09 11:33:56Z avos $");
-
 /*-
  * Ralink Technology RT2560 chipset driver
  * http://www.ralinktech.com/
@@ -189,9 +186,6 @@ static const uint32_t rt2560_rf2525e_r2[]   = RT2560_RF2525E_R2;
 static const uint32_t rt2560_rf2526_r2[]    = RT2560_RF2526_R2;
 static const uint32_t rt2560_rf2526_hi_r2[] = RT2560_RF2526_HI_R2;
 
-static const uint8_t rt2560_chan_2ghz[] =
-	{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 };
-
 static const uint8_t rt2560_chan_5ghz[] =
 	{ 36, 40, 44, 48, 52, 56, 60, 64,
 	  100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140,
@@ -345,7 +339,7 @@ rt2560_detach(void *xsc)
 {
 	struct rt2560_softc *sc = xsc;
 	struct ieee80211com *ic = &sc->sc_ic;
-	
+
 	rt2560_stop(sc);
 
 	ieee80211_ifdetach(ic);
@@ -2139,8 +2133,7 @@ rt2560_getradiocaps(struct ieee80211com *ic,
 	memset(bands, 0, sizeof(bands));
 	setbit(bands, IEEE80211_MODE_11B);
 	setbit(bands, IEEE80211_MODE_11G);
-	ieee80211_add_channel_list_2ghz(chans, maxchans, nchans,
-	    rt2560_chan_2ghz, nitems(rt2560_chan_2ghz), bands, 0);
+	ieee80211_add_channels_default_2ghz(chans, maxchans, nchans, bands, 0);
 
 	if (sc->rf_rev == RT2560_RF_5222) {
 		setbit(bands, IEEE80211_MODE_11A);
@@ -2457,7 +2450,6 @@ rt2560_read_config(struct rt2560_softc *sc)
 	DPRINTF(sc, "rssi correction %d, calibrate 0x%02x\n",
 		 sc->rssi_corr, val);
 }
-
 
 static void
 rt2560_scan_start(struct ieee80211com *ic)

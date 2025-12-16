@@ -22,6 +22,7 @@
 
 #include <boot/partitions.h>
 #include <boot/platform.h>
+#include <boot/stage2.h>
 #include <util/DoublyLinkedList.h>
 
 
@@ -35,7 +36,7 @@
 
 static const uint32 kFloppyArchiveOffset = BOOT_ARCHIVE_IMAGE_OFFSET * 1024;
 	// defined at build time, see build/jam/BuildSetup
-static const size_t kTarRegionSize = 8 * 1024 * 1024;	// 8 MB
+static const size_t kTarRegionSize = 11 * 1024 * 1024; // 11 MB
 
 
 using std::nothrow;
@@ -733,6 +734,18 @@ TarFS::Volume::Init(boot::Partition* partition)
 		return status;
 
 	regionDeleter.Detach();
+	int32 bootMethod = gBootParams.GetInt32(BOOT_METHOD, BOOT_METHOD_DEFAULT);
+	switch (bootMethod) {
+		case BOOT_METHOD_CD:
+			fName = "CD-ROM";
+			break;
+		case BOOT_METHOD_NET:
+			fName = (char*)malloc(64);
+				// Same size as in platform_add_boot_device() (file pxe_ia32/devices.cpp).
+			get_node_from(partition->FD())->GetName((char*)fName, 64);
+			break;
+	}
+
 	return B_OK;
 }
 
@@ -741,10 +754,14 @@ status_t
 TarFS::Volume::_Inflate(boot::Partition* partition, void* cookie, off_t offset,
 	RegionDeleter& regionDeleter, size_t* inflatedBytes)
 {
-	char in[2048];
+	static const int kBufferSize = 2048;
+	char* in = (char*)malloc(kBufferSize);
+	if (in == NULL)
+		return B_NO_MEMORY;
+	MemoryDeleter deleter(in);
 	z_stream zStream = {
 		(Bytef*)in,		// next in
-		sizeof(in),		// avail in
+		kBufferSize,	// avail in
 		0,				// total in
 		NULL,			// next out
 		0,				// avail out
@@ -764,7 +781,7 @@ TarFS::Volume::_Inflate(boot::Partition* partition, void* cookie, off_t offset,
 	bool headerRead = false;
 
 	do {
-		ssize_t bytesRead = partition->ReadAt(cookie, offset, in, sizeof(in));
+		ssize_t bytesRead = partition->ReadAt(cookie, offset, in, kBufferSize);
 		if (bytesRead != (ssize_t)sizeof(in)) {
 			if (bytesRead <= 0) {
 				status = Z_STREAM_ERROR;
@@ -784,7 +801,7 @@ TarFS::Volume::_Inflate(boot::Partition* partition, void* cookie, off_t offset,
 			if (!out) {
 				// allocate memory for the uncompressed data
 				if (platform_allocate_region((void**)&out, kTarRegionSize,
-						B_READ_AREA | B_WRITE_AREA, false) != B_OK) {
+						B_READ_AREA | B_WRITE_AREA) != B_OK) {
 					TRACE(("tarfs: allocating region failed!\n"));
 					return B_NO_MEMORY;
 				}

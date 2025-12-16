@@ -74,7 +74,7 @@ enum {
 
 	AS_CREATE_CURSOR,
 	AS_CREATE_CURSOR_BITMAP,
-	AS_REFERENCE_CURSOR,
+	AS_CLONE_CURSOR,
 	AS_DELETE_CURSOR,
 
 	AS_BEGIN_RECT_TRACKING,
@@ -146,6 +146,9 @@ enum {
 	AS_GET_TRUNCATED_STRINGS,
 	AS_GET_UNICODE_BLOCKS,
 	AS_GET_HAS_UNICODE_BLOCK,
+	AS_ADD_FONT_FILE,
+	AS_ADD_FONT_MEMORY,
+	AS_REMOVE_FONT,
 
 	// Screen methods
 	AS_VALID_SCREEN_ID,
@@ -159,7 +162,6 @@ enum {
 	AS_GET_PIXEL_CLOCK_LIMITS,
 	AS_GET_TIMING_CONSTRAINTS,
 
-	AS_SCREEN_GET_COLORMAP,
 	AS_GET_DESKTOP_COLOR,
 	AS_SET_DESKTOP_COLOR,
 	AS_GET_SCREEN_ID_FROM_WINDOW,
@@ -358,6 +360,7 @@ enum {
 	// transformation in addition to origin/scale
 	AS_VIEW_SET_TRANSFORM,
 	AS_VIEW_GET_TRANSFORM,
+	AS_VIEW_GET_PARENT_COMPOSITE,
 
 	AS_VIEW_AFFINE_TRANSLATE,
 	AS_VIEW_AFFINE_SCALE,
@@ -371,16 +374,7 @@ enum {
 	AS_VIEW_CLIP_TO_RECT,
 	AS_VIEW_CLIP_TO_SHAPE,
 
-	// Internal messages
-	AS_COLOR_MAP_UPDATED,
-
 	AS_LAST_CODE
-};
-
-// TODO: move this into a private app header, together with the rest of the
-//		private message definitions in AppDefs.h
-enum {
-	kMsgDeleteServerMemoryArea		= '_DSA',
 };
 
 // bitmap allocation flags
@@ -388,7 +382,6 @@ enum {
 	kAllocator			= 0x1,
 	kFramebuffer		= 0x2,
 	kHeap				= 0x4,
-	kNewAllocatorArea	= 0x8,
 };
 
 #endif	// APP_SERVER_PROTOCOL_H

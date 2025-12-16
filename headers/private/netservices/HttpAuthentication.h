@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2014 Haiku Inc. All rights reserved.
+ * Copyright 2010-2023 Haiku Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  */
 #ifndef _B_HTTP_AUTHENTICATION_H_
@@ -11,11 +11,10 @@
 #include <Url.h>
 
 
-#ifndef LIBNETAPI_DEPRECATED
 namespace BPrivate {
 
 namespace Network {
-#endif
+
 
 // HTTP authentication method
 enum BHttpAuthenticationMethod {
@@ -25,8 +24,10 @@ enum BHttpAuthenticationMethod {
 		// Basic base64 authentication method (unsecure)
 	B_HTTP_AUTHENTICATION_DIGEST = 2,
 		// Digest authentication
-	B_HTTP_AUTHENTICATION_IE_DIGEST = 4
+	B_HTTP_AUTHENTICATION_IE_DIGEST = 4,
 		// Slightly modified digest authentication to mimic old IE one
+	B_HTTP_AUTHENTICATION_BEARER = 5
+		// Bearer authentication used to convey a token
 };
 
 
@@ -57,6 +58,7 @@ public:
 	// Field modification
 			void				SetUserName(const BString& username);
 			void				SetPassword(const BString& password);
+			void				SetToken(const BString& token);
 			void				SetMethod(
 									BHttpAuthenticationMethod type);
 			status_t			Initialize(const BString& wwwAuthenticate);
@@ -64,6 +66,7 @@ public:
 	// Field access
 			const BString&		UserName() const;
 			const BString&		Password() const;
+			const BString&		Token() const;
 			BHttpAuthenticationMethod Method() const;
 
 			BString				Authorization(const BUrl& url,
@@ -90,6 +93,7 @@ private:
 			BHttpAuthenticationMethod fAuthenticationMethod;
 			BString				fUserName;
 			BString				fPassword;
+			BString				fToken;
 
 			BString				fRealm;
 			BString				fDigestNonce;
@@ -105,10 +109,10 @@ private:
 	mutable	BLocker				fLock;
 };
 
-#ifndef LIBNETAPI_DEPRECATED
+
 } // namespace Network
 
 } // namespace BPrivate
-#endif
+
 
 #endif // _B_HTTP_AUTHENTICATION_H_

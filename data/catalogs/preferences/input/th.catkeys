@@ -1,11 +1,9 @@
-1	thai	x-vnd.Haiku-Input	1910113385
+1	thai	x-vnd.Haiku-Input	3272444562
 Defaults	InputMouse		ค่าเริ่มต้น
 Scrolling	TouchpadPrefView		เลื่อน
 Long	KeyboardView		ยาว
-Normal	SettingsView		ปกติ
 Cancel	TouchpadPrefView		ยกเลิก
 Slow	TouchpadPrefView		ช้า
-Warp	SettingsView		Warp
 Device List	InputWindow		รายการอุปกรณ์
 Double-click speed	SettingsView		ความเร็วดับเบิลคลิก
 5-Button	SettingsView		5 ปุ่ม
@@ -21,12 +19,11 @@ Slow	KeyboardView		ช้า
 2-Button	SettingsView		2 ปุ่ม
 Click to focus and raise	SettingsView		คลิดเพื่อดูและขยาย
 Vertical	TouchpadPrefView		แนวตั้ง
-Double-click test area	SettingsView		พื้นที่ทดสอบดับเบิลคลิก
 Focus follows mouse	SettingsView		โฟกัสตามเมาส์
+Double-click test area	SettingsView		พื้นที่ทดสอบดับเบิลคลิก
 Focus mode:	SettingsView		โหมดโฟกัส:
 Revert	TouchpadPrefView		เปลี่ยนกลับ
 4-Button	SettingsView		4 ปุ่ม
-Instant warp	SettingsView		Instant warp
 Revert	InputKeyboard		เปลี่ยนกลับ
 Mouse type:	SettingsView		ชนิดเมาส์:
 Off	TouchpadPrefView		ปิด
@@ -39,8 +36,8 @@ Delay until key repeat	KeyboardView		หน่วงเวลาจนกว่�
 Two finger scrolling	TouchpadPrefView		เลื่อนสองนิ้ว
 The new scroll area is very large and may impede normal mouse operation. Do you really want to change it?	TouchpadPrefView		พื้นที่เลื่อนใหม่มีขนาดใหญ่มากและอาจขัดขวางการทำงานของเมาส์ปกติ คุณต้องการเปลี่ยนหรือไม่?
 Mouse acceleration	SettingsView		ความเร็วเมาส์
-Defaults	TouchpadPrefView		ค่าเริ่มต้น
 High	TouchpadPrefView		สูง
+Defaults	TouchpadPrefView		ค่าเริ่มต้น
 1-Button	SettingsView		1 ปุ่ม
 Defaults	InputKeyboard		ค่าเริ่มต้น
 Key repeat rate	KeyboardView		อัตราการกดคีย์ซ้ำ

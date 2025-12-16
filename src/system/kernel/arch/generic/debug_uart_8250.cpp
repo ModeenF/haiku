@@ -22,8 +22,9 @@
  */
 
 
-#include <debug.h>
 #include <arch/generic/debug_uart_8250.h>
+#include <debug.h>
+#include <new>
 
 
 DebugUART8250::DebugUART8250(addr_t base, int64 clock)
@@ -135,8 +136,13 @@ DebugUART8250::Init()
 int
 DebugUART8250::PutChar(char c)
 {
-	while (!(In8(UART_LSR) & (1<<6)));
-		// wait for the last char to get out
+	// wait for the last char to get out
+	int32 timeout = 256 * 1024;
+	while (!(In8(UART_LSR) & (1<<6))) {
+		if (--timeout == 0)
+			return -1;
+	}
+
 	Out8(UART_THR, c);
 	return 0;
 }
@@ -174,3 +180,13 @@ DebugUART8250::FlushRx()
 		(void)c;
 	}
 }
+
+
+DebugUART8250*
+arch_get_uart_8250(addr_t base, int64 clock)
+{
+	static char buffer[sizeof(DebugUART8250)];
+	DebugUART8250* uart = new(buffer) DebugUART8250(base, clock);
+	return uart;
+}
+

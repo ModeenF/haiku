@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (c) 2002-2009 Sam Leffler, Errno Consulting
  * All rights reserved.
@@ -26,8 +26,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: releng/12.0/sys/net80211/ieee80211_superg.c 326272 2017-11-27 15:23:17Z pfg $");
-
 #include "opt_wlan.h"
 
 #ifdef	IEEE80211_SUPPORT_SUPERG
@@ -39,7 +37,7 @@ __FBSDID("$FreeBSD: releng/12.0/sys/net80211/ieee80211_superg.c 326272 2017-11-2
 #include <sys/endian.h>
 
 #include <sys/socket.h>
- 
+
 #include <net/if.h>
 #include <net/if_var.h>
 #include <net/if_llc.h>
@@ -92,9 +90,10 @@ static	int ieee80211_ffppsmin = 2;	/* pps threshold for ff aggregation */
 SYSCTL_INT(_net_wlan, OID_AUTO, ffppsmin, CTLFLAG_RW,
 	&ieee80211_ffppsmin, 0, "min packet rate before fast-frame staging");
 static	int ieee80211_ffagemax = -1;	/* max time frames held on stage q */
-SYSCTL_PROC(_net_wlan, OID_AUTO, ffagemax, CTLTYPE_INT | CTLFLAG_RW,
-	&ieee80211_ffagemax, 0, ieee80211_sysctl_msecs_ticks, "I",
-	"max hold time for fast-frame staging (ms)");
+SYSCTL_PROC(_net_wlan, OID_AUTO, ffagemax,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+    &ieee80211_ffagemax, 0, ieee80211_sysctl_msecs_ticks, "I",
+    "max hold time for fast-frame staging (ms)");
 
 static void
 ff_age_all(void *arg, int npending)
@@ -272,7 +271,6 @@ struct mbuf *
 ieee80211_ff_decap(struct ieee80211_node *ni, struct mbuf *m)
 {
 #define	FF_LLC_SIZE	(sizeof(struct ether_header) + sizeof(struct llc))
-#define	MS(x,f)	(((x) & f) >> f##_S)
 	struct ieee80211vap *vap = ni->ni_vap;
 	struct llc *llc;
 	uint32_t ath;
@@ -301,7 +299,7 @@ ieee80211_ff_decap(struct ieee80211_node *ni, struct mbuf *m)
 		return m;
 	m_adj(m, FF_LLC_SIZE);
 	m_copydata(m, 0, sizeof(uint32_t), (caddr_t) &ath);
-	if (MS(ath, ATH_FF_PROTO) != ATH_FF_PROTO_L2TUNNEL) {
+	if (_IEEE80211_MASKSHIFT(ath, ATH_FF_PROTO) != ATH_FF_PROTO_L2TUNNEL) {
 		IEEE80211_DISCARD_MAC(vap, IEEE80211_MSG_ANY,
 		    ni->ni_macaddr, "fast-frame",
 		    "unsupport tunnel protocol, header 0x%x", ath);
@@ -326,7 +324,7 @@ ieee80211_ff_decap(struct ieee80211_node *ni, struct mbuf *m)
 		vap->iv_stats.is_ff_tooshort++;
 		return NULL;
 	}
-	n = m_split(m, framelen, M_NOWAIT);
+	n = m_split(m, framelen, IEEE80211_M_NOWAIT);
 	if (n == NULL) {
 		IEEE80211_DISCARD_MAC(vap, IEEE80211_MSG_ANY,
 		    ni->ni_macaddr, "fast-frame",
@@ -350,7 +348,6 @@ ieee80211_ff_decap(struct ieee80211_node *ni, struct mbuf *m)
 	}
 	/* XXX verify framelen against mbuf contents */
 	return n;				/* 2nd delivered by caller */
-#undef MS
 #undef FF_LLC_SIZE
 }
 
@@ -446,7 +443,7 @@ ieee80211_ff_encap(struct ieee80211vap *vap, struct mbuf *m1, int hdrspace,
 	 */
 	m->m_next = m2;			/* NB: last mbuf from above */
 	m1->m_pkthdr.len += m2->m_pkthdr.len;
-	M_PREPEND(m1, sizeof(uint32_t)+2, M_NOWAIT);
+	M_PREPEND(m1, sizeof(uint32_t)+2, IEEE80211_M_NOWAIT);
 	if (m1 == NULL) {		/* XXX cannot happen */
 		IEEE80211_DPRINTF(vap, IEEE80211_MSG_SUPERG,
 		    "%s: no space for tunnel header\n", __func__);
@@ -455,7 +452,7 @@ ieee80211_ff_encap(struct ieee80211vap *vap, struct mbuf *m1, int hdrspace,
 	}
 	memset(mtod(m1, void *), 0, sizeof(uint32_t)+2);
 
-	M_PREPEND(m1, sizeof(struct llc), M_NOWAIT);
+	M_PREPEND(m1, sizeof(struct llc), IEEE80211_M_NOWAIT);
 	if (m1 == NULL) {		/* XXX cannot happen */
 		IEEE80211_DPRINTF(vap, IEEE80211_MSG_SUPERG,
 		    "%s: no space for llc header\n", __func__);
@@ -588,7 +585,6 @@ bad:
 		m_freem(m2);
 	return NULL;
 }
-
 
 static void
 ff_transmit(struct ieee80211_node *ni, struct mbuf *m)

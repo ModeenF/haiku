@@ -13,6 +13,8 @@
 
 #include <Drivers.h>
 #include <ether_driver.h>
+#include <kernel.h>
+#include <net_buffer.h>
 
 #include <compat/sys/haiku-module.h>
 
@@ -38,18 +40,16 @@ compat_open(const char *name, uint32 flags, void **cookie)
 	if (i == MAX_DEVICES)
 		return B_ERROR;
 
-	if (get_module(NET_STACK_MODULE_NAME, (module_info **)&gStack) != B_OK)
-		return B_ERROR;
-
 	ifp = gDevices[i];
 	if_printf(ifp, "compat_open(0x%" B_PRIx32 ")\n", flags);
 
-	if (atomic_or(&ifp->open_count, 1)) {
-		put_module(NET_STACK_MODULE_NAME);
+	if (atomic_or(&ifp->open_count, 1))
 		return B_BUSY;
-	}
 
-	ifp->if_init(ifp->if_softc);
+	IFF_LOCKGIANT(ifp);
+
+	if (ifp->if_init != NULL)
+		ifp->if_init(ifp->if_softc);
 
 	if (!HAIKU_DRIVER_REQUIRES(FBSD_WLAN_FEATURE)) {
 		ifp->if_flags &= ~IFF_UP;
@@ -68,6 +68,8 @@ compat_open(const char *name, uint32 flags, void **cookie)
 	ifp->flags &= ~DEVICE_CLOSED;
 	ifp->if_ioctl(ifp, SIOCSIFFLAGS, NULL);
 
+	IFF_UNLOCKGIANT(ifp);
+
 	*cookie = ifp;
 	return B_OK;
 }
@@ -79,6 +81,7 @@ compat_close(void *cookie)
 	struct ifnet *ifp = cookie;
 
 	if_printf(ifp, "compat_close()\n");
+	IFF_LOCKGIANT(ifp);
 
 	atomic_or(&ifp->flags, DEVICE_CLOSED);
 
@@ -86,6 +89,7 @@ compat_close(void *cookie)
 
 	release_sem_etc(ifp->receive_sem, 1, B_RELEASE_ALL);
 
+	IFF_UNLOCKGIANT(ifp);
 	return B_OK;
 }
 
@@ -100,24 +104,21 @@ compat_free(void *cookie)
 	// TODO: empty out the send queue
 
 	atomic_and(&ifp->open_count, 0);
-	put_module(NET_STACK_MODULE_NAME);
 	return B_OK;
 }
 
 
 static status_t
-compat_read(void *cookie, off_t position, void *buffer, size_t *numBytes)
+compat_receive(void *cookie, net_buffer **_buffer)
 {
 	struct ifnet *ifp = cookie;
 	uint32 semFlags = B_CAN_INTERRUPT;
 	status_t status;
 	struct mbuf *mb;
-	size_t length;
 
-	//if_printf(ifp, "compat_read(%lld, %p, [%lu])\n", position,
-	//	buffer, *numBytes);
+	//if_printf(ifp, "compat_receive(%p)\n", _buffer);
 
-	if (ifp->flags & DEVICE_CLOSED)
+	if ((ifp->flags & DEVICE_CLOSED) != 0)
 		return B_INTERRUPTED;
 
 	if (ifp->flags & DEVICE_NON_BLOCK)
@@ -125,62 +126,79 @@ compat_read(void *cookie, off_t position, void *buffer, size_t *numBytes)
 
 	do {
 		status = acquire_sem_etc(ifp->receive_sem, 1, semFlags, 0);
-		if (ifp->flags & DEVICE_CLOSED)
+		if ((ifp->flags & DEVICE_CLOSED) != 0)
 			return B_INTERRUPTED;
 
-		if (status == B_WOULD_BLOCK) {
-			*numBytes = 0;
-			return B_OK;
-		} else if (status < B_OK)
+		if (status != B_OK)
 			return status;
 
 		IF_DEQUEUE(&ifp->receive_queue, mb);
 	} while (mb == NULL);
 
-	length = min_c(max_c((size_t)mb->m_pkthdr.len, 0), *numBytes);
-
-#if 0
-	mb = m_defrag(mb, 0);
-	if (mb == NULL) {
-		*numBytes = 0;
+	net_buffer *buffer = gBufferModule->create(0);
+	if (buffer == NULL) {
+		m_freem(mb);
 		return B_NO_MEMORY;
 	}
-#endif
 
-	m_copydata(mb, 0, length, buffer);
-	*numBytes = length;
+	for (struct mbuf *m = mb; m != NULL; m = m->m_next) {
+		status = gBufferModule->append(buffer, mtod(m, void *), m->m_len);
+		if (status != B_OK)
+			break;
+	}
+	if (status != B_OK) {
+		gBufferModule->free(buffer);
+		m_freem(mb);
+		return status;
+	}
 
+	if ((mb->m_pkthdr.csum_flags & CSUM_L3_VALID) != 0)
+		buffer->buffer_flags |= NET_BUFFER_L3_CHECKSUM_VALID;
+	if ((mb->m_pkthdr.csum_flags & CSUM_L4_VALID) != 0)
+		buffer->buffer_flags |= NET_BUFFER_L4_CHECKSUM_VALID;
+
+	*_buffer = buffer;
 	m_freem(mb);
 	return B_OK;
 }
 
 
 static status_t
-compat_write(void *cookie, off_t position, const void *buffer,
-	size_t *numBytes)
+compat_send(void *cookie, net_buffer *buffer)
 {
 	struct ifnet *ifp = cookie;
 	struct mbuf *mb;
+	int length = buffer->size;
 
-	//if_printf(ifp, "compat_write(%lld, %p, [%lu])\n", position,
-	//	buffer, *numBytes);
+	//if_printf(ifp, "compat_send(%p, [%lu])\n", buffer, length);
 
-	if (*numBytes > MHLEN) {
-		mb = m_getcl(0, MT_DATA, M_PKTHDR);
-		*numBytes = min_c(*numBytes, (size_t)MCLBYTES);
-	} else {
+	if (length <= MHLEN) {
 		mb = m_gethdr(0, MT_DATA);
+		if (mb == NULL)
+			return ENOBUFS;
+	} else {
+		mb = m_get2(length, 0, MT_DATA, M_PKTHDR);
+		if (mb == NULL)
+			return E2BIG;
+
+		length = min_c(length, mb->m_ext.ext_size);
 	}
 
-	if (mb == NULL)
-		return ENOBUFS;
+	status_t status = gBufferModule->read(buffer, 0, mtod(mb, void *), length);
+	if (status != B_OK)
+		return status;
+	mb->m_pkthdr.len = mb->m_len = length;
 
-	// if we waited, check after if the ifp is still valid
+	if ((ifp->flags & DEVICE_CLOSED) != 0)
+		return B_INTERRUPTED;
 
-	mb->m_pkthdr.len = mb->m_len = *numBytes;
-	memcpy(mtod(mb, void *), buffer, mb->m_len);
+	IFF_LOCKGIANT(ifp);
+	int result = ifp->if_output(ifp, mb, NULL, NULL);
+	IFF_UNLOCKGIANT(ifp);
 
-	return ifp->if_output(ifp, mb, NULL, NULL);
+	if (result == 0)
+		gBufferModule->free(buffer);
+	return result;
 }
 
 
@@ -188,6 +206,7 @@ static status_t
 compat_control(void *cookie, uint32 op, void *arg, size_t length)
 {
 	struct ifnet *ifp = cookie;
+	status_t status;
 
 	//if_printf(ifp, "compat_control(op %lu, %p, [%lu])\n", op,
 	//	arg, length);
@@ -224,7 +243,11 @@ compat_control(void *cookie, uint32 op, void *arg, size_t length)
 				ifp->if_flags |= IFF_PROMISC;
 			else
 				ifp->if_flags &= ~IFF_PROMISC;
-			return ifp->if_ioctl(ifp, SIOCSIFFLAGS, NULL);
+
+			IFF_LOCKGIANT(ifp);
+			status = ifp->if_ioctl(ifp, SIOCSIFFLAGS, NULL);
+			IFF_UNLOCKGIANT(ifp);
+			return status;
 		}
 
 		case ETHER_GETFRAMESIZE:
@@ -232,6 +255,23 @@ compat_control(void *cookie, uint32 op, void *arg, size_t length)
 			uint32 frameSize;
 			if (length < 4)
 				return B_BAD_VALUE;
+
+			const int MTUs[] = {
+				ETHERMTU_JUMBO,
+				PAGESIZE - (ETHER_HDR_LEN + ETHER_CRC_LEN),
+				2290, /* IEEE80211_MTU_MAX */
+				0
+			};
+
+			// This is (usually) only invoked during initialization to get the
+			// maximum frame size. Thus we try a few common possible values,
+			// as there is no way to determine what is supported (or required).
+			for (int i = 0; MTUs[i] != 0; i++) {
+				struct ifreq ifr;
+				ifr.ifr_mtu = MTUs[i];
+				if (compat_control(cookie, SIOCSIFMTU, &ifr, sizeof(ifr)) == 0)
+					break;
+			}
 
 			frameSize = ifp->if_mtu + ETHER_HDR_LEN;
 			return user_memcpy(arg, &frameSize, 4);
@@ -252,23 +292,27 @@ compat_control(void *cookie, uint32 op, void *arg, size_t length)
 			if (user_memcpy(LLADDR(&address), arg, ETHER_ADDR_LEN) < B_OK)
 				return B_BAD_ADDRESS;
 
+			IFF_LOCKGIANT(ifp);
 			if (op == ETHER_ADDMULTI)
-				return if_addmulti(ifp, (struct sockaddr *)&address, NULL);
-
-			return if_delmulti(ifp, (struct sockaddr *)&address);
+				status = if_addmulti(ifp, (struct sockaddr *)&address, NULL);
+			else
+				status = if_delmulti(ifp, (struct sockaddr *)&address);
+			IFF_UNLOCKGIANT(ifp);
+			return status;
 		}
 
 		case ETHER_GET_LINK_STATE:
 		{
 			struct ifmediareq mediareq;
 			ether_link_state_t state;
-			status_t status;
 
 			if (length < sizeof(ether_link_state_t))
 				return EINVAL;
 
 			memset(&mediareq, 0, sizeof(mediareq));
+			IFF_LOCKGIANT(ifp);
 			status = ifp->if_ioctl(ifp, SIOCGIFMEDIA, (caddr_t)&mediareq);
+			IFF_UNLOCKGIANT(ifp);
 			if (status < B_OK)
 				return status;
 
@@ -287,6 +331,48 @@ compat_control(void *cookie, uint32 op, void *arg, size_t length)
 				return B_BAD_ADDRESS;
 			}
 			return B_OK;
+
+		case ETHER_SEND_NET_BUFFER:
+			if (arg == NULL || length == 0)
+				return B_BAD_DATA;
+			if (!IS_KERNEL_ADDRESS(arg))
+				return B_BAD_ADDRESS;
+			return compat_send(cookie, (net_buffer*)arg);
+
+		case ETHER_RECEIVE_NET_BUFFER:
+			if (arg == NULL || length == 0)
+				return B_BAD_DATA;
+			if (!IS_KERNEL_ADDRESS(arg))
+				return B_BAD_ADDRESS;
+			return compat_receive(cookie, (net_buffer**)arg);
+
+		case SIOCGIFSTATS:
+		{
+			struct ifreq_stats stats;
+			stats.receive.packets = ifp->if_data.ifi_ipackets;
+			stats.receive.errors = ifp->if_data.ifi_ierrors;
+			stats.receive.bytes = ifp->if_data.ifi_ibytes;
+			stats.receive.multicast_packets = ifp->if_data.ifi_imcasts;
+			stats.receive.dropped = ifp->if_data.ifi_iqdrops;
+			stats.send.packets = ifp->if_data.ifi_opackets;
+			stats.send.errors = ifp->if_data.ifi_oerrors;
+			stats.send.bytes = ifp->if_data.ifi_obytes;
+			stats.send.multicast_packets = ifp->if_data.ifi_omcasts;
+			stats.send.dropped = ifp->if_data.ifi_oqdrops;
+			stats.collisions = ifp->if_data.ifi_collisions;
+			memcpy(arg, &stats, sizeof(stats));
+			return B_OK;
+		}
+
+		case SIOCSIFFLAGS:
+		case SIOCSIFMEDIA:
+		case SIOCSIFMTU:
+		{
+			IFF_LOCKGIANT(ifp);
+			status = ifp->if_ioctl(ifp, op, (caddr_t)arg);
+			IFF_UNLOCKGIANT(ifp);
+			return status;
+		}
 	}
 
 	return wlan_control(cookie, op, arg, length);
@@ -298,6 +384,6 @@ device_hooks gDeviceHooks = {
 	compat_close,
 	compat_free,
 	compat_control,
-	compat_read,
-	compat_write,
+	NULL,
+	NULL,
 };

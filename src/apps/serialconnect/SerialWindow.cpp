@@ -9,6 +9,7 @@
 #include <stdio.h>
 
 #include <Catalog.h>
+#include <ControlLook.h>
 #include <FilePanel.h>
 #include <GroupLayout.h>
 #include <Menu.h>
@@ -55,22 +56,22 @@ SerialWindow::SerialWindow()
 
 	BRect r = Bounds();
 	r.top = menuBar->Bounds().bottom + 1;
-	r.right -= B_V_SCROLL_BAR_WIDTH;
+	r.right -= be_control_look->GetScrollBarWidth(B_VERTICAL);
 	fTermView = new TermView(r);
 	fTermView->ResizeToPreferred();
 
 	r = fTermView->Frame();
 	r.left = r.right + 1;
-	r.right = r.left + B_V_SCROLL_BAR_WIDTH;
+	r.right = r.left + be_control_look->GetScrollBarWidth(B_VERTICAL);
 	r.top -= 1;
-	r.bottom -= B_H_SCROLL_BAR_HEIGHT - 1;
+	r.bottom -= be_control_look->GetScrollBarWidth(B_HORIZONTAL) - 1;
 
 	BScrollBar* scrollBar = new BScrollBar(r, "scrollbar", NULL, 0, 0,
 		B_VERTICAL);
 
 	scrollBar->SetTarget(fTermView);
 
-	ResizeTo(r.right - 1, r.bottom + B_H_SCROLL_BAR_HEIGHT - 1);
+	ResizeTo(r.right - 1, r.bottom + be_control_look->GetScrollBarWidth(B_HORIZONTAL) - 1);
 
 	r = fTermView->Frame();
 	r.top = r.bottom - 37;
@@ -127,8 +128,11 @@ SerialWindow::SerialWindow()
 
 	// Items for the edit menu
 	BMenuItem* clearScreen = new BMenuItem(B_TRANSLATE("Clear history"),
-		new BMessage(kMsgClear));
+		new BMessage(kMsgClear), 'L');
 	editMenu->AddItem(clearScreen);
+
+	BMenuItem* paste = new BMenuItem(B_TRANSLATE("Paste"), new BMessage(B_PASTE), 'V');
+	editMenu->AddItem(paste);
 
 	// TODO copy (when we have selection), paste
 
@@ -467,6 +471,10 @@ void SerialWindow::MessageReceived(BMessage* message)
 		{
 			fTermView->Clear();
 			return;
+		}
+		case B_PASTE:
+		{
+			fTermView->PasteFromClipboard();
 		}
 		case kMsgProgress:
 		{

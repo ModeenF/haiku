@@ -41,6 +41,7 @@ All rights reserved.
 #include <Application.h>
 #include <AutoDeleter.h>
 #include <Catalog.h>
+#include <ControlLook.h>
 #include <Directory.h>
 #include <FindDirectory.h>
 #include <Path.h>
@@ -85,7 +86,8 @@ TDeskbarMenu* TBarWindow::sDeskbarMenu = NULL;
 TBarWindow::TBarWindow()
 	:
 	BWindow(BRect(-1000.0f, -1000.0f, -1000.0f, -1000.0f),
-		B_TRANSLATE_SYSTEM_NAME("Deskbar"), B_BORDERED_WINDOW,
+		"Deskbar", /* no B_TRANSLATE_SYSTEM_NAME, for binary compatibility */
+		B_BORDERED_WINDOW,
 		B_WILL_ACCEPT_FIRST_CLICK | B_NOT_ZOOMABLE | B_NOT_CLOSABLE
 			| B_NOT_MINIMIZABLE | B_NOT_MOVABLE | B_NOT_V_RESIZABLE
 			| B_AVOID_FRONT | B_ASYNCHRONOUS_CONTROLS,
@@ -692,23 +694,29 @@ TBarWindow::SetSizeLimits()
 		float maxWidth;
 
 		if (fBarView->Vertical()) {
-			minHeight = fBarView->TabHeight();
+			minHeight = fBarView->TabHeight() - 1;
 			maxHeight = B_SIZE_UNLIMITED;
 			minWidth = gMinimumWindowWidth;
 			maxWidth = gMaximumWindowWidth;
 		} else {
 			// horizontal
 			if (fBarView->MiniState()) {
+				// horizontal mini-mode
 				minWidth = gMinimumWindowWidth;
 				maxWidth = B_SIZE_UNLIMITED;
-				minHeight = fBarView->TabHeight();
-				maxHeight = std::max(fBarView->TabHeight(), kGutter
-					+ fBarView->ReplicantTray()->MaxReplicantHeight()
-					+ kGutter);
+				minHeight = fBarView->TabHeight() - 1;
+				maxHeight = std::max(fBarView->TabHeight() - 1,
+					kGutter + fBarView->ReplicantTray()->MaxReplicantHeight() + kGutter);
 			} else {
+				// horizontal expando-mode
+				const int32 max
+					= be_control_look->ComposeIconSize(kMaximumIconSize).IntegerWidth() + 1;
+				const float iconPadding
+					= be_control_look->ComposeSpacing(kIconPadding);
+
 				minWidth = maxWidth = screenFrame.Width();
 				minHeight = kMenuBarHeight - 1;
-				maxHeight = kMaximumIconSize + 4;
+				maxHeight = max + iconPadding / 2;
 			}
 		}
 

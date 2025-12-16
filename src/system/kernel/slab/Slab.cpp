@@ -20,7 +20,6 @@
 #include <elf.h>
 #include <kernel.h>
 #include <low_resource_manager.h>
-#include <slab/ObjectDepot.h>
 #include <smp.h>
 #include <tracing.h>
 #include <util/AutoLock.h>
@@ -28,11 +27,12 @@
 #include <vm/vm.h>
 #include <vm/VMAddressSpace.h>
 
+#include "SmallObjectCache.h"
 #include "HashedObjectCache.h"
+#include "ObjectDepot.h"
 #include "MemoryManager.h"
 #include "slab_debug.h"
 #include "slab_private.h"
-#include "SmallObjectCache.h"
 
 
 #if !USE_GUARDED_HEAP_FOR_OBJECT_CACHE
@@ -88,7 +88,7 @@ static const addr_t kSlabCodeAddressRanges[] = {
 };
 
 static const uint32 kSlabCodeAddressRangeCount
-	= sizeof(kSlabCodeAddressRanges) / sizeof(kSlabCodeAddressRanges[0]) / 2;
+	= B_COUNT_OF(kSlabCodeAddressRanges) / 2;
 
 #endif	// SLAB_ALLOCATION_TRACKING_AVAILABLE
 
@@ -135,10 +135,11 @@ class Create : public ObjectCacheTraceEntry {
 
 		virtual void AddDump(TraceOutput& out)
 		{
-			out.Print("object cache create: name: \"%s\", object size: %lu, "
-				"alignment: %lu, max usage: %lu, flags: 0x%lx, cookie: %p "
-				"-> cache: %p", fName, fObjectSize, fAlignment, fMaxByteUsage,
-					fFlags, fCookie, fCache);
+			out.Print("object cache create: name: \"%s\", object size: "
+				"%" B_PRIuSIZE ", alignment: %" B_PRIuSIZE ", max usage: "
+				"%" B_PRIuSIZE ", flags: 0x%" B_PRIx32 ", cookie: %p -> cache: %p",
+					fName, fObjectSize, fAlignment, fMaxByteUsage, fFlags,
+					fCookie, fCache);
 		}
 
 	private:
@@ -180,8 +181,8 @@ class Alloc : public ObjectCacheTraceEntry {
 
 		virtual void AddDump(TraceOutput& out)
 		{
-			out.Print("object cache alloc: cache: %p, flags: 0x%lx -> "
-				"object: %p", fCache, fFlags, fObject);
+			out.Print("object cache alloc: cache: %p, flags: 0x%" B_PRIx32
+				" -> object: %p", fCache, fFlags, fObject);
 		}
 
 	private:
@@ -224,8 +225,8 @@ class Reserve : public ObjectCacheTraceEntry {
 
 		virtual void AddDump(TraceOutput& out)
 		{
-			out.Print("object cache reserve: cache: %p, count: %lu, "
-				"flags: 0x%lx", fCache, fCount, fFlags);
+			out.Print("object cache reserve: cache: %p, count: %" B_PRIu32 ", "
+				"flags: 0x%" B_PRIx32, fCache, fCount, fFlags);
 		}
 
 	private:
@@ -250,7 +251,7 @@ static void
 dump_slab(::slab* slab)
 {
 	kprintf("  %p  %p  %6" B_PRIuSIZE " %6" B_PRIuSIZE " %6" B_PRIuSIZE "  %p\n",
-		slab, slab->pages, slab->size, slab->count, slab->offset, slab->free);
+		slab, slab->pages, slab->size, slab->count, slab->offset, slab->free.head);
 }
 
 
@@ -327,6 +328,38 @@ dump_cache_info(int argc, char* argv[])
 	if ((cache->flags & CACHE_NO_DEPOT) == 0) {
 		kprintf("depot:\n");
 		dump_object_depot(&cache->depot);
+	}
+
+	return 0;
+}
+
+
+static int
+dump_object_info(int argc, char* argv[])
+{
+	if (argc < 2) {
+		kprintf("usage: slab_object [address]\n");
+		return 0;
+	}
+
+	void* object = (void*)parse_expression(argv[1]);
+	ObjectCache* cache = MemoryManager::DebugObjectCacheForAddress(object);
+	if (cache == NULL) {
+		kprintf("%p does not seem to be in an object_cache\n", object);
+		return 1;
+	}
+
+	kprintf("address %p\n", object);
+	kprintf("\tslab_cache: %p (%s)\n", cache, cache->name);
+
+	MutexTryLocker cacheLocker(cache->lock);
+	if (cacheLocker.IsLocked()) {
+		slab* slab = cache->ObjectSlab(object);
+		const char* slabType = cache->empty.Contains(slab) ? "empty"
+			: cache->partial.Contains(slab) ? "partial"
+			: cache->full.Contains(slab) ? "full" : NULL;
+
+		kprintf("\tobject is in %s slab: %p\n", slabType, slab);
 	}
 
 	return 0;
@@ -783,8 +816,8 @@ dump_allocations_per_caller(int argc, char **argv)
 	qsort(sCallerInfoTable, sCallerInfoCount, sizeof(caller_info),
 		sortBySize ? &caller_info_compare_size : &caller_info_compare_count);
 
-	kprintf("%ld different callers, sorted by %s...\n\n", sCallerInfoCount,
-		sortBySize ? "size" : "count");
+	kprintf("%" B_PRId32 " different callers, sorted by %s...\n\n",
+		sCallerInfoCount, sortBySize ? "size" : "count");
 
 	size_t totalAllocationSize = 0;
 	size_t totalAllocationCount = 0;
@@ -919,12 +952,7 @@ object_cache_reserve_internal(ObjectCache* cache, size_t objectCount,
 		} else
 			break;
 
-		ConditionVariableEntry entry;
-		resizeEntry->condition.Add(&entry);
-
-		cache->Unlock();
-		entry.Wait();
-		cache->Lock();
+		resizeEntry->condition.Wait(&cache->lock);
 	}
 
 	// prepare the resize entry others can wait on
@@ -1071,11 +1099,7 @@ object_cache_maintainer(void*)
 				continue;
 			}
 
-			ConditionVariableEntry entry;
-			sMaintenanceCondition.Add(&entry);
-			locker.Unlock();
-			entry.Wait();
-			locker.Lock();
+			sMaintenanceCondition.Wait(locker.Get());
 		}
 
 		ObjectCache* cache = sMaintenanceQueue.RemoveHead();
@@ -1127,12 +1151,10 @@ object_cache_maintainer(void*)
 
 
 object_cache*
-create_object_cache(const char* name, size_t object_size, size_t alignment,
-	void* cookie, object_cache_constructor constructor,
-	object_cache_destructor destructor)
+create_object_cache(const char* name, size_t object_size, uint32 flags)
 {
-	return create_object_cache_etc(name, object_size, alignment, 0, 0, 0, 0,
-		cookie, constructor, destructor, NULL);
+	return create_object_cache_etc(name, object_size, 0, 0, 0, 0, flags,
+		NULL, NULL, NULL, NULL);
 }
 
 
@@ -1218,59 +1240,64 @@ object_cache_set_minimum_reserve(object_cache* cache, size_t objectCount)
 void*
 object_cache_alloc(object_cache* cache, uint32 flags)
 {
-	if (!(cache->flags & CACHE_NO_DEPOT)) {
-		void* object = object_depot_obtain(&cache->depot);
-		if (object) {
-			add_alloc_tracing_entry(cache, flags, object);
-			return fill_allocated_block(object, cache->object_size);
+	void* object = NULL;
+	if ((cache->flags & CACHE_NO_DEPOT) == 0)
+		object = object_depot_obtain(&cache->depot);
+
+	if (object == NULL) {
+		MutexLocker locker(cache->lock);
+		slab* source = NULL;
+
+		while (true) {
+			source = cache->partial.Head();
+			if (source != NULL)
+				break;
+
+			source = cache->empty.RemoveHead();
+			if (source != NULL) {
+				cache->empty_count--;
+				cache->partial.Add(source);
+				break;
+			}
+
+			if (object_cache_reserve_internal(cache, 1, flags) != B_OK) {
+				T(Alloc(cache, flags, NULL));
+				return NULL;
+			}
+
+			cache->pressure++;
 		}
+
+		ParanoiaChecker _2(source);
+
+		slab_queue_link* link = source->free.Pop();
+		source->count--;
+		cache->used_count++;
+
+		if (cache->total_objects - cache->used_count < cache->min_object_reserve)
+			increase_object_reserve(cache);
+
+		REMOVE_PARANOIA_CHECK(PARANOIA_SUSPICIOUS, source, &link->next,
+			sizeof(void*));
+
+		TRACE_CACHE(cache, "allocate %p (%p) from %p, %lu remaining.",
+			link_to_object(link, cache->object_size), link, source, source->count);
+
+		if (source->count == 0) {
+			cache->partial.Remove(source);
+			cache->full.Add(source);
+		}
+
+		object = link_to_object(link, cache->object_size);
+		locker.Unlock();
 	}
 
-	MutexLocker locker(cache->lock);
-	slab* source = NULL;
-
-	while (true) {
-		source = cache->partial.Head();
-		if (source != NULL)
-			break;
-
-		source = cache->empty.RemoveHead();
-		if (source != NULL) {
-			cache->empty_count--;
-			cache->partial.Add(source);
-			break;
-		}
-
-		if (object_cache_reserve_internal(cache, 1, flags) != B_OK) {
-			T(Alloc(cache, flags, NULL));
-			return NULL;
-		}
-
-		cache->pressure++;
+#if PARANOID_KERNEL_FREE
+	if (cache->object_size >= (sizeof(void*) * 2)) {
+		ASSERT_ALWAYS_PRINT(*(uint32*)object == 0xdeadbeef,
+			"object %p", object);
 	}
-
-	ParanoiaChecker _2(source);
-
-	object_link* link = _pop(source->free);
-	source->count--;
-	cache->used_count++;
-
-	if (cache->total_objects - cache->used_count < cache->min_object_reserve)
-		increase_object_reserve(cache);
-
-	REMOVE_PARANOIA_CHECK(PARANOIA_SUSPICIOUS, source, &link->next,
-		sizeof(void*));
-
-	TRACE_CACHE(cache, "allocate %p (%p) from %p, %lu remaining.",
-		link_to_object(link, cache->object_size), link, source, source->count);
-
-	if (source->count == 0) {
-		cache->partial.Remove(source);
-		cache->full.Add(source);
-	}
-
-	void* object = link_to_object(link, cache->object_size);
-	locker.Unlock();
+#endif
 
 	add_alloc_tracing_entry(cache, flags, object);
 	return fill_allocated_block(object, cache->object_size);
@@ -1362,6 +1389,8 @@ slab_init_post_area()
 		"dump contents of an object depot");
 	add_debugger_command("slab_magazine", dump_depot_magazine,
 		"dump contents of a depot magazine");
+	add_debugger_command("slab_object", dump_object_info,
+		"dump information about an object in an object_cache");
 #if SLAB_ALLOCATION_TRACKING_AVAILABLE
 	add_debugger_command_etc("allocations_per_caller",
 		&dump_allocations_per_caller,

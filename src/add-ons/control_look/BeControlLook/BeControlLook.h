@@ -84,8 +84,8 @@ public:
 									orientation orientation);
 	virtual	void				DrawScrollBarButton(BView* view,
 									BRect rect, const BRect& updateRect,
-									const rgb_color& base, uint32 flags,
-									int32 direction, orientation orientation,
+									const rgb_color& base, const rgb_color& text,
+									uint32 flags, int32 direction, orientation orientation,
 									bool down = false);
 	virtual	void				DrawScrollBarBackground(BView* view,
 									BRect& rect1, BRect& rect2,
@@ -366,6 +366,13 @@ protected:
 									float hcenter, float vmiddle,
 									rgb_color dark, rgb_color light,
 									orientation orientation);
+
+			void				_DrawFrame(BView* view, BRect& rect,
+									const rgb_color& left,
+									const rgb_color& top,
+									const rgb_color& right,
+									const rgb_color& bottom,
+									uint32 borders = B_ALL_BORDERS);
 
 private:
 			bool				fCachedOutline;

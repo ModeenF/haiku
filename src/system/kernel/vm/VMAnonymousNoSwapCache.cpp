@@ -45,7 +45,7 @@ VMAnonymousNoSwapCache::Init(bool canOvercommit, int32 numPrecommittedPages,
 	TRACE(("VMAnonymousNoSwapCache::Init(canOvercommit = %s, numGuardPages = %ld) "
 		"at %p\n", canOvercommit ? "yes" : "no", numGuardPages, store));
 
-	status_t error = VMCache::Init(CACHE_TYPE_RAM, allocationFlags);
+	status_t error = VMCache::Init("VMAnonymousNoSwapCache", CACHE_TYPE_RAM, allocationFlags);
 	if (error != B_OK)
 		return error;
 
@@ -59,8 +59,40 @@ VMAnonymousNoSwapCache::Init(bool canOvercommit, int32 numPrecommittedPages,
 
 
 status_t
+VMAnonymousNoSwapCache::Adopt(VMCache* from, off_t offset, off_t size,
+	off_t newOffset)
+{
+	uint32 initialPageCount = page_count;
+	status_t status = VMCache::Adopt(from, offset, size, newOffset);
+
+	if (fCanOvercommit) {
+		// We need to adopt the commitment for these pages.
+		uint32 newPages = page_count - initialPageCount;
+		off_t pagesCommitment = newPages * B_PAGE_SIZE;
+		from->committed_size -= pagesCommitment;
+		committed_size += pagesCommitment;
+	}
+
+	return status;
+}
+
+
+ssize_t
+VMAnonymousNoSwapCache::Discard(off_t offset, off_t size)
+{
+	const ssize_t discarded = VMCache::Discard(offset, size);
+	if (discarded > 0 && fCanOvercommit)
+		Commit(committed_size - discarded, VM_PRIORITY_USER);
+	return discarded;
+}
+
+
+status_t
 VMAnonymousNoSwapCache::Commit(off_t size, int priority)
 {
+	AssertLocked();
+	ASSERT(size >= (page_count * B_PAGE_SIZE));
+
 	// If we can overcommit, we don't commit here, but in Fault(). We always
 	// unreserve memory, if we're asked to shrink our commitment, though.
 	if (fCanOvercommit && size > committed_size) {
@@ -69,9 +101,12 @@ VMAnonymousNoSwapCache::Commit(off_t size, int priority)
 
 		// pre-commit some pages to make a later failure less probable
 		fHasPrecommitted = true;
-		uint32 precommitted = fPrecommittedPages * B_PAGE_SIZE;
+		uint32 precommitted = (fPrecommittedPages * B_PAGE_SIZE);
 		if (size > precommitted)
 			size = precommitted;
+
+		// pre-commit should not shrink existing commitment
+		size += committed_size;
 	}
 
 	// Check to see how much we could commit - we need real memory
@@ -93,7 +128,14 @@ VMAnonymousNoSwapCache::Commit(off_t size, int priority)
 
 
 bool
-VMAnonymousNoSwapCache::HasPage(off_t offset)
+VMAnonymousNoSwapCache::CanOvercommit()
+{
+	return fCanOvercommit;
+}
+
+
+bool
+VMAnonymousNoSwapCache::StoreHasPage(off_t offset)
 {
 	return false;
 }
@@ -163,25 +205,27 @@ VMAnonymousNoSwapCache::Fault(struct VMAddressSpace* aspace, off_t offset)
 
 
 void
-VMAnonymousNoSwapCache::MergeStore(VMCache* _source)
+VMAnonymousNoSwapCache::Merge(VMCache* _source)
 {
 	VMAnonymousNoSwapCache* source
 		= dynamic_cast<VMAnonymousNoSwapCache*>(_source);
 	if (source == NULL) {
-		panic("VMAnonymousNoSwapCache::MergeStore(): merge with incompatible "
+		panic("VMAnonymousNoSwapCache::Merge(): merge with incompatible "
 			"cache %p requested", _source);
 		return;
 	}
 
-	// take over the source' committed size
+	// take over the source's committed size
 	committed_size += source->committed_size;
 	source->committed_size = 0;
 
-	off_t actualSize = virtual_end - virtual_base;
+	off_t actualSize = PAGE_ALIGN(virtual_end - virtual_base);
 	if (committed_size > actualSize) {
 		vm_unreserve_memory(committed_size - actualSize);
 		committed_size = actualSize;
 	}
+
+	VMCache::Merge(source);
 }
 
 

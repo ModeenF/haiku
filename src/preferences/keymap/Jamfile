@@ -10,7 +10,7 @@ Includes [ FGristFiles KeymapWindow.cpp ] : <keymap-locale>KeymapNames.h ;
 Includes [ FGristFiles KeymapWindow.cpp ]
 	: <keyboard-layout-locale>KeyboardLayoutNames.h ;
 
-Preference Keymap :
+Application Keymap :
 	KeyboardLayout.cpp
 	KeyboardLayoutView.cpp
 	Keymap.cpp
@@ -18,6 +18,7 @@ Preference Keymap :
 	KeymapListItem.cpp
 	KeymapWindow.cpp
 	ModifierKeysWindow.cpp
+	StatusMenuField.cpp
 
 	: be tracker localestub shared [ TargetLibstdc++ ]
 	: Keymap.rdef
@@ -29,4 +30,5 @@ DoCatalogs Keymap :
 	KeyboardLayoutView.cpp
 	KeymapWindow.cpp
 	ModifierKeysWindow.cpp
+	StatusMenuField.cpp
 ;

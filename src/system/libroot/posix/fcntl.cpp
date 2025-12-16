@@ -23,7 +23,7 @@ int
 creat(const char *path, mode_t mode)
 {
 	RETURN_AND_SET_ERRNO_TEST_CANCEL(
-		_kern_open(-1, path, O_CREAT | O_TRUNC | O_WRONLY, mode & ~__gUmask));
+		_kern_open(AT_FDCWD, path, O_CREAT | O_TRUNC | O_WRONLY, mode & ~__gUmask));
 		// adapt the permissions as required by POSIX
 }
 
@@ -40,7 +40,7 @@ open(const char *path, int openMode, ...)
 		va_end(args);
 	}
 
-	RETURN_AND_SET_ERRNO_TEST_CANCEL(_kern_open(-1, path, openMode, perms));
+	RETURN_AND_SET_ERRNO_TEST_CANCEL(_kern_open(AT_FDCWD, path, openMode, perms));
 }
 
 
@@ -102,5 +102,13 @@ posix_fallocate(int fd, off_t offset, off_t len)
 	if (len == 0 || offset < 0)
 		return EINVAL;
 
-	return _kern_preallocate(fd, offset, len);
+	int error = _kern_preallocate(fd, offset, len);
+	if (error == B_UNSUPPORTED) {
+		// While the official specification for this function does not
+		// prescribe which error code to use when the underlying file system
+		// does not support preallocation, we will convert B_UNSUPPORTED to
+		// EOPNOTSUPP for better compatibility with existing applications.
+		return EOPNOTSUPP;
+	}
+	return error;
 }

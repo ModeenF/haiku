@@ -181,7 +181,7 @@ HIDDevice::HIDDevice(usb_device device, const usb_configuration_info *config,
 		return;
 	}
 
-	fTransferBufferSize = fParser.MaxReportSize();
+	fTransferBufferSize = fParser.MaxReportSize(HID_REPORT_TYPE_INPUT);
 	if (fTransferBufferSize == 0) {
 		TRACE_ALWAYS("report claims a report size of 0\n");
 		return;
@@ -263,10 +263,10 @@ HIDDevice::Removed()
 
 
 status_t
-HIDDevice::MaybeScheduleTransfer()
+HIDDevice::MaybeScheduleTransfer(HIDReport*)
 {
 	if (fRemoved)
-		return B_ERROR;
+		return ENODEV;
 
 	if (atomic_get_and_set(&fTransferScheduled, 1) != 0) {
 		// someone else already caused a transfer to be scheduled

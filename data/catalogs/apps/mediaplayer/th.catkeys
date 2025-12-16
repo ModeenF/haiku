@@ -1,4 +1,4 @@
-1	thai	x-vnd.Haiku-MediaPlayer	1313616492
+1	thai	x-vnd.Haiku-MediaPlayer	793596948
 Remove Entry into Trash	MediaPlayer-RemovePLItemsCmd		ย้ายรายการไปถังขยะ
 Close	MediaPlayer-PlaylistWindow		ปิด
 Volume of background clips	MediaPlayer-SettingsWindow		ระดับเสียงของคลิปพื้นหลัง
@@ -16,7 +16,6 @@ DrawBitmap	MediaPlayer-InfoWin		วาด Bitmap
 File info	MediaPlayer-InfoWin		ข้อมูลไฟล์
 raw audio	MediaPlayer-InfoWin		เสียงเดิม
 Select all	MediaPlayer-PlaylistWindow		เลือกทั้งหมด
-New player…	MediaPlayer-Main		เครื่องเล่นใหม่
 Move Entries	MediaPlayer-MovePLItemsCmd		ย้ายทั้งหมด
 OK	MediaPlayer-Main		ตกลง
 Remove	MediaPlayer-PlaylistWindow		ลบ
@@ -25,7 +24,6 @@ Resume:	MediaPlayer-SettingsWindow		สรุป:
 Duration	MediaPlayer-InfoWin		ระยะเวลา
 Import Entries	MediaPlayer-ImportPLItemsCmd		นำเข้าทั้งหมด
 Open network stream	MediaPlayer-Main		เปิดเครือข่ายสตรีม
-Move file to Trash	MediaPlayer-PlaylistWindow		ย้ายไฟล์ไปถังขยะ
 Open file…	MediaPlayer-Main		เปิดไฟล์
 Scale controls in full screen mode	MediaPlayer-SettingsWindow		ปรับการควบคุมในโหมดเต็มหน้าจอ
 View options	MediaPlayer-SettingsWindow		ตัวเลือกในการดู

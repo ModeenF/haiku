@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2020, Haiku, Inc. All Rights Reserved.
+ * Copyright 2007-2024, Haiku, Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  */
 #ifndef _BE_BUILD_H
@@ -32,9 +32,15 @@
 #define B_HAIKU_VERSION_1_PRE_BETA_2	0x00000501
 #define B_HAIKU_VERSION_1_BETA_2		0x00000600
 #define B_HAIKU_VERSION_1_PRE_BETA_3	0x00000601
+#define B_HAIKU_VERSION_1_BETA_3		0x00000700
+#define B_HAIKU_VERSION_1_PRE_BETA_4	0x00000701
+#define B_HAIKU_VERSION_1_BETA_4		0x00000800
+#define B_HAIKU_VERSION_1_PRE_BETA_5	0x00000801
+#define B_HAIKU_VERSION_1_BETA_5		0x00000900
+#define B_HAIKU_VERSION_1_PRE_BETA_6	0x00000901
 #define B_HAIKU_VERSION_1				0x00010000
 
-#define B_HAIKU_VERSION					B_HAIKU_VERSION_1_PRE_BETA_3
+#define B_HAIKU_VERSION					B_HAIKU_VERSION_1_PRE_BETA_6
 
 /* Haiku ABI */
 #define B_HAIKU_ABI_MAJOR				0xffff0000
@@ -49,7 +55,7 @@
 
 #if __GNUC__ == 2
 #	define B_HAIKU_ABI					B_HAIKU_ABI_GCC_2_HAIKU
-#elif (__GNUC__ >= 4 && __GNUC__ <= 10) || defined(__TINYC__)
+#elif (__GNUC__ >= 4 && __GNUC__ <= 15) || defined(__TINYC__)
 #	define B_HAIKU_ABI					B_HAIKU_ABI_GCC_4
 #else
 #	error Unsupported compiler!
@@ -80,12 +86,21 @@
 #define _PACKED __attribute__((packed))
 #define _PRINTFLIKE(_format_, _args_) \
 	__attribute__((format(__printf__, _format_, _args_)))
+
 #if __GNUC__ >= 4
+# define _ALIGNED_BY_ARG(_no_) __attribute__((alloc_align(_no_)))
 # define _EXPORT __attribute__((visibility("default")))
+# define _DEPRECATED __attribute__((__deprecated__))
 #else
+# define _ALIGNED_BY_ARG(_no_)
 # define _EXPORT
+# define _DEPRECATED
 #endif
 #define _IMPORT
+
+#ifndef __has_builtin
+#define __has_builtin(x) 0
+#endif
 
 #define B_DEFINE_SYMBOL_VERSION(function, versionedSymbol)	\
 	__asm__(".symver " function "," versionedSymbol)

@@ -22,8 +22,15 @@
 #include "efi_platform.h"
 
 
-#undef BOOT_GDT_SEGMENT_COUNT
-#define BOOT_GDT_SEGMENT_COUNT  (USER_DATA_SEGMENT + 1)
+//#define TRACE_MMU
+#ifdef TRACE_MMU
+#	define TRACE(x...) dprintf(x)
+#else
+#	define TRACE(x...) ;
+#endif
+
+
+//#define TRACE_MEMORY_MAP
 
 
 extern uint64 gLongGDT;
@@ -34,6 +41,11 @@ segment_descriptor gBootGDT[BOOT_GDT_SEGMENT_COUNT];
 static void
 long_gdt_init()
 {
+	STATIC_ASSERT(BOOT_GDT_SEGMENT_COUNT > KERNEL_CODE_SEGMENT
+		&& BOOT_GDT_SEGMENT_COUNT > KERNEL_DATA_SEGMENT
+		&& BOOT_GDT_SEGMENT_COUNT > USER_CODE_SEGMENT
+		&& BOOT_GDT_SEGMENT_COUNT > USER_DATA_SEGMENT);
+
 	clear_segment_descriptor(&gBootGDT[0]);
 
 	// Set up code/data segments (TSS segments set up later in the kernel).
@@ -141,10 +153,34 @@ arch_mmu_post_efi_setup(size_t memory_map_size,
 		gKernelArgs.num_virtual_allocated_ranges);
 
 	// Switch EFI to virtual mode, using the kernel pmap.
-	// Something involving ConvertPointer might need to be done after this?
-	// http://wiki.phoenix.com/wiki/index.php/EFI_RUNTIME_SERVICES
 	kRuntimeServices->SetVirtualAddressMap(memory_map_size, descriptor_size,
 		descriptor_version, memory_map);
+
+#ifdef TRACE_MEMORY_MAP
+	dprintf("phys memory ranges:\n");
+	for (uint32_t i = 0; i < gKernelArgs.num_physical_memory_ranges; i++) {
+		uint64 start = gKernelArgs.physical_memory_range[i].start;
+		uint64 size = gKernelArgs.physical_memory_range[i].size;
+		dprintf("    0x%08" B_PRIx64 "-0x%08" B_PRIx64 ", length 0x%08" B_PRIx64 "\n",
+			start, start + size, size);
+	}
+
+	dprintf("allocated phys memory ranges:\n");
+	for (uint32_t i = 0; i < gKernelArgs.num_physical_allocated_ranges; i++) {
+		uint64 start = gKernelArgs.physical_allocated_range[i].start;
+		uint64 size = gKernelArgs.physical_allocated_range[i].size;
+		dprintf("    0x%08" B_PRIx64 "-0x%08" B_PRIx64 ", length 0x%08" B_PRIx64 "\n",
+			start, start + size, size);
+	}
+
+	dprintf("allocated virt memory ranges:\n");
+	for (uint32_t i = 0; i < gKernelArgs.num_virtual_allocated_ranges; i++) {
+		uint64 start = gKernelArgs.virtual_allocated_range[i].start;
+		uint64 size = gKernelArgs.virtual_allocated_range[i].size;
+		dprintf("    0x%08" B_PRIx64 "-0x%08" B_PRIx64 ", length 0x%08" B_PRIx64 "\n",
+			start, start + size, size);
+	}
+#endif
 
 	// Important.  Make sure supervisor threads can fault on read only pages...
 	asm("mov %%rax, %%cr0" : : "a" ((1 << 31) | (1 << 16) | (1 << 5) | 1));
@@ -158,14 +194,15 @@ arch_mmu_generate_post_efi_page_tables(size_t memory_map_size,
 	uint32_t descriptor_version)
 {
 	// Generate page tables, matching bios_ia32/long.cpp.
-	uint64_t *pml4;
 	uint64_t *pdpt;
 	uint64_t *pageDir;
 	uint64_t *pageTable;
 
 	// Allocate the top level PML4.
-	pml4 = NULL;
-	if (platform_allocate_region((void**)&pml4, B_PAGE_SIZE, 0, false) != B_OK)
+	// (It needs to be below 4GB, as phys_pgdr is a uint32,
+	// and the SMP trampoline loads it in 32-bit mode.)
+	uint64_t *pml4 = NULL;
+	if (platform_allocate_region_below((void**)&pml4, B_PAGE_SIZE, UINT32_MAX) != B_OK)
 		panic("Failed to allocate PML4.");
 	gKernelArgs.arch_args.phys_pgdir = (uint32_t)(addr_t)pml4;
 	memset(pml4, 0, B_PAGE_SIZE);
@@ -173,11 +210,11 @@ arch_mmu_generate_post_efi_page_tables(size_t memory_map_size,
 		&gKernelArgs.arch_args.vir_pgdir);
 
 	// Store the virtual memory usage information.
-	gKernelArgs.virtual_allocated_range[0].start = KERNEL_LOAD_BASE_64_BIT;
+	gKernelArgs.virtual_allocated_range[0].start = KERNEL_LOAD_BASE;
 	gKernelArgs.virtual_allocated_range[0].size
-		= get_current_virtual_address() - KERNEL_LOAD_BASE_64_BIT;
+		= get_current_virtual_address() - KERNEL_LOAD_BASE;
 	gKernelArgs.num_virtual_allocated_ranges = 1;
-	gKernelArgs.arch_args.virtual_end = ROUNDUP(KERNEL_LOAD_BASE_64_BIT
+	gKernelArgs.arch_args.virtual_end = ROUNDUP(KERNEL_LOAD_BASE
 		+ gKernelArgs.virtual_allocated_range[0].size, 0x200000);
 
 	// Find the highest physical memory address. We map all physical memory
@@ -187,8 +224,23 @@ arch_mmu_generate_post_efi_page_tables(size_t memory_map_size,
 	for (size_t i = 0; i < memory_map_size / descriptor_size; ++i) {
 		efi_memory_descriptor *entry
 			= (efi_memory_descriptor *)((addr_t)memory_map + i * descriptor_size);
-		maxAddress = std::max(maxAddress,
-				      entry->PhysicalStart + entry->NumberOfPages * 4096);
+		switch (entry->Type) {
+		case EfiLoaderCode:
+		case EfiLoaderData:
+		case EfiBootServicesCode:
+		case EfiBootServicesData:
+		case EfiConventionalMemory:
+		case EfiRuntimeServicesCode:
+		case EfiRuntimeServicesData:
+		case EfiPersistentMemory:
+		case EfiACPIReclaimMemory:
+		case EfiACPIMemoryNVS:
+			maxAddress = std::max(maxAddress,
+					      entry->PhysicalStart + entry->NumberOfPages * 4096);
+			break;
+		default:
+			break;
+		}
 	}
 
 	// Want to map at least 4GB, there may be stuff other than usable RAM that
@@ -245,7 +297,7 @@ arch_mmu_generate_post_efi_page_tables(size_t memory_map_size,
 		// Get the physical address to map.
 		void *phys;
 		if (platform_kernel_address_to_bootloader_address(
-			KERNEL_LOAD_BASE_64_BIT + (i * B_PAGE_SIZE), &phys) != B_OK) {
+			KERNEL_LOAD_BASE + (i * B_PAGE_SIZE), &phys) != B_OK) {
 			continue;
 		}
 

@@ -34,11 +34,26 @@ Object::~Object()
 
 
 void
-Object::PutUSBID()
+Object::PutUSBID(bool waitForIdle)
 {
-	if (fUSBID != UINT32_MAX)
+	if (fUSBID != UINT32_MAX) {
 		fStack->PutUSBID(this);
-	fUSBID = UINT32_MAX;
+		fUSBID = UINT32_MAX;
+	}
+
+	if (waitForIdle)
+		WaitForIdle();
+}
+
+
+void
+Object::WaitForIdle()
+{
+	int32 retries = 20;
+	while (CountReferences() != 1 && retries--)
+		snooze(100);
+	if (retries <= 0)
+		panic("USB object did not become idle!");
 }
 
 

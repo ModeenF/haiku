@@ -7,7 +7,6 @@
 #include <kdevice_manager.h>
 
 #include <new>
-#include <set>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,8 +20,9 @@
 #include <device_manager_defs.h>
 #include <fs/devfs.h>
 #include <fs/KPath.h>
-#include <kernel.h>
 #include <generic_syscall.h>
+#include <kernel.h>
+#include <kmodule.h>
 #include <util/AutoLock.h>
 #include <util/DoublyLinkedList.h>
 #include <util/Stack.h>
@@ -30,7 +30,6 @@
 #include "AbstractModuleDevice.h"
 #include "devfs_private.h"
 #include "id_generator.h"
-#include "IORequest.h"
 #include "io_resources.h"
 #include "IOSchedulerRoster.h"
 
@@ -90,6 +89,8 @@ public:
 	virtual	void			UninitDevice();
 
 	virtual void			Removed();
+
+	virtual	status_t		Control(void* cookie, int32 op, void* buffer, size_t length);
 
 			void			SetRemovedFromParent(bool removed)
 								{ fRemovedFromParent = removed; }
@@ -285,90 +286,6 @@ dump_attribute(device_attr* attr, int32 level)
 			kprintf("raw data");
 	}
 	kprintf("\n");
-}
-
-
-static int
-dump_io_scheduler(int argc, char** argv)
-{
-	if (argc != 2) {
-		print_debugger_command_usage(argv[0]);
-		return 0;
-	}
-
-	IOScheduler* scheduler = (IOScheduler*)parse_expression(argv[1]);
-	scheduler->Dump();
-	return 0;
-}
-
-
-static int
-dump_io_request_owner(int argc, char** argv)
-{
-	if (argc != 2) {
-		print_debugger_command_usage(argv[0]);
-		return 0;
-	}
-
-	IORequestOwner* owner = (IORequestOwner*)parse_expression(argv[1]);
-	owner->Dump();
-	return 0;
-}
-
-
-static int
-dump_io_request(int argc, char** argv)
-{
-	if (argc != 2 || !strcmp(argv[1], "--help")) {
-		kprintf("usage: %s <ptr-to-io-request>\n", argv[0]);
-		return 0;
-	}
-
-	IORequest* request = (IORequest*)parse_expression(argv[1]);
-	request->Dump();
-	return 0;
-}
-
-
-static int
-dump_io_operation(int argc, char** argv)
-{
-	if (argc != 2 || !strcmp(argv[1], "--help")) {
-		kprintf("usage: %s <ptr-to-io-operation>\n", argv[0]);
-		return 0;
-	}
-
-	IOOperation* operation = (IOOperation*)parse_expression(argv[1]);
-	operation->Dump();
-	return 0;
-}
-
-
-static int
-dump_io_buffer(int argc, char** argv)
-{
-	if (argc != 2 || !strcmp(argv[1], "--help")) {
-		kprintf("usage: %s <ptr-to-io-buffer>\n", argv[0]);
-		return 0;
-	}
-
-	IOBuffer* buffer = (IOBuffer*)parse_expression(argv[1]);
-	buffer->Dump();
-	return 0;
-}
-
-
-static int
-dump_dma_buffer(int argc, char** argv)
-{
-	if (argc != 2 || !strcmp(argv[1], "--help")) {
-		kprintf("usage: %s <ptr-to-dma-buffer>\n", argv[0]);
-		return 0;
-	}
-
-	DMABuffer* buffer = (DMABuffer*)parse_expression(argv[1]);
-	buffer->Dump();
-	return 0;
 }
 
 
@@ -753,6 +670,29 @@ publish_device(device_node *node, const char *path, const char *moduleName)
 	}
 
 	node->AddDevice(device);
+
+	device_attr_private* attr;
+
+	attr = new(std::nothrow) device_attr_private();
+	if (attr != NULL) {
+		char buf[256];
+		sprintf(buf, "dev/%" B_PRIdINO "/path", device->ID());
+		attr->name = strdup(buf);
+		attr->type = B_STRING_TYPE;
+		attr->value.string = strdup(path);
+		node->Attributes().Add(attr);
+	}
+
+	attr = new(std::nothrow) device_attr_private();
+	if (attr != NULL) {
+		char buf[256];
+		sprintf(buf, "dev/%" B_PRIdINO "/driver", device->ID());
+		attr->name = strdup(buf);
+		attr->type = B_STRING_TYPE;
+		attr->value.string = strdup(moduleName);
+		node->Attributes().Add(attr);
+	}
+
 	return B_OK;
 }
 
@@ -1228,6 +1168,28 @@ Device::Removed()
 }
 
 
+status_t
+Device::Control(void* _cookie, int32 op, void* buffer, size_t length)
+{
+	switch (op) {
+		case B_GET_DRIVER_FOR_DEVICE:
+		{
+			char* path = NULL;
+			status_t status = module_get_path(ModuleName(), &path);
+			if (status != B_OK)
+				return status;
+			if (length != 0 && length <= strlen(path))
+				return ERANGE;
+			status = user_strlcpy(static_cast<char*>(buffer), path, length);
+			free(path);
+			return status;
+		}
+		default:
+			return AbstractModuleDevice::Control(_cookie, op, buffer, length);;
+	}
+}
+
+
 //	#pragma mark - device_node
 
 
@@ -1257,6 +1219,14 @@ device_node::device_node(const char* moduleName, const device_attr* attrs)
 
 		fAttributes.Add(attr);
 		attrs++;
+	}
+
+	device_attr_private* attr = new(std::nothrow) device_attr_private();
+	if (attr != NULL) {
+		attr->name = strdup("device/driver");
+		attr->type = B_STRING_TYPE;
+		attr->value.string = strdup(fModuleName);
+		fAttributes.Add(attr);
 	}
 
 	get_attr_uint32(this, B_DEVICE_FLAGS, &fFlags, false);
@@ -1423,13 +1393,13 @@ device_node::AddChild(device_node* node)
 	device_node* before = NULL;
 	while (iterator.HasNext()) {
 		device_node* child = iterator.Next();
-		if (child->Priority() <= priority) {
+		if (child->Priority() < priority) {
 			before = child;
 			break;
 		}
 	}
 
-	fChildren.Insert(before, node);
+	fChildren.InsertBefore(before, node);
 }
 
 
@@ -1589,13 +1559,10 @@ device_node::_GetNextDriverPath(void*& cookie, KPath& _path)
 		bool generic = false;
 		uint16 type = 0;
 		uint16 subType = 0;
-		uint16 interface = 0;
 		if (get_attr_uint16(this, B_DEVICE_TYPE, &type, false) != B_OK
 			|| get_attr_uint16(this, B_DEVICE_SUB_TYPE, &subType, false)
 					!= B_OK)
 			generic = true;
-
-		get_attr_uint16(this, B_DEVICE_INTERFACE, &interface, false);
 
 		// TODO: maybe make this extendible via settings file?
 		switch (type) {
@@ -1642,12 +1609,14 @@ device_node::_GetNextDriverPath(void*& cookie, KPath& _path)
 				break;
 			case PCI_display:
 				_AddPath(*stack, "drivers", "graphics");
+				_AddPath(*stack, "busses", "virtio");
 				break;
 			case PCI_multimedia:
 				switch (subType) {
 					case PCI_audio:
 					case PCI_hd_audio:
 						_AddPath(*stack, "drivers", "audio");
+						_AddPath(*stack, "busses", "virtio");
 						break;
 					case PCI_video:
 						_AddPath(*stack, "drivers", "video");
@@ -1671,10 +1640,21 @@ device_node::_GetNextDriverPath(void*& cookie, KPath& _path)
 						break;
 				}
 				break;
+			case PCI_encryption_decryption:
+				switch (subType) {
+					case PCI_encryption_decryption_other:
+						_AddPath(*stack, "busses", "random");
+						break;
+					default:
+						_AddPath(*stack, "drivers");
+						break;
+				}
+				break;
 			case PCI_data_acquisition:
 				switch (subType) {
 					case PCI_data_acquisition_other:
 						_AddPath(*stack, "busses", "i2c");
+						_AddPath(*stack, "drivers");
 						break;
 					default:
 						_AddPath(*stack, "drivers");
@@ -1686,8 +1666,8 @@ device_node::_GetNextDriverPath(void*& cookie, KPath& _path)
 					_AddPath(*stack, "busses/pci");
 					_AddPath(*stack, "bus_managers");
 				} else if (!generic) {
-					_AddPath(*stack, "busses", "virtio");
 					_AddPath(*stack, "drivers");
+					_AddPath(*stack, "busses/virtio");
 				} else {
 					// For generic drivers, we only allow busses when the
 					// request is more specified
@@ -1697,10 +1677,18 @@ device_node::_GetNextDriverPath(void*& cookie, KPath& _path)
 							|| !strcmp(sGenericContextPath, "bus"))) {
 						_AddPath(*stack, "busses");
 					}
+					const char* bus;
+					if (get_attr_string(this, B_DEVICE_BUS, &bus, false) == B_OK) {
+						if (strcmp(bus, "virtio") == 0)
+							_AddPath(*stack, "busses/scsi");
+					}
 					_AddPath(*stack, "drivers", sGenericContextPath);
 					_AddPath(*stack, "busses/i2c");
-					_AddPath(*stack, "busses/scsi");
 					_AddPath(*stack, "busses/random");
+					_AddPath(*stack, "busses/virtio");
+					_AddPath(*stack, "bus_managers/pci");
+					_AddPath(*stack, "busses/pci");
+					_AddPath(*stack, "busses/mmc");
 				}
 				break;
 		}
@@ -1817,7 +1805,14 @@ device_node::_AlwaysRegisterDynamic()
 	get_attr_uint16(this, B_DEVICE_TYPE, &type, false);
 	get_attr_uint16(this, B_DEVICE_SUB_TYPE, &subType, false);
 
-	return type == PCI_serial_bus || type == PCI_bridge || type == 0;
+	switch (type) {
+		case PCI_serial_bus:
+		case PCI_bridge:
+		case PCI_encryption_decryption:
+		case 0:
+			return true;
+	}
+	return false;
 		// TODO: we may want to be a bit more specific in the future
 }
 
@@ -2169,6 +2164,23 @@ device_node::AddDevice(Device* device)
 void
 device_node::RemoveDevice(Device* device)
 {
+	char attrName[256];
+	device_attr_private* attr;
+
+	sprintf(attrName, "dev/%" B_PRIdINO "/path", device->ID());
+	attr = find_attr(this, attrName, false, B_STRING_TYPE);
+	if (attr != NULL) {
+		fAttributes.Remove(attr);
+		delete attr;
+	}
+
+	sprintf(attrName, "dev/%" B_PRIdINO "/driver", device->ID());
+	attr = find_attr(this, attrName, false, B_STRING_TYPE);
+	if (attr != NULL) {
+		fAttributes.Remove(attr);
+		delete attr;
+	}
+
 	fDevices.Remove(device);
 }
 
@@ -2290,10 +2302,10 @@ static void
 init_node_tree(void)
 {
 	device_attr attrs[] = {
-		{B_DEVICE_PRETTY_NAME, B_STRING_TYPE, {string: "Devices Root"}},
-		{B_DEVICE_BUS, B_STRING_TYPE, {string: "root"}},
+		{B_DEVICE_PRETTY_NAME, B_STRING_TYPE, {.string = "Devices Root"}},
+		{B_DEVICE_BUS, B_STRING_TYPE, {.string = "root"}},
 		{B_DEVICE_FLAGS, B_UINT32_TYPE,
-			{ui32: B_FIND_MULTIPLE_CHILDREN | B_KEEP_DRIVER_LOADED }},
+			{.ui32 = B_FIND_MULTIPLE_CHILDREN | B_KEEP_DRIVER_LOADED }},
 		{NULL}
 	};
 
@@ -2304,9 +2316,9 @@ init_node_tree(void)
 	}
 
 	device_attr genericAttrs[] = {
-		{B_DEVICE_PRETTY_NAME, B_STRING_TYPE, {string: "Generic"}},
-		{B_DEVICE_BUS, B_STRING_TYPE, {string: "generic"}},
-		{B_DEVICE_FLAGS, B_UINT32_TYPE, {ui32: B_FIND_MULTIPLE_CHILDREN
+		{B_DEVICE_PRETTY_NAME, B_STRING_TYPE, {.string = "Generic"}},
+		{B_DEVICE_BUS, B_STRING_TYPE, {.string = "generic"}},
+		{B_DEVICE_FLAGS, B_UINT32_TYPE, {.ui32 = B_FIND_MULTIPLE_CHILDREN
 			| B_KEEP_DRIVER_LOADED | B_FIND_CHILD_ON_DEMAND}},
 		{NULL}
 	};
@@ -2370,19 +2382,6 @@ device_manager_init(struct kernel_args* args)
 
 	add_debugger_command("dm_tree", &dump_device_nodes,
 		"dump device node tree");
-	add_debugger_command_etc("io_scheduler", &dump_io_scheduler,
-		"Dump an I/O scheduler",
-		"<scheduler>\n"
-		"Dumps I/O scheduler at address <scheduler>.\n", 0);
-	add_debugger_command_etc("io_request_owner", &dump_io_request_owner,
-		"Dump an I/O request owner",
-		"<owner>\n"
-		"Dumps I/O request owner at address <owner>.\n", 0);
-	add_debugger_command("io_request", &dump_io_request, "dump an I/O request");
-	add_debugger_command("io_operation", &dump_io_operation,
-		"dump an I/O operation");
-	add_debugger_command("io_buffer", &dump_io_buffer, "dump an I/O buffer");
-	add_debugger_command("dma_buffer", &dump_dma_buffer, "dump a DMA buffer");
 
 	init_node_tree();
 
@@ -2395,4 +2394,11 @@ device_manager_init_post_modules(struct kernel_args* args)
 {
 	RecursiveLocker _(sLock);
 	return sRootNode->Reprobe();
+}
+
+
+recursive_lock*
+device_manager_get_lock()
+{
+	return &sLock;
 }

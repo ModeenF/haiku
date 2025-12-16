@@ -47,6 +47,7 @@ SEARCH_SOURCE += [ FDirName $(appServerDir) decorator ] ;
 SEARCH_SOURCE += [ FDirName $(appServerDir) drawing ] ;
 SEARCH_SOURCE += [ FDirName $(appServerDir) drawing Painter ] ;
 SEARCH_SOURCE += [ FDirName $(appServerDir) drawing interface remote ] ;
+SEARCH_SOURCE += [ FDirName $(appServerDir) drawing interface virtual ] ;
 SEARCH_SOURCE += [ FDirName $(appServerDir) font ] ;
 
 SharedLibrary libhwinterface.so :
@@ -54,7 +55,6 @@ SharedLibrary libhwinterface.so :
 	DWindowBuffer.cpp
 	HWInterface.cpp
 	RGBColor.cpp
-	UpdateQueue.cpp
 
 	NetReceiver.cpp
 	NetSender.cpp
@@ -108,12 +108,14 @@ local decorator_src =
 	;
 
 local font_src =
+	AppFontManager.cpp
 	FontCache.cpp
 	FontCacheEntry.cpp
 	FontEngine.cpp
 	FontFamily.cpp
 	FontManager.cpp
 	FontStyle.cpp
+	GlobalFontManager.cpp
 	;
 
 # These files are shared between the test_app_server and the libhwintreface, so
@@ -212,7 +214,7 @@ Includes [ FGristFiles AppServer.cpp BitmapManager.cpp Canvas.cpp
 
 AddResources test_app_server : test_app_server.rdef ;
 
-Server test_app_server :
+Application test_app_server :
 
 	# drawing
 	drawing_support.cpp
@@ -262,6 +264,7 @@ SubInclude HAIKU_TOP src tests servers app font_spacing ;
 SubInclude HAIKU_TOP src tests servers app gradients ;
 SubInclude HAIKU_TOP src tests servers app hide_and_show ;
 SubInclude HAIKU_TOP src tests servers app idle_test ;
+SubInclude HAIKU_TOP src tests servers app inverse_clipping ;
 SubInclude HAIKU_TOP src tests servers app lagging_get_mouse ;
 SubInclude HAIKU_TOP src tests servers app lock_focus ;
 SubInclude HAIKU_TOP src tests servers app look_and_feel ;

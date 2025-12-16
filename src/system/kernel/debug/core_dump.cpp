@@ -26,6 +26,7 @@
 #include <thread.h>
 #include <user_debugger.h>
 #include <util/AutoLock.h>
+#include <util/ThreadAutoLock.h>
 #include <util/DoublyLinkedList.h>
 #include <vm/vm.h>
 #include <vm/VMArea.h>
@@ -776,6 +777,11 @@ struct CoreDumper {
 
 	status_t Dump(const char* path, bool killTeam)
 	{
+		// gcc thinks fTeam may be null in atomic_or
+        // and warn which causes error on some configs
+		if (fTeam == NULL)
+			return B_ERROR;
+
 		// the path must be absolute
 		if (path[0] != '/')
 			return B_BAD_VALUE;
@@ -871,8 +877,8 @@ private:
 	{
 		int32 count = 0;
 
-		for (Thread* thread = fTeam->thread_list; thread != NULL;
-				thread = thread->team_next) {
+		for (Thread* thread = fTeam->thread_list.First(); thread != NULL;
+				thread = fTeam->thread_list.GetNext(thread)) {
 			count++;
 			if (setFlag) {
 				atomic_or(&thread->flags, THREAD_FLAGS_TRAP_FOR_CORE_DUMP);
@@ -901,8 +907,8 @@ private:
 			fThreadCount = 0;
 			int32 missing = 0;
 
-			for (Thread* thread = fTeam->thread_list; thread != NULL;
-					thread = thread->team_next) {
+			for (Thread* thread = fTeam->thread_list.First(); thread != NULL;
+					thread = fTeam->thread_list.GetNext(thread)) {
 				fThreadCount++;
 				ThreadState* state = fPreAllocatedThreadStates.RemoveHead();
 				if (state != NULL) {
@@ -917,7 +923,7 @@ private:
 
 			teamLocker.Unlock();
 
-			fPreAllocatedThreadStates.MoveFrom(&fThreadStates);
+			fPreAllocatedThreadStates.TakeFrom(&fThreadStates);
 			if (!_PreAllocateThreadStates(missing))
 				return false;
 

@@ -15,7 +15,7 @@
 #include <lock.h>
 #include <util/DoublyLinkedList.h>
 #include <util/SinglyLinkedList.h>
-#include <util/OpenHashTable.h>
+#include <util/AVLTree.h>
 #include <vm/vm_types.h>
 
 
@@ -88,7 +88,12 @@ struct VMPageWiringInfo {
 };
 
 
-struct VMArea {
+struct VMAreasTreeNode {
+	AVLTreeNode tree_node;
+};
+
+
+struct VMArea : private VMAreasTreeNode {
 public:
 	enum {
 		// AddWaiterIfWired() flags
@@ -100,6 +105,7 @@ public:
 	area_id					id;
 	char					name[B_OS_NAME_LENGTH];
 	uint32					protection;
+	uint32					protection_max;
 	uint16					wiring;
 
 private:
@@ -107,16 +113,19 @@ private:
 
 public:
 	VMCache*				cache;
-	vint32					no_cache_change;
 	off_t					cache_offset;
 	uint32					cache_type;
 	VMAreaMappings			mappings;
 	uint8*					page_protections;
 
 	struct VMAddressSpace*	address_space;
-	struct VMArea*			cache_next;
-	struct VMArea*			cache_prev;
-	struct VMArea*			hash_next;
+
+private:
+	DoublyLinkedListLink<VMArea> fCacheLink;
+
+public:
+	typedef DoublyLinkedList<VMArea,
+		DoublyLinkedListMemberGetLink<VMArea, &VMArea::fCacheLink> > CacheList;
 
 			addr_t				Base() const	{ return fBase; }
 			size_t				Size() const	{ return fSize; }
@@ -148,7 +157,7 @@ protected:
 			status_t			Init(const char* name, uint32 allocationFlags);
 
 protected:
-			friend struct VMAddressSpace;
+			friend struct VMAreasTreeDefinition;
 			friend struct VMKernelAddressSpace;
 			friend struct VMUserAddressSpace;
 
@@ -163,35 +172,42 @@ protected:
 };
 
 
-struct VMAreaHashDefinition {
-	typedef area_id		KeyType;
-	typedef VMArea		ValueType;
+struct VMAreasTreeDefinition {
+	typedef area_id		Key;
+	typedef VMArea		Value;
 
-	size_t HashKey(area_id key) const
+	AVLTreeNode* GetAVLTreeNode(VMArea* value) const
 	{
-		return key;
+		return &value->tree_node;
 	}
 
-	size_t Hash(const VMArea* value) const
+	VMArea* GetValue(AVLTreeNode* node) const
 	{
-		return HashKey(value->id);
+		const addr_t vmTreeNodeAddr = (addr_t)node
+			- offsetof(VMAreasTreeNode, tree_node);
+		VMAreasTreeNode* vmTreeNode =
+			reinterpret_cast<VMAreasTreeNode*>(vmTreeNodeAddr);
+		return static_cast<VMArea*>(vmTreeNode);
 	}
 
-	bool Compare(area_id key, const VMArea* value) const
+	int Compare(area_id key, const VMArea* value) const
 	{
-		return value->id == key;
+		const area_id valueId = value->id;
+		if (valueId == key)
+			return 0;
+		return key < valueId ? -1 : 1;
 	}
 
-	VMArea*& GetLink(VMArea* value) const
+	int Compare(const VMArea* a, const VMArea* b) const
 	{
-		return value->hash_next;
+		return Compare(a->id, b);
 	}
 };
 
-typedef BOpenHashTable<VMAreaHashDefinition> VMAreaHashTable;
+typedef AVLTree<VMAreasTreeDefinition> VMAreasTree;
 
 
-struct VMAreaHash {
+struct VMAreas {
 	static	status_t			Init();
 
 	static	status_t			ReadLock()
@@ -204,18 +220,18 @@ struct VMAreaHash {
 									{ rw_lock_write_unlock(&sLock); }
 
 	static	VMArea*				LookupLocked(area_id id)
-									{ return sTable.Lookup(id); }
+									{ return sTree.Find(id); }
 	static	VMArea*				Lookup(area_id id);
 	static	area_id				Find(const char* name);
-	static	void				Insert(VMArea* area);
+	static	status_t			Insert(VMArea* area);
 	static	void				Remove(VMArea* area);
 
-	static	VMAreaHashTable::Iterator GetIterator()
-									{ return sTable.GetIterator(); }
+	static	VMAreasTree::Iterator GetIterator()
+									{ return sTree.GetIterator(); }
 
 private:
 	static	rw_lock				sLock;
-	static	VMAreaHashTable		sTable;
+	static	VMAreasTree			sTree;
 };
 
 

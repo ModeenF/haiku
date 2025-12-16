@@ -1,6 +1,6 @@
 /*
  * Copyright 2014, Henry Harrington, henry.harrington@gmail.com.
- * Copyright 2019-2020, Haiku, Inc. All rights reserved.
+ * Copyright 2019-2022, Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  */
 #ifndef MMU_H
@@ -36,14 +36,21 @@ extern void mmu_init();
 
 extern phys_addr_t mmu_allocate_page();
 
+bool mmu_next_region(void** cookie, addr_t* vaddr, phys_addr_t* paddr, size_t* size);
+
 extern addr_t mmu_map_physical_memory(addr_t physicalAddress, size_t size,
 	uint32 flags);
+
+extern status_t platform_assign_kernel_address_for_region(void *address, addr_t assign);
 
 extern status_t platform_kernel_address_to_bootloader_address(addr_t address,
 	void **_result);
 
 extern status_t platform_bootloader_address_to_kernel_address(void *address,
 	addr_t *_result);
+
+extern status_t platform_allocate_region_below(void **_address,
+	size_t size, phys_addr_t maxAddress);
 
 #ifdef __cplusplus
 }

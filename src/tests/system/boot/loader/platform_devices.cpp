@@ -6,6 +6,7 @@
 
 #include "Handle.h"
 
+#include <boot/partitions.h>
 #include <boot/platform.h>
 #include <util/kernel_cpp.h>
 
@@ -154,17 +155,16 @@ platform_add_boot_device(struct stage2_args *args, NodeList *devicesList)
 
 
 status_t
-platform_get_boot_partition(struct stage2_args *args, Node *device,
-	NodeList *list, boot::Partition **_partition)
+platform_get_boot_partitions(struct stage2_args* args, Node* bootDevice,
+	NodeList *list, NodeList *partitionList)
 {
 	NodeIterator iterator = list->GetIterator();
 	boot::Partition *partition = NULL;
 	while ((partition = (boot::Partition *)iterator.Next()) != NULL) {
-		// just take the first partition
-		*_partition = partition;
+		// ToDo: just take the first partition for now
+		partitionList->Insert(partition);
 		return B_OK;
 	}
-
 	return B_ENTRY_NOT_FOUND;
 }
 
@@ -217,4 +217,10 @@ status_t
 platform_register_boot_device(Node *device)
 {
 	return B_OK;
+}
+
+
+void
+platform_cleanup_devices()
+{
 }

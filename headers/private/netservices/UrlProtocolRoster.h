@@ -10,13 +10,14 @@
 #include <stdlib.h>
 
 
+class BDataIO;
 class BUrl;
 
-#ifndef LIBNETAPI_DEPRECATED
+
 namespace BPrivate {
 
 namespace Network {
-#endif
+
 
 class BUrlContext;
 class BUrlProtocolListener;
@@ -24,15 +25,14 @@ class BUrlRequest;
 
 class BUrlProtocolRoster {
 public:
-    static  BUrlRequest*    MakeRequest(const BUrl& url,
-		                        BUrlProtocolListener* listener = NULL,
-                                BUrlContext* context = NULL);
+	static	BUrlRequest*	MakeRequest(const BUrl& url, BDataIO* output,
+								BUrlProtocolListener* listener = NULL,
+								BUrlContext* context = NULL);
 };
 
-#ifndef LIBNETAPI_DEPRECATED
+
 } // namespace Network
 
 } // namespace BPrivate
-#endif
 
-#endif
+#endif // _B_URL_ROSTER_H_

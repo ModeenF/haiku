@@ -194,7 +194,7 @@ posix_spawn_file_actions_adddup2(posix_spawn_file_actions_t *_actions,
 }
 
 
-int
+extern "C" int
 posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *_actions,
 	const char *path)
 {
@@ -221,7 +221,7 @@ posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *_actions,
 }
 
 
-int
+extern "C" int
 posix_spawn_file_actions_addfchdir_np(posix_spawn_file_actions_t *_actions,
 	int fildes)
 {
@@ -299,7 +299,8 @@ posix_spawnattr_setflags(posix_spawnattr_t *_attr, short flags)
 		return EINVAL;
 
 	if ((flags & ~(POSIX_SPAWN_RESETIDS | POSIX_SPAWN_SETPGROUP
-			| POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK)) != 0) {
+			| POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK
+			| POSIX_SPAWN_SETSID)) != 0) {
 		return EINVAL;
 	}
 
@@ -593,7 +594,8 @@ do_posix_spawn(pid_t *_pid, const char *path,
 	const posix_spawnattr_t *attrp, char *const argv[], char *const envp[],
 	bool envpath)
 {
-	if (actions == NULL && attrp == NULL) {
+	if ((actions == NULL || (*actions)->count == 0)
+			&& (attrp == NULL || (*attrp)->flags == 0)) {
 		return spawn_using_load_image(_pid, path, argv, envp, envpath);
 	} else {
 		return spawn_using_fork(_pid, path, actions, attrp, argv, envp,
@@ -620,3 +622,6 @@ posix_spawnp(pid_t *pid, const char *file,
 	return do_posix_spawn(pid, file, file_actions, attrp, argv, envp, true);
 }
 
+
+B_DEFINE_WEAK_ALIAS(posix_spawn_file_actions_addchdir_np, posix_spawn_file_actions_addchdir);
+B_DEFINE_WEAK_ALIAS(posix_spawn_file_actions_addfchdir_np, posix_spawn_file_actions_addfchdir);

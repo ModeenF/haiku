@@ -7,10 +7,11 @@ SubDirHdrs $(HAIKU_TOP) headers private kernel boot platform pxe_ia32 ;
 UsePrivateHeaders [ FDirName kernel disk_device_manager ] ;
 UsePrivateHeaders [ FDirName graphics common ] ;
 UsePrivateHeaders [ FDirName graphics vesa ] ;
+UsePrivateHeaders [ FDirName interface ] ;
 UsePrivateHeaders [ FDirName storage ] ;
 
 {
-	local defines = _BOOT_MODE _PXE_ENV ;
+	local defines = _PXE_ENV _BOOT_PLATFORM_BIOS ;
 
 	defines = [ FDefines $(defines) ] ;
 	SubDirCcFlags $(defines) ;
@@ -33,7 +34,6 @@ local bios_ia32_src =
 	smp.cpp
 	support.S
 	video.cpp
-	hpet.cpp
 	apm.cpp
 	interrupts.cpp
 	interrupts_asm.S

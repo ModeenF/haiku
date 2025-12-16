@@ -1,48 +1,48 @@
-1	ukrainian	x-vnd.Haiku-ActivityMonitor	2601047281
-Teams	DataSource		Команди
+1	ukrainian	x-vnd.Haiku-ActivityMonitor	2467534740
+Teams	DataSource		Процеси
 Semaphores	DataSource		Семафори
 TX	DataSource	Shorter version for Sending	TX
-Block cache memory	DataSource		Блок кеш пам'яті
+Block cache memory	DataSource		Блок кеш-пам'яті
 %lld ms	SettingsWindow		%lld мс
-MiB	DataSource		МБ
-Media nodes	DataSource		Медіа вузли
-Text clipboard	DataSource		Текстовий буфер обміну
+Media nodes	DataSource		Вузли медіа
+Text clipboard	DataSource		Буфер обміну (Text)
 Network send	DataSource		Відправлено по мережі
-Running applications	DataSource		Запущені програми
 Cache	DataSource		Кеш
+Running applications	DataSource		Запущені програми
 CPU usage (combined)	DataSource		Використання СPU (загальне)
 Threads	DataSource		Потоки
 Receiving	DataSource		Отримання
-Remove graph	ActivityView		Вилучити графік
-Swap space	DataSource		Розмір своп-файлу
+Remove graph	ActivityView		Прибрати графік
+Swap space	DataSource		Розмір файлу підкачки
 CPU	DataSource		CPU
 ActivityMonitor	System name		ActivityMonitor
 CPU %d	DataSource		CPU %d
 Update time interval:	SettingsWindow		Інтервал оновлення:
 RX	DataSource	Shorter version for Receiving.	RX
-Settings…	ActivityWindow		Налаштування…
-Block cache	DataSource		Кеш блоку
+Settings…	ActivityWindow		Інтервал…
+Block cache	DataSource		Блок (лінія) кешу
 Memory	DataSource		Пам'ять
 CPU usage	DataSource		Використання CPU
+CPU speed	DataSource		Частота CPU
 Quit	ActivityWindow		Вийти
-Raw clipboard	DataSource		Буфер обміну
+Raw clipboard	DataSource		Буфер обміну (Raw)
 Settings	ActivityWindow		Налаштування
 Used memory	DataSource		Використана пам'ять
-%.1f faults/s	DataSource		%.1f помилок/сек
-Show legend	ActivityView		Показати легенду
-Cached memory	DataSource		Кешована пам'ять
+Show legend	ActivityView		Показати легенду з підписами
+Cached memory	DataSource		Файловий кеш
 CPU %d usage	DataSource		Використання CPU %d
+CPU %d speed	DataSource		Частота CPU %d
 File	ActivityWindow		Файл
 Ports	DataSource		Порти
-Page faults	DataSource		Помилки на сторінці
-Apps	DataSource		Програми
+Page faults	DataSource		Відмови сторінки
 Additional items	ActivityView		Додаткові елементи
+Apps	DataSource		Програми
 Add graph	ActivityWindow		Додати графік
 Sending	DataSource		Відправка
-%.1f MiB	DataSource		%.1f МБ
 Always on top	ActivityWindow		Завжди зверху
 Swap	DataSource		Файл підкачки
 %lld sec.	SettingsWindow		%lld сек.
-P-faults	DataSource		Р-помилки
-Sems	DataSource		Sems
+P-faults	DataSource		Відмови сторінки
+Sems	DataSource		Семафори
 Network receive	DataSource		Отримано по мережі
+%s faults/s	DataSource		%s відмов/с

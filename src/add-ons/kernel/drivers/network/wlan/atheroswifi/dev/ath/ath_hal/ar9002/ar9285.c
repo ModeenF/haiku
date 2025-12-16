@@ -15,8 +15,6 @@
  * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- *
- * $FreeBSD: releng/12.0/sys/dev/ath/ath_hal/ar9002/ar9285.c 326695 2017-12-08 15:57:29Z pfg $
  */
 #include "opt_ah.h"
 
@@ -51,7 +49,6 @@ ar9285GetNoiseFloor(struct ath_hal *ah, int16_t nfarray[])
 	HALDEBUG(ah, HAL_DEBUG_NFCAL,
 	    "NF calibrated [ctl] [chain 0] is %d\n", nf);
 	nfarray[0] = nf;
-
 
 	nf = MS(OS_REG_READ(ah, AR_PHY_EXT_CCA), AR9280_PHY_EXT_MINCCA_PWR);
 	if (nf & 0x100)

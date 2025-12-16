@@ -11,7 +11,9 @@
 #include <Path.h>
 #include <String.h>
 #include <stdio.h>
+
 #include <usb/USB_audio.h>
+#include <usb/USB_cdc.h>
 #include <usb/USB_video.h>
 
 #include "usbspec_private.h"
@@ -20,128 +22,11 @@
 #include "listusb.h"
 
 
-const char*
-ClassName(int classNumber) {
-	switch (classNumber) {
-		case 0:
-			return "Per-interface classes";
-		case USB_AUDIO_DEVICE_CLASS:
-			return "Audio";
-		case 2:
-			return "Communication";
-		case 3:
-			return "HID";
-		case 5:
-			return "Physical";
-		case 6:
-			return "Image";
-		case 7:
-			return "Printer";
-		case 8:
-			return "Mass storage";
-		case 9:
-			return "Hub";
-		case 10:
-			return "CDC-Data";
-		case 11:
-			return "Smart card";
-		case 13:
-			return "Content security";
-		case USB_VIDEO_DEVICE_CLASS:
-			return "Video";
-		case 15:
-			return "Personal Healthcare";
-		case 0xDC:
-			return "Diagnostic device";
-		case 0xE0:
-			return "Wireless controller";
-		case 0xEF:
-			return "Miscellaneous";
-		case 0xFE:
-			return "Application specific";
-		case 0xFF:
-			return "Vendor specific";
-	}
-
-	return "Unknown";
-}
-
-
-const char*
-SubclassName(int classNumber, int subclass)
-{
-	if (classNumber == 0xEF) {
-		if (subclass == 0x02)
-			return " (Common)";
-		if (subclass == 0x04)
-			return " (RNDIS)";
-		if (subclass == 0x05)
-			return " (USB3 Vision)";
-		if (subclass == 0x06)
-			return " (STEP)";
-		if (subclass == 0x07)
-			return " (DVB Command Interface)";
-	}
-
-	if (classNumber == USB_VIDEO_DEVICE_CLASS) {
-		switch (subclass) {
-			case USB_VIDEO_INTERFACE_UNDEFINED_SUBCLASS:
-				return " (Undefined)";
-			case USB_VIDEO_INTERFACE_VIDEOCONTROL_SUBCLASS:
-				return " (Control)";
-			case USB_VIDEO_INTERFACE_VIDEOSTREAMING_SUBCLASS:
-				return " (Streaming)";
-			case USB_VIDEO_INTERFACE_COLLECTION_SUBCLASS:
-				return " (Collection)";
-		}
-	}
-
-	if (classNumber == 0xFE) {
-		if (subclass == 0x01)
-			return " (Firmware Upgrade)";
-		if (subclass == 0x02)
-			return " (IrDA)";
-		if (subclass == 0x03)
-			return " (Test and measurement)";
-	}
-
-	return "";
-}
-
-
-const char*
-ProtocolName(int classNumber, int subclass, int protocol)
-{
-	switch (classNumber) {
-		case 0x09:
-			if (subclass == 0x00)
-			{
-				switch (protocol) {
-					case 0x00:
-						return " (Full speed)";
-					case 0x01:
-						return " (Hi-speed, single TT)";
-					case 0x02:
-						return " (Hi-speed, multiple TT)";
-					case 0x03:
-						return " (Super speed)";
-				}
-			}
-		case 0xE0:
-			if (subclass == 0x01 && protocol == 0x01)
-				return " (Bluetooth)";
-		case 0xEF:
-			if (subclass == 0x02 && protocol == 0x01)
-				return " (Interface Association)";
-			break;
-	}
-	return "";
-}
-
-
 void
 DumpDescriptorData(const usb_generic_descriptor* descriptor)
 {
+	printf("                    Length ........... 0x%02x\n",
+		descriptor->length);
 	printf("                    Type ............. 0x%02x\n",
 		descriptor->descriptor_type);
 
@@ -154,15 +39,39 @@ DumpDescriptorData(const usb_generic_descriptor* descriptor)
 
 
 void
+DumpEndpointSSCompanionDescriptor(
+	const usb_endpoint_ss_companion_descriptor* descriptor)
+{
+	printf("                    Type .............. 0x%02x Endpoint SuperSpeed Companion\n",
+		descriptor->descriptor_type);
+	printf("                    MaxBurst .......... 0x%02x\n",
+		descriptor->max_burst);
+	printf("                    Attributes ........ 0x%02x\n",
+		descriptor->attributes);
+	printf("                    Bytes per Interval  0x%02x\n",
+		descriptor->bytes_per_interval);
+}
+
+
+void
 DumpDescriptor(const usb_generic_descriptor* descriptor,
 	int classNum, int subclass)
 {
+	if (descriptor->descriptor_type == USB_DESCRIPTOR_ENDPOINT_SS_COMPANION) {
+		DumpEndpointSSCompanionDescriptor((const usb_endpoint_ss_companion_descriptor*)descriptor);
+		return;
+	}
+
 	switch (classNum) {
 		case USB_AUDIO_DEVICE_CLASS:
 			DumpAudioDescriptor(descriptor, subclass);
 			break;
 		case USB_VIDEO_DEVICE_CLASS:
 			DumpVideoDescriptor(descriptor, subclass);
+			break;
+		case USB_COMMUNICATION_DEVICE_CLASS:
+		case USB_COMMUNICATION_WIRELESS_DEVICE_CLASS:
+			DumpCDCDescriptor(descriptor, subclass);
 			break;
 		default:
 			DumpDescriptorData(descriptor);
@@ -177,14 +86,17 @@ DumpInterface(const BUSBInterface* interface)
 	if (!interface)
 		return;
 
-	printf("                Class .............. 0x%02x (%s)\n",
-		interface->Class(), ClassName(interface->Class()));
-	printf("                Subclass ........... 0x%02x%s\n",
-		interface->Subclass(),
-		SubclassName(interface->Class(), interface->Subclass()));
-	printf("                Protocol ........... 0x%02x%s\n",
-		interface->Protocol(), ProtocolName(interface->Class(),
-			interface->Subclass(), interface->Protocol()));
+	char classInfo[128];
+	usb_get_class_info(interface->Class(), 0, 0, classInfo, sizeof(classInfo));
+	printf("                Class .............. 0x%02x %s\n",
+		interface->Class(), classInfo);
+	usb_get_class_info(interface->Class(), interface->Subclass(), 0, classInfo, sizeof(classInfo));
+	printf("                Subclass ........... 0x%02x %s\n",
+		interface->Subclass(), classInfo);
+	usb_get_class_info(interface->Class(), interface->Subclass(), interface->Protocol(), classInfo,
+		sizeof(classInfo));
+	printf("                Protocol ........... 0x%02x %s\n",
+		interface->Protocol(), classInfo);
 	printf("                Interface String ... \"%s\"\n",
 		interface->InterfaceString());
 
@@ -194,8 +106,8 @@ DumpInterface(const BUSBInterface* interface)
 			continue;
 
 		printf("                [Endpoint %" B_PRIu32 "]\n", i);
-		printf("                    MaxPacketSize .... %d\n",
-			endpoint->MaxPacketSize());
+		printf("                    MaxPacketSize .... %dx %d bytes\n",
+			((endpoint->MaxPacketSize() >> 11) & 0x3) + 1, endpoint->MaxPacketSize() & 0x7ff);
 		printf("                    Interval ......... %d\n",
 			endpoint->Interval());
 
@@ -263,13 +175,15 @@ DumpInfo(BUSBDevice& device, bool verbose)
 		return;
 	}
 
+	char classInfo[128];
 	printf("[Device /dev/bus/usb%s]\n", device.Location());
-	printf("    Class .................. 0x%02x (%s)\n", device.Class(),
-		ClassName(device.Class()));
-	printf("    Subclass ............... 0x%02x%s\n", device.Subclass(),
-		SubclassName(device.Class(), device.Subclass()));
-	printf("    Protocol ............... 0x%02x%s\n", device.Protocol(),
-		ProtocolName(device.Class(), device.Subclass(), device.Protocol()));
+	usb_get_class_info(device.Class(), 0, 0, classInfo, sizeof(classInfo));
+	printf("    Class .................. 0x%02x %s\n", device.Class(), classInfo);
+	usb_get_class_info(device.Class(), device.Subclass(), 0, classInfo, sizeof(classInfo));
+	printf("    Subclass ............... 0x%02x %s\n", device.Subclass(), classInfo);
+	usb_get_class_info(device.Class(), device.Subclass(), device.Protocol(), classInfo,
+		sizeof(classInfo));
+	printf("    Protocol ............... 0x%02x %s\n", device.Protocol(), classInfo);
 	printf("    Max Endpoint 0 Packet .. %d\n", device.MaxEndpoint0PacketSize());
 	uint32_t version = device.USBVersion();
 	printf("    USB Version ............ %d.%d\n", version >> 8, version & 0xFF);
@@ -296,8 +210,8 @@ DumpInfo(BUSBDevice& device, bool verbose)
 	size_t size = device.GetDescriptor(USB_DESCRIPTOR_HUB, 0, 0,
 		(void*)&hubDescriptor, sizeof(usb_hub_descriptor));
 	if (size == sizeof(usb_hub_descriptor)) {
-		printf("    Hub ports count......... %d\n", hubDescriptor.num_ports);
-		printf("    Hub Controller Current.. %dmA\n", hubDescriptor.max_power);
+		printf("    Hub ports count ........ %d\n", hubDescriptor.num_ports);
+		printf("    Hub Controller Current . %dmA\n", hubDescriptor.max_power);
 
 		for (int index = 1; index <= hubDescriptor.num_ports; index++) {
 			usb_port_status portStatus;
@@ -306,8 +220,15 @@ DumpInfo(BUSBDevice& device, bool verbose)
 				index, sizeof(portStatus), (void*)&portStatus);
 			if (actualLength != sizeof(portStatus))
 				continue;
-			printf("      Port %d status....... %04x.%04x%s%s%s%s%s%s%s%s\n",
-				index, portStatus.status, portStatus.change,
+			const char* padding;
+			if (index >= 100)
+				padding = "....";
+			else if (index >= 10)
+				padding = ".....";
+			else
+				padding = "......";
+			printf("      Port %d status %s %04x.%04x%s%s%s%s%s%s%s%s\n",
+				index, padding, portStatus.status, portStatus.change,
 				portStatus.status & PORT_STATUS_CONNECTION ? " Connect": "",
 				portStatus.status & PORT_STATUS_ENABLE ? " Enable": "",
 				portStatus.status & PORT_STATUS_SUSPEND ? " Suspend": "",

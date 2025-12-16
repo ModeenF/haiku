@@ -41,9 +41,9 @@ rule AddSharedObjectGlueCode
 	}
 }
 
-rule Executable
+rule Application
 {
-	# Executable <name> : <sources> : <libraries> : <res> ;
+	# Application <name> : <sources> : <libraries> : <res> ;
 	#
 	if ! [ IsPlatformSupportedForTarget $(1) ] {
 		return ;
@@ -60,18 +60,6 @@ rule Executable
 	AddSharedObjectGlueCode $(1) : true ;
 }
 
-rule Application
-{
-	# Application <name> : <sources> : <libraries> : <res> ;
-	Executable $(1) : $(2) : $(3) : $(4) ;
-}
-
-rule BinCommand
-{
-	# BinCommand <name> : <sources> : <libraries> : <res> ;
-	Executable $(1) : $(2) : $(3) : $(4) ;
-}
-
 rule StdBinCommands
 {
 	# StdBinCommands <sources> : <libs> : <res> ;
@@ -82,21 +70,8 @@ rule StdBinCommands
 	{
 		local target = $(source:S=) ;
 
-		BinCommand $(target) : $(source) : $(libs) : $(ress) ;
+		Application $(target) : $(source) : $(libs) : $(ress) ;
 	}
-}
-
-rule Preference
-{
-	# Preference <name> : <sources> : <libraries> : <res> ;
-	Executable $(1) : $(2) : $(3) : $(4) ;
-}
-
-rule Server
-{
-	# Server <name> : <sources> : <libraries> : <res> ;
-
-	Executable $(1) : $(2) : $(3) : $(4) ;
 }
 
 rule Addon target : sources : libraries : isExecutable
@@ -154,6 +129,12 @@ rule StaticLibrary
 
 	InheritPlatform $(objects) : $(lib) ;
 
+	if $(TARGET_CC_IS_LEGACY_GCC_$(TARGET_PACKAGING_ARCH)) = 0
+			&& [ on $(lib) return $(NO_HIDDEN_VISIBILITY) ] != 1 {
+		CCFLAGS on $(objects) += -fvisibility=hidden ;
+		C++FLAGS on $(objects) += -fvisibility=hidden ;
+	}
+
 	StaticLibraryFromObjects $(lib) : $(objects) $(otherObjects) ;
 	Objects $(2) ;
 }
@@ -183,27 +164,6 @@ actions AssembleNasm
 	else
 		$(HAIKU_NASM) $(NASMFLAGS) -I$(2:D)/ -o $(1) $(2) ;
 	fi
-}
-
-rule CompileDTS target : source
-{
-	CCDEFS on $(target) = [ FDefines $(TARGET_DEFINES_$(TARGET_PACKAGING_ARCH))
-		$(TARGET_DEFINES) ] ;
-	CC on $(target) = $(TARGET_CC_$(TARGET_PACKAGING_ARCH)) ;
-
-	MakeLocate $(target) : $(HAIKU_OUTPUT_DIR) ;
-	Depends $(target) : $(source) ;
-	CompileDTS1 $(target) : $(source) ;
-}
-
-actions CompileDTS1
-{
-	$(CC) -E $(CCDEFS) -P -xassembler-with-cpp \
-		-I$(HAIKU_TOP)/src/data/dts/arch/$(TARGET_ARCH) \
-		-I$(HAIKU_TOP)/src/data/dts $(2) \
-	| dtc -O dtb -o $(1) \
-		-i $(HAIKU_TOP)/src/data/dts/arch/$(TARGET_ARCH) \
-		-i $(HAIKU_TOP)/src/data/dts ;
 }
 
 rule Ld
@@ -252,14 +212,16 @@ actions Ld
 	$(LINK) $(LINKFLAGS) -o "$(1)" "$(2)" "$(NEEDLIBS)" $(LINKLIBS)
 }
 
-rule CreateAsmStructOffsetsHeader header : source
+rule CreateAsmStructOffsetsHeader header : source : architecture
 {
-	# CreateAsmStructOffsetsHeader header : source
+	# CreateAsmStructOffsetsHeader header : source : architecture
 	#
 	# Grist will be added to both header and source.
 
 	header = [ FGristFiles $(header) ] ;
 	source = [ FGristFiles $(source) ] ;
+
+	TARGET_PACKAGING_ARCH on $(header) = $(architecture) ;
 
 	# find out which headers, defines, etc. to use
 	local headers ;
@@ -290,7 +252,7 @@ rule CreateAsmStructOffsetsHeader header : source
 				sysHeaders += $(HOST_BE_API_HEADERS) ;
 			}
 		} else {
-			sysHeaders += [ FStandardHeaders $(TARGET_PACKAGING_ARCH) ]
+			sysHeaders += [ FStandardHeaders $(TARGET_PACKAGING_ARCH) : C++ ]
 				$(TARGET_HDRS_$(TARGET_PACKAGING_ARCH)) ;
 			defines += $(TARGET_DEFINES_$(TARGET_PACKAGING_ARCH))
 				$(TARGET_DEFINES) ;
@@ -361,7 +323,8 @@ rule CreateAsmStructOffsetsHeader header : source
 
 	Depends $(header) : $(source) $(PLATFORM) ;
 	SEARCH on $(source) += $(SEARCH_SOURCE) ;
-	MakeLocateArch $(header) ;
+	MakeLocate $(header) : [ FDirName $(TARGET_COMMON_DEBUG_OBJECT_DIR_$(architecture))
+		system kernel ] ;
 	LocalClean clean : $(header) ;
 
 	HDRRULE on $(source) = HdrRule ;
@@ -508,6 +471,9 @@ rule LinkAgainst
 	local libs = $(2) ;
 	local mapLibs = $(3:E=true) ;
 
+	local linkLibs ;
+	local needLibs ;
+
 	on $(target) {
 		local i ;
 
@@ -525,11 +491,7 @@ rule LinkAgainst
 			libs = $(mappedLibs) ;
 		}
 
-		local linkLibs ;
-		local needLibs ;
-
-		for i in $(libs)
-		{
+		for i in $(libs) {
 			local isfile = ;
 			if $(i:D) || $(i:G) {
 				isfile = true ;
@@ -556,7 +518,18 @@ rule LinkAgainst
 				linkLibs += $(i) ;
 			}
 		}
+	}
 
+	# Copy in the library dependencies from any static libraries first.
+	# (We have to do the [ on ... ] outside the on { } block. )
+	for i in $(needLibs) {
+		if $(i:S) = .a  {
+			needLibs += [ on $(i) return $(NEEDLIBS) ] ;
+			linkLibs += [ on $(i) return $(LINKLIBS) ] ;
+		}
+	}
+
+	on $(target) {
 		NEEDLIBS on $(1) = $(NEEDLIBS) $(needLibs) ;
 		LINKLIBS on $(1) = $(LINKLIBS) -l$(linkLibs) ;
 

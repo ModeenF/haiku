@@ -4,7 +4,7 @@ HAIKU_MULTIPLE_LOCALIZED_TARGETS on $(SUBDIR) = 1 ;
 
 AddSubDirSupportedPlatforms libbe_test ;
 
-UsePrivateHeaders app interface shared storage support tracker usb ;
+UsePrivateHeaders app interface libroot kernel shared storage support tracker usb ;
 UsePrivateSystemHeaders ;
 SubDirHdrs $(HAIKU_TOP) src add-ons kernel file_cache ;
 UseBuildFeatureHeaders ncurses ;
@@ -35,7 +35,6 @@ StdBinCommands
 	error.c
 	fortune.c
 	finddir.c
-	fstrim.cpp
 	get_driver_settings.cpp
 	hd.c
 	listarea.c
@@ -89,7 +88,6 @@ StdBinCommands
 	draggers.cpp
 	ffm.cpp
 	iroster.cpp
-	launch_roster.cpp
 	listattr.cpp
 	listfont.cpp
 	listres.cpp
@@ -97,14 +95,12 @@ StdBinCommands
 	message.cpp
 	modifiers.cpp
 	mvattr.cpp
-	play.cpp
-	query.cpp
+	pidof.cpp
 	quit.cpp
 	roster.cpp
 	setversion.cpp
 	trash.cpp
 	version.cpp
-	waitfor.cpp
 	WindowShade.cpp
 	: be : $(haiku-utils_rsrc) ;
 
@@ -112,6 +108,11 @@ if $(TARGET_PLATFORM) = libbe_test {
 	HaikuInstall install-test-apps : $(HAIKU_APP_TEST_DIR) : setdecor
 		: tests!apps ;
 }
+
+# standard commands that need libbe.so, libshared.a
+StdBinCommands
+	fstrim.cpp
+	: shared be : $(haiku-utils_rsrc) ;
 
 # standard commands that need libbe.so and libsupc++.so
 StdBinCommands
@@ -132,6 +133,7 @@ StdBinCommands
 
 # standard commands that need libbe.so, libsupc++.so, and libshared.a
 StdBinCommands
+	launch_roster.cpp
 	ramdisk.cpp
 	resizefs.cpp
 	: shared be [ TargetLibsupc++ ] : $(haiku-utils_rsrc) ;
@@ -139,14 +141,8 @@ StdBinCommands
 # standard commands that need libbe.so, libbnetapi.so, libsupc++.so
 StdBinCommands
 	open.cpp
-	urlwrapper.cpp
+	waitfor.cpp
 	: be bnetapi [ TargetLibsupc++ ] : $(haiku-utils_rsrc) ;
-
-# commands that need libbe.so and the stub catalog
-StdBinCommands
-	clockconfig.cpp
-	query.cpp
-	: be localestub : $(haiku-utils_rsrc) ;
 
 # commands that need libbe.so, libsupc++.so and the stub catalog
 StdBinCommands
@@ -249,6 +245,7 @@ DoCatalogs filepanel
 	: filepanel.cpp
 ;
 
+SubInclude HAIKU_TOP src bin acpi_call ;
 SubInclude HAIKU_TOP src bin addattr ;
 SubInclude HAIKU_TOP src bin bfs_tools ;
 SubInclude HAIKU_TOP src bin cddb_lookup ;
@@ -265,7 +262,6 @@ SubInclude HAIKU_TOP src bin locale ;
 SubInclude HAIKU_TOP src bin makebootable ;
 SubInclude HAIKU_TOP src bin mail_utils ;
 SubInclude HAIKU_TOP src bin media_client ;
-SubInclude HAIKU_TOP src bin mkdos ;
 SubInclude HAIKU_TOP src bin mkfs ;
 SubInclude HAIKU_TOP src bin multiuser ;
 SubInclude HAIKU_TOP src bin package ;
@@ -273,6 +269,7 @@ SubInclude HAIKU_TOP src bin package_repo ;
 SubInclude HAIKU_TOP src bin pc ;
 SubInclude HAIKU_TOP src bin pcmcia-cs ;
 SubInclude HAIKU_TOP src bin pkgman ;
+SubInclude HAIKU_TOP src bin query ;
 SubInclude HAIKU_TOP src bin rc ;
 SubInclude HAIKU_TOP src bin screen_blanker ;
 SubInclude HAIKU_TOP src bin screenmode ;
@@ -283,6 +280,3 @@ SubInclude HAIKU_TOP src bin debug ;
 
 # Network command line tools
 SubInclude HAIKU_TOP src bin network ;
-
-# Other stuff
-SubInclude HAIKU_TOP src bin filteredquery ;

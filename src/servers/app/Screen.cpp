@@ -42,8 +42,8 @@ get_mode_frequency(const display_mode& mode)
 Screen::Screen(::HWInterface *interface, int32 id)
 	:
 	fID(id),
-	fDriver(interface ? interface->CreateDrawingEngine() : NULL),
-	fHWInterface(interface)
+	fHWInterface(interface),
+	fDriver(interface != NULL ? interface->CreateDrawingEngine() : NULL)
 {
 }
 
@@ -67,12 +67,14 @@ Screen::~Screen()
 status_t
 Screen::Initialize()
 {
+	status_t status = B_NO_INIT;
+
 	if (fHWInterface.IsSet()) {
 		// init the graphics hardware
-		return fHWInterface->Initialize();
+		status = fHWInterface->Initialize();
 	}
 
-	return B_NO_INIT;
+	return status;
 }
 
 

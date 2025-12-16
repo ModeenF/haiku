@@ -18,12 +18,16 @@
 
 class UserCredentials : public BArchivable {
 public:
+								UserCredentials();
 								UserCredentials(BMessage* from);
 								UserCredentials(const BString& nickname,
 									const BString& passwordClear);
 								UserCredentials(const UserCredentials& other);
-								UserCredentials();
 	virtual						~UserCredentials();
+
+			UserCredentials&	operator=(const UserCredentials& other);
+			bool				operator==(const UserCredentials& other) const;
+			bool				operator!=(const UserCredentials& other) const;
 
 	const	BString&			Nickname() const;
 	const	BString&			PasswordClear() const;
@@ -33,8 +37,6 @@ public:
 			void				SetNickname(const BString& value);
 			void				SetPasswordClear(const BString& value);
 			void				SetIsSuccessful(bool value);
-
-			UserCredentials&	operator=(const UserCredentials& other);
 
 			status_t			Archive(BMessage* into, bool deep = true) const;
 private:

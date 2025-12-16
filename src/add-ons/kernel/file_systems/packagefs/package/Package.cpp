@@ -108,7 +108,7 @@ struct Package::LoaderContentHandler : BPackageContentHandler {
 	{
 		if (fErrorOccurred
 			|| (fLastSettingsEntry != NULL
-				&& fLastSettingsEntry->IsBlackListed())) {
+				&& fLastSettingsEntry->IsBlocked())) {
 			return B_OK;
 		}
 
@@ -128,7 +128,7 @@ struct Package::LoaderContentHandler : BPackageContentHandler {
 			if (settingsEntry != NULL) {
 				fLastSettingsEntry = settingsEntry;
 				fLastSettingsEntryEntry = entry;
-				if (fLastSettingsEntry->IsBlackListed())
+				if (fLastSettingsEntry->IsBlocked())
 					return B_OK;
 			}
 		}
@@ -148,8 +148,7 @@ struct Package::LoaderContentHandler : BPackageContentHandler {
 			if (!path.SetTo(entry->SymlinkPath()))
 				RETURN_ERROR(B_NO_MEMORY);
 
-			PackageSymlink* symlink = new(std::nothrow) PackageSymlink(
-				fPackage, mode);
+			PackageSymlink* symlink = new PackageSymlink(fPackage, mode);
 			if (symlink == NULL)
 				RETURN_ERROR(B_NO_MEMORY);
 
@@ -191,7 +190,7 @@ struct Package::LoaderContentHandler : BPackageContentHandler {
 	{
 		if (fErrorOccurred
 			|| (fLastSettingsEntry != NULL
-				&& fLastSettingsEntry->IsBlackListed())) {
+				&& fLastSettingsEntry->IsBlocked())) {
 			return B_OK;
 		}
 

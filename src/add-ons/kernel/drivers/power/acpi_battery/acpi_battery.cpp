@@ -106,6 +106,8 @@ ReadBatteryStatus(battery_driver_cookie* cookie,
 	if (batteryStatus->state == UINT32_MAX)
 		batteryStatus->state = BATTERY_CRITICAL_STATE;
 	batteryStatus->current_rate = GetUint32(pointer++);
+	if (batteryStatus->state == BATTERY_DISCHARGING && batteryStatus->current_rate == 0)
+		batteryStatus->state = BATTERY_NOT_CHARGING;
 	batteryStatus->capacity = GetUint32(pointer++);
 	batteryStatus->voltage = GetUint32(pointer++);
 
@@ -151,7 +153,12 @@ ReadBatteryInfo(battery_driver_cookie* cookie,
 			goto exit;
 	}
 
+	if (buffer.pointer == NULL) {
+		status = B_ERROR;
+		goto exit;
+	}
 	object = (acpi_object_type*)buffer.pointer;
+
 	TRACE("ReadBatteryInfo %d %u\n", object->object_type,
 		object->package.count);
 	if (object->object_type != ACPI_TYPE_PACKAGE
@@ -167,17 +174,12 @@ ReadBatteryInfo(battery_driver_cookie* cookie,
 		batteryInfo->revision = GetUint32(pointer++);
 		TRACE("ReadBatteryInfo revision %u\n", batteryInfo->revision);
 
-		if (batteryInfo->revision == ACPI_BATTERY_REVISION_0) {
-			if (object->package.count < 20) {
-				status = B_ERROR;
-				goto exit;
-			}
-		} else if (object->package.count < 21) {
+		if (object->package.count < 20) {
 			status = B_ERROR;
 			goto exit;
 		}
-
 	}
+
 	batteryInfo->power_unit = GetUint32(pointer++);
 	batteryInfo->design_capacity = GetUint32(pointer++);
 	batteryInfo->last_full_charge = GetUint32(pointer++);
@@ -205,7 +207,8 @@ ReadBatteryInfo(battery_driver_cookie* cookie,
 	GetString(batteryInfo->oem_info, sizeof(batteryInfo->oem_info), pointer++);
 
 	if (batteryInfo->revision != ACPI_BATTERY_REVISION_BIF
-		&& batteryInfo->revision >= ACPI_BATTERY_REVISION_1) {
+		&& batteryInfo->revision >= ACPI_BATTERY_REVISION_1
+		&& object->package.count > 20) {
 		batteryInfo->swapping_capability = GetUint32(pointer++);
 	}
 exit:
@@ -527,7 +530,7 @@ static status_t
 acpi_battery_register_device(device_node *node)
 {
 	device_attr attrs[] = {
-		{ B_DEVICE_PRETTY_NAME, B_STRING_TYPE, { string: "ACPI Battery" }},
+		{ B_DEVICE_PRETTY_NAME, B_STRING_TYPE, { .string = "ACPI Battery" }},
 		{ NULL }
 	};
 

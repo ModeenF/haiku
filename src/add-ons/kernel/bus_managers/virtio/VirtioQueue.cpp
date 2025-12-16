@@ -90,8 +90,8 @@ TransferDescriptor::TransferDescriptor(VirtioQueue* queue, uint16 indirectMaxSiz
 
 	if (indirectMaxSize > 0) {
 		fAreaSize = indirectMaxSize * sizeof(struct vring_desc);
-		fArea = alloc_mem((void **)&virtAddr, &physAddr, fAreaSize, 0,
-			"virtqueue");
+		fArea = alloc_mem((void **)&virtAddr, &physAddr, fAreaSize,
+			B_KERNEL_READ_AREA | B_KERNEL_WRITE_AREA, "virtqueue");
 		if (fArea < B_OK) {
 			fStatus = fArea;
 			return;
@@ -156,8 +156,8 @@ VirtioQueue::VirtioQueue(VirtioDevice* device, uint16 queueNumber,
 	uint8* virtAddr;
 	phys_addr_t physAddr;
 	fAreaSize = vring_size(fRingSize, device->Alignment());
-	fArea = alloc_mem((void **)&virtAddr, &physAddr, fAreaSize, 0,
-		"virtqueue");
+	fArea = alloc_mem((void **)&virtAddr, &physAddr, fAreaSize,
+		B_KERNEL_READ_AREA | B_KERNEL_WRITE_AREA, "virtqueue");
 	if (fArea < B_OK) {
 		fStatus = fArea;
 		return;
@@ -170,7 +170,7 @@ VirtioQueue::VirtioQueue(VirtioDevice* device, uint16 queueNumber,
 	fRing.desc[fRingSize - 1].next = UINT16_MAX;
 
 	if ((fDevice->Features() & VIRTIO_FEATURE_RING_INDIRECT_DESC) != 0)
-		fIndirectMaxSize = 128;
+		fIndirectMaxSize = fRingSize;
 
 	for (uint16 i = 0; i < fRingSize; i++) {
 		fDescriptors[i] = new TransferDescriptor(this, fIndirectMaxSize);
@@ -182,7 +182,9 @@ VirtioQueue::VirtioQueue(VirtioDevice* device, uint16 queueNumber,
 
 	DisableInterrupt();
 
-	device->SetupQueue(fQueueNumber, physAddr);
+	device->SetupQueue(fQueueNumber, physAddr,
+		physAddr + ((addr_t)fRing.avail - (addr_t)fRing.desc),
+		physAddr + ((addr_t)fRing.used - (addr_t)fRing.desc));
 }
 
 

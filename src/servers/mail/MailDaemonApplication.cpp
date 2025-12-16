@@ -14,12 +14,14 @@
 
 #include <Beep.h>
 #include <Catalog.h>
+#include <ControlLook.h>
 #include <Deskbar.h>
 #include <Directory.h>
 #include <Entry.h>
 #include <FindDirectory.h>
 #include <fs_index.h>
 #include <IconUtils.h>
+#include <NodeInfo.h>
 #include <NodeMonitor.h>
 #include <Notification.h>
 #include <Path.h>
@@ -201,11 +203,24 @@ MailDaemonApplication::ReadyToRun()
 	fNotification = new BNotification(B_INFORMATION_NOTIFICATION);
 	fNotification->SetGroup(B_TRANSLATE("Mail status"));
 	fNotification->SetMessageID("daemon_status");
+
+	BPath path;
+	if (find_directory(B_USER_SETTINGS_DIRECTORY, &path) == B_OK) {
+		path.Append("Mail/New E-mail");
+
+		entry_ref ref;
+		if (get_ref_for_path(path.Path(), &ref) == B_OK) {
+			fNotification->SetOnClickApp("application/x-vnd.Be-TRAK");
+			fNotification->AddOnClickRef(&ref);
+		}
+	}
+
 	_UpdateNewMessagesNotification();
 
 	app_info info;
 	be_roster->GetAppInfo(B_MAIL_DAEMON_SIGNATURE, &info);
-	BBitmap icon(BRect(0, 0, 32, 32), B_RGBA32);
+
+	BBitmap icon(BRect(B_ORIGIN, be_control_look->ComposeIconSize(32)), B_RGBA32);
 	BNode node(&info.ref);
 	BIconUtils::GetVectorIcon(&node, "BEOS:ICON", &icon);
 	fNotification->SetIcon(&icon);
@@ -364,14 +379,26 @@ MailDaemonApplication::MessageReceived(BMessage* msg)
 		{
 			int32 previousCount = fNewMessages;
 
-			int32 opcode = msg->GetInt32("opcode", -1);
+			int32 opcode;
+			msg->FindInt32("opcode", &opcode);
+
 			switch (opcode) {
 				case B_ENTRY_CREATED:
-					fNewMessages++;
-					break;
 				case B_ENTRY_REMOVED:
-					fNewMessages--;
+				{
+					entry_ref ref;
+					msg->FindInt32("device", &ref.device);
+					msg->FindInt64("directory", &ref.directory);
+					BEntry entry(&ref);
+
+					if (!_IsEntryInTrash(entry)) {
+						if (opcode == B_ENTRY_CREATED)
+							fNewMessages++;
+						else
+							fNewMessages--;
+					}
 					break;
+				}
 				default:
 					return;
 			}
@@ -784,8 +811,10 @@ MailDaemonApplication::_InitNewMessagesCount()
 		query->Fetch();
 
 		BEntry entry;
-		while (query->GetNextEntry(&entry) == B_OK)
-			fNewMessages++;
+		while (query->GetNextEntry(&entry) == B_OK) {
+			if (!_IsEntryInTrash(entry))
+				fNewMessages++;
+		}
 
 		fQueries.AddItem(query);
 	}

@@ -23,6 +23,7 @@
 #	define ASSERT(x) ;
 #endif
 #define ERROR(x...) dprintf("\33[34mbtrfs:\33[0m " x)
+#define CALLED() TRACE("%s\n", __PRETTY_FUNCTION__);
 
 
 Inode::Inode(Volume* volume, ino_t id)
@@ -209,6 +210,7 @@ Inode::FindBlock(off_t pos, off_t& physical, off_t* _length)
 status_t
 Inode::ReadAt(off_t pos, uint8* buffer, size_t* _length)
 {
+	CALLED();
 	size_t length = *_length;
 
 	// set/check boundaries for pos/length
@@ -269,9 +271,10 @@ Inode::ReadAt(off_t pos, uint8* buffer, size_t* _length)
 	}
 
 	*_length = min_c(extent_data->Size() - diff, *_length);
-	if (compression == BTRFS_EXTENT_COMPRESS_NONE)
-		memcpy(buffer, extent_data->inline_data, *_length);
-	else if (compression == BTRFS_EXTENT_COMPRESS_ZLIB) {
+	if (compression == BTRFS_EXTENT_COMPRESS_NONE) {
+		if (user_memcpy(buffer, extent_data->inline_data, *_length) < B_OK)
+			return B_BAD_ADDRESS;
+	} else if (compression == BTRFS_EXTENT_COMPRESS_ZLIB) {
 		char in[2048];
 		z_stream zStream = {
 			(Bytef*)in,		// next in

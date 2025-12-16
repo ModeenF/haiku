@@ -1,11 +1,9 @@
-1	polish	x-vnd.Haiku-Input	1910113385
+1	polish	x-vnd.Haiku-Input	130668644
 Defaults	InputMouse		Przywróć domyślne
 Scrolling	TouchpadPrefView		Przewijanie
 Long	KeyboardView		Długie
-Normal	SettingsView		Normalny
 Cancel	TouchpadPrefView		Anuluj
 Slow	TouchpadPrefView		Wolny
-Warp	SettingsView		Teleportacja
 Device List	InputWindow		Lista urządzeń
 Double-click speed	SettingsView		Szybkość dwukliku
 5-Button	SettingsView		5-przyciskowa
@@ -14,23 +12,27 @@ Fast	KeyboardView		Duża
 Please confirm	TouchpadPrefView		Potwierdź
 Mouse speed	SettingsView		Szybkość myszy
 Horizontal scrolling	TouchpadPrefView		Przesuwanie poziome
+Keyboard lock delay	TouchpadPrefView		Opóźnienie blokady klawiatury
 Input	System name		Urządzenia wejściowe
+Quick	TouchpadPrefView		Szybkie
 Short	KeyboardView		Krótkie
 Revert	InputMouse		Cofnij
 Slow	KeyboardView		Mała
 2-Button	SettingsView		2-przyciskowa
 Click to focus and raise	SettingsView		Kliknij aby aktywować i wynieść na wierzch
 Vertical	TouchpadPrefView		Poziomy
-Double-click test area	SettingsView		Obszar testowania dwukliku
 Focus follows mouse	SettingsView		Aktywacja podąża za wskaźnikiem
+Double-click test area	SettingsView		Obszar testowania dwukliku
 Focus mode:	SettingsView		Tryb aktywacji:
 Revert	TouchpadPrefView		Cofnij
 4-Button	SettingsView		4-przyciskowa
-Instant warp	SettingsView		Natychmiastowa teleportacja
+Tapping sensitivity	TouchpadPrefView		Czułość na stuknięcia
 Revert	InputKeyboard		Przywróć
 Mouse type:	SettingsView		Typ myszy:
-Off	TouchpadPrefView		Wyłączony
+Off	TouchpadPrefView		Wyłączone
+Never	TouchpadPrefView		Nigdy
 Fast	TouchpadPrefView		Szybki
+6-Button	SettingsView		6-przyciskowa
 Click to focus	SettingsView		Kliknij aby aktywować
 Acceleration	TouchpadPrefView		Przyspieszenie
 Accept first click	SettingsView		Akceptuj pierwsze kliknięcie
@@ -39,8 +41,8 @@ Delay until key repeat	KeyboardView		Opóźnienie przed powtórzeniem
 Two finger scrolling	TouchpadPrefView		Przewijanie dwoma palcami
 The new scroll area is very large and may impede normal mouse operation. Do you really want to change it?	TouchpadPrefView		Nowy obszar przesuwania jest bardzo duży i może przeszkadzać w normalnym używaniu wskaźnika myszy. Na pewno chcesz go ustawić?
 Mouse acceleration	SettingsView		Przyspieszenie myszy
+High	TouchpadPrefView		Wysoka
 Defaults	TouchpadPrefView		Przywróć domyślne
-High	TouchpadPrefView		Wysoki
 1-Button	SettingsView		1-przyciskowa
 Defaults	InputKeyboard		Przywróć domyślne
 Key repeat rate	KeyboardView		Częstotliwość powtarzania klawiszy

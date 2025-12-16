@@ -12,6 +12,7 @@ UsePrivateHeaders interface netservices shared ;
 
 local sourceDirs =
 	model
+	packagemodel
 	server
 	server/dumpexportrepository
 	util
@@ -33,6 +34,7 @@ UnitTestLib haikudepottest.so :
 	HaikuDepotTestAddon.cpp
 
 	DataIOUtils.cpp
+	DataIOUtilsTest.cpp
 
 	DumpExportRepositorySource.cpp
 	DumpExportRepositorySourceMirror.cpp
@@ -40,9 +42,15 @@ UnitTestLib haikudepottest.so :
 	DumpExportRepositoryJsonListener.cpp
 	DumpExportRepositoryJsonListenerTest.cpp
 
-	ListTest.cpp
+	JwtTokenHelper.cpp
+	JwtTokenHelperTest.cpp
 
 	Logger.cpp
+
+	LocaleUtils.cpp
+
+	Language.cpp
+	LocaleUtilsTest.cpp
 
 	StandardMetaData.cpp
 	StandardMetaDataJsonEventListener.cpp
@@ -50,6 +58,9 @@ UnitTestLib haikudepottest.so :
 
 	StorageUtils.cpp
 	StorageUtilsTest.cpp
+
+	StringUtils.cpp
+	StringUtilsTest.cpp
 
 	TarArchiveHeader.cpp
 	TarArchiveService.cpp
@@ -61,7 +72,9 @@ UnitTestLib haikudepottest.so :
 	ValidationUtils.cpp
 	ValidationUtilsTest.cpp
 
-	: be shared bnetapi package [ TargetLibstdc++ ] [ TargetLibsupc++ ]
+	:
+	be shared bnetapi package [ TargetLibstdc++ ] [ TargetLibsupc++ ]
+	localestub
 ;
 
 Application TextDocumentTest :

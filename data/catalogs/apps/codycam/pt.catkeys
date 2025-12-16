@@ -1,6 +1,7 @@
-1	portuguese	x-vnd.Haiku-CodyCam	40716723
+1	portuguese	x-vnd.Haiku-CodyCam	12021044
 destination directory expected	CodyCam		pasta de destino esperada
 reply: '%s'\n	SftpClient		resposta: '%s'\n
+PASS <suppressed>  (real password sent)	FtpClient		PASS <suprimida>  (palavra-passe real enviada)
 JPEG image	CodyCam		Imagem JPEG
 Remote host has closed the connection.\n	FtpClient		O anfitrião remoto fechou a ligação.\n
 image file format expected	CodyCam		formato de imagem de arquivo esperado
@@ -13,7 +14,7 @@ Every 10 minutes	CodyCam		Cada 10 minutos
 Every minute	CodyCam		Cada minuto
 Capture Rate Menu	CodyCam		Menu de taxa de captura
 Cannot seek time source!	CodyCam		Não é possível buscar fonte de tempo!
-Server login failed	VideoConsumer.cpp		A entrada no servidor falhou
+Server login failed	VideoConsumer.cpp		O início de sessão no servidor falhou
 on or off expected	Settings	Do not translate 'on' and 'off'	esperado on ou off
 invalid upload client %ld\n	VideoConsumer.cpp		cliente inválido de upload %ld\n
 Every 30 seconds	CodyCam		Cada 30 segundos

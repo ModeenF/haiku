@@ -182,6 +182,50 @@ struct pci_module_info {
 						uint16	cap_id,
 						uint16	*offset
 					);
+
+	status_t		(*get_powerstate)(uint8 bus, uint8 device, uint8 function, uint8* state);
+	status_t		(*set_powerstate)(uint8 bus, uint8 device, uint8 function, uint8 newState);
+
+	uint32			(*get_msi_count)(
+						uint8 bus,				/* bus number */
+						uint8 device,			/* device # on bus */
+						uint8 function);		/* function # in device */
+
+	status_t		(*configure_msi)(
+						uint8 bus,				/* bus number */
+						uint8 device,			/* device # on bus */
+						uint8 function,			/* function # in device */
+						uint32 count,			/* count of vectors desired */
+						uint32 *startVector);	/* first configured vector */
+	status_t		(*unconfigure_msi)(
+						uint8 bus,				/* bus number */
+						uint8 device,			/* device # on bus */
+						uint8 function);		/* function # in device */
+
+	status_t		(*enable_msi)(
+						uint8 bus,				/* bus number */
+						uint8 device,			/* device # on bus */
+						uint8 function);		/* function # in device */
+	status_t		(*disable_msi)(
+						uint8 bus,				/* bus number */
+						uint8 device,			/* device # on bus */
+						uint8 function);		/* function # in device */
+
+	uint32			(*get_msix_count)(
+						uint8 bus,				/* bus number */
+						uint8 device,			/* device # on bus */
+						uint8 function);		/* function # in device */
+
+	status_t		(*configure_msix)(
+						uint8 bus,				/* bus number */
+						uint8 device,			/* device # on bus */
+						uint8 function,			/* function # in device */
+						uint32 count,			/* count of vectors desired */
+						uint32 *startVector);	/* first configured vector */
+	status_t		(*enable_msix)(
+						uint8 bus,				/* bus number */
+						uint8 device,			/* device # on bus */
+						uint8 function);		/* function # in device */
 };
 
 #define	B_PCI_MODULE_NAME		"bus_managers/pci/v1"
@@ -616,6 +660,13 @@ struct pci_module_info {
 #define PCI_wireless_cellular		0x40
 #define PCI_wireless_cellular_ethernet	0x41
 #define PCI_wireless_other			0x80
+
+/* ---
+	values for the class_sub field for class_base = 0x10 (encryption decryption)
+--- */
+#define PCI_encryption_decryption_network_computing		0x00
+#define PCI_encryption_decryption_entertainment			0x10
+#define PCI_encryption_decryption_other					0x80
 
 /* ---
 	values for the class_sub field for class_base = 0x11 (data acquisition)

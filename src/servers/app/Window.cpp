@@ -1,14 +1,16 @@
 /*
- * Copyright 2001-2011, Haiku, Inc.
+ * Copyright 2001-2020, Haiku, Inc.
  * Distributed under the terms of the MIT license.
  *
  * Authors:
- *		DarkWyrm <bpmagic@columbus.rr.com>
- *		Adi Oanca <adioanca@gmail.com>
- *		Stephan Aßmus <superstippi@gmx.de>
- *		Axel Dörfler <axeld@pinc-software.de>
- *		Brecht Machiels <brecht@mos6581.org>
- *		Clemens Zeidler <haiku@clemens-zeidler.de>
+ *		DarkWyrm, bpmagic@columbus.rr.com
+ *		Adi Oanca, adioanca@gmail.com
+ *		Stephan Aßmus, superstippi@gmx.de
+ *		Axel Dörfler, axeld@pinc-software.de
+ *		Brecht Machiels, brecht@mos6581.org
+ *		Clemens Zeidler, haiku@clemens-zeidler.de
+ *		Tri-Edge AI
+ *		Jacob Secunda, secundja@gmail.com
  */
 
 
@@ -79,7 +81,6 @@ Window::Window(const BRect& frame, const char *name,
 	fVisibleRegion(),
 	fVisibleContentRegion(),
 	fDirtyRegion(),
-	fDirtyCause(0),
 
 	fContentRegion(),
 	fEffectiveDrawingRegion(),
@@ -98,7 +99,7 @@ Window::Window(const BRect& frame, const char *name,
 	fPendingUpdateSession(&fUpdateSessions[1]),
 	fUpdateRequested(false),
 	fInUpdate(false),
-	fUpdatesEnabled(true),
+	fUpdatesEnabled(false),
 
 	// Windows start hidden
 	fHidden(true),
@@ -111,6 +112,7 @@ Window::Window(const BRect& frame, const char *name,
 	fFeel(feel),
 	fWorkspaces(workspaces),
 	fCurrentWorkspace(-1),
+	fPriorWorkspace(-1),
 
 	fMinWidth(1),
 	fMaxWidth(32768),
@@ -287,6 +289,7 @@ Window::MoveBy(int32 x, int32 y, bool moveStack)
 	// take along the dirty region which is not
 	// processed yet
 	fDirtyRegion.OffsetBy(x, y);
+	fExposeRegion.OffsetBy(x, y);
 
 	if (fContentRegionValid)
 		fContentRegion.OffsetBy(x, y);
@@ -390,6 +393,42 @@ Window::ResizeBy(int32 x, int32 y, BRegion* dirtyRegion, bool resizeStack)
 	msg.AddInt32("width", frame.IntegerWidth());
 	msg.AddInt32("height", frame.IntegerHeight());
 	fWindow->SendMessageToClient(&msg);
+}
+
+
+void
+Window::SetOutlinesDelta(BPoint delta, BRegion* dirtyRegion)
+{
+	float wantWidth = fFrame.IntegerWidth() + delta.x;
+	float wantHeight = fFrame.IntegerHeight() + delta.y;
+
+	// enforce size limits
+	WindowStack* stack = GetWindowStack();
+	if (stack != NULL) {
+		for (int32 i = 0; i < stack->CountWindows(); i++) {
+			Window* window = stack->WindowList().ItemAt(i);
+
+			if (wantWidth < window->fMinWidth)
+				wantWidth = window->fMinWidth;
+			if (wantWidth > window->fMaxWidth)
+				wantWidth = window->fMaxWidth;
+
+			if (wantHeight < window->fMinHeight)
+				wantHeight = window->fMinHeight;
+			if (wantHeight > window->fMaxHeight)
+				wantHeight = window->fMaxHeight;
+		}
+
+		delta.x = wantWidth - fFrame.IntegerWidth();
+		delta.y = wantHeight - fFrame.IntegerHeight();
+	}
+
+	::Decorator* decorator = Decorator();
+
+	if (decorator != NULL)
+		decorator->SetOutlinesDelta(delta, dirtyRegion);
+
+	_UpdateContentRegion();
 }
 
 
@@ -699,7 +738,7 @@ Window::DrawingRegionChanged(View* view) const
 
 
 void
-Window::ProcessDirtyRegion(BRegion& region)
+Window::ProcessDirtyRegion(const BRegion& dirtyRegion, const BRegion& exposeRegion)
 {
 	// if this is executed in the desktop thread,
 	// it means that the window thread currently
@@ -722,8 +761,8 @@ Window::ProcessDirtyRegion(BRegion& region)
 		ServerWindow()->RequestRedraw();
 	}
 
-	fDirtyRegion.Include(&region);
-	fDirtyCause |= UPDATE_EXPOSE;
+	fDirtyRegion.Include(&dirtyRegion);
+	fExposeRegion.Include(&exposeRegion);
 }
 
 
@@ -732,7 +771,7 @@ Window::RedrawDirtyRegion()
 {
 	if (TopLayerStackWindow() != this) {
 		fDirtyRegion.MakeEmpty();
-		fDirtyCause = 0;
+		fExposeRegion.MakeEmpty();
 		return;
 	}
 
@@ -740,13 +779,15 @@ Window::RedrawDirtyRegion()
 	if (IsVisible()) {
 		_DrawBorder();
 
-		BRegion* dirtyContentRegion =
-			fRegionPool.GetRegion(VisibleContentRegion());
+		BRegion* dirtyContentRegion = fRegionPool.GetRegion(VisibleContentRegion());
+		BRegion* exposeContentRegion = fRegionPool.GetRegion(VisibleContentRegion());
 		dirtyContentRegion->IntersectWith(&fDirtyRegion);
+		exposeContentRegion->IntersectWith(&fExposeRegion);
 
-		_TriggerContentRedraw(*dirtyContentRegion);
+		_TriggerContentRedraw(*dirtyContentRegion, *exposeContentRegion);
 
 		fRegionPool.Recycle(dirtyContentRegion);
+		fRegionPool.Recycle(exposeContentRegion);
 	}
 
 	// reset the dirty region, since
@@ -757,7 +798,7 @@ Window::RedrawDirtyRegion()
 	// get write access, since we're holding
 	// the read lock for the whole time.
 	fDirtyRegion.MakeEmpty();
-	fDirtyCause = 0;
+	fExposeRegion.MakeEmpty();
 }
 
 
@@ -774,7 +815,7 @@ Window::MarkDirty(BRegion& regionOnScreen)
 
 
 void
-Window::MarkContentDirty(BRegion& regionOnScreen)
+Window::MarkContentDirty(BRegion& dirtyRegion, BRegion& exposeRegion)
 {
 	// for triggering AS_REDRAW
 	// since this won't affect other windows, read locking
@@ -783,27 +824,26 @@ Window::MarkContentDirty(BRegion& regionOnScreen)
 	if (fHidden || IsOffscreenWindow())
 		return;
 
-	regionOnScreen.IntersectWith(&VisibleContentRegion());
-	fDirtyCause |= UPDATE_REQUEST;
-	_TriggerContentRedraw(regionOnScreen);
+	dirtyRegion.IntersectWith(&VisibleContentRegion());
+	exposeRegion.IntersectWith(&VisibleContentRegion());
+	_TriggerContentRedraw(dirtyRegion, exposeRegion);
 }
 
 
 void
-Window::MarkContentDirtyAsync(BRegion& regionOnScreen)
+Window::MarkContentDirtyAsync(BRegion& dirtyRegion)
 {
 	// NOTE: see comments in ProcessDirtyRegion()
 	if (fHidden || IsOffscreenWindow())
 		return;
 
-	regionOnScreen.IntersectWith(&VisibleContentRegion());
+	dirtyRegion.IntersectWith(&VisibleContentRegion());
 
 	if (fDirtyRegion.CountRects() == 0) {
 		ServerWindow()->RequestRedraw();
 	}
 
-	fDirtyRegion.Include(&regionOnScreen);
-	fDirtyCause |= UPDATE_REQUEST;
+	fDirtyRegion.Include(&dirtyRegion);
 }
 
 
@@ -822,7 +862,6 @@ Window::InvalidateView(View* view, BRegion& viewRegion)
 
 //fDrawingEngine->FillRegion(viewRegion, rgb_color{ 0, 255, 0, 255 });
 //snooze(10000);
-			fDirtyCause |= UPDATE_REQUEST;
 			_TriggerContentRedraw(viewRegion);
 		}
 	}
@@ -1729,16 +1768,25 @@ Window::_ShiftPartOfRegion(BRegion* region, BRegion* regionToShift,
 
 
 void
-Window::_TriggerContentRedraw(BRegion& dirtyContentRegion)
+Window::_TriggerContentRedraw(BRegion& dirty, const BRegion& expose)
 {
-	if (!IsVisible() || dirtyContentRegion.CountRects() == 0
-		|| (fFlags & kWindowScreenFlag) != 0)
+	if (!IsVisible() || dirty.CountRects() == 0 || (fFlags & kWindowScreenFlag) != 0)
 		return;
 
 	// put this into the pending dirty region
 	// to eventually trigger a client redraw
+	_TransferToUpdateSession(&dirty);
 
-	_TransferToUpdateSession(&dirtyContentRegion);
+	if (expose.CountRects() > 0) {
+		// draw exposed region background right now to avoid stamping artifacts
+		if (fDrawingEngine->LockParallelAccess()) {
+			bool copyToFrontEnabled = fDrawingEngine->CopyToFrontEnabled();
+			fDrawingEngine->SetCopyToFrontEnabled(true);
+			fTopView->Draw(fDrawingEngine.Get(), &expose, &fContentRegion, true);
+			fDrawingEngine->SetCopyToFrontEnabled(copyToFrontEnabled);
+			fDrawingEngine->UnlockParallelAccess();
+		}
+	}
 }
 
 
@@ -1803,8 +1851,6 @@ Window::_TransferToUpdateSession(BRegion* contentDirtyRegion)
 
 	// add to pending
 	fPendingUpdateSession->SetUsed(true);
-//	if (!fPendingUpdateSession->IsExpose())
-	fPendingUpdateSession->AddCause(fDirtyCause);
 	fPendingUpdateSession->Include(contentDirtyRegion);
 
 	if (!fUpdateRequested) {
@@ -1912,11 +1958,8 @@ Window::BeginUpdate(BPrivate::PortLink& link)
 	fDrawingEngine->SetCopyToFrontEnabled(false);
 
 	if (fDrawingEngine->LockParallelAccess()) {
-		fDrawingEngine->SuspendAutoSync();
-
 		fTopView->Draw(GetDrawingEngine(), dirty, &fContentRegion, true);
 
-		fDrawingEngine->Sync();
 		fDrawingEngine->UnlockParallelAccess();
 	} // else the background was cleared already
 
@@ -2020,13 +2063,7 @@ Window::_ObeySizeLimits()
 Window::UpdateSession::UpdateSession()
 	:
 	fDirtyRegion(),
-	fInUse(false),
-	fCause(0)
-{
-}
-
-
-Window::UpdateSession::~UpdateSession()
+	fInUse(false)
 {
 }
 
@@ -2056,17 +2093,8 @@ void
 Window::UpdateSession::SetUsed(bool used)
 {
 	fInUse = used;
-	if (!fInUse) {
+	if (!fInUse)
 		fDirtyRegion.MakeEmpty();
-		fCause = 0;
-	}
-}
-
-
-void
-Window::UpdateSession::AddCause(uint8 cause)
-{
-	fCause |= cause;
 }
 
 

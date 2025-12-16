@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020, Andrew Lindesay <apl@lindesay.co.nz>.
+ * Copyright 2017-2023, Andrew Lindesay <apl@lindesay.co.nz>.
  * All rights reserved. Distributed under the terms of the MIT License.
  */
 
@@ -7,6 +7,8 @@
 
 #include <errno.h>
 #include <stdlib.h>
+#include <vector>
+#include <algorithm>
 
 #include <Directory.h>
 #include <File.h>
@@ -21,6 +23,48 @@
 
 
 static bool sAreWorkingFilesAvailable = true;
+
+
+class PathWithLastAccessTimestamp {
+public:
+	PathWithLastAccessTimestamp(const BPath path, uint64 lastAccessMillisSinceEpoch)
+		:
+		fPath(path),
+		fLastAccessMillisSinceEpoch(lastAccessMillisSinceEpoch)
+	{
+	}
+
+	~PathWithLastAccessTimestamp()
+	{
+	}
+
+	const BPath& Path() const
+	{
+		return fPath;
+	}
+
+	int64 LastAccessMillisSinceEpoch() const
+	{
+		return fLastAccessMillisSinceEpoch;
+	}
+
+	BString String() const
+	{
+		BString result;
+		result.SetToFormat("%s; @ %" B_PRIu64, fPath.Leaf(), fLastAccessMillisSinceEpoch);
+		return result;
+	}
+
+	bool operator<(const PathWithLastAccessTimestamp& other) const
+    {
+    	return fLastAccessMillisSinceEpoch < other.fLastAccessMillisSinceEpoch &&
+    		strcmp(fPath.Path(), other.fPath.Path()) < 0;
+    }
+
+private:
+	BPath fPath;
+	uint64 fLastAccessMillisSinceEpoch;
+};
 
 
 /*static*/ bool
@@ -41,8 +85,8 @@ StorageUtils::SetWorkingFilesUnavailable()
  * string provided.
  */
 
-status_t
-StorageUtils::AppendToString(BPath& path, BString& result)
+/*static*/ status_t
+StorageUtils::AppendToString(const BPath& path, BString& result)
 {
 	BFile file(path.Path(), O_RDONLY);
 	uint8_t buffer[FILE_TO_STRING_BUFFER_LEN];
@@ -52,6 +96,46 @@ StorageUtils::AppendToString(BPath& path, BString& result)
 		result.Append((char *) buffer, buffer_read);
 
 	return (status_t) buffer_read;
+}
+
+
+/*static*/ status_t
+StorageUtils::AppendToFile(const BString& input, const BPath& path)
+{
+	BFile file(path.Path(), O_WRONLY | O_CREAT | O_APPEND);
+	const char* cstr = input.String();
+	size_t cstrLen = strlen(cstr);
+	return file.WriteExactly(cstr, cstrLen);
+}
+
+
+/*static*/ status_t
+StorageUtils::RemoveWorkingDirectoryContents()
+{
+	BPath path;
+	status_t result = B_OK;
+
+	if (result == B_OK)
+		result = find_directory(B_USER_CACHE_DIRECTORY, &path);
+	if (result == B_OK)
+		result = path.Append(CACHE_DIRECTORY_APP);
+
+	bool exists;
+	bool isDirectory;
+
+	if (result == B_OK)
+		result = ExistsObject(path, &exists, &isDirectory, NULL);
+
+	if (result == B_OK && exists && !isDirectory) {
+		HDERROR("the working directory at [%s] is not a directory",
+			path.Path());
+		result = B_ERROR;
+	}
+
+	if (result == B_OK && exists)
+		result = RemoveDirectoryContents(path);
+
+	return result;
 }
 
 
@@ -85,14 +169,76 @@ StorageUtils::RemoveDirectoryContents(BPath& path)
 			if (isDirectory)
 				RemoveDirectoryContents(directoryEntryPath);
 
-			if (remove(directoryEntryPath.Path()) == 0)
-				HDDEBUG("did delete [%s]", directoryEntryPath.Path());
-			else {
+			if (remove(directoryEntryPath.Path()) == 0) {
+				HDDEBUG("did delete contents under [%s]",
+					directoryEntryPath.Path());
+			} else {
 				HDERROR("unable to delete [%s]", directoryEntryPath.Path());
 				result = B_ERROR;
 			}
 		}
 
+	}
+
+	return result;
+}
+
+
+/*! This function will delete all of the files in a directory except for the most
+	recent `countLatestRetained` files.
+*/
+
+/*static*/ status_t
+StorageUtils::RemoveDirectoryContentsRetainingLatestFiles(BPath& path, uint32 countLatestRetained)
+{
+	std::vector<PathWithLastAccessTimestamp> pathAndTimestampses;
+	BDirectory directory(path.Path());
+	BEntry directoryEntry;
+	status_t result = B_OK;
+	struct stat s;
+
+	while (result == B_OK &&
+		directory.GetNextEntry(&directoryEntry) != B_ENTRY_NOT_FOUND) {
+		BPath directoryEntryPath;
+		result = directoryEntry.GetPath(&directoryEntryPath);
+
+		if (result == B_OK) {
+			if (-1 == stat(directoryEntryPath.Path(), &s))
+				result = B_ERROR;
+		}
+
+		if (result == B_OK) {
+			pathAndTimestampses.push_back(PathWithLastAccessTimestamp(
+				directoryEntryPath,
+				(static_cast<uint64>(s.st_atim.tv_sec) * 1000) + (static_cast<uint64>(s.st_atim.tv_nsec) / 1000)));
+		}
+	}
+
+	if (pathAndTimestampses.size() > countLatestRetained) {
+
+		// sort the list with the oldest files first (smallest fLastAccessMillisSinceEpoch)
+		std::sort(pathAndTimestampses.begin(), pathAndTimestampses.end());
+
+		std::vector<PathWithLastAccessTimestamp>::iterator it;
+
+		if (Logger::IsTraceEnabled()) {
+			for (it = pathAndTimestampses.begin(); it != pathAndTimestampses.end(); it++) {
+				PathWithLastAccessTimestamp pathAndTimestamp = *it;
+				HDTRACE("delete candidate [%s]", pathAndTimestamp.String().String());
+			}
+		}
+
+		for (it = pathAndTimestampses.begin(); it != pathAndTimestampses.end() - countLatestRetained; it++) {
+			PathWithLastAccessTimestamp pathAndTimestamp = *it;
+			const char* pathStr = pathAndTimestamp.Path().Path();
+
+			if (remove(pathStr) == 0)
+				HDDEBUG("did delete [%s]", pathStr);
+			else {
+				HDERROR("unable to delete [%s]", pathStr);
+				result = B_ERROR;
+			}
+		}
 	}
 
 	return result;
@@ -305,4 +451,50 @@ StorageUtils::SwapExtensionOnPathComponent(const char* pathComponent,
 	result.Append(".");
 	result.Append(extension);
 	return result;
+}
+
+
+/*!	When bulk repository data comes down from the server, it will
+	arrive as a json.gz payload.  This is stored locally as a cache
+	and this method will provide the on-disk storage location for
+	this file.
+*/
+
+status_t
+StorageUtils::DumpExportRepositoryDataPath(BPath& path, const LanguageRef language)
+{
+	BString leaf;
+	leaf.SetToFormat("repository-all_%s.json.gz", language->ID());
+	return LocalWorkingFilesPath(leaf, path);
+}
+
+
+/*!	When the system downloads reference data (eg; categories) from the server
+	then the downloaded data is stored and cached at the path defined by this
+	method.
+*/
+
+status_t
+StorageUtils::DumpExportReferenceDataPath(BPath& path, const LanguageRef language)
+{
+	BString leaf;
+	leaf.SetToFormat("reference-all_%s.json.gz", language->ID());
+	return LocalWorkingFilesPath(leaf, path);
+}
+
+
+status_t
+StorageUtils::IconTarPath(BPath& path)
+{
+	return LocalWorkingFilesPath("pkgicon-all.tar", path);
+}
+
+
+status_t
+StorageUtils::DumpExportPkgDataPath(BPath& path, const BString& repositorySourceCode,
+	const LanguageRef language)
+{
+	BString leaf;
+	leaf.SetToFormat("pkg-all-%s-%s.json.gz", repositorySourceCode.String(), language->ID());
+	return LocalWorkingFilesPath(leaf, path);
 }

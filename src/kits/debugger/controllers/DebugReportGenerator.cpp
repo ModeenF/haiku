@@ -29,7 +29,6 @@
 #include "StackFrame.h"
 #include "StackTrace.h"
 #include "Statement.h"
-#include "StringUtils.h"
 #include "SystemInfo.h"
 #include "Team.h"
 #include "TeamDebugInfo.h"
@@ -290,9 +289,12 @@ DebugReportGenerator::_GenerateReportHeader(BFile& _output)
 	SystemInfo sysInfo;
 	if (fDebuggerInterface->GetSystemInfo(sysInfo) == B_OK) {
 		const system_info &info = sysInfo.GetSystemInfo();
+		const char* vendor = get_cpu_vendor_string(cpuVendor);
+		const char* model = get_cpu_model_string(platform, cpuVendor, cpuModel);
+
 		data.SetToFormat("CPU(s): %" B_PRId32 "x %s %s\n",
-			info.cpu_count, get_cpu_vendor_string(cpuVendor),
-			get_cpu_model_string(platform, cpuVendor, cpuModel));
+			info.cpu_count, vendor != NULL ? vendor : "unknown",
+			model != NULL ? model : "unknown");
 		WRITE_AND_CHECK(_output, data);
 
 		char maxSize[32];
@@ -365,7 +367,7 @@ DebugReportGenerator::_DumpLoadedImages(BFile& _output)
 status_t
 DebugReportGenerator::_DumpAreas(BFile& _output)
 {
-	BObjectList<AreaInfo> areas(20, true);
+	BObjectList<AreaInfo, true> areas(20);
 	status_t result = fDebuggerInterface->GetAreaInfos(areas);
 	if (result != B_OK)
 		return result;
@@ -411,7 +413,7 @@ DebugReportGenerator::_DumpAreas(BFile& _output)
 status_t
 DebugReportGenerator::_DumpSemaphores(BFile& _output)
 {
-	BObjectList<SemaphoreInfo> semaphores(20, true);
+	BObjectList<SemaphoreInfo, true> semaphores(20);
 	status_t error = fDebuggerInterface->GetSemaphoreInfos(semaphores);
 	if (error != B_OK)
 		return error;

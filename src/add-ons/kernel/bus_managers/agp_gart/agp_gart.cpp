@@ -417,6 +417,7 @@ get_aperture(aperture_id id)
 Aperture::Aperture(agp_gart_bus_module_info *module, void *aperture)
 	:
 	fModule(module),
+	fInfo(),
 	fHashTable(fInfo),
 	fFirstMemory(NULL),
 	fPrivateAperture(aperture)
@@ -589,7 +590,7 @@ Aperture::AllocateMemory(aperture_memory *memory, uint32 flags)
 	void *address;
 	memory->area = create_area("GART memory", &address, B_ANY_KERNEL_ADDRESS,
 		size, B_FULL_LOCK | ((flags & B_APERTURE_NEED_PHYSICAL) != 0
-			? B_CONTIGUOUS : 0), 0);
+			? B_CONTIGUOUS : 0), B_KERNEL_READ_AREA | B_KERNEL_WRITE_AREA);
 	if (memory->area < B_OK) {
 		ERROR("Aperture::AllocateMemory(): create_area() failed\n");
 		return B_NO_MEMORY;
@@ -717,7 +718,7 @@ Aperture::_Free(aperture_memory *memory)
 		vm_page *page = memory->page;
 		for (uint32 i = 0; i < count; i++, page++) {
 			DEBUG_PAGE_ACCESS_TRANSFER(page, memory->allocating_thread);
-			vm_page_set_state(page, PAGE_STATE_FREE);
+			vm_page_free(NULL, page);
 		}
 
 		memory->page = NULL;
@@ -725,7 +726,7 @@ Aperture::_Free(aperture_memory *memory)
 		for (uint32 i = 0; i < count; i++) {
 			DEBUG_PAGE_ACCESS_TRANSFER(memory->pages[i],
 				memory->allocating_thread);
-			vm_page_set_state(memory->pages[i], PAGE_STATE_FREE);
+			vm_page_free(NULL, memory->pages[i]);
 		}
 
 		free(memory->pages);

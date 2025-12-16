@@ -22,8 +22,13 @@ public:
 									int32 numGuardPages,
 									uint32 allocationFlags);
 
+	virtual	status_t			Adopt(VMCache* source, off_t offset, off_t size,
+									off_t newOffset);
+	virtual	ssize_t				Discard(off_t offset, off_t size);
+
+	virtual	bool				CanOvercommit();
 	virtual	status_t			Commit(off_t size, int priority);
-	virtual	bool				HasPage(off_t offset);
+	virtual	bool				StoreHasPage(off_t offset);
 
 	virtual	int32				GuardSize()	{ return fGuardedSize; }
 	virtual	void				SetGuardSize(int32 guardSize)
@@ -39,7 +44,7 @@ public:
 	virtual	status_t			Fault(struct VMAddressSpace* aspace,
 									off_t offset);
 
-	virtual	void				MergeStore(VMCache* source);
+	virtual	void				Merge(VMCache* source);
 
 protected:
 	virtual	void				DeleteObject();

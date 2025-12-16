@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2009, Haiku.
+ * Copyright 2001-2022 Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -18,8 +18,8 @@ class BLayoutItem;
 class BBox;
 class BMenuField;
 class BPopUpMenu;
-class BStringView;
 class BSpinner;
+class BTextView;
 
 static const int32 kMsgSetFamily = 'fmly';
 static const int32 kMsgSetStyle = 'styl';
@@ -44,11 +44,6 @@ public:
 
 			void				UpdateFontsMenu();
 
-			BLayoutItem*		CreateFontsLabelLayoutItem() const;
-			BLayoutItem*		CreateFontsMenuBarLayoutItem() const;
-			BView*				GetFontSizeSpinner() const;
-			BView*				GetPreviewBox() const;
-
 private:
 			void				_SelectCurrentFont(bool select);
 			void				_SelectCurrentSize();
@@ -65,11 +60,11 @@ protected:
 			BSpinner*			fFontSizeSpinner;
 
 			BBox*				fPreviewBox;
-			BStringView*		fPreviewTextView;
+			BTextView*			fPreviewTextView;
+			float				fPreviewTextWidth;
 
 			BFont				fSavedFont;
 			BFont				fCurrentFont;
-			float				fMaxFontNameWidth;
 };
 
 #endif	// FONT_SELECTION_VIEW_H

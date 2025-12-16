@@ -25,13 +25,10 @@
 #include <boot/kernel_args.h>
 #include <cpu.h>
 #include <generic_syscall.h>
-#include <int.h>
+#include <interrupts.h>
 #include <spinlock_contention.h>
 #include <thread.h>
 #include <util/atomic.h>
-#if DEBUG_SPINLOCK_LATENCIES
-#	include <safemode.h>
-#endif
 
 #include "kernel_debug_config.h"
 
@@ -172,6 +169,13 @@ dump_spinlock(int argc, char** argv)
 	} else
 		kprintf("  not locked\n");
 
+#if B_DEBUG_SPINLOCK_CONTENTION
+	kprintf("  failed try_acquire():		%d\n", lock->failed_try_acquire);
+	kprintf("  total wait time:		%" B_PRIdBIGTIME "\n", lock->total_wait);
+	kprintf("  total held time:		%" B_PRIdBIGTIME "\n", lock->total_held);
+	kprintf("  last acquired at:		%" B_PRIdBIGTIME "\n", lock->last_acquired);
+#endif
+
 	return 0;
 }
 
@@ -179,59 +183,35 @@ dump_spinlock(int argc, char** argv)
 #endif	// DEBUG_SPINLOCKS
 
 
+#if B_DEBUG_SPINLOCK_CONTENTION
+
+
+static inline void
+update_lock_contention(spinlock* lock, bigtime_t start)
+{
+	const bigtime_t now = system_time();
+	lock->last_acquired = now;
+	lock->total_wait += (now - start);
+}
+
+
+static inline void
+update_lock_held(spinlock* lock)
+{
+	const bigtime_t held = (system_time() - lock->last_acquired);
+	lock->total_held += held;
+
+//#define DEBUG_SPINLOCK_LATENCIES 2000
 #if DEBUG_SPINLOCK_LATENCIES
-
-
-#define NUM_LATENCY_LOCKS	4
-#define DEBUG_LATENCY		200
-
-
-static struct {
-	spinlock	*lock;
-	bigtime_t	timestamp;
-} sLatency[SMP_MAX_CPUS][NUM_LATENCY_LOCKS];
-
-static int32 sLatencyIndex[SMP_MAX_CPUS];
-static bool sEnableLatencyCheck;
-
-
-static void
-push_latency(spinlock* lock)
-{
-	if (!sEnableLatencyCheck)
-		return;
-
-	int32 cpu = smp_get_current_cpu();
-	int32 index = (++sLatencyIndex[cpu]) % NUM_LATENCY_LOCKS;
-
-	sLatency[cpu][index].lock = lock;
-	sLatency[cpu][index].timestamp = system_time();
-}
-
-
-static void
-test_latency(spinlock* lock)
-{
-	if (!sEnableLatencyCheck)
-		return;
-
-	int32 cpu = smp_get_current_cpu();
-
-	for (int32 i = 0; i < NUM_LATENCY_LOCKS; i++) {
-		if (sLatency[cpu][i].lock == lock) {
-			bigtime_t diff = system_time() - sLatency[cpu][i].timestamp;
-			if (diff > DEBUG_LATENCY && diff < 500000) {
-				panic("spinlock %p was held for %lld usecs (%d allowed)\n",
-					lock, diff, DEBUG_LATENCY);
-			}
-
-			sLatency[cpu][i].lock = NULL;
-		}
+	if (held > DEBUG_SPINLOCK_LATENCIES) {
+		panic("spinlock %p was held for %" B_PRIdBIGTIME " usecs (%d allowed)\n",
+			lock, held, DEBUG_SPINLOCK_LATENCIES);
 	}
+#endif // DEBUG_SPINLOCK_LATENCIES
 }
 
 
-#endif	// DEBUG_SPINLOCK_LATENCIES
+#endif // B_DEBUG_SPINLOCK_CONTENTION
 
 
 int
@@ -326,16 +306,19 @@ try_acquire_spinlock(spinlock* lock)
 	}
 #endif
 
+	if (atomic_get_and_set(&lock->lock, 1) != 0) {
 #if B_DEBUG_SPINLOCK_CONTENTION
-	if (atomic_add(&lock->lock, 1) != 0)
+		atomic_add(&lock->failed_try_acquire, 1);
+#endif
 		return false;
-#else
-	if (atomic_get_and_set((int32*)lock, 1) != 0)
-		return false;
+	}
 
-#	if DEBUG_SPINLOCKS
+#if B_DEBUG_SPINLOCK_CONTENTION
+	update_lock_contention(lock, system_time());
+#endif
+
+#if DEBUG_SPINLOCKS
 	push_lock_caller(arch_debug_get_caller(), lock);
-#	endif
 #endif
 
 	return true;
@@ -353,24 +336,23 @@ acquire_spinlock(spinlock* lock)
 #endif
 
 	if (sNumCPUs > 1) {
-		int currentCPU = smp_get_current_cpu();
 #if B_DEBUG_SPINLOCK_CONTENTION
-		while (atomic_add(&lock->lock, 1) != 0)
-			process_all_pending_ici(currentCPU);
-#else
+		const bigtime_t start = system_time();
+#endif
+		int currentCPU = smp_get_current_cpu();
 		while (1) {
 			uint32 count = 0;
 			while (lock->lock != 0) {
 				if (++count == SPINLOCK_DEADLOCK_COUNT) {
-#	if DEBUG_SPINLOCKS
+#if DEBUG_SPINLOCKS
 					panic("acquire_spinlock(): Failed to acquire spinlock %p "
 						"for a long time (last caller: %p, value: %" B_PRIx32
 						")", lock, find_lock_caller(lock), lock->lock);
-#	else
+#else
 					panic("acquire_spinlock(): Failed to acquire spinlock %p "
 						"for a long time (value: %" B_PRIx32 ")", lock,
 						lock->lock);
-#	endif
+#endif
 					count = 0;
 				}
 
@@ -381,11 +363,17 @@ acquire_spinlock(spinlock* lock)
 				break;
 		}
 
-#	if DEBUG_SPINLOCKS
+#if B_DEBUG_SPINLOCK_CONTENTION
+		update_lock_contention(lock, start);
+#endif
+
+#if DEBUG_SPINLOCKS
 		push_lock_caller(arch_debug_get_caller(), lock);
-#	endif
 #endif
 	} else {
+#if B_DEBUG_SPINLOCK_CONTENTION
+		lock->last_acquired = system_time();
+#endif
 #if DEBUG_SPINLOCKS
 		int32 oldValue = atomic_get_and_set(&lock->lock, 1);
 		if (oldValue != 0) {
@@ -397,9 +385,6 @@ acquire_spinlock(spinlock* lock)
 		push_lock_caller(arch_debug_get_caller(), lock);
 #endif
 	}
-#if DEBUG_SPINLOCK_LATENCIES
-	push_latency(lock);
-#endif
 }
 
 
@@ -415,22 +400,21 @@ acquire_spinlock_nocheck(spinlock *lock)
 
 	if (sNumCPUs > 1) {
 #if B_DEBUG_SPINLOCK_CONTENTION
-		while (atomic_add(&lock->lock, 1) != 0) {
-		}
-#else
+		const bigtime_t start = system_time();
+#endif
 		while (1) {
 			uint32 count = 0;
 			while (lock->lock != 0) {
 				if (++count == SPINLOCK_DEADLOCK_COUNT_NO_CHECK) {
-#	if DEBUG_SPINLOCKS
+#if DEBUG_SPINLOCKS
 					panic("acquire_spinlock_nocheck(): Failed to acquire "
 						"spinlock %p for a long time (last caller: %p, value: %"
 						B_PRIx32 ")", lock, find_lock_caller(lock), lock->lock);
-#	else
+#else
 					panic("acquire_spinlock_nocheck(): Failed to acquire "
 						"spinlock %p for a long time (value: %" B_PRIx32 ")",
 						lock, lock->lock);
-#	endif
+#endif
 					count = 0;
 				}
 
@@ -441,11 +425,17 @@ acquire_spinlock_nocheck(spinlock *lock)
 				break;
 		}
 
-#	if DEBUG_SPINLOCKS
+#if B_DEBUG_SPINLOCK_CONTENTION
+		update_lock_contention(lock, start);
+#endif
+
+#if DEBUG_SPINLOCKS
 		push_lock_caller(arch_debug_get_caller(), lock);
-#	endif
 #endif
 	} else {
+#if B_DEBUG_SPINLOCK_CONTENTION
+		lock->last_acquired = system_time();
+#endif
 #if DEBUG_SPINLOCKS
 		int32 oldValue = atomic_get_and_set(&lock->lock, 1);
 		if (oldValue != 0) {
@@ -473,22 +463,21 @@ acquire_spinlock_cpu(int32 currentCPU, spinlock *lock)
 
 	if (sNumCPUs > 1) {
 #if B_DEBUG_SPINLOCK_CONTENTION
-		while (atomic_add(&lock->lock, 1) != 0)
-			process_all_pending_ici(currentCPU);
-#else
+		const bigtime_t start = system_time();
+#endif
 		while (1) {
 			uint32 count = 0;
 			while (lock->lock != 0) {
 				if (++count == SPINLOCK_DEADLOCK_COUNT) {
-#	if DEBUG_SPINLOCKS
+#if DEBUG_SPINLOCKS
 					panic("acquire_spinlock_cpu(): Failed to acquire spinlock "
 						"%p for a long time (last caller: %p, value: %" B_PRIx32
 						")", lock, find_lock_caller(lock), lock->lock);
-#	else
+#else
 					panic("acquire_spinlock_cpu(): Failed to acquire spinlock "
 						"%p for a long time (value: %" B_PRIx32 ")", lock,
 						lock->lock);
-#	endif
+#endif
 					count = 0;
 				}
 
@@ -499,11 +488,17 @@ acquire_spinlock_cpu(int32 currentCPU, spinlock *lock)
 				break;
 		}
 
-#	if DEBUG_SPINLOCKS
+#if B_DEBUG_SPINLOCK_CONTENTION
+		update_lock_contention(lock, start);
+#endif
+
+#if DEBUG_SPINLOCKS
 		push_lock_caller(arch_debug_get_caller(), lock);
-#	endif
 #endif
 	} else {
+#if B_DEBUG_SPINLOCK_CONTENTION
+		lock->last_acquired = system_time();
+#endif
 #if DEBUG_SPINLOCKS
 		int32 oldValue = atomic_get_and_set(&lock->lock, 1);
 		if (oldValue != 0) {
@@ -521,28 +516,17 @@ acquire_spinlock_cpu(int32 currentCPU, spinlock *lock)
 void
 release_spinlock(spinlock *lock)
 {
-#if DEBUG_SPINLOCK_LATENCIES
-	test_latency(lock);
+#if B_DEBUG_SPINLOCK_CONTENTION
+	update_lock_held(lock);
 #endif
 
 	if (sNumCPUs > 1) {
-		if (are_interrupts_enabled())
+		if (are_interrupts_enabled()) {
 			panic("release_spinlock: attempt to release lock %p with "
 				"interrupts enabled\n", lock);
-#if B_DEBUG_SPINLOCK_CONTENTION
-		{
-			int32 count = atomic_and(&lock->lock, 0) - 1;
-			if (count < 0) {
-				panic("release_spinlock: lock %p was already released\n", lock);
-			} else {
-				// add to the total count -- deal with carry manually
-				if ((uint32)atomic_add(&lock->count_low, count) + count
-						< (uint32)count) {
-					atomic_add(&lock->count_high, 1);
-				}
-			}
 		}
-#elif DEBUG_SPINLOCKS
+
+#if DEBUG_SPINLOCKS
 		if (atomic_get_and_set(&lock->lock, 0) != 1)
 			panic("release_spinlock: lock %p was already released\n", lock);
 #else
@@ -556,9 +540,6 @@ release_spinlock(spinlock *lock)
 		}
 		if (atomic_get_and_set(&lock->lock, 0) != 1)
 			panic("release_spinlock: lock %p was already released\n", lock);
-#endif
-#if DEBUG_SPINLOCK_LATENCIES
-		test_latency(lock);
 #endif
 	}
 }
@@ -695,7 +676,8 @@ release_read_spinlock(rw_spinlock* lock)
 
 
 bool
-try_acquire_write_seqlock(seqlock* lock) {
+try_acquire_write_seqlock(seqlock* lock)
+{
 	bool succeed = try_acquire_spinlock(&lock->lock);
 	if (succeed)
 		atomic_add((int32*)&lock->count, 1);
@@ -704,27 +686,31 @@ try_acquire_write_seqlock(seqlock* lock) {
 
 
 void
-acquire_write_seqlock(seqlock* lock) {
+acquire_write_seqlock(seqlock* lock)
+{
 	acquire_spinlock(&lock->lock);
 	atomic_add((int32*)&lock->count, 1);
 }
 
 
 void
-release_write_seqlock(seqlock* lock) {
+release_write_seqlock(seqlock* lock)
+{
 	atomic_add((int32*)&lock->count, 1);
 	release_spinlock(&lock->lock);
 }
 
 
 uint32
-acquire_read_seqlock(seqlock* lock) {
+acquire_read_seqlock(seqlock* lock)
+{
 	return atomic_get((int32*)&lock->count);
 }
 
 
 bool
-release_read_seqlock(seqlock* lock, uint32 count) {
+release_read_seqlock(seqlock* lock, uint32 count)
+{
 	memory_read_barrier();
 
 	uint32 current = *(volatile int32*)&lock->count;
@@ -932,7 +918,7 @@ process_pending_ici(int32 currentCPU)
 	if (msg == NULL)
 		return B_ENTRY_NOT_FOUND;
 
-	TRACE("  cpu %ld message = %ld\n", currentCPU, msg->message);
+	TRACE("  cpu %" B_PRId32 " message = %" B_PRId32 "\n", currentCPU, msg->message);
 
 	bool haltCPU = false;
 
@@ -963,7 +949,7 @@ process_pending_ici(int32 currentCPU)
 			break;
 
 		default:
-			dprintf("smp_intercpu_int_handler: got unknown message %" B_PRId32 "\n",
+			dprintf("smp_intercpu_interrupt_handler: got unknown message %" B_PRId32 "\n",
 				msg->message);
 			break;
 	}
@@ -982,34 +968,20 @@ process_pending_ici(int32 currentCPU)
 #if B_DEBUG_SPINLOCK_CONTENTION
 
 
-static uint64
-get_spinlock_counter(spinlock* lock)
-{
-	uint32 high;
-	uint32 low;
-	do {
-		high = (uint32)atomic_get(&lock->count_high);
-		low = (uint32)atomic_get(&lock->count_low);
-	} while (high != atomic_get(&lock->count_high));
-
-	return ((uint64)high << 32) | low;
-}
-
-
 static status_t
 spinlock_contention_syscall(const char* subsystem, uint32 function,
 	void* buffer, size_t bufferSize)
 {
-	spinlock_contention_info info;
-
 	if (function != GET_SPINLOCK_CONTENTION_INFO)
 		return B_BAD_VALUE;
 
 	if (bufferSize < sizeof(spinlock_contention_info))
 		return B_BAD_VALUE;
 
-	info.thread_spinlock_counter = get_spinlock_counter(&gThreadSpinlock);
-	info.team_spinlock_counter = get_spinlock_counter(&gTeamSpinlock);
+	// TODO: This isn't very useful at the moment...
+
+	spinlock_contention_info info;
+	info.thread_creation_spinlock = gThreadCreationLock.total_wait;
 
 	if (!IS_USER_ADDRESS(buffer)
 		|| user_memcpy(buffer, &info, sizeof(info)) != B_OK) {
@@ -1056,13 +1028,13 @@ call_all_cpus_early(void (*function)(void*, int), void* cookie)
 
 
 int
-smp_intercpu_int_handler(int32 cpu)
+smp_intercpu_interrupt_handler(int32 cpu)
 {
-	TRACE("smp_intercpu_int_handler: entry on cpu %ld\n", cpu);
+	TRACE("smp_intercpu_interrupt_handler: entry on cpu %" B_PRId32 "\n", cpu);
 
 	process_all_pending_ici(cpu);
 
-	TRACE("smp_intercpu_int_handler: done on cpu %ld\n", cpu);
+	TRACE("smp_intercpu_interrupt_handler: done on cpu %" B_PRId32 "\n", cpu);
 
 	return B_HANDLED_INTERRUPT;
 }
@@ -1074,8 +1046,8 @@ smp_send_ici(int32 targetCPU, int32 message, addr_t data, addr_t data2,
 {
 	struct smp_msg *msg;
 
-	TRACE("smp_send_ici: target 0x%lx, mess 0x%lx, data 0x%lx, data2 0x%lx, "
-		"data3 0x%lx, ptr %p, flags 0x%lx\n", targetCPU, message, data, data2,
+	TRACE("smp_send_ici: target 0x%" B_PRIx32 ", mess 0x%" B_PRIx32 ", data 0x%lx, data2 0x%lx, "
+		"data3 0x%lx, ptr %p, flags 0x%" B_PRIx32 "\n", targetCPU, message, data, data2,
 		data3, dataPointer, flags);
 
 	if (sICIEnabled) {
@@ -1210,8 +1182,8 @@ smp_send_broadcast_ici(int32 message, addr_t data, addr_t data2, addr_t data3,
 {
 	struct smp_msg *msg;
 
-	TRACE("smp_send_broadcast_ici: cpu %ld mess 0x%lx, data 0x%lx, data2 "
-		"0x%lx, data3 0x%lx, ptr %p, flags 0x%lx\n", smp_get_current_cpu(),
+	TRACE("smp_send_broadcast_ici: cpu %" B_PRId32 " mess 0x%" B_PRIx32 ", data 0x%lx, data2 "
+		"0x%lx, data3 0x%lx, ptr %p, flags 0x%" B_PRIx32 "\n", smp_get_current_cpu(),
 		message, data, data2, data3, dataPointer, flags);
 
 	if (sICIEnabled) {
@@ -1282,8 +1254,8 @@ smp_send_broadcast_ici_interrupts_disabled(int32 currentCPU, int32 message,
 	if (!sICIEnabled)
 		return;
 
-	TRACE("smp_send_broadcast_ici_interrupts_disabled: cpu %ld mess 0x%lx, "
-		"data 0x%lx, data2 0x%lx, data3 0x%lx, ptr %p, flags 0x%lx\n",
+	TRACE("smp_send_broadcast_ici_interrupts_disabled: cpu %" B_PRId32 " mess 0x%" B_PRIx32 ", "
+		"data 0x%lx, data2 0x%lx, data3 0x%lx, ptr %p, flags 0x%" B_PRIx32 "\n",
 		currentCPU, message, data, data2, data3, dataPointer, flags);
 
 	struct smp_msg *msg;
@@ -1300,7 +1272,7 @@ smp_send_broadcast_ici_interrupts_disabled(int32 currentCPU, int32 message,
 	msg->proc_bitmap.ClearBit(currentCPU);
 	msg->done = 0;
 
-	TRACE("smp_send_broadcast_ici_interrupts_disabled %ld: inserting msg %p "
+	TRACE("smp_send_broadcast_ici_interrupts_disabled %" B_PRId32 ": inserting msg %p "
 		"into broadcast mbox\n", currentCPU, msg);
 
 	// stick it in the appropriate cpu's mailbox
@@ -1314,14 +1286,14 @@ smp_send_broadcast_ici_interrupts_disabled(int32 currentCPU, int32 message,
 
 	arch_smp_send_broadcast_ici();
 
-	TRACE("smp_send_broadcast_ici_interrupts_disabled %ld: sent interrupt\n",
+	TRACE("smp_send_broadcast_ici_interrupts_disabled %" B_PRId32 ": sent interrupt\n",
 		currentCPU);
 
 	if ((flags & SMP_MSG_FLAG_SYNC) != 0) {
 		// wait for the other cpus to finish processing it
 		// the interrupt handler will ref count it to <0
 		// if the message is sync after it has removed it from the mailbox
-		TRACE("smp_send_broadcast_ici_interrupts_disabled %ld: waiting for "
+		TRACE("smp_send_broadcast_ici_interrupts_disabled %" B_PRId32 ": waiting for "
 			"ack\n", currentCPU);
 
 		while (msg->done == 0) {
@@ -1329,7 +1301,7 @@ smp_send_broadcast_ici_interrupts_disabled(int32 currentCPU, int32 message,
 			cpu_wait(&msg->done, 1);
 		}
 
-		TRACE("smp_send_broadcast_ici_interrupts_disabled %ld: returning "
+		TRACE("smp_send_broadcast_ici_interrupts_disabled %" B_PRId32 ": returning "
 			"message to free list\n", currentCPU);
 
 		// for SYNC messages, it's our responsibility to put it
@@ -1405,11 +1377,6 @@ status_t
 smp_init(kernel_args* args)
 {
 	TRACE("smp_init: entry\n");
-
-#if DEBUG_SPINLOCK_LATENCIES
-	sEnableLatencyCheck
-		= !get_safemode_boolean(B_SAFEMODE_DISABLE_LATENCY_CHECK, false);
-#endif
 
 #if DEBUG_SPINLOCKS
 	add_debugger_command_etc("spinlock", &dump_spinlock,

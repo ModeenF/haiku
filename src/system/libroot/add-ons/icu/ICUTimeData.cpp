@@ -135,7 +135,7 @@ ICUTimeData::SetTo(const Locale& locale, const char* posixLocaleName)
 	if (result == B_OK) {
 		try {
 			DateFormat* format = DateFormat::createDateTimeInstance(
-				DateFormat::kFull, DateFormat::kFull, fLocale);
+				DateFormat::kDefault, DateFormat::kDefault, fLocale);
 			result = _SetLCTimePattern(format, fDateTimeFormat,
 				sizeof(fDateTimeFormat));
 			delete format;
@@ -321,6 +321,9 @@ ICUTimeData::_SetLCTimePattern(DateFormat* format, char* destination,
 		// last character (via lastCharSeen)
 		for (int i = 0; i <= icuPattern.length(); ++i) {
 			UChar currChar = icuPattern.charAt(i);
+			if (u_isspace(currChar))
+				currChar = ' ';
+
 			if (lastCharSeen != 0 && currChar == lastCharSeen) {
 				lastCharCount++;
 				continue;

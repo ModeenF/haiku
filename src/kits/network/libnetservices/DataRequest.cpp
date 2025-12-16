@@ -14,15 +14,14 @@
 #include <mail_encoding.h>
 #include <stdio.h>
 
-
-#ifndef LIBNETAPI_DEPRECATED
 using namespace BPrivate::Network;
-#endif
 
 
-BDataRequest::BDataRequest(const BUrl& url, BUrlProtocolListener* listener,
-		BUrlContext* context)
-	: BUrlRequest(url, listener, context, "data URL parser", "data"),
+BDataRequest::BDataRequest(const BUrl& url, BDataIO* output,
+	BUrlProtocolListener* listener,
+	BUrlContext* context)
+	:
+	BUrlRequest(url, output, listener, context, "data URL parser", "data"),
 	fResult()
 {
 	fResult.SetContentType("text/plain");
@@ -44,9 +43,6 @@ BDataRequest::_ProtocolLoop()
 	const char* payload;
 	ssize_t length;
 	bool isBase64 = false;
-
-	// The RFC has examples where some characters are URL-Encoded.
-	fUrl.UrlDecode(true);
 
 	// The RFC says this uses a nonstandard scheme, so the path, query and
 	// fragment are a bit nonsensical. It would be nice to handle them, but
@@ -122,11 +118,18 @@ BDataRequest::_ProtocolLoop()
 
 	fResult.SetLength(length);
 
-	if (fListener != NULL) {
-		fListener->HeadersReceived(this, fResult);
-		if (length > 0) {
-			fListener->DataReceived(this, payload, 0, length);
-			fListener->DownloadProgress(this, length, length);
+	if (fListener != NULL)
+		fListener->HeadersReceived(this);
+	if (length > 0) {
+		if (fOutput != NULL) {
+			size_t written = 0;
+			status_t err = fOutput->WriteExactly(payload, length, &written);
+			if (fListener != NULL && written > 0)
+				fListener->BytesWritten(this, written);
+			if (err != B_OK)
+				return err;
+			if (fListener != NULL)
+				fListener->DownloadProgress(this, written, written);
 		}
 	}
 

@@ -28,6 +28,7 @@
 #	undef _KERNEL_MODE
 #endif
 
+#include <BeBuild.h>
 #include <directories.h>
 #include <driver_settings.h>
 #include <FindDirectory.h>
@@ -467,7 +468,7 @@ load_driver_settings_from_file(int file, const char *driverName)
 
 
 static bool
-put_string(char **_buffer, ssize_t *_bufferSize, char *string)
+put_string(char **_buffer, size_t *_bufferSize, char *string)
 {
 	size_t length, reserved, quotes;
 	char *buffer = *_buffer, c;
@@ -515,7 +516,7 @@ put_string(char **_buffer, ssize_t *_bufferSize, char *string)
 
 
 static bool
-put_chars(char **_buffer, ssize_t *_bufferSize, const char *chars)
+put_chars(char **_buffer, size_t *_bufferSize, const char *chars)
 {
 	char *buffer = *_buffer;
 	size_t length;
@@ -524,11 +525,12 @@ put_chars(char **_buffer, ssize_t *_bufferSize, const char *chars)
 		return true;
 
 	length = strlen(chars);
-	*_bufferSize -= length;
-
-	if (*_bufferSize <= 0)
+	if (*_bufferSize <= length) {
+		*_bufferSize = 0;
 		return false;
+	}
 
+	*_bufferSize -= length;
 	memcpy(buffer, chars, length);
 	buffer += length;
 	buffer[0] = '\0';
@@ -541,15 +543,16 @@ put_chars(char **_buffer, ssize_t *_bufferSize, const char *chars)
 
 
 static bool
-put_char(char **_buffer, ssize_t *_bufferSize, char c)
+put_char(char **_buffer, size_t *_bufferSize, char c)
 {
 	char *buffer = *_buffer;
 
-	*_bufferSize -= 1;
-
-	if (*_bufferSize <= 0)
+	if (*_bufferSize <= 1) {
+		*_bufferSize = 0;
 		return false;
+	}
 
+	*_bufferSize -= 1;
 	buffer[0] = c;
 	buffer[1] = '\0';
 
@@ -561,7 +564,7 @@ put_char(char **_buffer, ssize_t *_bufferSize, char c)
 
 
 static void
-put_level_space(char **_buffer, ssize_t *_bufferSize, int32 level)
+put_level_space(char **_buffer, size_t *_bufferSize, int32 level)
 {
 	while (level-- > 0)
 		put_char(_buffer, _bufferSize, '\t');
@@ -569,7 +572,7 @@ put_level_space(char **_buffer, ssize_t *_bufferSize, int32 level)
 
 
 static void
-put_parameter(char **_buffer, ssize_t *_bufferSize,
+put_parameter(char **_buffer, size_t *_bufferSize,
 	struct driver_parameter *parameter, int32 level, bool flat)
 {
 	int32 i;
@@ -763,7 +766,10 @@ load_driver_settings(const char *driverName)
 					return NULL;
 
 				memcpy(text, settings->buffer, settings->size + 1);
-				return new_settings(text, driverName);
+				settings_handle *handle =  new_settings(text, driverName);
+				if (handle == NULL)
+					free(text);
+				return handle;
 			}
 			settings = settings->next;
 		}
@@ -853,11 +859,11 @@ parse_driver_settings_string(const char *settingsString)
 	the "buffer" parameter is NULL, B_BAD_VALUE is returned.
 */
 status_t
-get_driver_settings_string(void *_handle, char *buffer, ssize_t *_bufferSize,
+get_driver_settings_string(void *_handle, char *buffer, size_t *_bufferSize,
 	bool flat)
 {
 	settings_handle *handle = (settings_handle *)_handle;
-	ssize_t bufferSize = *_bufferSize;
+	size_t bufferSize = *_bufferSize;
 	int32 i;
 
 	if (!check_handle(handle) || !buffer || *_bufferSize == 0)
@@ -868,8 +874,7 @@ get_driver_settings_string(void *_handle, char *buffer, ssize_t *_bufferSize,
 			0, flat);
 	}
 
-	*_bufferSize -= bufferSize;
-	return bufferSize >= 0 ? B_OK : B_BUFFER_OVERFLOW;
+	return bufferSize > 0 ? B_OK : B_BUFFER_OVERFLOW;
 }
 
 
@@ -954,8 +959,11 @@ get_driver_settings(void *handle)
 }
 
 
-status_t
-delete_driver_settings(void *_handle)
-{
-	return unload_driver_settings(_handle);
-}
+#if defined(HAIKU_TARGET_PLATFORM_HAIKU) \
+	&& (defined(__i386__) || defined(__x86_64__))
+
+// Obsolete function, use unload_driver_settings instead. Introduced by
+// accident in hrev3530 (2003) and present in public headers for a long time.
+B_DEFINE_WEAK_ALIAS(unload_driver_settings, delete_driver_settings);
+
+#endif

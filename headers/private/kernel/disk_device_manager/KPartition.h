@@ -8,13 +8,17 @@
 #ifndef _K_DISK_DEVICE_PARTITION_H
 #define _K_DISK_DEVICE_PARTITION_H
 
+
 #include <disk_device_manager.h>
 #include <Vector.h>
 
+
 struct user_partition_data;
+
 
 namespace BPrivate {
 namespace DiskDevice {
+
 
 class UserDataWriter;
 
@@ -24,6 +28,7 @@ class KPartitionListener;
 class KPartitionVisitor;
 class KPath;
 class KPhysicalPartition;
+
 
 //!	\brief Class representing a single partition.
 class KPartition {
@@ -70,6 +75,9 @@ public:
 	void SetBlockSize(uint32 blockSize);
 	uint32 BlockSize() const;
 
+	void SetPhysicalBlockSize(uint32 blockSize);
+	uint32 PhysicalBlockSize() const;
+
 	void SetIndex(int32 index);
 	int32 Index() const;		// 0 for devices
 
@@ -112,14 +120,10 @@ public:
 	virtual status_t GetPath(KPath *path) const;
 		// no setter (see BDiskDevice) -- built on the fly
 
+	status_t GetMountPoint(KPath* mountPoint) const;
+
 	void SetVolumeID(dev_t volumeID);
 	dev_t VolumeID() const;
-
-	void SetMountCookie(void *cookie);
-	void *MountCookie() const;
-
-	virtual status_t Mount(uint32 mountFlags, const char *parameters);
-	virtual status_t Unmount();
 
 	// Parameters
 
@@ -133,8 +137,6 @@ public:
 
 	void SetDevice(KDiskDevice *device);
 	KDiskDevice *Device() const;
-
-	void SetParent(KPartition *parent);
 	KPartition *Parent() const;
 
 	status_t AddChild(KPartition *partition, int32 index = -1);
@@ -200,7 +202,6 @@ protected:
 	void FireTypeChanged(const char *type);
 	void FireIDChanged(partition_id id);
 	void FireVolumeIDChanged(dev_t volumeID);
-	void FireMountCookieChanged(void *cookie);
 	void FireParametersChanged(const char *parameters);
 	void FireContentParametersChanged(const char *parameters);
 	void FireChildAdded(KPartition *child, int32 index);
@@ -233,9 +234,12 @@ protected:
 	static int32		sNextID;
 };
 
+
 } // namespace DiskDevice
 } // namespace BPrivate
 
+
 using BPrivate::DiskDevice::KPartition;
+
 
 #endif	// _K_DISK_DEVICE_PARTITION_H

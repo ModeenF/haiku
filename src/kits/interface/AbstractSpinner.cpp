@@ -171,6 +171,9 @@ public:
 									const BMessage* message);
 	virtual void				MessageReceived(BMessage* message);
 
+			void				AdoptSystemColors();
+			bool				HasSystemColors() const;
+
 			bool				IsEnabled() const { return fIsEnabled; }
 	virtual	void				SetEnabled(bool enable) { fIsEnabled = enable; };
 
@@ -322,7 +325,7 @@ SpinnerButton::AttachedToWindow()
 {
 	fParent = static_cast<BAbstractSpinner*>(Parent());
 
-	AdoptParentColors();
+	AdoptSystemColors();
 	BView::AttachedToWindow();
 }
 
@@ -361,7 +364,7 @@ SpinnerButton::Draw(BRect updateRect)
 	else
 		bgTint = B_NO_TINT;
 
-	rgb_color bgColor = ui_color(B_PANEL_BACKGROUND_COLOR);
+	rgb_color bgColor = ViewColor();
 	if (bgColor.red + bgColor.green + bgColor.blue <= 128 * 3) {
 		// if dark background make the tint lighter
 		frameTint = 2.0f - frameTint;
@@ -425,8 +428,6 @@ SpinnerButton::Draw(BRect updateRect)
 			if (rect.IntegerHeight() % 2 != 0)
 				rect.bottom -= 1;
 
-			SetHighColor(tint_color(bgColor, fgTint));
-
 			// draw the +/-
 			float halfHeight = floorf(rect.Height() / 2);
 			StrokeLine(BPoint(rect.left, rect.top + halfHeight),
@@ -438,6 +439,26 @@ SpinnerButton::Draw(BRect updateRect)
 			}
 		}
 	}
+}
+
+
+void
+SpinnerButton::AdoptSystemColors()
+{
+	SetViewUIColor(B_CONTROL_BACKGROUND_COLOR);
+	SetLowUIColor(B_CONTROL_BACKGROUND_COLOR);
+	SetHighUIColor(B_CONTROL_TEXT_COLOR);
+}
+
+
+bool
+SpinnerButton::HasSystemColors() const
+{
+	float tint = B_NO_TINT;
+
+	return ViewUIColor(&tint) == B_CONTROL_BACKGROUND_COLOR && tint == B_NO_TINT
+		&& LowUIColor(&tint) == B_CONTROL_BACKGROUND_COLOR && tint == B_NO_TINT
+		&& HighUIColor(&tint) == B_CONTROL_TEXT_COLOR && tint == B_NO_TINT;
 }
 
 
@@ -968,7 +989,7 @@ BAbstractSpinner::GetSupportedSuites(BMessage* message)
 	BPropertyInfo prop_info(sProperties);
 	message->AddFlat("messages", &prop_info);
 
-	return BView::GetSupportedSuites(message);
+	return BControl::GetSupportedSuites(message);
 }
 
 
@@ -976,7 +997,7 @@ BHandler*
 BAbstractSpinner::ResolveSpecifier(BMessage* message, int32 index, BMessage* specifier,
 	int32 form, const char* property)
 {
-	return BView::ResolveSpecifier(message, index, specifier, form,
+	return BControl::ResolveSpecifier(message, index, specifier, form,
 		property);
 }
 
@@ -993,7 +1014,7 @@ BAbstractSpinner::AttachedToWindow()
 	_UpdateTextViewColors(IsEnabled());
 	fTextView->MakeEditable(IsEnabled());
 
-	BView::AttachedToWindow();
+	BControl::AttachedToWindow();
 }
 
 
@@ -1010,7 +1031,7 @@ BAbstractSpinner::Draw(BRect updateRect)
 void
 BAbstractSpinner::FrameResized(float width, float height)
 {
-	BView::FrameResized(width, height);
+	BControl::FrameResized(width, height);
 
 	// TODO: this causes flickering still...
 
@@ -1069,8 +1090,8 @@ BAbstractSpinner::ValueChanged()
 void
 BAbstractSpinner::MessageReceived(BMessage* message)
 {
-	if (!IsEnabled() && message->what == B_COLORS_UPDATED)
-		_UpdateTextViewColors(false);
+	if (message->what == B_COLORS_UPDATED)
+		_UpdateTextViewColors(IsEnabled());
 
 	BControl::MessageReceived(message);
 }
@@ -1086,7 +1107,7 @@ BAbstractSpinner::MakeFocus(bool focus)
 void
 BAbstractSpinner::ResizeToPreferred()
 {
-	BView::ResizeToPreferred();
+	BControl::ResizeToPreferred();
 
 	const char* label = Label();
 	if (label != NULL) {
@@ -1115,7 +1136,7 @@ BAbstractSpinner::SetFlags(uint32 flags)
 	// Don't make this one navigable
 	flags &= ~B_NAVIGABLE;
 
-	BView::SetFlags(flags);
+	BControl::SetFlags(flags);
 }
 
 
@@ -1453,11 +1474,8 @@ BAbstractSpinner::_DrawLabel(BRect updateRect)
 
 	uint32 flags = be_control_look->Flags(this);
 
-	// erase the is control flag before drawing the label so that the label
-	// will get drawn using B_PANEL_TEXT_COLOR.
-	flags &= ~BControlLook::B_IS_CONTROL;
-
-	be_control_look->DrawLabel(this, label, LowColor(), flags, BPoint(x, y));
+	rgb_color highColor = HighColor();
+	be_control_look->DrawLabel(this, label, LowColor(), flags, BPoint(x, y), &highColor);
 }
 
 
@@ -1469,7 +1487,7 @@ BAbstractSpinner::_DrawTextView(BRect updateRect)
 	if (!rect.IsValid() || !rect.Intersects(updateRect))
 		return;
 
-	rgb_color base = ui_color(B_PANEL_BACKGROUND_COLOR);
+	rgb_color base = ViewColor();
 	uint32 flags = 0;
 	if (!IsEnabled())
 		flags |= BControlLook::B_DISABLED;

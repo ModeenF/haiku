@@ -139,9 +139,9 @@
 #define XHCI_LEGSUP_OSOWNED		(1 << 24)	// OS Owned Semaphore
 #define XHCI_LEGSUP_BIOSOWNED	(1 << 16)	// BIOS Owned Semaphore
 
-#define XHCI_LEGCTLSTS				0x04
-#define XHCI_LEGCTLSTS_DISABLE_SMI	((0x7 << 1) + (0xff << 5) + (0x7 << 17))
-#define XHCI_LEGCTLSTS_EVENTS_SMI	(0x7 << 29)
+#define XHCI_LEGCTLSTS					0x04
+#define XHCI_LEGCTLSTS_RESERVED_BITS	(0xe1fee)
+#define XHCI_LEGCTLSTS_READONLY_BITS	(0x110000)
 
 #define XHCI_SUPPORTED_PROTOCOLS_CAPID		0x02
 #define XHCI_SUPPORTED_PROTOCOLS_0_MINOR(x)	(((x) >> 16) & 0xff)
@@ -177,7 +177,18 @@
 
 #define PS_PLS_MASK				(0xf << 5)
 #define PS_XDEV_U0				(0x0 << 5)
+#define PS_XDEV_U1				(0x1 << 5)
+#define PS_XDEV_U2				(0x2 << 5)
 #define PS_XDEV_U3				(0x3 << 5)
+#define PS_XDEV_DISABLED		(0x4 << 5)
+#define PS_XDEV_RXDETECT		(0x5 << 5)
+#define PS_XDEV_INACTIVE		(0x6 << 5)
+#define PS_XDEV_POLLING			(0x7 << 5)
+#define PS_XDEV_RECOVERY		(0x8 << 5)
+#define PS_XDEV_HOT_RESET		(0x9 << 5)
+#define PS_XDEV_COMP_MODE		(0xa << 5)
+#define PS_XDEV_TEST_MODE		(0xb << 5)
+#define PS_XDEV_RESUME			(0xf << 5)
 
 
 // Completion Code
@@ -209,7 +220,7 @@
 #define COMP_COMMAND_RING_STOPPED	24
 #define COMP_COMMAND_ABORTED		25
 #define COMP_STOPPED				26
-#define COMP_LENGTH_INVALID			27
+#define COMP_STOPPED_LENGTH_INVALID	27
 #define COMP_MAX_EXIT_LATENCY		29
 #define COMP_ISOC_OVERRUN			31
 #define COMP_EVENT_LOST				32
@@ -293,8 +304,8 @@
 #define TRB_3_TBC_GET(x)		(((x) >> 7) & 0x3)
 #define TRB_3_TLBPC(x)			(((x) & 0xf) << 16)
 #define TRB_3_TLBPC_GET(x)		(((x) >> 16) & 0xf)
-#define TRB_3_ENDPOINT(x)		(((x) & 0xf) << 16)
-#define TRB_3_ENDPOINT_GET(x)	(((x) >> 16) & 0xf)
+#define TRB_3_ENDPOINT(x)		(((x) & 0x1f) << 16)
+#define TRB_3_ENDPOINT_GET(x)	(((x) >> 16) & 0x1f)
 #define TRB_3_FRID(x)			(((x) & 0x7ff) << 20)
 #define TRB_3_FRID_GET(x)		(((x) >> 20) & 0x7ff)
 #define TRB_3_SLOT(x)			(((x) & 0xff) << 24)
@@ -385,8 +396,8 @@ struct xhci_endpoint_ctx {
 };
 
 
-#define ENDPOINT_0_STATE(x)				((x) & 0x3)
-#define ENDPOINT_0_STATE_GET(x)			((x) & 0x3)
+#define ENDPOINT_0_STATE(x)				((x) & 0x7)
+#define ENDPOINT_0_STATE_GET(x)			((x) & 0x7)
 #define ENDPOINT_0_MULT(x)				(((x) & 0x3) << 8)
 #define ENDPOINT_0_MULT_GET(x)			(((x) >> 8) & 0x3)
 #define ENDPOINT_0_MAXPSTREAMS(x)		(((x) & 0x1F) << 10)
@@ -412,6 +423,14 @@ struct xhci_endpoint_ctx {
 #define ENDPOINT_4_MAXESITPAYLOAD(x)	(((x) & 0xFFFF) << 16)
 #define ENDPOINT_4_MAXESITPAYLOAD_GET(x) (((x) >> 16) & 0xFFFF)
 
+#define ENDPOINT_STATE_DISABLED		0
+#define ENDPOINT_STATE_RUNNING		1
+#define ENDPOINT_STATE_HALTED		2
+#define ENDPOINT_STATE_STOPPED		3
+#define ENDPOINT_STATE_ERROR		4
+#define ENDPOINT_STATE_RESERVED_5	5
+#define ENDPOINT_STATE_RESERVED_6	6
+#define ENDPOINT_STATE_RESERVED_7	7
 
 struct xhci_stream_ctx {
 	uint64	qwstream0;

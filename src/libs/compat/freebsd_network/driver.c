@@ -1,15 +1,8 @@
 /*
- * Copyright 2007, Hugo Santos. All Rights Reserved.
- * Copyright 2007, Axel Dörfler, axeld@pinc-software.de. All Rights Reserved.
- * Copyright 2004, Marcus Overhagen. All Rights Reserved.
+ * Copyright 2007-2010, Axel Dörfler. All rights reserved.
+ * Copyright 2009-2022, Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  */
-
-
-/*!	Driver functions that adapt the FreeBSD driver to Haiku's driver API.
-	The actual driver functions are exported by the HAIKU_FBSD_DRIVER_GLUE
-	macro, and just call the functions here.
-*/
 
 
 #include "device.h"
@@ -20,13 +13,16 @@
 
 #include <Drivers.h>
 #include <ether_driver.h>
-#include <PCI_x86.h>
 
 #include <compat/sys/haiku-module.h>
 
 #include <compat/sys/bus.h>
 #include <compat/sys/mbuf.h>
 #include <compat/net/ethernet.h>
+
+#include <dev/usb/usb.h>
+#include <dev/usb/usbdi.h>
+#include <dev/usb/usb_device.h>
 
 
 //#define TRACE_DRIVER
@@ -39,7 +35,12 @@
 
 static struct {
 	driver_t* driver;
-	pci_info info;
+	int bus;
+	struct pci_info pci_info;
+
+	void* compat_device;
+	void (*prepare_attach)(void*, device_t);
+	void (*free_compat_device)(void*);
 } sProbedDevices[MAX_DEVICES];
 
 const char* gDeviceNameList[MAX_DEVICES + 1];
@@ -47,13 +48,18 @@ struct ifnet* gDevices[MAX_DEVICES];
 int32 gDeviceCount;
 
 
-static status_t
-init_root_device(device_t *_root)
+status_t
+init_root_device(device_t *_root, int bus_type)
 {
-	static driver_t sRootDriver = {
+	static driver_t sRootDriverPCI = {
 		"pci",
 		NULL,
-		sizeof(struct root_device_softc)
+		sizeof(struct root_device_softc),
+	};
+	static driver_t sRootDriverUSB = {
+		"uhub",
+		NULL,
+		sizeof(struct root_device_softc),
 	};
 
 	device_t root = device_add_child(NULL, NULL, 0);
@@ -67,7 +73,15 @@ init_root_device(device_t *_root)
 	}
 
 	bzero(root->softc, sizeof(struct root_device_softc));
-	root->driver = &sRootDriver;
+
+	if (bus_type == BUS_pci)
+		root->driver = &sRootDriverPCI;
+	else if (bus_type == BUS_uhub)
+		root->driver = &sRootDriverUSB;
+	else
+		panic("unknown bus type");
+	((struct root_device_softc*)root->softc)->bus = bus_type;
+
 	root->root = root;
 
 	if (_root != NULL)
@@ -80,10 +94,13 @@ init_root_device(device_t *_root)
 static status_t
 add_child_device(driver_t* driver, device_t root, device_t* _child)
 {
-	device_t child = device_add_child_driver(root, driver->name, driver, 0);
-	if (child == NULL) {
+	device_t child = device_add_child(root, NULL, 0);
+	if (child == NULL)
 		return B_ERROR;
-	}
+
+	strlcpy(child->device_name, driver->name, sizeof(child->device_name));
+	if (device_set_driver(child, driver) != 0)
+		return B_ERROR;
 
 	if (_child != NULL)
 		*_child = child;
@@ -92,10 +109,41 @@ add_child_device(driver_t* driver, device_t root, device_t* _child)
 }
 
 
-static pci_info *
-get_pci_info(struct device *device)
+static void
+uninit_probed_devices()
 {
-	return &((struct root_device_softc *)device->softc)->pci_info;
+	for (int p = 0; sProbedDevices[p].bus != BUS_INVALID; p++) {
+		if (sProbedDevices[p].bus == BUS_pci) {
+			gPci->unreserve_device(sProbedDevices[p].pci_info.bus,
+				sProbedDevices[p].pci_info.device, sProbedDevices[p].pci_info.function,
+				gDriverName, NULL);
+		} else {
+			sProbedDevices[p].free_compat_device(sProbedDevices[p].compat_device);
+		}
+	}
+}
+
+
+void
+report_probed_device(int bus, void* compat_device, driver_t* driver,
+	void (*prepare_attach)(void*, device_t), void (*free_compat_device)(void*))
+{
+	int p = 0;
+	while (sProbedDevices[p].bus != BUS_INVALID && p < MAX_DEVICES)
+		p++;
+	if (p == MAX_DEVICES) {
+		free_compat_device(compat_device);
+		return;
+	}
+
+	sProbedDevices[p].bus = bus;
+	sProbedDevices[p].driver = driver;
+	sProbedDevices[p].compat_device = compat_device;
+	sProbedDevices[p].prepare_attach = prepare_attach;
+	sProbedDevices[p].free_compat_device = free_compat_device;
+
+	if ((p + 1) < MAX_DEVICES)
+		sProbedDevices[p + 1].bus = BUS_INVALID;
 }
 
 
@@ -103,51 +151,35 @@ get_pci_info(struct device *device)
 
 
 status_t
-_fbsd_init_hardware(driver_t *drivers[])
+_fbsd_init_hardware_pci(driver_t* drivers[])
 {
 	status_t status;
-	int i = 0, p = 0, index = 0;
+	int i = 0;
 	pci_info* info;
 	device_t root;
 
-	status = get_module(B_PCI_MODULE_NAME, (module_info **)&gPci);
+	int p = 0;
+	while (sProbedDevices[p].bus != BUS_INVALID)
+		p++;
+
+	status = init_pci();
 	if (status != B_OK)
 		return status;
 
-	// if it fails we just don't support x86 specific features (like MSIs)
-	if (get_module(B_PCI_X86_MODULE_NAME, (module_info **)&gPCIx86) != B_OK)
-		gPCIx86 = NULL;
-
-	status = init_root_device(&root);
+	status = init_root_device(&root, BUS_pci);
 	if (status != B_OK)
 		return status;
 
-	for (p = 0; p <= MAX_DEVICES; p++)
-		sProbedDevices[i].driver = NULL;
-	p = 0;
-
-	for (info = get_pci_info(root); gPci->get_nth_pci_info(i, info) == B_OK;
-			i++) {
+	bool found = false;
+	for (info = get_device_pci_info(root); gPci->get_nth_pci_info(i, info) == B_OK; i++) {
 		int best = 0;
 		driver_t* driver = NULL;
 
-		for (index = 0; drivers[index] && gDeviceCount < MAX_DEVICES; index++) {
-			int result;
-			device_t device = NULL;
-			status = add_child_device(drivers[index], root, &device);
-			if (status < B_OK)
-				break;
+		struct device device = {};
+		device.parent = root;
+		device.root = root;
 
-			result = device->methods.probe(device);
-			if (result >= 0 && (driver == NULL || result > best)) {
-				TRACE(("%s, found %s at %d (%d)\n", gDriverName,
-					device_get_desc(device), i, result));
-				driver = drivers[index];
-				best = result;
-			}
-			device_delete_child(root, device);
-		}
-
+		driver = __haiku_probe_drivers(&device, drivers);
 		if (driver == NULL)
 			continue;
 
@@ -158,30 +190,39 @@ _fbsd_init_hardware(driver_t *drivers[])
 				gDriverName, info->bus, info->device, info->function);
 			continue;
 		}
+		sProbedDevices[p].bus = BUS_pci;
 		sProbedDevices[p].driver = driver;
-		sProbedDevices[p].info = *info;
+		sProbedDevices[p].pci_info = *info;
+		found = true;
 		p++;
 	}
+	sProbedDevices[p].bus = BUS_INVALID;
 
 	device_delete_child(NULL, root);
 
-	if (p > 0)
+	if (found)
 		return B_OK;
 
-	put_module(B_PCI_MODULE_NAME);
-	if (gPCIx86 != NULL)
-		put_module(B_PCI_X86_MODULE_NAME);
+	uninit_pci();
 	return B_NOT_SUPPORTED;
 }
 
 
 status_t
-_fbsd_init_drivers(driver_t *drivers[])
+_fbsd_init_hardware()
 {
-	status_t status;
-	int p = 0;
+	sProbedDevices[0].bus = BUS_INVALID;
 
-	status = init_mutexes();
+	__haiku_init_hardware();
+
+	return (sProbedDevices[0].bus != BUS_INVALID) ? B_OK : B_NOT_SUPPORTED;
+}
+
+
+status_t
+_fbsd_init_drivers()
+{
+	status_t status = init_mutexes();
 	if (status < B_OK)
 		goto err2;
 
@@ -205,29 +246,37 @@ _fbsd_init_drivers(driver_t *drivers[])
 	if (status < B_OK)
 		goto err6;
 
-	for (p = 0; sProbedDevices[p].driver != NULL; p++) {
-		pci_info* info;
+	// Always hold the giant lock during attach.
+	mtx_lock(&Giant);
+
+	for (int p = 0; sProbedDevices[p].bus != BUS_INVALID; p++) {
 		device_t root, device = NULL;
-		status = init_root_device(&root);
+		status = init_root_device(&root, sProbedDevices[p].bus);
 		if (status != B_OK)
 			break;
-
-		info = get_pci_info(root);
-		*info = sProbedDevices[p].info;
 
 		status = add_child_device(sProbedDevices[p].driver, root, &device);
 		if (status != B_OK)
 			break;
 
+		if (sProbedDevices[p].bus == BUS_pci) {
+			pci_info* info = get_device_pci_info(root);
+			*info = sProbedDevices[p].pci_info;
+		} else {
+			sProbedDevices[p].prepare_attach(sProbedDevices[p].compat_device, device);
+		}
+
 		// some drivers expect probe() to be called before attach()
 		// (i.e. they set driver softc in probe(), etc.)
-		if (device->methods.probe(device) >= 0
+		if (device->methods.device_probe(device) >= 0
 				&& device_attach(device) == 0) {
 			dprintf("%s: init_driver(%p)\n", gDriverName,
 				sProbedDevices[p].driver);
 		} else
 			device_delete_child(NULL, root);
 	}
+
+	mtx_unlock(&Giant);
 
 	if (gDeviceCount > 0)
 		return B_OK;
@@ -248,31 +297,21 @@ err4:
 err3:
 	uninit_mutexes();
 err2:
-	for (p = 0; sProbedDevices[p].driver != NULL; p++) {
-		gPci->unreserve_device(sProbedDevices[p].info.bus,
-			sProbedDevices[p].info.device, sProbedDevices[p].info.function,
-			gDriverName, NULL);
-	}
+	uninit_probed_devices();
 
-	put_module(B_PCI_MODULE_NAME);
-	if (gPCIx86 != NULL)
-		put_module(B_PCI_X86_MODULE_NAME);
+	if (uninit_usb != NULL)
+		uninit_usb();
+	uninit_pci();
 
 	return status;
 }
 
 
 status_t
-_fbsd_uninit_drivers(driver_t *drivers[])
+_fbsd_uninit_drivers()
 {
-	int i, p;
-
-	for (i = 0; drivers[i]; i++)
-		TRACE(("%s: uninit_driver(%p)\n", gDriverName, drivers[i]));
-
-	for (i = 0; i < gDeviceCount; i++) {
+	for (int i = 0; i < gDeviceCount; i++)
 		device_delete_child(NULL, gDevices[i]->root_device);
-	}
 
 	uninit_wlan_stack();
 	uninit_sysinit();
@@ -282,15 +321,11 @@ _fbsd_uninit_drivers(driver_t *drivers[])
 	uninit_mbufs();
 	uninit_mutexes();
 
-	for (p = 0; sProbedDevices[p].driver != NULL; p++) {
-		gPci->unreserve_device(sProbedDevices[p].info.bus,
-			sProbedDevices[p].info.device, sProbedDevices[p].info.function,
-			gDriverName, NULL);
-	}
+	uninit_probed_devices();
 
-	put_module(B_PCI_MODULE_NAME);
-	if (gPCIx86 != NULL)
-		put_module(B_PCI_X86_MODULE_NAME);
+	if (uninit_usb != NULL)
+		uninit_usb();
+	uninit_pci();
 
 	return B_OK;
 }

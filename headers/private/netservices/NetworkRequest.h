@@ -14,16 +14,16 @@
 class BAbstractSocket;
 
 
-#ifndef LIBNETAPI_DEPRECATED
 namespace BPrivate {
 
 namespace Network {
-#endif
+
 
 class BNetworkRequest: public BUrlRequest
 {
 public:
 								BNetworkRequest(const BUrl& url,
+									BDataIO* output,
 									BUrlProtocolListener* listener,
 									BUrlContext* context,
 									const char* threadName,
@@ -45,10 +45,9 @@ protected:
 			BNetBuffer			fInputBuffer;
 };
 
-#ifndef LIBNETAPI_DEPRECATED
+
 } // namespace Network
 
 } // namespace BPrivate
-#endif
 
 #endif

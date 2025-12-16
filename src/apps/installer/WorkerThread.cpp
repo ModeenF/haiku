@@ -101,6 +101,12 @@ public:
 			fIgnorePaths.insert("system/var/shared_memory");
 			fIgnorePaths.insert("system/var/log/syslog");
 			fIgnorePaths.insert("system/var/log/syslog.old");
+			fIgnorePaths.insert("system/settings/ssh/ssh_host_ecdsa_key");
+			fIgnorePaths.insert("system/settings/ssh/ssh_host_ecdsa_key.pub");
+			fIgnorePaths.insert("system/settings/ssh/ssh_host_ed25519_key");
+			fIgnorePaths.insert("system/settings/ssh/ssh_host_ed25519_key.pub");
+			fIgnorePaths.insert("system/settings/ssh/ssh_host_rsa_key");
+			fIgnorePaths.insert("system/settings/ssh/ssh_host_rsa_key.pub");
 
 			fPackageFSRootPaths.insert("system");
 			fPackageFSRootPaths.insert("home/config");
@@ -309,6 +315,19 @@ WorkerThread::_LaunchFinishScript(BPath &path)
 
 	BString command;
 	command.SetToFormat("mkdir -p \"%s/system/cache/tmp\"", path.Path());
+	if (system(command.String()) != 0)
+		return B_ERROR;
+	command.SetToFormat("mkdir -p \"%s/system/packages/administrative\"",
+		path.Path());
+	if (system(command.String()) != 0)
+		return B_ERROR;
+
+	// Ask for first boot processing of all the packages copied into the new
+	// installation, since by just copying them the normal package processing
+	// isn't done.  package_daemon will detect the magic file and do it.
+	command.SetToFormat("echo 'First Boot written by Installer.' > "
+		"\"%s/system/packages/administrative/FirstBootProcessingNeeded\"",
+		path.Path());
 	if (system(command.String()) != 0)
 		return B_ERROR;
 
@@ -793,14 +812,14 @@ make_partition_label(BPartition* partition, char* label, char* menuLabel,
 		if (type == NULL)
 			type = B_TRANSLATE_COMMENT("Unknown Type", "Partition content type");
 
-		sprintf(label, "%s - %s [%s] (%s)", partition->ContentName(), size,
+		sprintf(label, "%s - %s [%s] (%s)", partition->ContentName().String(), size,
 			path.Path(), type);
 	} else {
-		sprintf(label, "%s - %s [%s]", partition->ContentName(), size,
+		sprintf(label, "%s - %s [%s]", partition->ContentName().String(), size,
 			path.Path());
 	}
 
-	sprintf(menuLabel, "%s - %s", partition->ContentName(), size);
+	sprintf(menuLabel, "%s - %s", partition->ContentName().String(), size);
 }
 
 

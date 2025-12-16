@@ -19,8 +19,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_wlan.h"
 
 #include <sys/param.h>
@@ -52,7 +50,6 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/rtwn/rtl8188e/usb/r88eu.h>
 #include <dev/rtwn/rtl8188e/usb/r88eu_reg.h>
-
 
 void
 r88eu_init_bb(struct rtwn_softc *sc)

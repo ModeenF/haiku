@@ -17,6 +17,9 @@
 #include <stdlib.h>
 
 #include <ACPI.h>
+
+#include <util/convertutf.h>
+
 #include "acpi_thermal.h"
 
 #define ACPI_THERMAL_MODULE_NAME "drivers/power/acpi_thermal/driver_v1"
@@ -35,10 +38,33 @@ typedef struct acpi_ns_device_info {
 	device_node* node;
 	acpi_device_module_info* acpi;
 	acpi_device acpi_cookie;
+	uint kelvin_offset;	// Initialized on first acpi_thermal_open() call.
 } acpi_thermal_device_info;
 
 
 status_t acpi_thermal_control(void* _cookie, uint32 op, void* arg, size_t len);
+
+static void guess_kelvin_offset(acpi_thermal_device_info* device);
+
+
+/*
+ * Exact value for Kelvin->Celsius conversion is 273.15, but as ACPI uses deci-Kelvins
+ * that means we only get one digit for the decimal part. Some implementations use 2731,
+ * while others use 2732. We try to guess which one here (as Linux's acpi/thermal.c driver
+ * does) by checking whether the "critical temp" value is set to something reasonable
+ * (> 0 °C), and if it is a multiple of 0.5 °C.
+ */
+static void
+guess_kelvin_offset(acpi_thermal_device_info* device)
+{
+	acpi_thermal_type therm_info;
+
+	acpi_thermal_control(device, drvOpGetThermalType, &therm_info, 0);
+
+	device->kelvin_offset = 2732;
+	if (therm_info.critical_temp > 2732 && (therm_info.critical_temp % 5) == 1)
+		device->kelvin_offset = 2731;
+}
 
 
 static status_t
@@ -46,6 +72,10 @@ acpi_thermal_open(void* _cookie, const char* path, int flags, void** cookie)
 {
 	acpi_thermal_device_info* device = (acpi_thermal_device_info*)_cookie;
 	*cookie = device;
+
+	if (device->kelvin_offset == 0)
+		guess_kelvin_offset(device);
+
 	return B_OK;
 }
 
@@ -60,23 +90,32 @@ acpi_thermal_read(void* _cookie, off_t position, void* buf, size_t* num_bytes)
 		return B_IO_ERROR;
 
 	if (position == 0) {
-		size_t max_len = *num_bytes;
-		char* str = (char*)buf;
+		char string[128];
+		char* str = string;
+		size_t max_len = sizeof(string);
+
+		uint kelvinOffset = device->kelvin_offset;
+
 		acpi_thermal_control(device, drvOpGetThermalType, &therm_info, 0);
 
-		snprintf(str, max_len, "  Critical Temperature: %lu.%lu K\n",
-				(therm_info.critical_temp / 10), (therm_info.critical_temp % 10));
-
+		snprintf(str, max_len, "  Critical Temperature: %" B_PRIu32 ".%" B_PRIu32 " °C\n",
+				((therm_info.critical_temp - kelvinOffset) / 10),
+				((therm_info.critical_temp - kelvinOffset) % 10));
 		max_len -= strlen(str);
 		str += strlen(str);
-		snprintf(str, max_len, "  Current Temperature: %lu.%lu K\n",
-				(therm_info.current_temp / 10), (therm_info.current_temp % 10));
+
+		snprintf(str, max_len, "  Current Temperature: %" B_PRIu32 ".%" B_PRIu32 " °C\n",
+				((therm_info.current_temp - kelvinOffset) / 10),
+				((therm_info.current_temp - kelvinOffset) % 10));
+		max_len -= strlen(str);
+		str += strlen(str);
 
 		if (therm_info.hot_temp > 0) {
+			snprintf(str, max_len, "  Hot Temperature: %" B_PRIu32 ".%" B_PRIu32 " °C\n",
+					((therm_info.hot_temp - kelvinOffset) / 10),
+					((therm_info.hot_temp - kelvinOffset) % 10));
 			max_len -= strlen(str);
 			str += strlen(str);
-			snprintf(str, max_len, "  Hot Temperature: %lu.%lu K\n",
-					(therm_info.hot_temp / 10), (therm_info.hot_temp % 10));
 		}
 
 		if (therm_info.passive_package) {
@@ -96,7 +135,11 @@ acpi_thermal_read(void* _cookie, off_t position, void* buf, size_t* num_bytes)
 */
 			free(therm_info.passive_package);
 		}
-		*num_bytes = strlen((char*)buf);
+
+		max_len = user_strlcpy((char*)buf, string, *num_bytes);
+		if (max_len < B_OK)
+			return B_BAD_ADDRESS;
+		*num_bytes = max_len;
 	} else {
 		*num_bytes = 0;
 	}
@@ -116,18 +159,53 @@ status_t
 acpi_thermal_control(void* _cookie, uint32 op, void* arg, size_t len)
 {
 	acpi_thermal_device_info* device = (acpi_thermal_device_info*)_cookie;
-	status_t err = B_ERROR;
-
-	acpi_thermal_type* att = NULL;
-
-	acpi_object_type object;
-
-	acpi_data buffer;
-	buffer.pointer = &object;
-	buffer.length = sizeof(object);
+	status_t err = B_DEV_INVALID_IOCTL;
 
 	switch (op) {
+		case B_GET_DEVICE_NAME: {
+			acpi_data buffer;
+
+			buffer.pointer = NULL;
+			buffer.length = ACPI_ALLOCATE_BUFFER;
+
+			err = device->acpi->evaluate_method (device->acpi_cookie, "_STR",
+				NULL, &buffer);
+
+			if (err != B_OK) {
+				dprintf("acpi_thermal: could not get zone name: %s\n", strerror(err));
+				free(buffer.pointer);
+				break;
+			}
+
+			acpi_object_type* object = (acpi_object_type*)buffer.pointer;
+			if (object->object_type == ACPI_TYPE_STRING) {
+				err = user_strlcpy((char*)arg, object->string.string, min(object->string.len, len));
+				free(buffer.pointer);
+			} else if (object->object_type == ACPI_TYPE_BUFFER) {
+				char utf8[256];
+				ssize_t bytes = utf16le_to_utf8(object->buffer.buffer, object->buffer.length / 2,
+					utf8, sizeof(utf8));
+				free(buffer.pointer);
+				if (bytes < 0) {
+					err = bytes;
+					break;
+				}
+
+				err = user_strlcpy((char*)arg, utf8, min((size_t)bytes, len));
+			}
+
+			if (err > 0)
+				err = B_OK;
+			break;
+		}
 		case drvOpGetThermalType: {
+			acpi_object_type object;
+			acpi_thermal_type* att = NULL;
+
+			acpi_data buffer;
+			buffer.pointer = &object;
+			buffer.length = sizeof(object);
+
 			att = (acpi_thermal_type*)arg;
 
 			// Read basic temperature thresholds.
@@ -213,7 +291,7 @@ static status_t
 acpi_thermal_register_device(device_node *node)
 {
 	device_attr attrs[] = {
-		{ B_DEVICE_PRETTY_NAME, B_STRING_TYPE, { string: "ACPI Thermal" }},
+		{ B_DEVICE_PRETTY_NAME, B_STRING_TYPE, { .string = "ACPI Thermal" }},
 		{ NULL }
 	};
 

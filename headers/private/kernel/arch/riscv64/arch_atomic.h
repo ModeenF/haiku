@@ -12,24 +12,21 @@
 static inline void
 memory_read_barrier_inline(void)
 {
-	asm volatile ("nop;" : : : "memory");
-#warning RISCV64: check memory_read_barrier_inline (FNOP ?)
+	asm volatile("fence ir, ir" : : : "memory");
 }
 
 
 static inline void
 memory_write_barrier_inline(void)
 {
-	asm volatile ("nop;" : : : "memory");
-#warning RISCV64: check memory_write_barrier_inline (FNOP ?)
+	asm volatile("fence ow, ow" : : : "memory");
 }
 
 
 static inline void
 memory_full_barrier_inline(void)
 {
-	asm volatile ("nop;" : : : "memory");
-#warning RISCV64: check memory_full_barrier_inline (FNOP ?)
+	asm volatile("fence iorw, iorw" : : : "memory");
 }
 
 

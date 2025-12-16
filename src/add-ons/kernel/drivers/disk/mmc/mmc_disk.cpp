@@ -114,7 +114,7 @@ mmc_disk_register_device(device_node* node)
 	CALLED();
 
 	device_attr attrs[] = {
-		{ B_DEVICE_PRETTY_NAME, B_STRING_TYPE, { string: "SD Card" }},
+		{ B_DEVICE_PRETTY_NAME, B_STRING_TYPE, { .string = "SD Card" }},
 		{ NULL }
 	};
 
@@ -360,10 +360,21 @@ mmc_block_open(void* _info, const char* path, int openMode, void** _cookie)
 	// allocate cookie
 	mmc_disk_handle* handle = new(std::nothrow) mmc_disk_handle;
 	*_cookie = handle;
-	if (handle == NULL) {
+	if (handle == NULL)
 		return B_NO_MEMORY;
-	}
+
 	handle->info = info;
+
+	if (handle->info->geometry.bytes_per_sector == 0) {
+		status_t error = mmc_block_get_geometry(handle->info,
+			&handle->info->geometry);
+		if (error != B_OK) {
+			TRACE("Failed to get disk capacity");
+			delete handle;
+			*_cookie = NULL;
+			return error;
+		}
+	}
 
 	return B_OK;
 }
@@ -391,30 +402,19 @@ mmc_block_free(void* cookie)
 
 
 static status_t
-mmc_block_read(void* cookie, off_t pos, void* buffer, size_t* _length)
+mmc_block_read(void* cookie, off_t position, void* buffer, size_t* _length)
 {
 	CALLED();
 	mmc_disk_handle* handle = (mmc_disk_handle*)cookie;
 
 	size_t length = *_length;
-
-	if (handle->info->geometry.bytes_per_sector == 0) {
-		status_t error = mmc_block_get_geometry(handle->info,
-			&handle->info->geometry);
-		if (error != B_OK) {
-			TRACE("Failed to get disk capacity");
-			return error;
-		}
-	}
-
-	// Do not allow reading past device end
-	if (pos >= handle->info->DeviceSize())
-		return B_BAD_VALUE;
-	if (pos + (off_t)length > handle->info->DeviceSize())
-		length = handle->info->DeviceSize() - pos;
+	if (position >= handle->info->DeviceSize())
+		return ERANGE;
+	if ((position + (off_t)length) > handle->info->DeviceSize())
+		length = (handle->info->DeviceSize() - position);
 
 	IORequest request;
-	status_t status = request.Init(pos, (addr_t)buffer, length, false, 0);
+	status_t status = request.Init(position, (addr_t)buffer, length, false, 0);
 	if (status != B_OK)
 		return status;
 
@@ -423,8 +423,7 @@ mmc_block_read(void* cookie, off_t pos, void* buffer, size_t* _length)
 		return status;
 
 	status = request.Wait(0, 0);
-	if (status == B_OK)
-		*_length = length;
+	*_length = request.TransferredBytes();
 	return status;
 }
 
@@ -437,20 +436,10 @@ mmc_block_write(void* cookie, off_t position, const void* buffer,
 	mmc_disk_handle* handle = (mmc_disk_handle*)cookie;
 
 	size_t length = *_length;
-
-	if (handle->info->geometry.bytes_per_sector == 0) {
-		status_t error = mmc_block_get_geometry(handle->info,
-			&handle->info->geometry);
-		if (error != B_OK) {
-			TRACE("Failed to get disk capacity");
-			return error;
-		}
-	}
-
 	if (position >= handle->info->DeviceSize())
-		return B_BAD_VALUE;
-	if (position + (off_t)length > handle->info->DeviceSize())
-		length = handle->info->DeviceSize() - position;
+		return ERANGE;
+	if ((position + (off_t)length) > handle->info->DeviceSize())
+		length = (handle->info->DeviceSize() - position);
 
 	IORequest request;
 	status_t status = request.Init(position, (addr_t)buffer, length, true, 0);
@@ -462,9 +451,7 @@ mmc_block_write(void* cookie, off_t position, const void* buffer,
 		return status;
 
 	status = request.Wait(0, 0);
-	if (status == B_OK)
-		*_length = length;
-
+	*_length = request.TransferredBytes();
 	return status;
 }
 
@@ -474,6 +461,9 @@ mmc_block_io(void* cookie, io_request* request)
 {
 	CALLED();
 	mmc_disk_handle* handle = (mmc_disk_handle*)cookie;
+
+	if ((request->Offset() + (off_t)request->Length()) > handle->info->DeviceSize())
+		return ERANGE;
 
 	return handle->info->scheduler->ScheduleRequest(request);
 }
@@ -491,36 +481,60 @@ mmc_block_trim(mmc_disk_driver_info* info, fs_trim_data* trimData)
 	};
 	TRACE("trim_device()\n");
 
+	trimData->trimmed_size = 0;
+
+	const off_t deviceSize = info->DeviceSize(); // in bytes
+	if (deviceSize < 0)
+		return B_BAD_VALUE;
+
+	STATIC_ASSERT(sizeof(deviceSize) <= sizeof(uint64));
+	ASSERT(deviceSize >= 0);
+
+	// Do not trim past device end
+	for (uint32 i = 0; i < trimData->range_count; i++) {
+		uint64 offset = trimData->ranges[i].offset;
+		uint64& size = trimData->ranges[i].size;
+
+		if (offset >= (uint64)deviceSize)
+			return B_BAD_VALUE;
+		size = min_c(size, (uint64)deviceSize - offset);
+	}
+
 	uint64 trimmedSize = 0;
 	status_t result = B_OK;
 	for (uint32 i = 0; i < trimData->range_count; i++) {
-		off_t offset = trimData->ranges[i].offset;
-		off_t length = trimData->ranges[i].size;
+		uint64 offset = trimData->ranges[i].offset;
+		uint64 length = trimData->ranges[i].size;
 
 		// Round up offset and length to multiple of the sector size
 		// The offset is rounded up, so some space may be left
 		// (not trimmed) at the start of the range.
 		offset = ROUNDUP(offset, kBlockSize);
 		// Adjust the length for the possibly skipped range
-		length -= trimData->ranges[i].offset - offset;
+		length -= offset - trimData->ranges[i].offset;
 		// The length is rounded down, so some space at the end may also
 		// be left (not trimmed).
 		length &= ~(kBlockSize - 1);
 
-		if (length == 0) {
-			trimmedSize += trimData->ranges[i].size;
+		if (length == 0)
 			continue;
-		}
 
-		TRACE("trim %" B_PRIdOFF " bytes from %" B_PRIdOFF "\n",
+		TRACE("trim %" B_PRIu64 " bytes from %" B_PRIu64 "\n",
 			length, offset);
 
 		ASSERT(offset % kBlockSize == 0);
 		ASSERT(length % kBlockSize == 0);
 
-		if (info->flags & kIoCommandOffsetAsSectors) {
+		if ((info->flags & kIoCommandOffsetAsSectors) != 0) {
 			offset /= kBlockSize;
 			length /= kBlockSize;
+		}
+
+		// Parameter of execute_command is uint32_t
+		if (offset > UINT32_MAX
+			|| length > UINT32_MAX - offset) {
+			result = B_BAD_VALUE;
+			break;
 		}
 
 		uint32_t response;
@@ -537,7 +551,8 @@ mmc_block_trim(mmc_disk_driver_info* info, fs_trim_data* trimData)
 		if (result != B_OK)
 			break;
 
-		trimmedSize += trimData->ranges[i].size;
+		trimmedSize += (info->flags & kIoCommandOffsetAsSectors) != 0
+			? length * kBlockSize : length;
 	}
 
 	trimData->trimmed_size = trimmedSize;
@@ -558,21 +573,13 @@ mmc_block_ioctl(void* cookie, uint32 op, void* buffer, size_t length)
 			if (buffer == NULL || length < sizeof(status_t))
 				return B_BAD_VALUE;
 
-			*(status_t *)buffer = B_OK;
-			return B_OK;
-			break;
+			status_t status = B_OK;
+			return user_memcpy(buffer, &status, sizeof(status_t));
 		}
 
 		case B_GET_DEVICE_SIZE:
 		{
 			// Legacy ioctl, use B_GET_GEOMETRY
-			if (info->geometry.bytes_per_sector == 0) {
-				status_t error = mmc_block_get_geometry(info, &info->geometry);
-				if (error != B_OK) {
-					TRACE("Failed to get disk capacity");
-					return error;
-				}
-			}
 
 			uint64_t size = info->DeviceSize();
 			if (size > SIZE_MAX)
@@ -583,19 +590,10 @@ mmc_block_ioctl(void* cookie, uint32 op, void* buffer, size_t length)
 
 		case B_GET_GEOMETRY:
 		{
-			if (buffer == NULL || length < sizeof(device_geometry))
+			if (buffer == NULL || length > sizeof(device_geometry))
 				return B_BAD_VALUE;
 
-			if (info->geometry.bytes_per_sector == 0) {
-				status_t error = mmc_block_get_geometry(info, &info->geometry);
-				if (error != B_OK) {
-					TRACE("Failed to get disk capacity");
-					return error;
-				}
-			}
-
-			return user_memcpy(buffer, &info->geometry,
-				sizeof(device_geometry));
+			return user_memcpy(buffer, &info->geometry, length);
 		}
 
 		case B_GET_ICON_NAME:
@@ -643,7 +641,7 @@ module_dependency module_dependencies[] = {
 
 
 // The "block device" associated with the device file. It can be open()
-// multiple times, eash allocating an mmc_disk_handle. It does not interact
+// multiple times, each allocating an mmc_disk_handle. It does not interact
 // with the hardware directly, instead it forwards all IO requests to the
 // disk driver through the IO scheduler.
 struct device_module_info sMMCBlockDevice = {

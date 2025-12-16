@@ -1,5 +1,6 @@
 /*
  * Copyright 2008-2009, Axel Dörfler, axeld@pinc-software.de.
+ * Copyright 2024, Emir SARI, emir_sari@icloud.com.
  * Distributed under the terms of the MIT License.
  */
 
@@ -13,6 +14,7 @@
 #include <OS.h>
 #include <String.h>
 #include <StringForRate.h>
+#include <StringForSize.h>
 
 #include "SystemInfo.h"
 
@@ -25,8 +27,10 @@ const DataSource* kSources[] = {
 	new CachedMemoryDataSource(),
 	new SwapSpaceDataSource(),
 	new PageFaultsDataSource(),
+	new CPUFrequencyDataSource(),
 	new CPUUsageDataSource(),
 	new CPUCombinedUsageDataSource(),
+	new ThermalDataSource(),
 	new NetworkUsageDataSource(true),
 	new NetworkUsageDataSource(false),
 	new BlockCacheDataSource(),
@@ -145,7 +149,7 @@ void
 DataSource::Print(BString& text, int64 value) const
 {
 	text = "";
-	text << value;
+	fNumberFormat.Format(text, (int32)value);
 }
 
 
@@ -291,16 +295,8 @@ void
 MemoryDataSource::Print(BString& text, int64 value) const
 {
 	char buffer[32];
-	snprintf(buffer, sizeof(buffer), B_TRANSLATE("%.1f MiB"), value / 1048576.0);
-
+	string_for_size(value, buffer, sizeof(buffer));
 	text = buffer;
-}
-
-
-const char*
-MemoryDataSource::Unit() const
-{
-	return B_TRANSLATE("MiB");
 }
 
 
@@ -810,6 +806,232 @@ RunningAppsDataSource::AdaptiveScale() const
 //	#pragma mark -
 
 
+CPUFrequencyDataSource::CPUFrequencyDataSource(int32 cpu)
+{
+	fMinimum = 0;
+	fMaximum = 1000000000ll;
+		// Maximum initially set at 1GHz, will be automatically raised if the actual frequency gets
+		// higher than that
+
+	_SetCPU(cpu);
+}
+
+
+CPUFrequencyDataSource::CPUFrequencyDataSource(const CPUFrequencyDataSource& other)
+	: DataSource(other)
+{
+	fCPU = other.fCPU;
+	fLabel = other.fLabel;
+	fShortLabel = other.fShortLabel;
+}
+
+
+CPUFrequencyDataSource::~CPUFrequencyDataSource()
+{
+}
+
+
+DataSource*
+CPUFrequencyDataSource::Copy() const
+{
+	return new CPUFrequencyDataSource(*this);
+}
+
+
+DataSource*
+CPUFrequencyDataSource::CopyForCPU(int32 cpu) const
+{
+	CPUFrequencyDataSource* copy = new CPUFrequencyDataSource(*this);
+	copy->_SetCPU(cpu);
+
+	return copy;
+}
+
+
+void
+CPUFrequencyDataSource::Print(BString& text, int64 value) const
+{
+	BString printedFrequency;
+	fNumberFormat.Format(printedFrequency, (int32)(value / 1000000));
+	text.SetToFormat("%s MHz", printedFrequency.String());
+}
+
+
+int64
+CPUFrequencyDataSource::NextValue(SystemInfo& info)
+{
+	int64 value = info.CPUCurrentFrequency(fCPU);
+
+	if (value > fMaximum)
+		SetLimits(0, value);
+
+	return value;
+}
+
+
+const char*
+CPUFrequencyDataSource::Label() const
+{
+	return fLabel.String();
+}
+
+
+const char*
+CPUFrequencyDataSource::ShortLabel() const
+{
+	return fShortLabel.String();
+}
+
+
+const char*
+CPUFrequencyDataSource::InternalName() const
+{
+	return "CPU speed";
+}
+
+
+const char*
+CPUFrequencyDataSource::Name() const
+{
+	return B_TRANSLATE("CPU speed");
+}
+
+
+int32
+CPUFrequencyDataSource::CPU() const
+{
+	return fCPU;
+}
+
+
+bool
+CPUFrequencyDataSource::PerCPU() const
+{
+	return true;
+}
+
+
+bool
+CPUFrequencyDataSource::Primary() const
+{
+	return true;
+}
+
+
+void
+CPUFrequencyDataSource::_SetCPU(int32 cpu)
+{
+	fCPU = cpu;
+
+	if (SystemInfo().CPUCount() > 1) {
+		fLabel.SetToFormat(B_TRANSLATE("CPU %d speed"), (int)cpu + 1);
+		fShortLabel.SetToFormat(B_TRANSLATE("CPU %d"), (int)cpu + 1);
+	} else {
+		fLabel = B_TRANSLATE("CPU usage");
+		fShortLabel = B_TRANSLATE("CPU");
+	}
+
+	const rgb_color kColors[] = {
+		// TODO: find some better defaults...
+		{200, 0, 200},
+		{0, 200, 200},
+		{80, 80, 80},
+		{230, 150, 50},
+		{255, 0, 0},
+		{0, 255, 0},
+		{0, 0, 255},
+		{0, 150, 230}
+	};
+	const uint32 kNumColors = B_COUNT_OF(kColors);
+
+	fColor = kColors[cpu % kNumColors];
+}
+
+
+//	#pragma mark -
+
+
+ThermalDataSource::ThermalDataSource()
+{
+	fMinimum = 0;
+	fMaximum = 100000000LL;
+
+	fColor = (rgb_color){200, 150, 0, 0};
+}
+
+
+ThermalDataSource::~ThermalDataSource()
+{
+}
+
+
+DataSource*
+ThermalDataSource::Copy() const
+{
+	return new ThermalDataSource();
+}
+
+
+const char*
+ThermalDataSource::InternalName() const
+{
+	return "Temperature";
+}
+
+
+const char*
+ThermalDataSource::Name() const
+{
+	return B_TRANSLATE("Temperature");
+}
+
+
+const char*
+ThermalDataSource::Label() const
+{
+	return fLabel;
+}
+
+
+const char*
+ThermalDataSource::ShortLabel() const
+{
+	return B_TRANSLATE("Temp");
+}
+
+
+void
+ThermalDataSource::Print(BString& text, int64 value) const
+{
+	BString printed;
+	fNumberFormat.Format(printed, (int32)(value / 1000000));
+	text.SetToFormat("%s °C", printed.String());
+}
+
+
+int64
+ThermalDataSource::NextValue(SystemInfo& info)
+{
+	fLabel = info.ThermalZone();
+
+	float temperature = info.Temperature();
+	if (isnan(temperature))
+		return 0;
+
+	int64 value = (int64)ceilf(temperature * 1000000);
+
+	if (value > fMaximum)
+		SetLimits(0, value);
+
+	return value;
+}
+
+
+
+
+//	#pragma mark -
+
+
 CPUUsageDataSource::CPUUsageDataSource(int32 cpu)
 	:
 	fPreviousActive(0),
@@ -858,10 +1080,9 @@ CPUUsageDataSource::CopyForCPU(int32 cpu) const
 void
 CPUUsageDataSource::Print(BString& text, int64 value) const
 {
-	char buffer[32];
-	snprintf(buffer, sizeof(buffer), "%.1f%%", value / 10.0);
-
-	text = buffer;
+	text = "";
+	fNumberFormat.SetPrecision(1);
+	fNumberFormat.FormatPercent(text, value / 1000.0);
 }
 
 
@@ -939,8 +1160,8 @@ CPUUsageDataSource::_SetCPU(int32 cpu)
 	fCPU = cpu;
 
 	if (SystemInfo().CPUCount() > 1) {
-		fLabel.SetToFormat(B_TRANSLATE("CPU %d usage"), cpu + 1);
-		fShortLabel.SetToFormat(B_TRANSLATE("CPU %d"), cpu + 1);
+		fLabel.SetToFormat(B_TRANSLATE("CPU %d usage"), (int)cpu + 1);
+		fShortLabel.SetToFormat(B_TRANSLATE("CPU %d"), (int)cpu + 1);
 
 	} else {
 		fLabel = B_TRANSLATE("CPU usage");
@@ -958,7 +1179,7 @@ CPUUsageDataSource::_SetCPU(int32 cpu)
 		{0, 0, 255},
 		{0, 150, 230}
 	};
-	const uint32 kNumColors = sizeof(kColors) / sizeof(kColors[0]);
+	const uint32 kNumColors = B_COUNT_OF(kColors);
 
 	fColor = kColors[cpu % kNumColors];
 }
@@ -1003,10 +1224,9 @@ CPUCombinedUsageDataSource::Copy() const
 void
 CPUCombinedUsageDataSource::Print(BString& text, int64 value) const
 {
-	char buffer[32];
-	snprintf(buffer, sizeof(buffer), "%.1f%%", value / 10.0);
-
-	text = buffer;
+	text = "";
+	fNumberFormat.SetPrecision(1);
+	fNumberFormat.FormatPercent(text, value / 1000.0);
 }
 
 
@@ -1119,11 +1339,10 @@ PageFaultsDataSource::Copy() const
 void
 PageFaultsDataSource::Print(BString& text, int64 value) const
 {
-	char buffer[32];
-	snprintf(buffer, sizeof(buffer), B_TRANSLATE("%.1f faults/s"),
-		value / 1024.0);
-
-	text = buffer;
+	BString printedPageFaults;
+	fNumberFormat.SetPrecision(1);
+	fNumberFormat.Format(printedPageFaults, value / 1024.0);
+	text.SetToFormat(B_TRANSLATE("%s faults/s"), printedPageFaults.String());
 }
 
 

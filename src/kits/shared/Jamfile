@@ -28,12 +28,18 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			AboutMenuItem.cpp
 			ArgumentVector.cpp
 			AttributeUtilities.cpp
+			BarberPole.cpp
 			BitmapButton.cpp
 			CalendarView.cpp
+			ColorItem.cpp
+			ColorListView.cpp
+			ColorPreview.cpp
 			ColorQuantizer.cpp
 			CommandPipe.cpp
+			DateTimeEdit.cpp
 			DragTrackingFilter.cpp
 			DriverSettingsMessageAdapter.cpp
+			HSL.cpp
 			HashString.cpp
 			IconButton.cpp
 			IconView.cpp
@@ -46,6 +52,7 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			Keymap.cpp
 			LongAndDragTrackingFilter.cpp
 			md5.cpp
+			MemoryRingIO.cpp
 			MessageBuilder.cpp
 			NaturalCompare.cpp
 			PromptWindow.cpp
@@ -54,7 +61,9 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			RWLocker.cpp
 			RWLockManager.cpp
 			SettingsHandler.cpp
+			SettingsMessage.cpp
 			ShakeTrackingFilter.cpp
+			StatusView.cpp
 			StringForRate.cpp
 			StringForSize.cpp
 			StripeView.cpp
@@ -62,6 +71,7 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			Thread.cpp
 			ToolBar.cpp
 			Variant.cpp
+			WeakReferenceable.cpp
 			;
 
 		Includes [ FGristFiles Keymap.cpp ]

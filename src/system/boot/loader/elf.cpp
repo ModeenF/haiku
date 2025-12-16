@@ -81,18 +81,29 @@ struct ELF32Class {
 		void** _mappedAddress)
 	{
 		status_t status = platform_allocate_region((void**)_address, size,
-			protection, false);
+			protection);
 		if (status != B_OK)
 			return status;
 
 		*_mappedAddress = (void*)*_address;
+
+		addr_t res;
+		platform_bootloader_address_to_kernel_address((void*)*_address, &res);
+
+		*_address = res;
+
 		return B_OK;
 	}
 
 	static inline void*
 	Map(AddrType address)
 	{
-		return (void*)address;
+		void *result = NULL;
+		if (platform_kernel_address_to_bootloader_address(address, &result) != B_OK) {
+			panic("Couldn't convert address 0x%08x", (uint32_t)address);
+		}
+
+		return result;
 	}
 };
 
@@ -128,15 +139,13 @@ struct ELF64Class {
 		void* address = (void*)*_address;
 #endif
 
-		status_t status = platform_allocate_region(&address, size, protection,
-			false);
+		status_t status = platform_allocate_region(&address, size, protection);
 		if (status != B_OK)
 			return status;
 
 		*_mappedAddress = address;
 #if defined(_BOOT_PLATFORM_BIOS)
-		*_address = (AddrType)(addr_t)address + KERNEL_LOAD_BASE_64_BIT
-			- KERNEL_LOAD_BASE;
+		*_address = (AddrType)(addr_t)address + KERNEL_FIXUP_FOR_LONG_MODE;
 #else
 		platform_bootloader_address_to_kernel_address(address, _address);
 #endif
@@ -147,8 +156,7 @@ struct ELF64Class {
 	Map(AddrType address)
 	{
 #ifdef _BOOT_PLATFORM_BIOS
-		return (void*)(addr_t)(address - KERNEL_LOAD_BASE_64_BIT
-			+ KERNEL_LOAD_BASE);
+		return (void*)(addr_t)(address - KERNEL_FIXUP_FOR_LONG_MODE);
 #else
 		void *result;
 		if (platform_kernel_address_to_bootloader_address(address, &result) != B_OK) {
@@ -240,7 +248,11 @@ ELFLoader<Class>::Load(int fd, preloaded_image* _image)
 			case PT_INTERP:
 			case PT_PHDR:
 			case PT_ARM_UNWIND:
+			case PT_RISCV_ATTRIBUTES:
 				// known but unused type
+				continue;
+			case PT_EH_FRAME:
+				// not implemented yet, but can be ignored
 				continue;
 			default:
 				dprintf("unhandled pheader type 0x%" B_PRIx32 "\n", header.p_type);
@@ -299,9 +311,16 @@ ELFLoader<Class>::Load(int fd, preloaded_image* _image)
 	{
 		AddrType address = firstRegion->start;
 		if (Class::AllocateRegion(&address, totalSize,
-				B_READ_AREA | B_WRITE_AREA, &mappedRegion) != B_OK) {
+				B_READ_AREA | B_WRITE_AREA | B_EXECUTE_AREA, &mappedRegion)
+				!= B_OK) {
+			dprintf("%s: AllocateRegion failed for address 0x%" B_PRIx64 " (size %" B_PRIuSIZE ")\n",
+				__func__, (int64)address, totalSize);
 			status = B_NO_MEMORY;
 			goto error1;
+		}
+		if (elfHeader.e_type != ET_DYN && address != firstRegion->start) {
+			panic("Non-relocatable ELF image assigned to address 0x%" B_PRIx64 ", not %" B_PRIx64,
+				(uint64)address, (uint64)firstRegion->start);
 		}
 		firstRegion->start = address;
 	}
@@ -727,13 +746,12 @@ elf_relocate_image(preloaded_image* image)
 #ifdef BOOT_SUPPORT_ELF64
 	if (image->elf_class == ELFCLASS64)
 		return ELF64Loader::Relocate(image);
-	else
 #endif
 #ifdef BOOT_SUPPORT_ELF32
+	if (image->elf_class == ELFCLASS32)
 		return ELF32Loader::Relocate(image);
-#else
-		return B_ERROR;
 #endif
+	return B_ERROR;
 }
 
 
@@ -743,6 +761,20 @@ boot_elf_resolve_symbol(preloaded_elf32_image* image, Elf32_Sym* symbol,
 	Elf32_Addr* symbolAddress)
 {
 	return ELF32Loader::Resolve(image, symbol, symbolAddress);
+}
+
+Elf32_Addr
+boot_elf32_get_relocation(Elf32_Addr resolveAddress)
+{
+	Elf32_Addr* src = (Elf32_Addr*)ELF32Class::Map(resolveAddress);
+	return *src;
+}
+
+void
+boot_elf32_set_relocation(Elf32_Addr resolveAddress, Elf32_Addr finalAddress)
+{
+	Elf32_Addr* dest = (Elf32_Addr*)ELF32Class::Map(resolveAddress);
+	*dest = finalAddress;
 }
 #endif
 

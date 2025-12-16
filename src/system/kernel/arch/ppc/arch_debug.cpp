@@ -95,7 +95,7 @@ print_stack_frame(Thread *thread, addr_t ip, addr_t framePointer,
 		&image, &exactMatch);
 	if (status != B_OK && !IS_KERNEL_ADDRESS(ip) && thread) {
 		// try to locate the image in the images loaded into user space
-		status = image_debug_lookup_user_symbol_address(thread->team, ip,
+		status = elf_debug_lookup_user_symbol_address(thread->team, ip,
 			&baseAddress, &symbol, &image, &exactMatch);
 	}
 	if (status == B_OK) {
@@ -280,14 +280,6 @@ arch_debug_contains_call(Thread *thread, const char *symbol,
 }
 
 
-void *
-arch_debug_get_caller(void)
-{
-	struct stack_frame *frame = get_current_stack_frame()->previous;
-	return (void *)frame->previous->return_address;
-}
-
-
 int32
 arch_debug_get_stack_trace(addr_t* returnAddresses, int32 maxCount,
 	int32 skipIframes, int32 skipFrames, uint32 flags)
@@ -341,6 +333,13 @@ arch_debug_gdb_get_registers(char* buffer, size_t bufferSize)
 {
 	// TODO: Implement!
 	return B_NOT_SUPPORTED;
+}
+
+
+void
+arch_debug_snooze(bigtime_t duration)
+{
+	spin(duration);
 }
 
 

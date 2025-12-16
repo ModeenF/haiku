@@ -19,8 +19,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_wlan.h"
 
 #include <sys/param.h>
@@ -56,7 +54,6 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/rtwn/rtl8192c/pci/r92ce.h>
 #include <dev/rtwn/rtl8192c/pci/r92ce_reg.h>
-
 
 /* Registers to save and restore during IQ calibration. */
 struct r92ce_iq_cal_reg_vals {

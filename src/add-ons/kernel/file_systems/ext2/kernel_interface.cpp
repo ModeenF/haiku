@@ -45,29 +45,6 @@ struct identify_cookie {
 };
 
 
-//!	ext2_io() callback hook
-static status_t
-iterative_io_get_vecs_hook(void* cookie, io_request* request, off_t offset,
-	size_t size, struct file_io_vec* vecs, size_t* _count)
-{
-	Inode* inode = (Inode*)cookie;
-
-	return file_map_translate(inode->Map(), offset, size, vecs, _count,
-		inode->GetVolume()->BlockSize());
-}
-
-
-//!	ext2_io() callback hook
-static status_t
-iterative_io_finished_hook(void* cookie, io_request* request, status_t status,
-	bool partialTransfer, size_t bytesTransferred)
-{
-	Inode* inode = (Inode*)cookie;
-	rw_lock_read_unlock(inode->Lock());
-	return B_OK;
-}
-
-
 //	#pragma mark - Scanning
 
 
@@ -280,15 +257,10 @@ ext2_remove_vnode(fs_volume* _volume, fs_vnode* _node, bool reenter)
 			return status;
 	}
 
-	TRACE("ext2_remove_vnode(): Removing from orphan list\n");
-	status_t status = volume->RemoveOrphan(transaction, inode->ID());
-	if (status != B_OK)
-		return status;
-
 	TRACE("ext2_remove_vnode(): Setting deletion time\n");
 	inode->Node().SetDeletionTime(real_time_clock());
 
-	status = inode->WriteBack(transaction);
+	status_t status = inode->WriteBack(transaction);
 	if (status != B_OK)
 		return status;
 
@@ -402,34 +374,6 @@ ext2_write_pages(fs_volume* _volume, fs_vnode* _node, void* _cookie,
 
 
 static status_t
-ext2_io(fs_volume* _volume, fs_vnode* _node, void* _cookie, io_request* request)
-{
-	Volume* volume = (Volume*)_volume->private_volume;
-	Inode* inode = (Inode*)_node->private_node;
-
-#ifndef EXT2_SHELL
-	if (io_request_is_write(request) && volume->IsReadOnly()) {
-		notify_io_request(request, B_READ_ONLY_DEVICE);
-		return B_READ_ONLY_DEVICE;
-	}
-#endif
-
-	if (inode->FileCache() == NULL) {
-#ifndef EXT2_SHELL
-		notify_io_request(request, B_BAD_VALUE);
-#endif
-		return B_BAD_VALUE;
-	}
-
-	// We lock the node here and will unlock it in the "finished" hook.
-	rw_lock_read_lock(inode->Lock());
-
-	return do_iterative_fd_io(volume->Device(), request,
-		iterative_io_get_vecs_hook, iterative_io_finished_hook, inode);
-}
-
-
-static status_t
 ext2_get_file_map(fs_volume* _volume, fs_vnode* _node, off_t offset,
 	size_t size, struct file_io_vec* vecs, size_t* _count)
 {
@@ -518,8 +462,12 @@ ext2_lookup(fs_volume* _volume, fs_vnode* _directory, const char* name,
 	ObjectDeleter<DirectoryIterator> iteratorDeleter(iterator);
 
 	status = iterator->FindEntry(name, _vnodeID);
-	if (status != B_OK)
+	if (status != B_OK) {
+		if (status == B_ENTRY_NOT_FOUND)
+			entry_cache_add_missing(volume->ID(), directory->ID(), name);
 		return status;
+	}
+	entry_cache_add(volume->ID(), directory->ID(), name, *_vnodeID);
 
 	return get_vnode(volume->FSVolume(), *_vnodeID, NULL);
 }
@@ -608,8 +556,22 @@ ext2_ioctl(fs_volume* _volume, fs_vnode* _node, void* _cookie, uint32 cmd,
 }
 
 
+/*!	Sets the open-mode flags for the open file cookie - only
+	supports O_APPEND currently, but that should be sufficient
+	for a file system.
+*/
 static status_t
-ext2_fsync(fs_volume* _volume, fs_vnode* _node)
+ext2_set_flags(fs_volume* _volume, fs_vnode* _node, void* _cookie, int flags)
+{
+	file_cookie* cookie = (file_cookie*)_cookie;
+	cookie->open_mode = (cookie->open_mode & ~O_APPEND) | (flags & O_APPEND);
+
+	return B_OK;
+}
+
+
+static status_t
+ext2_fsync(fs_volume* _volume, fs_vnode* _node, bool dataOnly)
 {
 	Inode* inode = (Inode*)_node->private_node;
 	return inode->Sync();
@@ -638,7 +600,7 @@ ext2_read_stat(fs_volume* _volume, fs_vnode* _node, struct stat* stat)
 	inode->GetCreationTime(&stat->st_crtim);
 
 	stat->st_size = inode->Size();
-	stat->st_blocks = (inode->Size() + 511) / 512;
+	stat->st_blocks = inode->NumBlocks();
 
 	return B_OK;
 }
@@ -658,22 +620,20 @@ ext2_write_stat(fs_volume* _volume, fs_vnode* _node, const struct stat* stat,
 
 	ext2_inode& node = inode->Node();
 	bool updateTime = false;
-	uid_t uid = geteuid();
-
-	bool isOwnerOrRoot = uid == 0 || uid == (uid_t)node.UserID();
-	bool hasWriteAccess = inode->CheckPermissions(W_OK) == B_OK;
 
 	TRACE("ext2_write_stat: Starting transaction\n");
 	Transaction transaction(volume->GetJournal());
 	inode->WriteLockInTransaction(transaction);
+
+	if (check_write_stat_permissions(node.GroupID(), node.UserID(), node.Mode(),
+			mask, stat) != B_OK)
+		return B_NOT_ALLOWED;
 
 	if ((mask & B_STAT_SIZE) != 0 && inode->Size() != stat->st_size) {
 		if (inode->IsDirectory())
 			return B_IS_A_DIRECTORY;
 		if (!inode->IsFile())
 			return B_BAD_VALUE;
-		if (!hasWriteAccess)
-			return B_NOT_ALLOWED;
 
 		TRACE("ext2_write_stat: Old size: %ld, new size: %ld\n",
 			(long)inode->Size(), (long)stat->st_size);
@@ -694,34 +654,22 @@ ext2_write_stat(fs_volume* _volume, fs_vnode* _node, const struct stat* stat,
 	}
 
 	if ((mask & B_STAT_MODE) != 0) {
-		// only the user or root can do that
-		if (!isOwnerOrRoot)
-			return B_NOT_ALLOWED;
 		node.UpdateMode(stat->st_mode, S_IUMSK);
 		updateTime = true;
 	}
 
 	if ((mask & B_STAT_UID) != 0) {
-		// only root should be allowed
-		if (uid != 0)
-			return B_NOT_ALLOWED;
 		node.SetUserID(stat->st_uid);
 		updateTime = true;
 	}
 
 	if ((mask & B_STAT_GID) != 0) {
-		// only the user or root can do that
-		if (!isOwnerOrRoot)
-			return B_NOT_ALLOWED;
 		node.SetGroupID(stat->st_gid);
 		updateTime = true;
 	}
 
 	if ((mask & B_STAT_MODIFICATION_TIME) != 0 || updateTime
 		|| (mask & B_STAT_CHANGE_TIME) != 0) {
-		// the user or root can do that or any user with write access
-		if (!isOwnerOrRoot && !hasWriteAccess)
-			return B_NOT_ALLOWED;
 		struct timespec newTimespec = { 0, 0};
 
 		if ((mask & B_STAT_MODIFICATION_TIME) != 0)
@@ -737,9 +685,6 @@ ext2_write_stat(fs_volume* _volume, fs_vnode* _node, const struct stat* stat,
 		inode->SetModificationTime(&newTimespec);
 	}
 	if ((mask & B_STAT_CREATION_TIME) != 0) {
-		// the user or root can do that or any user with write access
-		if (!isOwnerOrRoot && !hasWriteAccess)
-			return B_NOT_ALLOWED;
 		inode->SetCreationTime(&stat->st_crtim);
 	}
 
@@ -1087,6 +1032,12 @@ ext2_rename(fs_volume* _volume, fs_vnode* _oldDir, const char* oldName,
 		if (status != B_OK)
 			return status;
 
+		status = existent->Unlink(transaction);
+		if (status != B_OK)
+			ERROR("Error while unlinking existing destination\n");
+
+		entry_cache_remove(volume->ID(), newDirectory->ID(), newName);
+
 		notify_entry_removed(volume->ID(), newDirectory->ID(), newName,
 			existentID);
 	} else if (status == B_ENTRY_NOT_FOUND) {
@@ -1174,9 +1125,10 @@ ext2_open(fs_volume* _volume, fs_vnode* _node, int openMode, void** _cookie)
 	// any data from it.
 	if (inode->IsDirectory() && (openMode & O_RWMASK) != 0)
 		return B_IS_A_DIRECTORY;
+	if ((openMode & O_DIRECTORY) != 0 && !inode->IsDirectory())
+		return B_NOT_A_DIRECTORY;
 
-	status_t status =  inode->CheckPermissions(open_mode_to_access(openMode)
-		| (openMode & O_TRUNC ? W_OK : 0));
+	status_t status =  inode->CheckPermissions(open_mode_to_access(openMode));
 	if (status != B_OK)
 		return status;
 
@@ -1493,7 +1445,7 @@ ext2_read_dir(fs_volume *_volume, fs_vnode *_node, void *_cookie,
 
 	while (count < maxCount && bufferSize > sizeof(struct dirent)) {
 
-		size_t length = bufferSize - sizeof(struct dirent) + 1;
+		size_t length = bufferSize - offsetof(struct dirent, d_name);
 		ino_t id;
 
 		status_t status = iterator->GetNext(dirent->d_name, &length, &id);
@@ -1516,10 +1468,8 @@ ext2_read_dir(fs_volume *_volume, fs_vnode *_node, void *_cookie,
 
 		dirent->d_dev = volume->ID();
 		dirent->d_ino = id;
-		dirent->d_reclen = sizeof(struct dirent) + length;
 
-		bufferSize -= dirent->d_reclen;
-		dirent = (struct dirent*)((uint8*)dirent + dirent->d_reclen);
+		dirent = next_dirent(dirent, length, bufferSize);
 		count++;
 	}
 
@@ -1616,7 +1566,7 @@ ext2_read_attr_dir(fs_volume* _volume, fs_vnode* _node,
 
 	dirent->d_dev = volume->ID();
 	dirent->d_ino = inode->ID();
-	dirent->d_reclen = sizeof(struct dirent) + length;
+	dirent->d_reclen = offsetof(struct dirent, d_name) + length + 1;
 
 	*_num = 1;
 	*(int32*)_cookie = index + 1;
@@ -1634,14 +1584,6 @@ ext2_rewind_attr_dir(fs_volume* _volume, fs_vnode* _node, void* _cookie)
 
 
 	/* attribute operations */
-static status_t
-ext2_create_attr(fs_volume* _volume, fs_vnode* _node,
-	const char* name, uint32 type, int openMode, void** _cookie)
-{
-	return EROFS;
-}
-
-
 static status_t
 ext2_open_attr(fs_volume* _volume, fs_vnode* _node, const char* name,
 	int openMode, void** _cookie)
@@ -1692,15 +1634,6 @@ ext2_read_attr(fs_volume* _volume, fs_vnode* _node, void* _cookie,
 
 
 static status_t
-ext2_write_attr(fs_volume* _volume, fs_vnode* _node, void* cookie,
-	off_t pos, const void* buffer, size_t* length)
-{
-	return EROFS;
-}
-
-
-
-static status_t
 ext2_read_attr_stat(fs_volume* _volume, fs_vnode* _node,
 	void* _cookie, struct stat* stat)
 {
@@ -1710,30 +1643,6 @@ ext2_read_attr_stat(fs_volume* _volume, fs_vnode* _node,
 	Attribute attribute(inode, cookie);
 
 	return attribute.Stat(*stat);
-}
-
-
-static status_t
-ext2_write_attr_stat(fs_volume* _volume, fs_vnode* _node,
-	void* cookie, const struct stat* stat, int statMask)
-{
-	return EROFS;
-}
-
-
-static status_t
-ext2_rename_attr(fs_volume* _volume, fs_vnode* fromVnode,
-	const char* fromName, fs_vnode* toVnode, const char* toName)
-{
-	return ENOSYS;
-}
-
-
-static status_t
-ext2_remove_attr(fs_volume* _volume, fs_vnode* vnode,
-	const char* name)
-{
-	return ENOSYS;
 }
 
 
@@ -1764,7 +1673,7 @@ fs_vnode_ops gExt2VnodeOps = {
 	&ext2_get_file_map,
 
 	&ext2_ioctl,
-	NULL,
+	&ext2_set_flags,
 	NULL,	// fs_select
 	NULL,	// fs_deselect
 	&ext2_fsync,
@@ -1806,16 +1715,16 @@ fs_vnode_ops gExt2VnodeOps = {
 	&ext2_rewind_attr_dir,
 
 	/* attribute operations */
-	NULL, //&ext2_create_attr,
+	NULL,
 	&ext2_open_attr,
 	&ext2_close_attr,
 	&ext2_free_attr_cookie,
 	&ext2_read_attr,
-	NULL, //&ext2_write_attr,
+	NULL,
 	&ext2_read_attr_stat,
-	NULL, //&ext2_write_attr_stat,
-	NULL, //&ext2_rename_attr,
-	NULL, //&ext2_remove_attr,
+	NULL,
+	NULL,
+	NULL,
 };
 
 
@@ -1826,8 +1735,8 @@ static file_system_module_info sExt2FileSystem = {
 		NULL,
 	},
 
-	"ext2",						// short_name
-	"Ext2 File System",			// pretty_name
+	"ext4",								// short_name
+	"Linux Extended File System 2/3/4",	// pretty_name
 	B_DISK_SYSTEM_SUPPORTS_WRITING
 		| B_DISK_SYSTEM_SUPPORTS_CONTENT_NAME,	// DDM flags
 

@@ -1,4 +1,4 @@
-1	thai	x-vnd.Haiku-WebPositive	55235296
+1	thai	x-vnd.Haiku-WebPositive	1315180462
 Authentication required	Authentication Panel		ต้องการการรับรองความถูกต้อง
 Previous	WebPositive Window		ก่อนหน้า
 (Finish: %date)	Download Window		(สิ้นสุด: %date)
@@ -13,22 +13,21 @@ Bookmarks	WebPositive Window		บุคมาร์ค
 Use proxy server to connect to the internet	Settings Window		ใช้พร็อกซีเซิร์ฟเวอร์เพื่อเชื่อมต่ออินเทอร์เน็ต
 %url finished	WebPositive Window	Loading URL finished. Don't translate variable %url.	%url เสร็จ
 Auto-hide interface in full screen mode	Settings Window		ซ่อนอินเตอร์เฟซอัตโนมัติในโหมดเต็มหน้าจอ
-There was an error retrieving the bookmark folder.\n\nError: %error	WebPositive Window	Don't translate the variable %error	มีข้อผิดพลาดในการเรียกโฟลเดอร์บุ๊คมาร์ค\n\nผิดพลาด: %error
 Delete	Cookie Manager		ลบ
+There was an error retrieving the bookmark folder.\n\nError: %error	WebPositive Window	Don't translate the variable %error	มีข้อผิดพลาดในการเรียกโฟลเดอร์บุ๊คมาร์ค\n\nผิดพลาด: %error
 (Finish: %date - Over %duration left)	Download Window		(เสร็จ: %date - เกิน %duration คงเหลือ)
 Open containing folder	Download Window		เปิดโฟลเดอร์ที่มี
 Find previous	WebPositive Window		ค้าหาก่อนหน้านี้
 Full screen	WebPositive Window		เต็มจอ
 Downloads in progress	WebPositive		กำลังดาวน์โหลดอยู่
-Do you want to open %addedCount bookmarks all at once?	WebPositive Window	Don't translate variable %addedCount.	คุณต้องการเปิด %addedCount คั่นหน้าจำนวนเพิ่มทั้งหมดในครั้งเดียวหรือไม่?
 Copy URL to clipboard	Download Window		คัดลอก URL ไปยังคลิปบอร์ด
+Do you want to open %addedCount bookmarks all at once?	WebPositive Window	Don't translate variable %addedCount.	คุณต้องการเปิด %addedCount คั่นหน้าจำนวนเพิ่มทั้งหมดในครั้งเดียวหรือไม่?
 Clone current page	Settings Window		ทำซ้ำหน้าปัจจุบัน
 Start page:	Settings Window		หน้าเริ่มต้น:
 Cancel	Download Window		ยกเลิก
 Settings	Settings Window		ตั้งค่า
 Downloads	WebPositive Window		ดาวน์โหลด
 Browse…	Settings Window		บราวส์
-A bookmark for this page (%bookmarkName) already exists.	WebPositive Window	Don't translate variable %bookmarkName	ที่คั่นหน้าสำหรับหน้านี้ (%bookmarkName) มีอยู่แล้ว
 Resume prior session	Settings Window		สรุปเซสชั่นก่อนหน้า
 Match case	WebPositive Window		กรณีตรงกัน
 Proxy password:	Settings Window		รหัสผ่านพร็อกซี:
@@ -49,17 +48,17 @@ Decrease size	WebPositive Window		ลดขนาด
 Default fixed font size:	Settings Window		ขนาดตัวอักษรเริ่มต้นคงที่:
 Sans serif font:	Settings Window		ตัวอักษร Sans serif:
 Clear	WebPositive Window		ลบ
-Cookies for %s	Cookie Manager		คุกกี้ %s
 The download could not be opened.	Download Window		ไม่สามารถเปิดการดาวน์โหลด
+Cookies for %s	Cookie Manager		คุกกี้ %s
 Close	Download Window		ปิด
 WebPositive	System name		Web Positive
-Reload	WebPositive Window		โหลดใหม่
 Expiration	Cookie Manager		หมดอายุ
+Reload	WebPositive Window		โหลดใหม่
 Download finished	Download Window		การดาวน์โหลดเสร็จสิ้น
 Cookie manager	WebPositive Window		ผู้จัดการคุกกี้
-OK	Authentication Panel		ตกลง
-Hide password text	Authentication Panel		ซ่อนข้อความรหัสผ่าน
 Username:	Authentication Panel		ชื่อผู้ใช้:
+Hide password text	Authentication Panel		ซ่อนข้อความรหัสผ่าน
+OK	Authentication Panel		ตกลง
 Name	Cookie Manager		ชื่อ
 Remove finished	Download Window		ลบเสร็จแล้ว
 Earlier	WebPositive Window		ก่อนหน้านี้
@@ -77,8 +76,8 @@ View	WebPositive Window		ดู
 Paste	URL Bar		วาง
 Find next	WebPositive Window		ค้นหาถัดไป
 Open search page	Settings Window		เปิดหน้าค้นหา
-Increase size	WebPositive Window		เพิ่มขนาด
 New tab	WebPositive Window		แท็ปใหม่
+Increase size	WebPositive Window		เพิ่มขนาด
 Today	WebPositive Window		วันนี้
 Open location	WebPositive Window		เปิดสถานที่
 New browser window	Download Window		หน้าต่างเบราว์เซอร์ใหม่
@@ -102,15 +101,15 @@ Copy	WebPositive Window		คัดลอก
 Default standard font size:	Settings Window		ขนาดตัวอักษรมาตรฐานเริ่มต้น:
 Bookmark this page	WebPositive Window		คั่นหน้านี้
 Show tabs if only one page is open	Settings Window		แสดงแท็บหากเปิดเพียงหนึ่งหน้า
-Close tab	WebPositive Window		ปิดแท็บ
 Remove	Download Window		ลบ
+Close tab	WebPositive Window		ปิดแท็บ
 About	WebPositive Window		เกี่ยวกับ
-There are still downloads in progress, do you really want to quit WebPositive now?	WebPositive		ยังคงมีการดาวน์โหลดอยู่คุณต้องการออกจาก WebPositive ทันทีหรือไม่?
 Continue downloads	WebPositive		ดาวน์โหลดต่อไป
+There are still downloads in progress, do you really want to quit WebPositive now?	WebPositive		ยังคงมีการดาวน์โหลดอยู่คุณต้องการออกจาก WebPositive ทันทีหรือไม่?
 Proxy server requires authentication	Settings Window		พร็อกซีเซิร์ฟเวอร์ต้องการการรับรองความถูกต้อง
 Cancel	Settings Window		ยกเลิก
-History	WebPositive Window		ประวัติ
 Reset size	WebPositive Window		ตั้งค่าขนาดใหม่
+History	WebPositive Window		ประวัติ
 Do you really want to clear the browsing history?	WebPositive Window		คุณต้องการล้างประวัติการเข้าชมจริง ๆ หรือไม่?
 Find next occurrence of search terms	WebPositive Window	find bar next button tooltip	ค้นหาคำที่ค้นหาถัดไป
 Fixed font:	Settings Window		ตัวอักษรคงที่:
@@ -130,8 +129,8 @@ Next	WebPositive Window		ถัดไป
 Bookmark error	WebPositive Window		คั่นหน้าผิดพลาด
 OK	WebPositive Window		ตกลง
 WebPositive	Download Window		WebPositive
-Zoom text only	WebPositive Window		ขยายข้อความอย่างเดียว
 Save page as…	WebPositive Window		บันทึกหน้าเป็น
+Zoom text only	WebPositive Window		ขยายข้อความอย่างเดียว
 Page source error	WebPositive Window		ข้อผิดพลาดของแหล่งหน้า
 Auto-hide mouse pointer	Settings Window		ซ่อนตัวชี้เมาส์โดยอัตโนมัติ
 Requesting %url	WebPositive Window		ค้นหา %url
@@ -152,7 +151,6 @@ Downloads	Download Window		ดาวน์โหลด
 Open blank page	Settings Window		เปิดหน้าเปล่า
 Clear history	WebPositive Window		ลบประวัติ
 Cancel	WebPositive Window		ยกเลิก
-Bookmark info	WebPositive Window		ข้อมูลที่คั่นหน้า
 Script console	Console Window		คอนโซลสคริปต์
 Copy	URL Bar		คัดลอก
 Open start page	Settings Window		เปิดหน้าเริ่มต้น

@@ -29,6 +29,7 @@
 #include <Alert.h>
 #include <Application.h>
 #include <Catalog.h>
+#include <ControlLook.h>
 #include <Bitmap.h>
 #include <Deskbar.h>
 #include <Dragger.h>
@@ -37,7 +38,6 @@
 #include <Locale.h>
 #include <MenuItem.h>
 #include <MessageRunner.h>
-#include <NetworkDevice.h>
 #include <NetworkInterface.h>
 #include <NetworkRoster.h>
 #include <PopUpMenu.h>
@@ -61,7 +61,7 @@ static const char *kStatusDescriptions[] = {
 	B_TRANSLATE("No link"),
 	B_TRANSLATE("No stateful configuration"),
 	B_TRANSLATE("Configuring"),
-	B_TRANSLATE("Ready")
+	B_TRANSLATE("Connected")
 };
 
 extern "C" _EXPORT BView *instantiate_deskbar_item(float maxWidth, float maxHeight);
@@ -75,20 +75,7 @@ const uint32 kMinIconWidth = 16;
 const uint32 kMinIconHeight = 16;
 
 
-//	#pragma mark -
-
-
-static bool
-signal_strength_compare(const wireless_network &a,
-	const wireless_network &b)
-{
-	if (a.signal_strength == b.signal_strength)
-		return strcmp(a.name, b.name) > 0;
-	return a.signal_strength > b.signal_strength;
-}
-
-
-//	#pragma mark -
+//	#pragma mark - NetworkStatusView
 
 
 NetworkStatusView::NetworkStatusView(BRect frame, int32 resizingMode,
@@ -182,7 +169,8 @@ NetworkStatusView::_UpdateBitmaps()
 				delete trayIcon;
 
 			// Scale notification icon
-			BBitmap* notifyIcon = new BBitmap(BRect(0, 0, 31, 31), B_RGBA32);
+			BBitmap* notifyIcon
+				= new BBitmap(BRect(B_ORIGIN, be_control_look->ComposeIconSize(32)), B_RGBA32);
 			if (notifyIcon->InitCheck() == B_OK
 				&& BIconUtils::GetVectorIcon((const uint8 *)data,
 					size, notifyIcon) == B_OK) {
@@ -393,79 +381,61 @@ NetworkStatusView::MouseDown(BPoint point)
 	menu->SetAsyncAutoDestruct(true);
 	menu->SetFont(be_plain_font);
 	BString wifiInterface;
-	BNetworkDevice wifiDevice;
+	BNetworkDevice device;
 
-	// Add interfaces
+	if (!fInterfaceStatuses.empty()) {
+		for (std::map<BString, int32>::const_iterator it
+				= fInterfaceStatuses.begin(); it != fInterfaceStatuses.end();
+				++it) {
+			const BString& name = it->first;
 
-	for (std::map<BString, int32>::const_iterator it
-		= fInterfaceStatuses.begin(); it != fInterfaceStatuses.end(); ++it) {
-		const BString& name = it->first;
-
-		BString label = name;
-		label += ": ";
-		label += kStatusDescriptions[
-			_DetermineInterfaceStatus(name.String())];
-
-		BMessage* info = new BMessage(kMsgShowConfiguration);
-		info->AddString("interface", name.String());
-		menu->AddItem(new BMenuItem(label.String(), info));
-
-		// We only show the networks of the first wireless device we find.
-		if (wifiInterface.IsEmpty()) {
-			wifiDevice.SetTo(name);
-			if (wifiDevice.IsWireless())
-				wifiInterface = name;
+			// we only show network of the first wireless device we find
+			if (wifiInterface.IsEmpty()) {
+				device.SetTo(name);
+				if (device.IsWireless())
+					wifiInterface = name;
+			}
 		}
 	}
 
-	if (!fInterfaceStatuses.empty())
-		menu->AddSeparatorItem();
-
-	// Add wireless networks, if any
+	// Add wireless networks, if any, first so that we can sort the menu
 
 	if (!wifiInterface.IsEmpty()) {
 		std::set<BNetworkAddress> associated;
 		BNetworkAddress address;
 		uint32 cookie = 0;
-		while (wifiDevice.GetNextAssociatedNetwork(cookie, address) == B_OK)
+		while (device.GetNextAssociatedNetwork(cookie, address) == B_OK)
 			associated.insert(address);
 
-		cookie = 0;
-		wireless_network network;
-		typedef std::vector<wireless_network> WirelessNetworkVector;
-		WirelessNetworkVector wirelessNetworks;
-		while (wifiDevice.GetNextNetwork(cookie, network) == B_OK)
-			wirelessNetworks.push_back(network);
-
-		std::sort(wirelessNetworks.begin(), wirelessNetworks.end(),
-			signal_strength_compare);
-
-		int32 count = 0;
-		for (WirelessNetworkVector::iterator it = wirelessNetworks.begin();
-				it != wirelessNetworks.end(); it++) {
-			wireless_network &network = *it;
-
+		uint32 networksCount = 0;
+		wireless_network* networks = NULL;
+		device.GetNetworks(networks, networksCount);
+		for (uint32 i = 0; i < networksCount; i++) {
+			const wireless_network& network = networks[i];
 			BMessage* message = new BMessage(kMsgJoinNetwork);
 			message->AddString("device", wifiInterface);
 			message->AddString("name", network.name);
 			message->AddFlat("address", &network.address);
 
-			BMenuItem* item = new WirelessNetworkMenuItem(network.name,
-				network.signal_strength, network.authentication_mode, message);
+			BMenuItem* item = new WirelessNetworkMenuItem(network, message);
 			menu->AddItem(item);
 			if (associated.find(network.address) != associated.end())
 				item->SetMarked(true);
-
-			count++;
 		}
-		if (count == 0) {
+		delete[] networks;
+
+		if (networksCount == 0) {
 			BMenuItem* item = new BMenuItem(
 				B_TRANSLATE("<no wireless networks found>"), NULL);
 			item->SetEnabled(false);
 			menu->AddItem(item);
-		}
+		} else
+			menu->SortItems(WirelessNetworkMenuItem::CompareSignalStrength);
+
 		menu->AddSeparatorItem();
 	}
+
+	// add action menu items
 
 	menu->AddItem(new BMenuItem(B_TRANSLATE(
 		"Open network preferences" B_UTF8_ELLIPSIS),
@@ -475,6 +445,32 @@ NetworkStatusView::MouseDown(BPoint point)
 		menu->AddItem(new BMenuItem(B_TRANSLATE("Quit"),
 			new BMessage(B_QUIT_REQUESTED)));
 	}
+
+	// Add wired interfaces to top of menu
+	if (!fInterfaceStatuses.empty()) {
+		int32 wiredCount = 0;
+		for (std::map<BString, int32>::const_iterator it
+				= fInterfaceStatuses.begin(); it != fInterfaceStatuses.end();
+				++it) {
+			const BString& name = it->first;
+
+			BString label = name;
+			label += ": ";
+			label += kStatusDescriptions[
+				_DetermineInterfaceStatus(name.String())];
+
+			BMessage* info = new BMessage(kMsgShowConfiguration);
+			info->AddString("interface", name.String());
+			menu->AddItem(new BMenuItem(label.String(), info), wiredCount);
+			wiredCount++;
+		}
+
+		// add separator item between wired and wireless networks
+		// (or between wired networks and actions if no wireless found)
+		if (wiredCount > 0)
+			menu->AddItem(new BSeparatorItem(), wiredCount);
+	}
+
 	menu->SetTargetForItems(this);
 
 	ConvertToScreen(&point);
@@ -526,9 +522,11 @@ NetworkStatusView::_Update(bool force)
 	BNetworkRoster& roster = BNetworkRoster::Default();
 	BNetworkInterface interface;
 	uint32 cookie = 0;
+	std::set<BString> currentInterfaces;
 
 	while (roster.GetNextInterface(&cookie, interface) == B_OK) {
 		if ((interface.Flags() & IFF_LOOPBACK) == 0) {
+			currentInterfaces.insert((BString)interface.Name());
 			int32 oldStatus = kStatusUnknown;
 			if (fInterfaceStatuses.find(interface.Name())
 				!= fInterfaceStatuses.end()) {
@@ -556,6 +554,17 @@ NetworkStatusView::_Update(bool force)
 			}
 			fInterfaceStatuses[interface.Name()] = status;
 		}
+	}
+
+	// Check every element in fInterfaceStatuses against our current interface
+	// list. If it's not there, then the interface is not present anymore and
+	// should be removed from fInterfaceStatuses.
+	std::map<BString, int32>::iterator it = fInterfaceStatuses.begin();
+	while (it != fInterfaceStatuses.end()) {
+		std::map<BString, int32>::iterator backupIt = it;
+		if (currentInterfaces.find(it->first) == currentInterfaces.end())
+			fInterfaceStatuses.erase(it);
+		it = ++backupIt;
 	}
 }
 

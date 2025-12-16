@@ -161,6 +161,7 @@ struct ext2_super_block {
 	void SetReadOnlyFeatures(uint32 readOnlyFeatures)
 		{ read_only_features = B_HOST_TO_LENDIAN_INT32(readOnlyFeatures); }
 
+	bool IsMagicValid();
 	bool IsValid();
 		// implemented in Volume.cpp
 } _PACKED;
@@ -171,9 +172,9 @@ struct ext2_super_block {
 
 #define EXT2_MAX_REVISION		EXT2_DYNAMIC_REVISION
 
-#define EXT2_FS_STATE_VALID		1	// File system was cleanly unmounted
-#define EXT2_FS_STATE_ERROR		2	// File system has errors
-#define EXT2_FS_STATE_ORPHAN	3	// Orphans are being recovered
+#define EXT2_FS_STATE_VALID		0x1	// File system was cleanly unmounted
+#define EXT2_FS_STATE_ERROR		0x2	// File system has errors
+#define EXT2_FS_STATE_ORPHAN	0x4	// Orphans are being recovered
 
 // compatible features
 #define EXT2_FEATURE_DIRECTORY_PREALLOCATION	0x0001
@@ -483,13 +484,14 @@ struct ext2_inode {
 	uint32	creation_time;
 	uint32	creation_time_extra;
 	uint32	version_high;
+	uint32	project_id;
 
 	uint16 Mode() const { return B_LENDIAN_TO_HOST_INT16(mode); }
 	uint32 Flags() const { return B_LENDIAN_TO_HOST_INT32(flags); }
 	uint16 NumLinks() const { return B_LENDIAN_TO_HOST_INT16(num_links); }
 	uint32 NumBlocks() const { return B_LENDIAN_TO_HOST_INT32(num_blocks); }
 	uint64 NumBlocks64() const { return B_LENDIAN_TO_HOST_INT32(num_blocks)
-		| ((uint64)B_LENDIAN_TO_HOST_INT32(num_blocks_high) << 32); }
+		| ((uint64)B_LENDIAN_TO_HOST_INT16(num_blocks_high) << 32); }
 
 	static void _DecodeTime(struct timespec *timespec, uint32 time,
 		uint32 time_extra, bool extra)
@@ -630,7 +632,7 @@ struct ext2_inode {
 	void SetNumBlocks64(uint64 numBlocks)
 	{
 		num_blocks = B_HOST_TO_LENDIAN_INT32(numBlocks & 0xffffffff);
-		num_blocks_high = B_HOST_TO_LENDIAN_INT32(numBlocks >> 32);
+		num_blocks_high = B_HOST_TO_LENDIAN_INT16(numBlocks >> 32);
 	}
 
 	void SetNextOrphan(ino_t id)

@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2021, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2025, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -191,7 +191,6 @@ AcpiExSystemMemorySpaceHandler (
     ACPI_MEM_MAPPING        *Mm = MemInfo->CurMm;
     UINT32                  Length;
     ACPI_SIZE               MapLength;
-    ACPI_SIZE               PageBoundaryMapLength;
 #ifdef ACPI_MISALIGNMENT_NOT_SUPPORTED
     UINT32                  Remainder;
 #endif
@@ -298,27 +297,9 @@ AcpiExSystemMemorySpaceHandler (
         MapLength = (ACPI_SIZE)
             ((MemInfo->Address + MemInfo->Length) - Address);
 
-        /*
-         * If mapping the entire remaining portion of the region will cross
-         * a page boundary, just map up to the page boundary, do not cross.
-         * On some systems, crossing a page boundary while mapping regions
-         * can cause warnings if the pages have different attributes
-         * due to resource management.
-         *
-         * This has the added benefit of constraining a single mapping to
-         * one page, which is similar to the original code that used a 4k
-         * maximum window.
-         */
-        PageBoundaryMapLength = (ACPI_SIZE)
-            (ACPI_ROUND_UP (Address, ACPI_DEFAULT_PAGE_SIZE) - Address);
-        if (PageBoundaryMapLength == 0)
+        if (MapLength > ACPI_DEFAULT_PAGE_SIZE)
         {
-            PageBoundaryMapLength = ACPI_DEFAULT_PAGE_SIZE;
-        }
-
-        if (MapLength > PageBoundaryMapLength)
-        {
-            MapLength = PageBoundaryMapLength;
+            MapLength = ACPI_DEFAULT_PAGE_SIZE;
         }
 
         /* Create a new mapping starting at the address given */
@@ -692,8 +673,16 @@ AcpiExDataTableSpaceHandler (
     void                    *HandlerContext,
     void                    *RegionContext)
 {
+    ACPI_DATA_TABLE_MAPPING *Mapping;
+    char                    *Pointer;
+
+
     ACPI_FUNCTION_TRACE (ExDataTableSpaceHandler);
 
+
+    Mapping = (ACPI_DATA_TABLE_MAPPING *) RegionContext;
+    Pointer = ACPI_CAST_PTR (char, Mapping->Pointer) +
+        (Address - ACPI_PTR_TO_PHYSADDR (Mapping->Pointer));
 
     /*
      * Perform the memory read or write. The BitWidth was already
@@ -703,14 +692,12 @@ AcpiExDataTableSpaceHandler (
     {
     case ACPI_READ:
 
-        memcpy (ACPI_CAST_PTR (char, Value), ACPI_PHYSADDR_TO_PTR (Address),
-            ACPI_DIV_8 (BitWidth));
+        memcpy (ACPI_CAST_PTR (char, Value), Pointer, ACPI_DIV_8 (BitWidth));
         break;
 
     case ACPI_WRITE:
 
-        memcpy (ACPI_PHYSADDR_TO_PTR (Address), ACPI_CAST_PTR (char, Value),
-            ACPI_DIV_8 (BitWidth));
+        memcpy (Pointer, ACPI_CAST_PTR (char, Value), ACPI_DIV_8 (BitWidth));
         break;
 
     default:

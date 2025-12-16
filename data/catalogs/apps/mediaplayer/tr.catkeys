@@ -1,11 +1,11 @@
-1	turkish	x-vnd.Haiku-MediaPlayer	1961774506
-Remove Entry into Trash	MediaPlayer-RemovePLItemsCmd		Girdiyi Çöp'e taşı
+1	turkish	x-vnd.Haiku-MediaPlayer	520971408
+Remove Entry into Trash	MediaPlayer-RemovePLItemsCmd		Girdiyi çöpe at
 Close	MediaPlayer-PlaylistWindow		Kapat
 Volume of background clips	MediaPlayer-SettingsWindow		Arka plan kliplerinin ses düzeyi
 Use hardware video overlays if available	MediaPlayer-SettingsWindow		Olanaklıysa video donanım bindirmelerini kullan
 Audio	MediaPlayer-InfoWin		Ses
 Subtitle placement:	MediaPlayer-SettingsWindow		Altyazı konumu:
-MediaPlayer	System name		Ortam Oynatıcı
+MediaPlayer	System name		Ortam Oynatıcısı
 Audio track	MediaPlayer-Main		Ses parçası
 Muted	MediaPlayer-SettingsWindow		Sessiz
 OK	MediaPlayer-RemovePLItemsCmd		Tamam
@@ -16,7 +16,6 @@ DrawBitmap	MediaPlayer-InfoWin		DrawBitmap
 File info	MediaPlayer-InfoWin		Dosya bilgisi
 raw audio	MediaPlayer-InfoWin		ham ses
 Select all	MediaPlayer-PlaylistWindow		Tümünü seç
-New player…	MediaPlayer-Main		Yeni oynatıcı…
 Move Entries	MediaPlayer-MovePLItemsCmd		Girdileri taşı
 OK	MediaPlayer-Main		Tamam
 Remove	MediaPlayer-PlaylistWindow		Kaldır
@@ -25,7 +24,6 @@ Resume:	MediaPlayer-SettingsWindow		Oynatmayı sürdür:
 Duration	MediaPlayer-InfoWin		Uzunluk
 Import Entries	MediaPlayer-ImportPLItemsCmd		Girdileri içe aktar
 Open network stream	MediaPlayer-Main		Ağ akışı aç
-Move file to Trash	MediaPlayer-PlaylistWindow		Dosyayı Çöp'e taşı
 Open file…	MediaPlayer-Main		Dosya aç…
 Scale controls in full screen mode	MediaPlayer-SettingsWindow		Tam ekran kipinde denetimleri ölçekle
 View options	MediaPlayer-SettingsWindow		Görüntüleme seçenekleri
@@ -35,7 +33,8 @@ Full volume	MediaPlayer-SettingsWindow		Tam ses
 Start media server	MediaPlayer-Main		Ortam sunucusu başlat
 It appears the media server is not running.\nWould you like to start it ?	MediaPlayer-Main		Ortam sunucusu çalışmıyor gibi görünüyor.\nBaşlatılsın mı?
 Location	MediaPlayer-InfoWin		Konum
-Opening '%s'.	MediaPlayer-Main		'%s' açılıyor.
+%lu × %lu	MediaPlayer-InfoWin	The '×' is the Unicode multiplication sign U+00D7	%lu × %lu
+Opening '%s'.	MediaPlayer-Main		“%s” açılıyor.
 Medium	MediaPlayer-SettingsWindow		Orta
 Play mode	MediaPlayer-SettingsWindow		Oynatma kipi
 Playlist	MediaPlayer-PlaylistWindow		Oynatma Listesi
@@ -45,10 +44,11 @@ Close	MediaPlayer-Main		Kapat
 Save error	MediaPlayer-PlaylistWindow		Kaydetme hatası
 Attributes	MediaPlayer-Main		Öznitelikler
 Bottom of screen	MediaPlayer-SettingsWindow		Ekranın alt kısmı
-MediaPlayer settings	MediaPlayer-SettingsWindow		Ortam Oynatıcı Ayarları
+MediaPlayer settings	MediaPlayer-SettingsWindow		Ortam Oynatıcısı ayarları
 Copyright	MediaPlayer-InfoWin		Telif hakkı
 Invalid URL inserted!	MediaPlayer-NetworkStream		Geçersiz URL girildi!
-Aspect ratio	MediaPlayer-Main		En boy oranı
+Aspect ratio	MediaPlayer-Main		En–boy oranı
+Eject device	MediaPlayer-Main		Aygıtı çıkar
 Saving the playlist failed.\n\nError: 	MediaPlayer-PlaylistWindow		Oynatma listesi kaydedilemedi.\n\nHata: 
 <no media>	MediaPlayer-InfoWin		<ortam yok>
 Hide interface	MediaPlayer-Main		Arayüzü gizle
@@ -57,8 +57,9 @@ Video track	MediaPlayer-Main		Video parçası
 Playlist…	MediaPlayer-Main		Oynatma listesi…
 <unnamed media>	MediaPlayer-InfoWin		<adsız ortam>
 Save	MediaPlayer-PlaylistWindow		Kaydet
+25% scale	MediaPlayer-Main		%25 ölçek
 Randomize Entries	MediaPlayer-RandomizePLItemsCmd		Girdileri rastgele dağıt
-Cancel	MediaPlayer-NetworkStream		İptal
+Cancel	MediaPlayer-NetworkStream		Vazgeç
 Nothing to Play	MediaPlayer-Main		Oynatacak bir şey yok
 OK	MediaPlayer-SettingsWindow		Tamam
 Remove Entries	MediaPlayer-RemovePLItemsCmd		Girdileri kaldır
@@ -73,16 +74,17 @@ Audio	MediaPlayer-Main		Ses
 Quit	MediaPlayer-Main		Çık
 Redo	MediaPlayer-PlaylistWindow		Yinele
 Move Entry	MediaPlayer-MovePLItemsCmd		Girdiyi taşı
+Reset rating	MediaPlayer-Main		Derecelendirmeyi sıfırla
 <unknown>	PlaylistItem-author		<bilinmeyen>
-Cancel	MediaPlayer-SettingsWindow		İptal
+Cancel	MediaPlayer-SettingsWindow		Vazgeç
 Large	MediaPlayer-SettingsWindow		Geniş
 Import Entry	MediaPlayer-ImportPLItemsCmd		Girdi içe aktar
 unknown format	MediaPlayer-InfoWin		bilinmeyen biçim
 Track %d	MediaPlayer-Main		Parça %d
-All files could not be moved into Trash.	MediaPlayer-RemovePLItemsCmd		Tüm dosyalar Çöp'e taşınamadı.
+All files could not be moved into Trash.	MediaPlayer-RemovePLItemsCmd		Tüm dosyalar çöpe atılamadı.
 Total duration: %s	MediaPlayer-PlaylistWindow		Toplam uzunluk: %s
 %.3f kHz	MediaPlayer-InfoWin		%.3f kHz
-Move into trash error	MediaPlayer-RemovePLItemsCmd		Çöp'e taşıma hatası
+Move into trash error	MediaPlayer-RemovePLItemsCmd		Çöpe atma hatası
 50% scale	MediaPlayer-Main		%50 ölçek
 Drop files to play	MediaPlayer-Main		Oynatmak için dosya bırakın
 Copy Entry	MediaPlayer-CopyPLItemsCmd		Girdiyi kopyala
@@ -93,13 +95,13 @@ Always on top	MediaPlayer-Main		Her zaman üstte
 Open	MediaPlayer-PlaylistWindow		Aç
 always	MediaPlayer-SettingsWindow		Her zaman
 Loop video	MediaPlayer-SettingsWindow		Videoyu sürekli oynat
-Stream URL:	MediaPlayer-NetworkStream		Akış URL'si:
+Stream URL:	MediaPlayer-NetworkStream		Akış URL’si:
 <unknown>	PlaylistItem-album		<bilinmeyen>
 Stream settings	MediaPlayer-Main		Akış ayarları
 none	Subtitles menu		yok
 Save Playlist	MediaPlayer-PlaylistWindow		Oynatma listesini kaydet
 Overlay	MediaPlayer-InfoWin		Bindirme
-2.35 : 1 (Cinemascope)	MediaPlayer-Main		2.35 : 1 (Cinemascope)
+2.35 : 1 (Cinemascope)	MediaPlayer-Main		2,35 : 1 (Cinemascope)
 Rating	MediaPlayer-Main		Derecelendirme
 Internal error (out of memory). Saving the playlist failed.	MediaPlayer-PlaylistWindow		İç hata (yetersiz bellek). Oynatma listesi kaydedilemedi.
 Video	MediaPlayer-Main		Video
@@ -107,7 +109,7 @@ There is no decoder installed to handle the file format, or the decoder has trou
 Lock Peaks	MediaPlayer-PeakView		Tepeleri kilitle
 none	Audio track menu		yok
 Open network stream	MediaPlayer-NetworkStream		Ağ akışı aç
-Automatically start playing	MediaPlayer-SettingsWindow		Kendiliğinden oynatmaya başla
+Automatically start playing	MediaPlayer-SettingsWindow		Kendiliğinden oynatmaya başlat
 Undo	MediaPlayer-PlaylistWindow		Geri al
 Display mode	MediaPlayer-InfoWin		Görüntüleme kipi
 Bottom of video	MediaPlayer-SettingsWindow		Videonun alt kısmı
@@ -117,13 +119,14 @@ min	MediaPlayer-InfoWin	Minutes	dak
 Saving the playlist failed:\n\nError: 	MediaPlayer-PlaylistWindow		Oynatma listesi kaydedilemedi:\n\nHata: 
 Video	MediaPlayer-InfoWin		Video
 File info…	MediaPlayer-Main		Dosya bilgisi…
-1.85 : 1 (American)	MediaPlayer-Main		1.85 : 1 (Amerikan)
+1.85 : 1 (American)	MediaPlayer-Main		1,85 : 1 (Amerikan)
 <unnamed>	PlaylistItem-name		<adsız>
 Track	Video Track Menu		Parça
 Full screen	MediaPlayer-Main		Tam ekran
 OK	MediaPlayer-NetworkStream		Tamam
 Internal error (locking failed). Saving the playlist failed.	MediaPlayer-PlaylistWindow		İç hata (kilitleme başarısız). Oynatma listesi kaydedilemedi.
 100% scale	MediaPlayer-Main		%100 ölçek
+New player	MediaPlayer-Main		Yeni oynatıcı
 <nothing to redo>	MediaPlayer-PlaylistWindow		<yinelenecek bir şey yok>
 Bad URL	MediaPlayer-NetworkStream		Kötü URL
 Save	MediaPlayer-Main		Kaydet
@@ -133,14 +136,14 @@ Scale movies smoothly (non-overlay mode)	MediaPlayer-SettingsWindow		Filmleri d�
 The file '%filename' could not be opened.\n\n	MediaPlayer-Main		%filename dosyası açılamadı.\n\n
 None of the files you wanted to play appear to be media files.	MediaPlayer-Main		Oynatmak istediğiniz dosyaların hiçbiri bir ortam dosyası değil gibi görünüyor.
 Remove Entry	MediaPlayer-RemovePLItemsCmd		Girdiyi kaldır
-Remove Entries into Trash	MediaPlayer-RemovePLItemsCmd		Girdileri Çöp'e taşı
+Remove Entries into Trash	MediaPlayer-RemovePLItemsCmd		Girdileri çöpe at
 Subtitle size:	MediaPlayer-SettingsWindow		Altyazı boyutu:
 No aspect correction	MediaPlayer-Main		Ölçek düzeltmesi olmadan
 raw video	MediaPlayer-InfoWin		ham video
 Container	MediaPlayer-InfoWin		İçeren
 none	MediaPlayer-Main		yok
 Open clips	MediaPlayer-Main		Klip aç
-Some files could not be moved into Trash.	MediaPlayer-RemovePLItemsCmd		Bazı dosyalar Çöp'e taşınamadı.
+Some files could not be moved into Trash.	MediaPlayer-RemovePLItemsCmd		Bazı dosyalar çöpe atılamadı.
 <nothing to undo>	MediaPlayer-PlaylistWindow		<geri alınacak bir şey yok>
 Save as…	MediaPlayer-PlaylistWindow		Farklı kaydet…
 Error: 	MediaPlayer-RemovePLItemsCmd		Hata: 

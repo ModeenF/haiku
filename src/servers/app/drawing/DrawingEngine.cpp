@@ -180,8 +180,6 @@ DrawingEngine::DrawingEngine(HWInterface* interface)
 	:
 	fPainter(new Painter()),
 	fGraphicsCard(NULL),
-	fAvailableHWAccleration(0),
-	fSuspendSyncLevel(0),
 	fCopyToFront(true)
 {
 	SetHWInterface(interface);
@@ -249,7 +247,6 @@ DrawingEngine::FrameBufferChanged()
 {
 	if (!fGraphicsCard) {
 		fPainter->DetachFromBuffer();
-		fAvailableHWAccleration = 0;
 		return;
 	}
 
@@ -257,8 +254,6 @@ DrawingEngine::FrameBufferChanged()
 	// in the thread that changed the frame buffer...
 	if (LockExclusiveAccess()) {
 		fPainter->AttachToBuffer(fGraphicsCard->DrawingBuffer());
-		// available HW acceleration might have changed
-		fAvailableHWAccleration = fGraphicsCard->AvailableHWAcceleration();
 		UnlockExclusiveAccess();
 	}
 }
@@ -363,7 +358,7 @@ DrawingEngine::SetBlendingMode(source_alpha srcAlpha, alpha_function alphaFunc)
 void
 DrawingEngine::SetPattern(const struct pattern& pattern)
 {
-	fPainter->SetPattern(pattern, false);
+	fPainter->SetPattern(pattern);
 }
 
 
@@ -401,29 +396,6 @@ DrawingEngine::SetTransform(const BAffineTransform& transform, int32 xOffset,
 	int32 yOffset)
 {
 	fPainter->SetTransform(transform, xOffset, yOffset);
-}
-
-
-// #pragma mark -
-
-
-void
-DrawingEngine::SuspendAutoSync()
-{
-	ASSERT_PARALLEL_LOCKED();
-
-	fSuspendSyncLevel++;
-}
-
-
-void
-DrawingEngine::Sync()
-{
-	ASSERT_PARALLEL_LOCKED();
-
-	fSuspendSyncLevel--;
-	if (fSuspendSyncLevel == 0)
-		fGraphicsCard->Sync();
 }
 
 
@@ -626,32 +598,12 @@ DrawingEngine::CopyRegion(/*const*/ BRegion* region, int32 xOffset,
 	// to. If their "indegree" count reaches zero, put them onto the
 	// stack as well.
 
-	clipping_rect* sortedRectList = NULL;
-	int32 nextSortedIndex = 0;
-
-	if (fAvailableHWAccleration & HW_ACC_COPY_REGION) {
-		sortedRectList = new(std::nothrow) clipping_rect[count];
-		if (sortedRectList == NULL)
-			return;
-	}
-
 	while (!inDegreeZeroNodes.empty()) {
 		node* n = inDegreeZeroNodes.top();
 		inDegreeZeroNodes.pop();
 
-		// do the software implementation or add to sorted
-		// rect list for using the HW accelerated version
-		// later
-		if (sortedRectList) {
-			sortedRectList[nextSortedIndex].left	= (int32)n->rect.left;
-			sortedRectList[nextSortedIndex].top		= (int32)n->rect.top;
-			sortedRectList[nextSortedIndex].right	= (int32)n->rect.right;
-			sortedRectList[nextSortedIndex].bottom	= (int32)n->rect.bottom;
-			nextSortedIndex++;
-		} else {
-			BRect touched = CopyRect(n->rect, xOffset, yOffset);
-			fGraphicsCard->Invalidate(touched);
-		}
+		BRect touched = CopyRect(n->rect, xOffset, yOffset);
+		fGraphicsCard->Invalidate(touched);
 
 		for (int32 k = 0; k < n->next_pointer; k++) {
 			n->pointers[k]->in_degree--;
@@ -659,17 +611,6 @@ DrawingEngine::CopyRegion(/*const*/ BRegion* region, int32 xOffset,
 				inDegreeZeroNodes.push(n->pointers[k]);
 		}
 	}
-
-	// trigger the HW accelerated version if it was available
-	if (sortedRectList) {
-		fGraphicsCard->CopyRegion(sortedRectList, count, xOffset, yOffset);
-		if (fGraphicsCard->IsDoubleBuffered()) {
-			fGraphicsCard->Invalidate(
-				region->Frame().OffsetByCopy(xOffset, yOffset));
-		}
-	}
-
-	delete[] sortedRectList;
 }
 
 
@@ -684,14 +625,7 @@ DrawingEngine::InvertRect(BRect r)
 	if (!transaction.IsDirty())
 		return;
 
-	// try hardware optimized version first
-	if (fAvailableHWAccleration & HW_ACC_INVERT_REGION) {
-		BRegion region(r);
-		region.IntersectWith(fPainter->ClippingRegion());
-		fGraphicsCard->InvertRegion(region);
-	} else {
-		fPainter->InvertRect(r);
-	}
+	fPainter->InvertRect(r);
 }
 
 
@@ -917,24 +851,13 @@ DrawingEngine::FillRect(BRect r, const rgb_color& color)
 {
 	ASSERT_PARALLEL_LOCKED();
 
-	// NOTE: Write locking because we might use HW acceleration.
-	// This needs to be investigated, I'm doing this because of
-	// gut feeling.
 	make_rect_valid(r);
 	r = fPainter->ClipRect(r);
 	DrawTransaction transaction(this, r);
 	if (!transaction.IsDirty())
 		return;
 
-	// try hardware optimized version first
-	if (fAvailableHWAccleration & HW_ACC_FILL_REGION) {
-		BRegion region(r);
-		region.IntersectWith(fPainter->ClippingRegion());
-		fGraphicsCard->FillRegion(region, color,
-			fSuspendSyncLevel == 0 || transaction.WasOverlaysHidden());
-	} else {
-		fPainter->FillRect(r, color);
-	}
+	fPainter->FillRect(r, color);
 }
 
 
@@ -962,16 +885,9 @@ DrawingEngine::FillRegion(BRegion& r, const rgb_color& color)
 
 	DrawTransaction transaction(this, r);
 
-	// try hardware optimized version first
-	if ((fAvailableHWAccleration & HW_ACC_FILL_REGION) != 0
-		&& frame.Width() * frame.Height() > 100) {
-		fGraphicsCard->FillRegion(r, color, fSuspendSyncLevel == 0
-			|| transaction.WasOverlaysHidden());
-	} else {
-		int32 count = r.CountRects();
-		for (int32 i = 0; i < count; i++)
-			fPainter->FillRectNoClipping(r.RectAtInt(i), color);
-	}
+	int32 count = r.CountRects();
+	for (int32 i = 0; i < count; i++)
+		fPainter->FillRectNoClipping(r.RectAtInt(i), color);
 }
 
 
@@ -1008,45 +924,6 @@ DrawingEngine::FillRect(BRect r)
 	if (!transaction.IsDirty())
 		return;
 
-	if (fPainter->IsIdentityTransform()) {
-		// TODO the accelerated code path may also be used for transforms that
-		// only scale and translate (but don't shear or rotate).
-
-		if ((r.Width() + 1) * (r.Height() + 1) > 100.0) {
-			// try hardware optimized version first
-			// if the rect is large enough
-			if ((fAvailableHWAccleration & HW_ACC_FILL_REGION) != 0) {
-				if (fPainter->Pattern() == B_SOLID_HIGH
-					&& (fPainter->DrawingMode() == B_OP_COPY
-						|| fPainter->DrawingMode() == B_OP_OVER)) {
-					BRegion region(r);
-					region.IntersectWith(fPainter->ClippingRegion());
-					fGraphicsCard->FillRegion(region, fPainter->HighColor(),
-						fSuspendSyncLevel == 0
-							|| transaction.WasOverlaysHidden());
-					return;
-				} else if (fPainter->Pattern() == B_SOLID_LOW
-						&& fPainter->DrawingMode() == B_OP_COPY) {
-					BRegion region(r);
-					region.IntersectWith(fPainter->ClippingRegion());
-					fGraphicsCard->FillRegion(region, fPainter->LowColor(),
-						fSuspendSyncLevel == 0
-							|| transaction.WasOverlaysHidden());
-					return;
-				}
-			}
-		}
-
-		if ((fAvailableHWAccleration & HW_ACC_INVERT_REGION) != 0
-			&& fPainter->Pattern() == B_SOLID_HIGH
-			&& fPainter->DrawingMode() == B_OP_INVERT) {
-			BRegion region(r);
-			region.IntersectWith(fPainter->ClippingRegion());
-			fGraphicsCard->InvertRegion(region);
-			return;
-		}
-	}
-
 	fPainter->FillRect(r);
 }
 
@@ -1076,34 +953,6 @@ DrawingEngine::FillRegion(BRegion& r)
 	DrawTransaction transaction(this, clipped);
 	if (!transaction.IsDirty())
 		return;
-
-	if (fPainter->IsIdentityTransform()) {
-		// try hardware optimized version first
-		if ((fAvailableHWAccleration & HW_ACC_FILL_REGION) != 0) {
-			if (fPainter->Pattern() == B_SOLID_HIGH
-				&& (fPainter->DrawingMode() == B_OP_COPY
-					|| fPainter->DrawingMode() == B_OP_OVER)) {
-				r.IntersectWith(fPainter->ClippingRegion());
-				fGraphicsCard->FillRegion(r, fPainter->HighColor(),
-					fSuspendSyncLevel == 0 || transaction.WasOverlaysHidden());
-				return;
-			} else if (fPainter->Pattern() == B_SOLID_LOW
-				&& fPainter->DrawingMode() == B_OP_COPY) {
-				r.IntersectWith(fPainter->ClippingRegion());
-				fGraphicsCard->FillRegion(r, fPainter->LowColor(),
-					fSuspendSyncLevel == 0 || transaction.WasOverlaysHidden());
-				return;
-			}
-		}
-
-		if ((fAvailableHWAccleration & HW_ACC_INVERT_REGION) != 0
-			&& fPainter->Pattern() == B_SOLID_HIGH
-			&& fPainter->DrawingMode() == B_OP_INVERT) {
-			r.IntersectWith(fPainter->ClippingRegion());
-			fGraphicsCard->InvertRegion(r);
-			return;
-		}
-	}
 
 	int32 count = r.CountRects();
 	for (int32 i = 0; i < count; i++)
@@ -1505,7 +1354,7 @@ DrawingEngine::ReadBitmap(ServerBitmap* bitmap, bool drawCursor, BRect bounds)
 		cursorArea.ImportBits(bitmap->Bits(), bitmap->BitsLength(),
 			bitmap->BytesPerRow(), bitmap->ColorSpace(),
 			cursorPosition,	BPoint(0, 0),
-			cursorWidth, cursorHeight);
+			cursorArea.Bounds().Size());
 
 		uint8* bits = (uint8*)cursorArea.Bits();
 		uint8* cursorBits = (uint8*)cursor->Bits();
@@ -1563,7 +1412,8 @@ DrawingEngine::CopyRect(BRect src, int32 xOffset, int32 yOffset) const
 			uint32 width = src.IntegerWidth() + 1;
 			uint32 height = src.IntegerHeight() + 1;
 
-			_CopyRect(bits, width, height, bytesPerRow, xOffset, yOffset);
+			_CopyRect(bits, width, height, bytesPerRow,
+				xOffset, yOffset);
 
 			// offset dest again, because it is return value
 			dst.OffsetBy(xOffset, yOffset);
@@ -1585,17 +1435,8 @@ DrawingEngine::_CopyRect(uint8* src, uint32 width, uint32 height,
 	uint32 bytesPerRow, int32 xOffset, int32 yOffset) const
 {
 	// TODO: assumes drawing buffer is 32 bits (which it currently always is)
-	int32 xIncrement;
 	int32 yIncrement;
-
-	if (yOffset == 0 && xOffset > 0) {
-		// copy from right to left
-		xIncrement = -1;
-		src += (width - 1) * 4;
-	} else {
-		// copy from left to right
-		xIncrement = 1;
-	}
+	const bool needMemmove = (yOffset == 0 && xOffset > 0 && uint32(xOffset) <= width);
 
 	if (yOffset > 0) {
 		// copy from bottom to top
@@ -1608,34 +1449,15 @@ DrawingEngine::_CopyRect(uint8* src, uint32 width, uint32 height,
 
 	uint8* dst = src + (ssize_t)yOffset * bytesPerRow + (ssize_t)xOffset * 4;
 
-	if (xIncrement == 1) {
-		uint8 tmpBuffer[width * 4];
+	if (!needMemmove) {
 		for (uint32 y = 0; y < height; y++) {
-			// NOTE: read into temporary scanline buffer,
-			// avoid memcpy because it might be graphics card memory
-			gfxcpy32(tmpBuffer, src, width * 4);
-			// write back temporary scanline buffer
-			// NOTE: **don't read and write over the PCI bus
-			// at the same time**
-			memcpy(dst, tmpBuffer, width * 4);
-// NOTE: this (instead of the two pass copy above) might
-// speed up QEMU -> ?!? (would depend on how it emulates
-// the PCI bus...)
-// TODO: would be nice if we actually knew
-// if we're operating in graphics memory or main memory...
-//memcpy(dst, src, width * 4);
+			memcpy(dst, src, width * 4);
 			src += yIncrement;
 			dst += yIncrement;
 		}
 	} else {
 		for (uint32 y = 0; y < height; y++) {
-			uint32* srcHandle = (uint32*)src;
-			uint32* dstHandle = (uint32*)dst;
-			for (uint32 x = 0; x < width; x++) {
-				*dstHandle = *srcHandle;
-				srcHandle += xIncrement;
-				dstHandle += xIncrement;
-			}
+			memmove(dst, src, width * 4);
 			src += yIncrement;
 			dst += yIncrement;
 		}

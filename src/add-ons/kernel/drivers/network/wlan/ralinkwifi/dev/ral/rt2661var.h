@@ -1,4 +1,3 @@
-/*	$FreeBSD: releng/12.0/sys/dev/ral/rt2661var.h 306591 2016-10-02 20:35:55Z avos $	*/
 
 /*-
  * Copyright (c) 2005
@@ -42,7 +41,7 @@ struct rt2661_tx_radiotap_header {
 	uint8_t		wt_rate;
 	uint16_t	wt_chan_freq;
 	uint16_t	wt_chan_flags;
-} __packed __aligned(8);
+} __packed;
 
 #define RT2661_TX_RADIOTAP_PRESENT					\
 	((1 << IEEE80211_RADIOTAP_FLAGS) |				\
@@ -114,7 +113,7 @@ struct rt2661_softc {
  * The same in both up to here
  * ------------------------------------------------
  */
-	
+
 	int                             sc_flags;
 #define	RAL_FW_LOADED		0x1
 #define	RAL_INPUT_RUNNING	0x2

@@ -13,12 +13,14 @@
 
 #include <string.h>
 
+#include <arch_thread_defs.h>
 #include <commpage.h>
 #include <cpu.h>
 #include <debug.h>
+#include <generic_syscall.h>
 #include <kernel.h>
 #include <ksignal.h>
-#include <int.h>
+#include <interrupts.h>
 #include <team.h>
 #include <thread.h>
 #include <tls.h>
@@ -96,6 +98,7 @@ x86_set_tls_context(Thread* thread)
 {
 	// Set FS segment base address to the TLS segment.
 	x86_write_msr(IA32_MSR_FS_BASE, thread->user_local_storage);
+	x86_write_msr(IA32_MSR_KERNEL_GS_BASE, thread->arch_info.user_gs_base);
 }
 
 
@@ -135,6 +138,32 @@ get_signal_stack(Thread* thread, iframe* frame, struct sigaction* action,
 }
 
 
+static status_t
+arch_thread_control(const char* subsystem, uint32 function, void* buffer,
+	size_t bufferSize)
+{
+	switch (function) {
+		case THREAD_SET_GS_BASE:
+		{
+			uint64 base;
+			if (bufferSize != sizeof(base))
+				return B_BAD_VALUE;
+
+			if (!IS_USER_ADDRESS(buffer)
+				|| user_memcpy(&base, buffer, sizeof(base)) < B_OK) {
+				return B_BAD_ADDRESS;
+			}
+
+			Thread* thread = thread_get_current_thread();
+			thread->arch_info.user_gs_base = base;
+			x86_write_msr(IA32_MSR_KERNEL_GS_BASE, base);
+			return B_OK;
+		}
+	}
+	return B_BAD_HANDLER;
+}
+
+
 //	#pragma mark -
 
 
@@ -144,7 +173,6 @@ arch_thread_init(kernel_args* args)
 	// Save one global valid FPU state; it will be copied in the arch dependent
 	// part of each new thread.
 	if (gHasXsave || gHasXsavec) {
-		memset(sInitialState.fpu_state, 0, gFPUSaveLength);
 		if (gHasXsavec) {
 			asm volatile (
 				"clts;"		\
@@ -153,7 +181,7 @@ arch_thread_init(kernel_args* args)
 				"movl $0x7,%%eax;"	\
 				"movl $0x0,%%edx;"	\
 				"xsavec64 %0"
-				:: "m" (sInitialState.fpu_state));
+				:: "m" (sInitialState.user_fpu_state));
 		} else {
 			asm volatile (
 				"clts;"		\
@@ -162,7 +190,7 @@ arch_thread_init(kernel_args* args)
 				"movl $0x7,%%eax;"	\
 				"movl $0x0,%%edx;"	\
 				"xsave64 %0"
-				:: "m" (sInitialState.fpu_state));
+				:: "m" (sInitialState.user_fpu_state));
 		}
 	} else {
 		asm volatile (
@@ -170,8 +198,17 @@ arch_thread_init(kernel_args* args)
 			"fninit;"	\
 			"fnclex;"	\
 			"fxsaveq %0"
-			:: "m" (sInitialState.fpu_state));
+			:: "m" (sInitialState.user_fpu_state));
 	}
+
+	// FNINIT does not affect MXCSR or data registers, so we reset them in the state.
+	savefpu* initialState = ((savefpu*)&sInitialState.user_fpu_state);
+	initialState->fp_fxsave.mxcsr = 0x1F80; // __INITIAL_MXCSR__
+	memset(initialState->fp_fxsave.fp, 0, sizeof(initialState->fp_fxsave.fp));
+	memset(initialState->fp_fxsave.xmm, 0, sizeof(initialState->fp_fxsave.xmm));
+	memset(initialState->fp_ymm, 0, sizeof(initialState->fp_ymm));
+
+	register_generic_syscall(THREAD_SYSCALLS, arch_thread_control, 1, 0);
 	return B_OK;
 }
 
@@ -214,6 +251,7 @@ arch_thread_init_kthread_stack(Thread* thread, void* _stack, void* _stackTop,
 
 	*--stackTop = uintptr_t(data);
 	*--stackTop = uintptr_t(function);
+	*--stackTop = uintptr_t(thread);
 
 	// Save the stack position.
 	thread->arch_info.current_stack = stackTop;
@@ -228,7 +266,7 @@ arch_thread_dump_info(void* info)
 	kprintf("\trsp: %p\n", thread->current_stack);
 	kprintf("\tsyscall_rsp: %p\n", thread->syscall_rsp);
 	kprintf("\tuser_rsp: %p\n", thread->user_rsp);
-	kprintf("\tfpu_state at %p\n", thread->fpu_state);
+	kprintf("\tuser_fpu_state at %p\n", thread->user_fpu_state);
 }
 
 
@@ -250,10 +288,10 @@ arch_thread_enter_userspace(Thread* thread, addr_t entry, void* args1,
 	// entry function returns to the top of the stack to act as the return
 	// address. The stub is inside commpage.
 	addr_t commPageAddress = (addr_t)thread->team->commpage_address;
-	set_ac();
+	arch_cpu_enable_user_access();
 	codeAddr = ((addr_t*)commPageAddress)[COMMPAGE_ENTRY_X86_THREAD_EXIT]
 		+ commPageAddress;
-	clear_ac();
+	arch_cpu_disable_user_access();
 	if (user_memcpy((void*)stackTop, (const void*)&codeAddr, sizeof(codeAddr))
 			!= B_OK)
 		return B_BAD_ADDRESS;
@@ -265,8 +303,7 @@ arch_thread_enter_userspace(Thread* thread, addr_t entry, void* args1,
 	frame.di = (uint64)args1;
 	frame.ip = entry;
 	frame.cs = USER_CODE_SELECTOR;
-	frame.flags = X86_EFLAGS_RESERVED1 | X86_EFLAGS_INTERRUPT
-		| (3 << X86_EFLAGS_IO_PRIVILEG_LEVEL_SHIFT);
+	frame.flags = X86_EFLAGS_RESERVED1 | X86_EFLAGS_INTERRUPT;
 	frame.sp = stackTop;
 	frame.ss = USER_DATA_SELECTOR;
 
@@ -338,8 +375,14 @@ arch_setup_signal_frame(Thread* thread, struct sigaction* action,
 			gFPUSaveLength);
 	} else {
 		memcpy((void*)&signalFrameData->context.uc_mcontext.fpu,
-			sInitialState.fpu_state, gFPUSaveLength);
+			sInitialState.user_fpu_state, gFPUSaveLength);
 	}
+
+	signalFrameData->context.uc_mcontext.fpu.fp_fxsave.fault_address = x86_read_cr2();
+	signalFrameData->context.uc_mcontext.fpu.fp_fxsave.error_code = frame->error_code;
+	signalFrameData->context.uc_mcontext.fpu.fp_fxsave.cs = frame->cs;
+	signalFrameData->context.uc_mcontext.fpu.fp_fxsave.ss = frame->ss;
+	signalFrameData->context.uc_mcontext.fpu.fp_fxsave.trap_number = frame->vector;
 
 	// Fill in signalFrameData->context.uc_stack.
 	signal_get_user_stack(frame->user_sp, &signalFrameData->context.uc_stack);
@@ -371,11 +414,12 @@ arch_setup_signal_frame(Thread* thread, struct sigaction* action,
 	// stack. First argument points to the frame data.
 	addr_t* commPageAddress = (addr_t*)thread->team->commpage_address;
 	frame->user_sp = (addr_t)userStack;
-	set_ac();
+	arch_cpu_enable_user_access();
 	frame->ip = commPageAddress[COMMPAGE_ENTRY_X86_SIGNAL_HANDLER]
 		+ (addr_t)commPageAddress;
-	clear_ac();
+	arch_cpu_disable_user_access();
 	frame->di = (addr_t)userSignalFrameData;
+	frame->flags &= ~(uint64)(X86_EFLAGS_TRAP | X86_EFLAGS_DIRECTION);
 
 	return B_OK;
 }
@@ -407,11 +451,18 @@ arch_restore_signal_frame(struct signal_frame_data* signalFrameData)
 	frame->flags = (frame->flags & ~(uint64)X86_EFLAGS_USER_FLAGS)
 		| (signalFrameData->context.uc_mcontext.rflags & X86_EFLAGS_USER_FLAGS);
 
+	// Note: the error_code and vector fields are not restored. These are provided to the signal
+	// handler for information purposes only, and are not used after the signal handling is
+	// complete.
+	
+	frame->cs = signalFrameData->context.uc_mcontext.fpu.fp_fxsave.cs;
+	frame->ss = signalFrameData->context.uc_mcontext.fpu.fp_fxsave.ss;
+
 	Thread* thread = thread_get_current_thread();
 
-	memcpy(thread->arch_info.fpu_state,
+	memcpy(thread->arch_info.user_fpu_state,
 		(void*)&signalFrameData->context.uc_mcontext.fpu, gFPUSaveLength);
-	frame->fpu = &thread->arch_info.fpu_state;
+	frame->fpu = &thread->arch_info.user_fpu_state;
 
 	// The syscall return code overwrites frame->ax with the return value of
 	// the syscall, need to return it here to ensure the correct value is

@@ -1,4 +1,3 @@
-/*	$FreeBSD: releng/12.0/sys/dev/ral/rt2560var.h 306591 2016-10-02 20:35:55Z avos $	*/
 
 /*-
  * Copyright (c) 2005, 2006
@@ -27,7 +26,7 @@ struct rt2560_rx_radiotap_header {
 	int8_t		wr_antsignal;
 	int8_t		wr_antnoise;
 	uint8_t		wr_antenna;
-};
+} __packed __aligned(8);
 
 #define RT2560_RX_RADIOTAP_PRESENT					\
 	((1 << IEEE80211_RADIOTAP_TSFT) |				\
@@ -45,7 +44,7 @@ struct rt2560_tx_radiotap_header {
 	uint16_t	wt_chan_freq;
 	uint16_t	wt_chan_flags;
 	uint8_t		wt_antenna;
-};
+} __packed;
 
 #define RT2560_TX_RADIOTAP_PRESENT					\
 	((1 << IEEE80211_RADIOTAP_FLAGS) |				\

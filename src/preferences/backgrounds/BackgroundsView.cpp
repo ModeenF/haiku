@@ -74,8 +74,8 @@ BackgroundsView::BackgroundsView()
 	fCurrentInfo(NULL),
 	fLastImageIndex(-1),
 	fRecentFoldersLimit(10),
-	fPathList(1, true),
-	fImageList(1, true),
+	fPathList(1),
+	fImageList(1),
 	fFoundPositionSetting(false)
 {
 	SetBorder(B_NO_BORDER);
@@ -94,10 +94,11 @@ BackgroundsView::BackgroundsView()
 	fBottom = new FramePart(FRAME_BOTTOM);
 	fBottomRight = new FramePart(FRAME_BOTTOM_RIGHT);
 
-	fXPlacementText = new BTextControl(B_TRANSLATE("X:"), NULL,
-		new BMessage(kMsgImagePlacement));
-	fYPlacementText = new BTextControl(B_TRANSLATE("Y:"), NULL,
-		new BMessage(kMsgImagePlacement));
+	fXPlacementText = new BTextControl(B_TRANSLATE("X:"), NULL, NULL);
+	fXPlacementText->SetModificationMessage(new BMessage(kMsgImagePlacement));
+
+	fYPlacementText = new BTextControl(B_TRANSLATE("Y:"), NULL, NULL);
+	fYPlacementText->SetModificationMessage(new BMessage(kMsgImagePlacement));
 
 	// right-align text view
 	fXPlacementText->TextView()->SetAlignment(B_ALIGN_RIGHT);
@@ -281,11 +282,11 @@ BackgroundsView::AllAttached()
 
 	BMessenger messenger(this);
 	fPanel = new ImageFilePanel(B_OPEN_PANEL, &messenger, &ref,
-		B_FILE_NODE, false, NULL, new CustomRefFilter(true));
+		B_FILE_NODE, false, NULL, new ImageFilter(true));
 	fPanel->SetButtonLabel(B_DEFAULT_BUTTON, B_TRANSLATE("Select"));
 
 	fFolderPanel = new BFilePanel(B_OPEN_PANEL, &messenger, NULL,
-		B_DIRECTORY_NODE, false, NULL, new CustomRefFilter(false));
+		B_DIRECTORY_NODE, false, NULL, new ImageFilter(false));
 	fFolderPanel->SetButtonLabel(B_DEFAULT_BUTTON, B_TRANSLATE("Select"));
 
 	_LoadSettings();
@@ -295,6 +296,7 @@ BackgroundsView::AllAttached()
 	if (fSettings.FindPoint("pos", &point) == B_OK) {
 		fFoundPositionSetting = true;
 		Window()->MoveTo(point);
+		Window()->MoveOnScreen(B_MOVE_IF_PARTIALLY_OFFSCREEN);
 	}
 
 	fApply->SetEnabled(false);
@@ -306,7 +308,7 @@ void
 BackgroundsView::MessageReceived(BMessage* message)
 {
 	// Color drop
-	if (message->WasDropped()) {
+	if (message->WasDropped() && fPicker->IsEnabled()) {
 		rgb_color *clr;
 		ssize_t out_size;
 		if (message->FindData("RGBColor", B_RGB_COLOR_TYPE,
@@ -1002,9 +1004,10 @@ BackgroundsView::RefsReceived(BMessage* message)
 
 		if (node.IsFile()) {
 			BMimeType refType;
-			BMimeType::GuessMimeType(&ref, &refType);
-			if (!imageType.Contains(&refType))
+			if (BMimeType::GuessMimeType(&ref, &refType) == B_OK
+				&& !imageType.Contains(&refType)) {
 				continue;
+			}
 
 			BGImageMenuItem* item;
 			int32 index = AddImage(path);
@@ -1182,7 +1185,7 @@ Preview::Preview()
 	BControl("PreView", NULL, NULL, B_WILL_DRAW | B_SUBPIXEL_PRECISE)
 {
 	float aspectRatio = BScreen().Frame().Width() / BScreen().Frame().Height();
-	float previewWidth = 120.0f * std::max(1.0f, be_plain_font->Size() / 12.0f);
+	float previewWidth = be_control_look->DefaultLabelSpacing() * 20.0f;
 	float previewHeight = ceil(previewWidth / aspectRatio);
 
 	ResizeTo(previewWidth, previewHeight);

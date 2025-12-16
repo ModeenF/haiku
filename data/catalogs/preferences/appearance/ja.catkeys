@@ -1,4 +1,4 @@
-1	japanese	x-vnd.Haiku-Appearance	663472720
+1	japanese	x-vnd.Haiku-Appearance	211365410
 Control border	Colors tab		コントロールの境界
 Control mark	Colors tab		コントロールの選択部
 Off	AntialiasingSettingsView		無効
@@ -11,9 +11,9 @@ List background	Colors tab		リストの背景
 No effect on running applications	DecorSettingsView		実行中のアプリケーションには影響しない
 Fixed font:	Font view		等幅フォント:
 Appearance	System name		外観
-Reduce colored edges filter strength:	AntialiasingSettingsView		カラーエッジフィルターの強度を下げる
+Reduce colored edges filter strength:	AntialiasingSettingsView		カラーエッジフィルターの強度を下げる:
 Glyph hinting:	AntialiasingSettingsView		グリフのヒンティング:
-Default Haiku ControlLook	DecorSettingsView		規定の Haiku のコントロール表示
+Default Haiku ControlLook	DecorSettingsView		デフォルトの Haiku のコントロール表示
 Menu item text	Colors tab		メニュー項目の文字
 About decorator	DecorSettingsView		デコレーターについて
 Antialiasing menu	AntialiasingSettingsView		アンチエイリアスメニュー
@@ -35,14 +35,15 @@ Antialiasing	APRWindow		アンチエイリアス
 Menu font:	Font view		メニューフォント:
 Bold font:	Font view		太字フォント:
 %decorName\n\nAuthors:\n\t%decorAuthors\n\nURL: %decorURL\nLicense: %decorLic\n\n%decorDesc\n	DecorSettingsView		%decorName\n\n作者:\n\t%decorAuthors\n\nURL: %decorURL\nライセンス: %decorLic\n\n%decorDesc\n
-Choose Decorator	DecorSettingsView		デコレーターを選択
-Strong	AntialiasingSettingsView		強い
+Choose Decorator	DecorSettingsView		デコレーターの選択
 Failure	Colors tab		失敗
+Strong	AntialiasingSettingsView		強い
 Double:	DecorSettingsView		両方向:
 Selected menu item text	Colors tab		メニュー選択項目の文字
 Size:	Font Selection view		サイズ:
 Panel background	Colors tab		パネルの背景
 Plain font:	Font view		標準フォント:
+Automatically pick secondary colors	Colors tab		自動的にセカンダリーカラーを選択する
 Window tab text	Colors tab		ウィンドウタブの文字
 Navigation pulse	Colors tab		ナビゲーションの点滅
 LCD subpixel	AntialiasingSettingsView		LCD サブピクセル

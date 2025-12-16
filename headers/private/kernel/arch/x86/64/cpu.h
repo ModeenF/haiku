@@ -9,22 +9,6 @@
 #include <arch_thread_types.h>
 
 
-static inline uint64_t
-x86_read_msr(uint32_t msr)
-{
-	uint64_t high, low;
-	asm volatile("rdmsr" : "=a" (low), "=d" (high) : "c" (msr));
-	return (high << 32) | low;
-}
-
-
-static inline void
-x86_write_msr(uint32_t msr, uint64_t value)
-{
-	asm volatile("wrmsr" : : "a" (value) , "d" (value >> 32), "c" (msr));
-}
-
-
 static inline void
 x86_context_switch(arch_thread* oldState, arch_thread* newState)
 {
@@ -48,6 +32,9 @@ x86_context_switch(arch_thread* oldState, arch_thread* newState)
 			"r14", "r15", "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5",
 			"xmm6", "xmm7", "xmm8", "xmm9", "xmm10", "xmm11", "xmm12", "xmm13",
 			"xmm14", "xmm15", "memory");
+	asm volatile("fninit");
+		// The kernel only needs FNCLEX (so that FLDCW won't trigger exceptions)
+		// but we must not leak x87 FPU state between teams, so reset it.
 	asm volatile("ldmxcsr %0" : : "m" (sseControl));
 	asm volatile("fldcw %0" : : "m" (fpuControl));
 }

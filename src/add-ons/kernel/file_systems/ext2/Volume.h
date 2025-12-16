@@ -113,11 +113,6 @@ public:
 			status_t			ActivateLargeFiles(Transaction& transaction);
 			status_t			ActivateDirNLink(Transaction& transaction);
 
-			status_t			SaveOrphan(Transaction& transaction,
-									ino_t newID, ino_t &oldID);
-			status_t			RemoveOrphan(Transaction& transaction,
-									ino_t id);
-
 			status_t			AllocateInode(Transaction& transaction,
 									Inode* parent, int32 mode, ino_t& id);
 			status_t			FreeInode(Transaction& transaction, ino_t id,
@@ -166,7 +161,6 @@ private:
 			fs_volume*			fFSVolume;
 			int					fDevice;
 			ext2_super_block	fSuperBlock;
-			char				fName[32];
 
 			BlockAllocator*		fBlockAllocator;
 			InodeAllocator		fInodeAllocator;

@@ -12,6 +12,7 @@
 
 #ifdef _DEFAULT_SOURCE
 
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -20,8 +21,16 @@ extern "C" {
 int			daemon(int noChangeDir, int noClose);
 const char	*getprogname(void);
 void		setprogname(const char *programName);
+uint32_t	arc4random(void);
+void		arc4random_buf(void *buf, size_t nbytes);
+uint32_t	arc4random_uniform(uint32_t upper_bound);
 
 int			mkstemps(char *templat, int slen);
+
+long long	strtonum(const char *numstr, long long minval,
+				long long maxval, const char **errstrp);
+
+int			getloadavg(double array[], int size);
 
 #ifdef __cplusplus
 }

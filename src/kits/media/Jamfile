@@ -70,7 +70,6 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			request_data.cpp
 			SharedBufferList.cpp
 			TrackReader.cpp
-			TimedEventQueuePrivate.cpp
 			TimeSourceObject.cpp
 			TimeSourceObjectManager.cpp
 			SoundPlayNode.cpp

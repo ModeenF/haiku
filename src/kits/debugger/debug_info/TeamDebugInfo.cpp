@@ -29,7 +29,6 @@
 #include "SourceFile.h"
 #include "SourceLanguage.h"
 #include "SpecificImageDebugInfo.h"
-#include "StringUtils.h"
 #include "Type.h"
 #include "TypeLookupConstraints.h"
 
@@ -47,7 +46,7 @@ struct TeamDebugInfo::FunctionHashDefinition {
 		if (key->SourceFile() == NULL)
 			return (uint32)(addr_t)key;
 
-		uint32 hash = StringUtils::HashValue(key->Name());
+		uint32 hash = key->Name().HashValue();
 		hash = hash * 17 + (uint32)(addr_t)key->SourceFile();
 		SourceLocation location = key->GetSourceLocation();
 		hash = hash * 17 + location.Line();
@@ -265,7 +264,7 @@ TeamDebugInfo::TeamDebugInfo(DebuggerInterface* debuggerInterface,
 	fDebuggerInterface(debuggerInterface),
 	fArchitecture(architecture),
 	fFileManager(fileManager),
-	fSpecificInfos(10, true),
+	fSpecificInfos(10),
 	fFunctions(NULL),
 	fSourceFiles(NULL),
 	fTypeCache(NULL),

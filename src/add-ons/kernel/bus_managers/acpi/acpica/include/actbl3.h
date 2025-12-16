@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2021, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2025, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -177,6 +177,7 @@
 #define ACPI_SIG_TCPA           "TCPA"      /* Trusted Computing Platform Alliance table */
 #define ACPI_SIG_TPM2           "TPM2"      /* Trusted Platform Module 2.0 H/W interface table */
 #define ACPI_SIG_UEFI           "UEFI"      /* Uefi Boot Optimization Table */
+#define ACPI_SIG_VIOT           "VIOT"      /* Virtual I/O Translation Table */
 #define ACPI_SIG_WAET           "WAET"      /* Windows ACPI Emulated devices Table */
 #define ACPI_SIG_WDAT           "WDAT"      /* Watchdog Action Table */
 #define ACPI_SIG_WDDT           "WDDT"      /* Watchdog Timer Description Table */
@@ -242,10 +243,10 @@ typedef struct acpi_table_slit
 /*******************************************************************************
  *
  * SPCR - Serial Port Console Redirection table
- *        Version 2
+ *        Version 4
  *
  * Conforms to "Serial Port Console Redirection Table",
- * Version 1.03, August 10, 2015
+ * Version 1.10, Jan 5, 2023
  *
  ******************************************************************************/
 
@@ -263,7 +264,7 @@ typedef struct acpi_table_spcr
     UINT8                   StopBits;
     UINT8                   FlowControl;
     UINT8                   TerminalType;
-    UINT8                   Reserved1;
+    UINT8                   Language;
     UINT16                  PciDeviceId;
     UINT16                  PciVendorId;
     UINT8                   PciBus;
@@ -271,7 +272,11 @@ typedef struct acpi_table_spcr
     UINT8                   PciFunction;
     UINT32                  PciFlags;
     UINT8                   PciSegment;
-    UINT32                  Reserved2;
+    UINT32                  UartClkFreq;
+    UINT32                  PreciseBaudrate;
+    UINT16                  NameSpaceStringLength;
+    UINT16                  NameSpaceStringOffset;
+    char                    NameSpaceString[];
 
 } ACPI_TABLE_SPCR;
 
@@ -351,7 +356,9 @@ enum AcpiSratType
     ACPI_SRAT_TYPE_GICC_AFFINITY        = 3,
     ACPI_SRAT_TYPE_GIC_ITS_AFFINITY     = 4, /* ACPI 6.2 */
     ACPI_SRAT_TYPE_GENERIC_AFFINITY     = 5, /* ACPI 6.3 */
-    ACPI_SRAT_TYPE_RESERVED             = 6  /* 5 and greater are reserved */
+    ACPI_SRAT_TYPE_GENERIC_PORT_AFFINITY = 6, /* ACPI 6.4 */
+    ACPI_SRAT_TYPE_RINTC_AFFINITY        = 7, /* ACPI 6.6 */
+    ACPI_SRAT_TYPE_RESERVED              = 8  /* 8 and greater are reserved */
 };
 
 /*
@@ -435,7 +442,7 @@ typedef struct acpi_srat_gicc_affinity
 #define ACPI_SRAT_GICC_ENABLED     (1)         /* 00: Use affinity structure */
 
 
-/* 4: GCC ITS Affinity (ACPI 6.2) */
+/* 4: GIC ITS Affinity (ACPI 6.2) */
 
 typedef struct acpi_srat_gic_its_affinity
 {
@@ -446,8 +453,13 @@ typedef struct acpi_srat_gic_its_affinity
 
 } ACPI_SRAT_GIC_ITS_AFFINITY;
 
+/*
+ * Common structure for SRAT subtable types:
+ * 5: ACPI_SRAT_TYPE_GENERIC_AFFINITY
+ * 6: ACPI_SRAT_TYPE_GENERIC_PORT_AFFINITY
+ */
 
-/* 5: Generic Initiator Affinity Structure (ACPI 6.3) */
+#define ACPI_SRAT_DEVICE_HANDLE_SIZE	16
 
 typedef struct acpi_srat_generic_affinity
 {
@@ -455,7 +467,7 @@ typedef struct acpi_srat_generic_affinity
     UINT8                   Reserved;
     UINT8                   DeviceHandleType;
     UINT32                  ProximityDomain;
-    UINT8                   DeviceHandle[16];
+    UINT8                   DeviceHandle[ACPI_SRAT_DEVICE_HANDLE_SIZE];
     UINT32                  Flags;
     UINT32                  Reserved1;
 
@@ -463,7 +475,25 @@ typedef struct acpi_srat_generic_affinity
 
 /* Flags for ACPI_SRAT_GENERIC_AFFINITY */
 
-#define ACPI_SRAT_GENERIC_AFFINITY_ENABLED (1) /* 00: Use affinity structure */
+#define ACPI_SRAT_GENERIC_AFFINITY_ENABLED     (1)      /* 00: Use affinity structure */
+#define ACPI_SRAT_ARCHITECTURAL_TRANSACTIONS   (1<<1)   /* ACPI 6.4 */
+
+/* 7: RINTC Affinity Structure(ACPI 6.6) */
+
+typedef struct acpi_srat_rintc_affinity
+{
+    ACPI_SUBTABLE_HEADER    Header;
+    UINT16                  Reserved;
+    UINT32                  ProximityDomain;
+    UINT32                  AcpiProcessorUid;
+    UINT32                  Flags;
+    UINT32                  ClockDomain;
+
+} ACPI_SRAT_RINTC_AFFINITY;
+
+/* Flags for ACPI_SRAT_RINTC_AFFINITY */
+
+#define ACPI_SRAT_RINTC_ENABLED     (1)         /* 00: Use affinity structure */
 
 /*******************************************************************************
  *
@@ -625,6 +655,8 @@ typedef struct acpi_table_tpm2
 #define ACPI_TPM2_RESERVED10                        10
 #define ACPI_TPM2_COMMAND_BUFFER_WITH_ARM_SMC       11  /* V1.2 Rev 8 */
 #define ACPI_TPM2_RESERVED                          12
+#define ACPI_TPM2_COMMAND_BUFFER_WITH_PLUTON        13
+#define ACPI_TPM2_CRB_WITH_ARM_FFA                  15
 
 
 /* Optional trailer appears after any StartMethod subtables */
@@ -680,6 +712,86 @@ typedef struct acpi_table_uefi
     UINT16                  DataOffset;         /* Offset of remaining data in table */
 
 } ACPI_TABLE_UEFI;
+
+
+/*******************************************************************************
+ *
+ * VIOT - Virtual I/O Translation Table
+ *        Version 1
+ *
+ ******************************************************************************/
+
+typedef struct acpi_table_viot
+{
+    ACPI_TABLE_HEADER       Header;             /* Common ACPI table header */
+    UINT16                  NodeCount;
+    UINT16                  NodeOffset;
+    UINT8                   Reserved[8];
+
+} ACPI_TABLE_VIOT;
+
+/* VIOT subtable header */
+
+typedef struct acpi_viot_header
+{
+    UINT8                   Type;
+    UINT8                   Reserved;
+    UINT16                  Length;
+
+} ACPI_VIOT_HEADER;
+
+/* Values for Type field above */
+
+enum AcpiViotNodeType
+{
+    ACPI_VIOT_NODE_PCI_RANGE            = 0x01,
+    ACPI_VIOT_NODE_MMIO                 = 0x02,
+    ACPI_VIOT_NODE_VIRTIO_IOMMU_PCI     = 0x03,
+    ACPI_VIOT_NODE_VIRTIO_IOMMU_MMIO    = 0x04,
+    ACPI_VIOT_RESERVED                  = 0x05
+};
+
+/* VIOT subtables */
+
+typedef struct acpi_viot_pci_range
+{
+    ACPI_VIOT_HEADER        Header;
+    UINT32                  EndpointStart;
+    UINT16                  SegmentStart;
+    UINT16                  SegmentEnd;
+    UINT16                  BdfStart;
+    UINT16                  BdfEnd;
+    UINT16                  OutputNode;
+    UINT8                   Reserved[6];
+
+} ACPI_VIOT_PCI_RANGE;
+
+typedef struct acpi_viot_mmio
+{
+    ACPI_VIOT_HEADER        Header;
+    UINT32                  Endpoint;
+    UINT64                  BaseAddress;
+    UINT16                  OutputNode;
+    UINT8                   Reserved[6];
+
+} ACPI_VIOT_MMIO;
+
+typedef struct acpi_viot_virtio_iommu_pci
+{
+    ACPI_VIOT_HEADER        Header;
+    UINT16                  Segment;
+    UINT16                  Bdf;
+    UINT8                   Reserved[8];
+
+} ACPI_VIOT_VIRTIO_IOMMU_PCI;
+
+typedef struct acpi_viot_virtio_iommu_mmio
+{
+    ACPI_VIOT_HEADER        Header;
+    UINT8                   Reserved[4];
+    UINT64                  BaseAddress;
+
+} ACPI_VIOT_VIRTIO_IOMMU_MMIO;
 
 
 /*******************************************************************************
@@ -872,6 +984,12 @@ typedef struct acpi_table_wpbt
     UINT16                  ArgumentsLength;
 
 } ACPI_TABLE_WPBT;
+
+typedef struct acpi_wpbt_unicode
+{
+    UINT16                  *UnicodeString;
+
+} ACPI_WPBT_UNICODE;
 
 
 /*******************************************************************************

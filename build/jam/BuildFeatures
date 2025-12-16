@@ -15,16 +15,16 @@ local unavailableBuildFeatures ;
 # SSL
 
 # Automatically enable the SSL feature, when the OpenSSL package is enabled.
-if [ IsHaikuImagePackageAdded openssl ] {
+if [ IsHaikuImagePackageAdded openssl3 ] {
 	HAIKU_BUILD_FEATURE_SSL = 1 ;
 }
 
 if $(HAIKU_BUILD_FEATURE_SSL) {
-	if [ IsPackageAvailable openssl_devel ] {
+	if [ IsPackageAvailable openssl3_devel ] {
 		ExtractBuildFeatureArchives openssl :
-			file: base openssl
+			file: base openssl3
 				runtime: lib
-			file: devel openssl_devel
+			file: devel openssl3_devel
 				depends: base
 				libraries:
 					$(developLibDir)/libcrypto.so
@@ -78,9 +78,12 @@ if [ IsPackageAvailable gcc_syslibs_devel ] {
 				libgcc_eh.a: $(developLibDir)/libgcc_eh.a
 				libgcc-kernel.a: $(developLibDir)/libgcc-kernel.a
 				libgcc_eh-kernel.a: $(developLibDir)/libgcc_eh.a
+				libgcc-boot.a: $(developLibDir)/libgcc-boot.a
+				libgcc_eh-boot.a: $(developLibDir)/libgcc_eh-boot.a
 				libstdc++.a: $(developLibDir)/libstdc++.a
 				libsupc++.a: $(developLibDir)/libsupc++.a
 				libsupc++-kernel.a: $(developLibDir)/libsupc++-kernel.a
+				libsupc++-boot.a: $(developLibDir)/libsupc++-boot.a
 				c++-headers: $(developHeadersDir)/c++
 				gcc-headers: $(developHeadersDir)/gcc
 			;
@@ -104,23 +107,36 @@ if [ IsPackageAvailable icu_devel ] {
 				$(developLibDir)/libicudata.so
 				$(developLibDir)/libicui18n.so
 				$(developLibDir)/libicuio.so
-				$(developLibDir)/libicutu.so
 				$(developLibDir)/libicuuc.so
 			headers: $(developHeadersDir)
 		;
 
 	EnableBuildFeatures icu ;
-} else if [ IsPackageAvailable icu66_devel ] {
+} else if [ IsPackageAvailable icu74_devel ] {
 	ExtractBuildFeatureArchives icu :
-		file: base icu66
+		file: base icu74
 			runtime: lib
-		file: devel icu66_devel
+		file: devel icu74_devel
 			depends: base
 			libraries:
 				$(developLibDir)/libicudata.so
 				$(developLibDir)/libicui18n.so
 				$(developLibDir)/libicuio.so
-				$(developLibDir)/libicutu.so
+				$(developLibDir)/libicuuc.so
+			headers: $(developHeadersDir)
+		;
+
+	EnableBuildFeatures icu ;
+} else if [ IsPackageAvailable icu70_devel ] {
+	ExtractBuildFeatureArchives icu :
+		file: base icu70
+			runtime: lib
+		file: devel icu70_devel
+			depends: base
+			libraries:
+				$(developLibDir)/libicudata.so
+				$(developLibDir)/libicui18n.so
+				$(developLibDir)/libicuio.so
 				$(developLibDir)/libicuuc.so
 			headers: $(developHeadersDir)
 		;
@@ -129,57 +145,6 @@ if [ IsPackageAvailable icu_devel ] {
 } else {
 	unavailableBuildFeatures += icu ;
 }
-
-
-# CLucene
-
-# TODO: Update to packages!
-if ! 1 {
-
-# Automatically install the CLucene feature, when the CLucene package is
-# enabled.
-if [ IsHaikuImagePackageAdded clucene ] {
-	HAIKU_BUILD_FEATURE_CLUCENE = 1 ;
-}
-
-
-HAIKU_CLUCENE_PACKAGE = clucene-0.9.21-x86-gcc4-haiku-2009-08-11.zip ;
-HAIKU_CLUCENE_URL = $(baseURL)/$(HAIKU_CLUCENE_PACKAGE) ;
-
-if $(HAIKU_BUILD_FEATURE_CLUCENE) {
-	if $(TARGET_ARCH) != x86 {
-		Echo "CLucene build feature not available for"
-			"$(TARGET_PACKAGING_ARCH)" ;
-	} else {
-		# Download the zip archive.
-		local zipFile = [ DownloadFile $(HAIKU_CLUCENE_PACKAGE)
-			: $(HAIKU_CLUCENE_URL) ] ;
-
-		# zip file and output directory
-		HAIKU_CLUCENE_ZIP_FILE = $(zipFile) ;
-		HAIKU_CLUCENE_DIR = [ FDirName $(HAIKU_OPTIONAL_BUILD_PACKAGES_DIR)
-			$(HAIKU_CLUCENE_PACKAGE:B) ] ;
-
-		# extract headers and libraries
-		HAIKU_CLUCENE_HEADERS_DEPENDENCY = [ ExtractArchive $(HAIKU_CLUCENE_DIR)
-			: common/include/ : $(zipFile) : extracted-clucene
-		] ;
-
-		HAIKU_CLUCENE_LIBS = [ ExtractArchive $(HAIKU_CLUCENE_DIR)
-			:
-			common/lib/libclucene.a
-			: $(zipFile)
-			 : extracted-clucene
-		] ;
-
-		HAIKU_CLUCENE_HEADERS
-			= [ FDirName $(HAIKU_CLUCENE_DIR) common include ] ;
-
-		EnableBuildFeatures clucene ;
-	}
-}
-
-} # ! 1
 
 
 # Giflib
@@ -234,14 +199,14 @@ if [ IsPackageAvailable mesa_devel ] {
 
 
 # FFmpeg
-if [ IsPackageAvailable ffmpeg_devel ] {
+if [ IsPackageAvailable ffmpeg6_devel ] {
 	local ffmpegLibs = libavformat.so libavcodec.so libavfilter.so libswscale.so
 		libavutil.so libswresample.so ;
 
 	ExtractBuildFeatureArchives ffmpeg :
-		file: base ffmpeg
+		file: base ffmpeg6
 			runtime: lib
-		file: devel ffmpeg_devel
+		file: devel ffmpeg6_devel
 			depends: base
 			libraries: $(developLibDir)/$(ffmpegLibs)
 			headers: $(developHeadersDir)
@@ -258,7 +223,7 @@ if [ IsPackageAvailable ffmpeg_devel ] {
 if [ IsPackageAvailable fluidlite_devel ] && [ IsPackageAvailable libvorbis_devel ] {
 	ExtractBuildFeatureArchives fluidlite :
 		file: devel fluidlite_devel
-			library: $(developLibDir)/libfluidlite.a
+			library: $(developLibDir)/libfluidlite-static.a
 			headers: $(developHeadersDir)
 		;
 
@@ -318,11 +283,11 @@ if [ IsPackageAvailable fontconfig_devel ] {
 }
 
 # Gutenprint
-if [ IsPackageAvailable gutenprint8_devel ] {
+if [ IsPackageAvailable gutenprint9_devel ] {
 	ExtractBuildFeatureArchives gutenprint :
-		file: base gutenprint8
+		file: base gutenprint9
 			runtime: lib
-		file: devel gutenprint8_devel
+		file: devel gutenprint9_devel
 			depends: base
 			library: $(developLibDir)/libgutenprint.so
 			headers: $(developHeadersDir) $(developHeadersDir)/gutenprint
@@ -332,56 +297,6 @@ if [ IsPackageAvailable gutenprint8_devel ] {
 } else {
 	unavailableBuildFeatures += gutenprint ;
 }
-
-
-# TagLib
-
-# TODO: Update to packages!
-if ! 1 {
-
-# Automatically install the TagLib feature, when the optional TagLib optional
-# package is enabled.
-if [ IsHaikuImagePackageAdded taglib ] {
-	HAIKU_BUILD_FEATURE_TAGLIB = 1 ;
-}
-
-HAIKU_TAGLIB_PACKAGE = taglib-1.6.3-r1a4-x86-gcc2-2012-09-03.zip ;
-HAIKU_TAGLIB_URL = $(baseURL)/$(HAIKU_TAGLIB_PACKAGE) ;
-
-if $(HAIKU_BUILD_FEATURE_TAGLIB) {
-	if $(TARGET_ARCH) != x86 {
-		Echo "TagLib build feature not available for $(TARGET_PACKAGING_ARCH)" ;
-	} else {
-		# Download the zip archive.
-		local zipFile = [ DownloadFile $(HAIKU_TAGLIB_PACKAGE)
-			: $(HAIKU_TAGLIB_URL) ] ;
-
-		# zip file and output directory
-		HAIKU_TAGLIB_ZIP_FILE = $(zipFile) ;
-		HAIKU_TAGLIB_DIR = [ FDirName $(HAIKU_OPTIONAL_BUILD_PACKAGES_DIR)
-			$(HAIKU_TAGLIB_PACKAGE:B) ] ;
-
-		# extract headers and libraries
-		HAIKU_TAGLIB_HEADERS_DEPENDENCY = [ ExtractArchive $(HAIKU_TAGLIB_DIR)
-			: common/include/ : $(zipFile) : extracted-taglib
-		] ;
-
-		HAIKU_TAGLIB_LIBS = [ ExtractArchive $(HAIKU_TAGLIB_DIR)
-			:
-			common/lib/libtag.so
-			common/lib/libtag_c.so
-			: $(zipFile)
-			: extracted-taglib
-		] ;
-
-		HAIKU_TAGLIB_HEADERS
-			= [ FDirName $(HAIKU_TAGLIB_DIR) common include taglib ] ;
-
-		EnableBuildFeatures taglib ;
-	}
-}
-
-} # ! 1
 
 
 # WebKit
@@ -509,30 +424,6 @@ if [ IsPackageAvailable libedit_devel ] {
 }
 
 
-# libsolv
-if [ IsPackageAvailable libsolv_devel ] {
-	ExtractBuildFeatureArchives libsolv :
-		file: base libsolv
-			runtime: lib
-		file: devel libsolv_devel
-			depends: base
-			libraries:
-				$(developLibDir)/libsolv.so
-				$(developLibDir)/libsolvext.so
-			headers: $(developHeadersDir)
-		# sources are required for the primary architecture only
-		primary @{
-			file: source libsolv_source
-				sources: develop/sources/%portRevisionedName%/sources
-		}@
-		;
-
-	EnableBuildFeatures libsolv ;
-} else {
-	unavailableBuildFeatures += libsolv ;
-}
-
-
 # qrencode
 if [ IsPackageAvailable qrencode_kdl_devel ] {
 	ExtractBuildFeatureArchives libqrencode_kdl :
@@ -548,43 +439,19 @@ if [ IsPackageAvailable qrencode_kdl_devel ] {
 
 
 # tiff
-if [ IsPackageAvailable tiff4_devel ] {
+if [ IsPackageAvailable tiff_devel ] {
 	ExtractBuildFeatureArchives tiff :
-		file: base tiff4
+		file: base tiff
 			runtime: lib
-		file: devel tiff4_devel
+		file: devel tiff_devel
 			depends: base
-			library: $(developLibDir)/libtiff.so.5
+			library: $(developLibDir)/libtiff.so
 			headers: $(developHeadersDir) $(developHeadersDir)/tiff
 		;
 
 	EnableBuildFeatures tiff ;
 } else {
 	unavailableBuildFeatures += tiff ;
-}
-
-
-# openexr
-if [ IsPackageAvailable openexr_devel ] {
-	ExtractBuildFeatureArchives openexr :
-		file: base openexr
-			runtime: lib
-		file: devel openexr_devel
-			depends: base
-			libraries:
-				$(developLibDir)/libIlmImf.so
-				$(developLibDir)/libIlmImfUtil.so
-				$(developLibDir)/libHalf.so
-				$(developLibDir)/libIex.so
-				$(developLibDir)/libIexMath.so
-				$(developLibDir)/libIlmThread.so
-				$(developLibDir)/libImath.so
-			headers: $(developHeadersDir) $(developHeadersDir)/OpenEXR
-		;
-
-	EnableBuildFeatures openexr ;
-} else {
-	unavailableBuildFeatures += openexr ;
 }
 
 
@@ -622,6 +489,23 @@ if [ IsPackageAvailable libdvdnav_devel ] {
 }
 
 
+# libraw
+if [ IsPackageAvailable libraw_devel ] {
+	ExtractBuildFeatureArchives libraw :
+		file: base libraw
+			runtime: lib
+		file: devel libraw_devel
+			depends: base
+			libraries: $(developLibDir)/libraw.so
+			headers: $(developHeadersDir)
+		;
+
+	EnableBuildFeatures libraw ;
+} else {
+	unavailableBuildFeatures += libraw ;
+}
+
+
 # libwebp
 if [ IsPackageAvailable libwebp_devel ] {
 	if $(HAIKU_PACKAGING_ARCH) = x86 && $(TARGET_PACKAGING_ARCH) = x86_gcc2 {
@@ -647,6 +531,22 @@ if [ IsPackageAvailable libwebp_devel ] {
 	EnableBuildFeatures libwebp ;
 } else {
 	unavailableBuildFeatures += libwebp ;
+}
+
+
+# libavif
+if [ IsPackageAvailable libavif1.0_devel ] {
+	ExtractBuildFeatureArchives libavif :
+		file: base libavif1.0
+			runtime: lib
+		file: devel libavif1.0_devel
+			depends: base
+			library: $(developLibDir)/libavif.so
+			headers: $(developHeadersDir) $(developHeadersDir)/avif
+		;
+	EnableBuildFeatures libavif ;
+} else {
+	unavailableBuildFeatures += libavif ;
 }
 
 

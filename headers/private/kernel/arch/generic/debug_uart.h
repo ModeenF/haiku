@@ -35,17 +35,15 @@ public:
 	virtual	void			FlushTx() = 0;
 	virtual	void			FlushRx() = 0;
 
+			void			SetBase(addr_t base) { fBase = base; }
 			addr_t			Base() const { return fBase; }
 			int64			Clock() const { return fClock; }
 			bool			Enabled() const { return fEnabled; }
 
 protected:
-	// default MMIO
-	virtual	void			Out8(int reg, uint8 value)
-								{ *((uint8 *)Base() + reg) = value; }
-	virtual	uint8			In8(int reg)
-								{ return *((uint8 *)Base() + reg); }
-	virtual	void			Barrier() {}
+	virtual	void			Out8(int reg, uint8 value);
+	virtual	uint8			In8(int reg);
+	virtual	void			Barrier();
 
 private:
 			addr_t			fBase;

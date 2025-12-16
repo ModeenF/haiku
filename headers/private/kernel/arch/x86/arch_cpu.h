@@ -57,6 +57,7 @@
 #define IA32_MSR_MTRR_DEFAULT_TYPE		0x2ff
 #define IA32_MSR_MTRR_PHYSICAL_BASE_0	0x200
 #define IA32_MSR_MTRR_PHYSICAL_MASK_0	0x201
+#define IA32_MSR_PAT					0x277
 
 // MSR SPEC CTRL bits
 #define IA32_MSR_SPEC_CTRL_IBRS			(1 << 0)
@@ -120,8 +121,34 @@
 #define IA32_MSR_KERNEL_GS_BASE			0xc0000102
 #define IA32_MSR_TSC_AUX				0xc0000103
 
-// K8 MSR registers
+// AMD MSR registers
+#define MSR_F10H_HWCR						0xc0010015
+#define 	HWCR_TSCFREQSEL					(1 << 24)
+#define MSR_K8_UCODE_UPDATE				0xc0010020
 #define K8_MSR_IPM						0xc0010055
+#define MSR_F10H_PSTATEDEF(x)				(0xc0010064 + (x))
+#define 	PSTATEDEF_EN					(1ULL << 63)
+#define MSR_F10H_DE_CFG					0xc0011029
+#define 	DE_CFG_SERIALIZE_LFENCE			(1 << 1)
+
+#define MSR_AMD_CPPC_CAP1				0xc00102b0
+#define		AMD_CPPC_LOWEST_PERF(x)		((x) & 0xff)
+#define		AMD_CPPC_LOWNONLIN_PERF(x)	((x >> 8) & 0xff)
+#define		AMD_CPPC_NOMINAL_PERF(x)	((x >> 16) & 0xff)
+#define		AMD_CPPC_HIGHEST_PERF(x)	((x >> 24) & 0xff)
+#define MSR_AMD_CPPC_ENABLE				0xc00102b1
+#define MSR_AMD_CPPC_REQ				0xc00102b3
+#define		AMD_CPPC_MAX_PERF(x)		((x) & 0xff)
+#define		AMD_CPPC_MIN_PERF(x)		(((x) & 0xff) << 8)
+#define		AMD_CPPC_DES_PERF(x)		(((x) & 0xff) << 16)
+#define		AMD_CPPC_EPP_PERF(x)		(((x) & 0xff) << 24)
+
+#define		AMD_CPPC_EPP_PERFORMANCE			0x00
+#define		AMD_CPPC_EPP_BALANCE_PERFORMANCE	0x80
+#define		AMD_CPPC_EPP_BALANCE_POWERSAVE		0xbf
+#define		AMD_CPPC_EPP_POWERSAVE				0xff
+#define MSR_AMD_CPPC_STATUS				0xc00102b4
+
 
 // Hardware P-States MSR registers §14.4.1
 // reference https://software.intel.com/content/dam/develop/public/us/en/documents/253669-sdm-vol-3b.pdf
@@ -150,6 +177,22 @@
 #define	IA32_HWP_REQUEST_DESIRED_VALID					(1ULL << 61)
 #define	IA32_HWP_REQUEST_MAXIMUM_VALID					(1ULL << 62)
 #define	IA32_HWP_REQUEST_MINIMUM_VALID					(1ULL << 63)
+
+// IA32_MSR_PAT bits
+#define IA32_MSR_PAT_ENTRY_MASK							0x7ULL
+#define IA32_MSR_PAT_ENTRY_SHIFT(x)						(x * 8)
+#define IA32_MSR_PAT_TYPE_UNCACHEABLE					0x0ULL
+#define IA32_MSR_PAT_TYPE_WRITE_COMBINING				0x1ULL
+#define IA32_MSR_PAT_TYPE_WRITE_THROUGH					0x4ULL
+#define IA32_MSR_PAT_TYPE_WRITE_PROTECTED				0x5ULL
+#define IA32_MSR_PAT_TYPE_WRITE_BACK					0x6ULL
+#define IA32_MSR_PAT_TYPE_UNCACHED						0x7ULL
+
+// cpuid leaves
+#define IA32_CPUID_LEAF_MWAIT				0x5
+#define IA32_CPUID_LEAF_XSTATE				0xd
+#define IA32_CPUID_LEAF_TSC					0x15
+#define IA32_CPUID_LEAF_FREQUENCY			0x16
 
 // x86 features from cpuid eax 1, edx register
 // reference http://www.intel.com/Assets/en_US/PDF/appnote/241618.pdf (Table 5-5)
@@ -222,8 +265,9 @@
 #define IA32_FEATURE_EXT_HYPERVISOR	(1 << 31) // Running on a hypervisor
 
 // x86 features from cpuid eax 0x80000001, ecx register (AMD)
-#define IA32_FEATURE_AMD_EXT_CMPLEGACY	(1 << 1) // Core MP legacy mode
-#define IA32_FEATURE_AMD_EXT_TOPOLOGY	(1 << 22) // Topology extensions
+#define IA32_FEATURE_AMD_EXT_CMPLEGACY	(1 << 1)	// Core MP legacy mode
+#define IA32_FEATURE_AMD_EXT_TOPOLOGY	(1 << 22)	// Topology extensions
+#define IA32_FEATURE_AMD_EXT_MWAITX		(1 << 29)	// MWAITX, MONITORX instructions
 
 // x86 features from cpuid eax 0x80000001, edx register (AMD)
 // only care about the ones that are unique to this register
@@ -244,10 +288,6 @@
 											| IA32_FEATURE_AMD_EXT_PDPE1GB	\
 											| IA32_FEATURE_AMD_EXT_RDTSCP	\
 											| IA32_FEATURE_AMD_EXT_LONG)
-
-// x86 defined features from cpuid eax 5, ecx register
-#define IA32_FEATURE_POWER_MWAIT		(1 << 0)
-#define IA32_FEATURE_INTERRUPT_MWAIT	(1 << 1)
 
 // x86 defined features from cpuid eax 6, eax register
 // reference https://software.intel.com/content/dam/develop/public/us/en/documents/253666-sdm-vol-2a.pdf (Table 3-8)
@@ -315,6 +355,7 @@
 #define IA32_FEATURE_UMIP			(1 << 2) // User-mode Instruction Prevention
 #define IA32_FEATURE_PKU			(1 << 3) // Memory Protection Keys for User-mode pages
 #define IA32_FEATURE_OSPKE			(1 << 4) // PKU enabled by OS
+#define IA32_FEATURE_WAITPKG		(1 << 5) // TPAUSE, UMONITOR, UMWAIT instructions
 #define IA32_FEATURE_AVX512VMBI2	(1 << 6) // AVX-512 Vector Bit Manipulation Instructions 2
 #define IA32_FEATURE_GFNI			(1 << 8) // Galois Field instructions
 #define IA32_FEATURE_VAES			(1 << 9) // AES instruction set (VEX-256/EVEX)
@@ -330,6 +371,7 @@
 // https://en.wikipedia.org/wiki/CPUID#EAX=7,_ECX=0:_Extended_Features
 #define IA32_FEATURE_AVX512_4VNNIW	(1 << 2) // AVX-512 4-register Neural Network Instructions
 #define IA32_FEATURE_AVX512_4FMAPS	(1 << 3) // AVX-512 4-register Multiply Accumulation Single precision
+#define IA32_FEATURE_HYBRID_CPU		(1 << 15)	// CPUs are of several types
 #define IA32_FEATURE_IBRS			(1 << 26)	// IBRS / IBPB Speculation Control
 #define IA32_FEATURE_STIBP			(1 << 27)	// STIBP Speculation Control
 #define IA32_FEATURE_L1D_FLUSH		(1 << 28)	// L1D_FLUSH supported
@@ -344,7 +386,10 @@
 #define IA32_FEATURE_XSAVES			(1 << 3) // XSAVES and XRSTORS Instruction
 
 // x86 defined features from cpuid eax 0x80000007, edx register
+#define IA32_FEATURE_AMD_HW_PSTATE		(1 << 7)
 #define IA32_FEATURE_INVARIANT_TSC		(1 << 8)
+#define IA32_FEATURE_CPB				(1 << 9)
+#define IA32_FEATURE_PROC_FEEDBACK		(1 << 11)
 
 // x86 defined features from cpuid eax 0x80000008, ebx register
 #define IA32_FEATURE_CLZERO			(1 << 0)	// CLZERO instruction
@@ -352,6 +397,7 @@
 #define IA32_FEATURE_AMD_SSBD		(1 << 24)	// Speculative Store Bypass Disable
 #define IA32_FEATURE_VIRT_SSBD		(1 << 25)	// Virtualized Speculative Store Bypass Disable
 #define IA32_FEATURE_AMD_SSB_NO		(1 << 26)	// Speculative Store Bypass is fixed in hardware
+#define IA32_FEATURE_CPPC			(1 << 27)	// Collaborative Processor Performance Control
 
 
 // Memory type ranges
@@ -468,11 +514,10 @@ typedef struct x86_cpu_module_info {
 
 // features
 enum x86_feature_type {
-	FEATURE_COMMON = 0,     // cpuid eax=1, ecx register
-	FEATURE_EXT,            // cpuid eax=1, edx register
+	FEATURE_COMMON = 0,     // cpuid eax=1, edx register
+	FEATURE_EXT,            // cpuid eax=1, ecx register
 	FEATURE_EXT_AMD_ECX,	// cpuid eax=0x80000001, ecx register (AMD)
 	FEATURE_EXT_AMD,        // cpuid eax=0x80000001, edx register (AMD)
-	FEATURE_5_ECX,			// cpuid eax=5, ecx register
 	FEATURE_6_EAX,          // cpuid eax=6, eax registers
 	FEATURE_6_ECX,          // cpuid eax=6, ecx registers
 	FEATURE_7_EBX,          // cpuid eax=7, ebx registers
@@ -515,8 +560,15 @@ typedef struct arch_cpu_info {
 	int					model;
 	int					extended_model;
 	uint32				patch_level;
+	uint8				hybrid_type;
 
 	uint32				logical_apic_id;
+	int16				acpi_processor_id;
+
+	uint64				mperf_prev;
+	uint64				aperf_prev;
+	bigtime_t			perf_timestamp;
+	uint64				frequency;
 
 	struct X86PagingStructures* active_paging_structures;
 
@@ -563,6 +615,46 @@ struct intel_microcode_extended_signature {
 };
 
 
+// AMD Microcode structures
+
+struct amd_container_header {
+	uint32 magic;
+};
+
+
+struct amd_section_header {
+	uint32 type;
+	uint32 size;
+};
+
+
+struct amd_equiv_cpu_entry {
+	uint32 installed_cpu;
+	uint32 fixed_errata_mask;
+	uint32 fixed_errata_compare;
+	uint16 equiv_cpu;
+	uint16 res;
+};
+
+
+struct amd_microcode_header {
+	uint32 data_code;
+	uint32 patch_id;
+	uint16 mc_patch_data_id;
+	uint8 mc_patch_data_len;
+	uint8 init_flag;
+	uint32 mc_patch_data_checksum;
+	uint32 nb_dev_id;
+	uint32 sb_dev_id;
+	uint16 processor_rev_id;
+	uint8 nb_rev_id;
+	uint8 sb_rev_id;
+	uint8 bios_api_rev;
+	uint8 reserved1[3];
+	uint32 match_reg[8];
+};
+
+
 extern void (*gCpuIdleFunc)(void);
 
 
@@ -594,6 +686,7 @@ void x86_set_mtrrs(uint8 defaultType, const x86_mtrr_info* infos,
 	uint32 count);
 void x86_init_fpu();
 bool x86_check_feature(uint32 feature, enum x86_feature_type type);
+bool x86_use_pat();
 void* x86_get_double_fault_stack(int32 cpu, size_t* _size);
 int32 x86_double_fault_get_cpu(void);
 
@@ -606,9 +699,6 @@ void x86_page_fault_exception(iframe* iframe);
 #ifndef __x86_64__
 
 void x86_swap_pgdir(addr_t newPageDir);
-
-uint64 x86_read_msr(uint32 registerNumber);
-void x86_write_msr(uint32 registerNumber, uint64 value);
 
 void x86_context_switch(struct arch_thread* oldState,
 	struct arch_thread* newState);

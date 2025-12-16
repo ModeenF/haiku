@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2020, Axel Dörfler, axeld@pinc-software.de.
+ * Copyright 2001-2025, Axel Dörfler, axeld@pinc-software.de.
  * This file may be used under the terms of the MIT License.
  */
 #ifndef INODE_H
@@ -192,6 +192,9 @@ public:
 			void*				Map() const { return fMap; }
 			void				SetMap(void* map) { fMap = map; }
 
+			// resize support
+			status_t			CopyBlockTo(Transaction& transaction, off_t targetBlock);
+
 #if _KERNEL_MODE && KDEBUG
 			void				AssertReadLocked()
 									{ ASSERT_READ_LOCKED_RW_LOCK(&fLock); }
@@ -337,7 +340,7 @@ private:
 
 class NodeGetter : public CachedBlock {
 public:
-	NodeGetter(Volume* volume)
+	NodeGetter(Volume* volume = NULL)
 		:
 		CachedBlock(volume)
 	{
@@ -349,14 +352,16 @@ public:
 
 	status_t SetTo(const Inode* inode)
 	{
+		Unset();
+		fVolume = inode->GetVolume();
 		return CachedBlock::SetTo(fVolume->VnodeToBlock(inode->ID()));
 	}
 
-	status_t SetToWritable(Transaction& transaction, const Inode* inode,
-		bool empty = false)
+	status_t SetToWritable(Transaction& transaction, const Inode* inode, bool empty = false)
 	{
-		return CachedBlock::SetToWritable(transaction,
-			fVolume->VnodeToBlock(inode->ID()), empty);
+		Unset();
+		fVolume = inode->GetVolume();
+		return CachedBlock::SetToWritable(transaction, fVolume->VnodeToBlock(inode->ID()), empty);
 	}
 
 	const bfs_inode* Node() const { return (const bfs_inode*)Block(); }

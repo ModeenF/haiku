@@ -1,5 +1,6 @@
-1	indonesian	x-vnd.Haiku-Locale	288870027
+1	indonesian	x-vnd.Haiku-Locale	1312749322
 Medium format:	TimeFormatSettings		Format sedang:
+ERROR	TimeFormatSettings		GALAT
 Negative:	TimeFormatSettings		Negatif:
 Language	Locale Preflet Window		Bahasa
 Short format:	TimeFormatSettings		Format pendek:
@@ -22,6 +23,7 @@ Preferred languages	Locale Preflet Window		Bahasa yang diinginkan
 Full format:	TimeFormatSettings		Format lengkap:
 Cancel	Locale Preflet Window		Batal
 Revert	Locale Preflet Window		Kembali
+Translate application and folder names	TimeFormatSettings		Terjemahkan nama aplikasi dan folder
 12 hour	TimeFormatSettings		12 jam
 Positive:	TimeFormatSettings		Positif:
 Deskbar and Tracker need to be restarted for this change to take effect. Would you like to restart them now?	Locale Preflet Window		Deskbar dan Tracker perlu di-restart agar perubahan ini berlaku. Apakah Anda ingin me-restart mereka sekarang?

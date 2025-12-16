@@ -187,14 +187,12 @@ operator==(tcp_sequence a, tcp_sequence b)
 #define TCP_MAX_SEGMENT_LIFETIME		60000000	// 60 secs
 #define TCP_PERSIST_TIMEOUT				1000000		// 1 sec
 
-// Initial estimate for packet round trip time (RTT)
-#define TCP_INITIAL_RTT					2000000		// 2 secs
 // Minimum retransmit timeout (consider delayed ack)
 #define TCP_MIN_RETRANSMIT_TIMEOUT		200000		// 200 msecs
 // Maximum retransmit timeout (per RFC6298)
 #define TCP_MAX_RETRANSMIT_TIMEOUT		60000000	// 60 secs
 // New value for timeout in case of lost SYN (RFC 6298)
-#define TCP_SYN_RETRANSMIT_TIMEOUT 		3000000		// 3 secs
+#define TCP_SYN_RETRANSMIT_TIMEOUT 		1000000		// 1 sec
 
 struct tcp_sack {
 	uint32 left_edge;
@@ -231,6 +229,7 @@ enum {
 	TCP_HAS_WINDOW_SCALE	= 1 << 0,
 	TCP_HAS_TIMESTAMPS		= 1 << 1,
 	TCP_SACK_PERMITTED		= 1 << 2,
+	TCP_HAS_SACK			= 1 << 3,
 };
 
 struct tcp_segment_header {
@@ -239,7 +238,7 @@ struct tcp_segment_header {
 		flags(_flags),
 		window_shift(0),
 		max_segment_size(0),
-		sack_count(0),
+		sackCount(0),
 		options(0)
 	{}
 
@@ -254,8 +253,9 @@ struct tcp_segment_header {
 	uint32	timestamp_value;
 	uint32	timestamp_reply;
 
-	tcp_sack	*sacks;
-	int			sack_count;
+#define MAX_SACK_BLKS 4
+	tcp_sack	sacks[MAX_SACK_BLKS];
+	int			sackCount;
 
 	uint32	options;
 
@@ -264,15 +264,26 @@ struct tcp_segment_header {
 		return (flags & (TCP_FLAG_SYNCHRONIZE | TCP_FLAG_FINISH | TCP_FLAG_RESET
 			| TCP_FLAG_URGENT | TCP_FLAG_ACKNOWLEDGE)) == TCP_FLAG_ACKNOWLEDGE;
 	}
+
+	uint32 AdvertisedWindow(uint8 windowShift) const
+	{
+		return (uint32)advertised_window << windowShift;
+	}
+	void SetAdvertisedWindow(size_t availableBytes, uint8 windowShift)
+	{
+		availableBytes >>= windowShift;
+		advertised_window = min_c(TCP_MAX_WINDOW, availableBytes);
+	}
 };
 
 enum tcp_segment_action {
-	KEEP					= 0x00,
-	DROP					= 0x01,
-	RESET					= 0x02,
-	ACKNOWLEDGE				= 0x04,
-	IMMEDIATE_ACKNOWLEDGE	= 0x08,
-	DELETED_ENDPOINT		= 0x10,
+	KEEP					= 0,
+	DROP					= (1 << 0),
+	RESET					= (1 << 1),
+	ACKNOWLEDGE				= (1 << 2),
+	IMMEDIATE_ACKNOWLEDGE	= (1 << 3),
+	SEND_QUEUED				= (1 << 4),
+	DELETED_ENDPOINT		= (1 << 5),
 };
 
 

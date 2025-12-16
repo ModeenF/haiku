@@ -33,6 +33,7 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			CountView.cpp
 			DeskWindow.cpp
 			DesktopPoseView.cpp
+			DraggableContainerIcon.cpp
 			DialogPane.cpp
 			DirMenu.cpp
 			EntryIterator.cpp
@@ -51,6 +52,7 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			IconCache.cpp
 			IconMenuItem.cpp
 			InfoWindow.cpp
+			LiveMenu.cpp
 			MimeTypeList.cpp
 			MiniMenuField.cpp
 			Model.cpp
@@ -73,13 +75,14 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			SelectionWindow.cpp
 			Settings.cpp
 			SettingsViews.cpp
-			SlowContextPopup.cpp
+			Shortcuts.cpp
 			SlowMenu.cpp
 			StatusWindow.cpp
 			TaskLoop.cpp
 			TemplatesMenu.cpp
 			Tests.cpp
 			TextWidget.cpp
+			Thumbnails.cpp
 			TitleView.cpp
 			Tracker.cpp
 			TrackerInitialState.cpp
@@ -117,6 +120,7 @@ DoCatalogs libtracker.so :
 	CountView.cpp
 	DeskWindow.cpp
 	DirMenu.cpp
+	DraggableContainerIcon.cpp
 	FavoritesMenu.cpp
 	FilePanelPriv.cpp
 	FilePermissionsView.cpp
@@ -136,7 +140,7 @@ DoCatalogs libtracker.so :
 	RegExp.cpp
 	SelectionWindow.cpp
 	SettingsViews.cpp
-	SlowContextPopup.cpp
+	Shortcuts.cpp
 	StatusWindow.cpp
 	TemplatesMenu.cpp
 	TextWidget.cpp

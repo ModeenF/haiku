@@ -19,6 +19,9 @@
 #define THREAD_CANCEL_ENABLED		0x08
 #define THREAD_CANCEL_ASYNCHRONOUS	0x10
 
+// _pthread_mutex::flags values
+#define MUTEX_FLAG_SHARED	0x80000000
+
 
 struct thread_creation_attributes;
 
@@ -93,6 +96,9 @@ status_t __pthread_init_creation_attributes(
 	struct thread_creation_attributes* attributes);
 void __pthread_set_default_priority(int32 priority);
 status_t __pthread_mutex_lock(pthread_mutex_t* mutex, bigtime_t timeout);
+
+int __pthread_getname_np(pthread_t thread, char* buffer, size_t length);
+int __pthread_setname_np(pthread_t thread, const char* name);
 
 #ifdef __cplusplus
 }

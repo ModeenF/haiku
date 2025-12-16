@@ -1,4 +1,4 @@
-1	indonesian	x-vnd.Haiku-MediaPlayer	1313616492
+1	indonesian	x-vnd.Haiku-MediaPlayer	1441754962
 Remove Entry into Trash	MediaPlayer-RemovePLItemsCmd		Hapus Entri ke Sampah
 Close	MediaPlayer-PlaylistWindow		Tutup
 Volume of background clips	MediaPlayer-SettingsWindow		Volume dari klip latar
@@ -16,7 +16,6 @@ DrawBitmap	MediaPlayer-InfoWin		DrawBitmap
 File info	MediaPlayer-InfoWin		Info berkas
 raw audio	MediaPlayer-InfoWin		audio mentah
 Select all	MediaPlayer-PlaylistWindow		Pilih semua
-New player…	MediaPlayer-Main		Pemutar baru…
 Move Entries	MediaPlayer-MovePLItemsCmd		Pindahkan Entri
 OK	MediaPlayer-Main		OKE
 Remove	MediaPlayer-PlaylistWindow		Hapus
@@ -25,7 +24,6 @@ Resume:	MediaPlayer-SettingsWindow		Lanjut:
 Duration	MediaPlayer-InfoWin		Durasi
 Import Entries	MediaPlayer-ImportPLItemsCmd		Impor Entri
 Open network stream	MediaPlayer-Main		Buka aliran-data jaringan
-Move file to Trash	MediaPlayer-PlaylistWindow		Pindahkan berkas ke Sampah
 Open file…	MediaPlayer-Main		Buka berkas…
 Scale controls in full screen mode	MediaPlayer-SettingsWindow		Skalakan kontrol dalam mode layar penuh
 View options	MediaPlayer-SettingsWindow		Opsi tampilan
@@ -35,6 +33,7 @@ Full volume	MediaPlayer-SettingsWindow		Suara penuh
 Start media server	MediaPlayer-Main		Mulai server media
 It appears the media server is not running.\nWould you like to start it ?	MediaPlayer-Main		Tampaknya server media tidak berjalan. \nApakah Anda ingin menjalankannya?
 Location	MediaPlayer-InfoWin		Lokasi
+Opening '%s'.	MediaPlayer-Main		Membuka '%s'.
 Medium	MediaPlayer-SettingsWindow		Medium
 Play mode	MediaPlayer-SettingsWindow		Mode putar
 Playlist	MediaPlayer-PlaylistWindow		Daftar putar

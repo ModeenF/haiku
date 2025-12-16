@@ -15,8 +15,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_wlan.h"
 
 #include <sys/param.h>
@@ -46,7 +44,6 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/rtwn/rtl8188e/r88e.h>
 #include <dev/rtwn/rtl8188e/r88e_reg.h>
-
 
 /* Registers to save and restore during IQ calibration. */
 struct r88e_iq_cal_reg_vals {

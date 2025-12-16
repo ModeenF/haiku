@@ -1,6 +1,6 @@
 /*
  * Copyright 2014, Stephan Aßmus <superstippi@gmx.de>.
- * Copyright 2018-2020, Andrew Lindesay <apl@lindesay.co.nz>.
+ * Copyright 2018-2024, Andrew Lindesay <apl@lindesay.co.nz>.
  * All rights reserved. Distributed under the terms of the MIT License.
  */
 #ifndef RATE_PACKAGE_WINDOW_H
@@ -30,8 +30,6 @@ public:
 									Model& model);
 	virtual						~RatePackageWindow();
 
-	virtual	void				DispatchMessage(BMessage* message,
-									BHandler *handler);
 	virtual	void				MessageReceived(BMessage* message);
 
 			void				SetPackage(const PackageInfoRef& package);
@@ -62,7 +60,7 @@ private:
 			float				fRating;
 			bool				fRatingDeterminate;
 			BString				fStabilityCode;
-			BString				fCommentLanguageCode;
+			BString				fCommentLanguageId;
 			BString				fRatingID;
 			bool				fRatingActive;
 			PackageInfoRef		fPackage;

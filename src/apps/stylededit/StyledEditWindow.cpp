@@ -268,11 +268,15 @@ StyledEditWindow::MessageReceived(BMessage* message)
 		case MSG_FIND_WINDOW_QUIT:
 		{
 			fFindWindow = NULL;
+			Activate();
+				// In case any 'always on top' application tries to make its
+				// window active after fFindWindow is closed.
 			break;
 		}
 		case MSG_REPLACE_WINDOW_QUIT:
 		{
 			fReplaceWindow = NULL;
+			Activate();
 			break;
 		}
 		case MSG_SEARCH:
@@ -283,6 +287,7 @@ StyledEditWindow::MessageReceived(BMessage* message)
 			message->FindBool("backsearch", &fBackSearch);
 
 			_Search(fStringToFind, fCaseSensitive, fWrapAround, fBackSearch);
+			Activate();
 			break;
 		case MENU_FIND_AGAIN:
 			_Search(fStringToFind, fCaseSensitive, fWrapAround, fBackSearch);
@@ -323,6 +328,7 @@ StyledEditWindow::MessageReceived(BMessage* message)
 
 			_Replace(fStringToFind, fReplaceString, fCaseSensitive, fWrapAround,
 				fBackSearch);
+			Activate();
 			break;
 		}
 		case MENU_REPLACE_SAME:
@@ -346,6 +352,7 @@ StyledEditWindow::MessageReceived(BMessage* message)
 				SearchAllWindows(fStringToFind, fReplaceString, fCaseSensitive);
 			else
 				_ReplaceAll(fStringToFind, fReplaceString, fCaseSensitive);
+			Activate();
 			break;
 		}
 
@@ -376,6 +383,8 @@ StyledEditWindow::MessageReceived(BMessage* message)
 			font.SetFamilyAndStyle(fontFamily, fontStyle);
 			fItalicItem->SetMarked((font.Face() & B_ITALIC_FACE) != 0);
 			fBoldItem->SetMarked((font.Face() & B_BOLD_FACE) != 0);
+			fUnderlineItem->SetMarked((font.Face() & B_UNDERSCORE_FACE) != 0);
+			fStrikeoutItem->SetMarked((font.Face() & B_STRIKEOUT_FACE) != 0);
 
 			_SetFontStyle(fontFamily, fontStyle);
 			break;
@@ -400,6 +409,8 @@ StyledEditWindow::MessageReceived(BMessage* message)
 			font.SetFamilyAndStyle(fontFamily, fontStyle);
 			fItalicItem->SetMarked((font.Face() & B_ITALIC_FACE) != 0);
 			fBoldItem->SetMarked((font.Face() & B_BOLD_FACE) != 0);
+			fUnderlineItem->SetMarked((font.Face() & B_UNDERSCORE_FACE) != 0);
+			fStrikeoutItem->SetMarked((font.Face() & B_STRIKEOUT_FACE) != 0);
 
 			_SetFontStyle(fontFamily, fontStyle);
 			break;
@@ -466,6 +477,40 @@ StyledEditWindow::MessageReceived(BMessage* message)
 			if (fBoldItem->IsMarked())
 				font.SetFace(B_REGULAR_FACE);
 			fBoldItem->SetMarked(!fBoldItem->IsMarked());
+
+			font_family family;
+			font_style style;
+			font.GetFamilyAndStyle(&family, &style);
+
+			_SetFontStyle(family, style);
+			break;
+		}
+		case kMsgSetUnderline:
+		{
+			uint32 sameProperties;
+			BFont font;
+			fTextView->GetFontAndColor(&font, &sameProperties);
+
+			if (fUnderlineItem->IsMarked())
+				font.SetFace(B_REGULAR_FACE);
+			fUnderlineItem->SetMarked(!fUnderlineItem->IsMarked());
+
+			font_family family;
+			font_style style;
+			font.GetFamilyAndStyle(&family, &style);
+
+			_SetFontStyle(family, style);
+			break;
+		}
+		case kMsgSetStrikeout:
+		{
+			uint32 sameProperties;
+			BFont font;
+			fTextView->GetFontAndColor(&font, &sameProperties);
+
+			if (fStrikeoutItem->IsMarked())
+				font.SetFace(B_REGULAR_FACE);
+			fStrikeoutItem->SetMarked(!fStrikeoutItem->IsMarked());
 
 			font_family family;
 			font_style style;
@@ -742,6 +787,8 @@ StyledEditWindow::MenusBeginning()
 
 	fBoldItem->SetMarked((font.Face() & B_BOLD_FACE) != 0);
 	fItalicItem->SetMarked((font.Face() & B_ITALIC_FACE) != 0);
+	fUnderlineItem->SetMarked((font.Face() & B_UNDERSCORE_FACE) != 0);
+	fStrikeoutItem->SetMarked((font.Face() & B_STRIKEOUT_FACE) != 0);
 
 	switch (fTextView->Alignment()) {
 		case B_ALIGN_LEFT:
@@ -1134,16 +1181,15 @@ StyledEditWindow::_InitWindow(uint32 encoding)
 	BRect viewFrame = Bounds();
 	BRect textBounds = viewFrame;
 	textBounds.OffsetTo(B_ORIGIN);
-	textBounds.InsetBy(TEXT_INSET, TEXT_INSET);
 
 	fTextView = new StyledEditView(viewFrame, textBounds, this);
+	fTextView->SetInsets(TEXT_INSET, TEXT_INSET, TEXT_INSET, TEXT_INSET);
 	fTextView->SetDoesUndo(true);
 	fTextView->SetStylable(true);
 	fTextView->SetEncoding(encoding);
 
 	fScrollView = new BScrollView("scrollview", fTextView, B_FOLLOW_ALL, 0,
 		true, true, B_PLAIN_BORDER);
-	fTextView->MakeFocus(true);
 
 	fStatusView = new StatusView(fScrollView);
 	fScrollView->AddChild(fStatusView);
@@ -1213,6 +1259,14 @@ StyledEditWindow::_InitWindow(uint32 encoding)
 		new BMessage(kMsgSetItalic));
 	fItalicItem->SetShortcut('I', 0);
 
+	fUnderlineItem = new BMenuItem(B_TRANSLATE("Underline"),
+		new BMessage(kMsgSetUnderline));
+	fUnderlineItem->SetShortcut('U', 0);
+
+	fStrikeoutItem = new BMenuItem(B_TRANSLATE("Strikeout"),
+		new BMessage(kMsgSetStrikeout));
+	fStrikeoutItem->SetShortcut('K', 0);
+
 	fFontMenu = new BMenu(B_TRANSLATE("Font"));
 	fCurrentFontItem = 0;
 	fCurrentStyleItem = 0;
@@ -1226,6 +1280,8 @@ StyledEditWindow::_InitWindow(uint32 encoding)
 		.AddItem(B_TRANSLATE("Decrease size"), kMsgSetFontDown, '-')
 		.AddItem(fBoldItem)
 		.AddItem(fItalicItem)
+		.AddItem(fUnderlineItem)
+		.AddItem(fStrikeoutItem)
 		.AddSeparator()
 	.End();
 
@@ -1336,6 +1392,8 @@ StyledEditWindow::_InitWindow(uint32 encoding)
 
 	SetKeyMenuBar(mainMenu);
 
+	// must focus text view after window layout is built
+	fTextView->MakeFocus(true);
 }
 
 
@@ -1879,9 +1937,15 @@ StyledEditWindow::_SetFontStyle(const char* fontFamily, const char* fontStyle)
 	if (fItalicItem->IsMarked())
 		face |= B_ITALIC_FACE;
 
+	if (fUnderlineItem->IsMarked())
+		face |= B_UNDERSCORE_FACE;
+
+	if (fStrikeoutItem->IsMarked())
+		face |= B_STRIKEOUT_FACE;
+
 	font.SetFace(face);
 
-	fTextView->SetFontAndColor(&font, B_FONT_FAMILY_AND_STYLE);
+	fTextView->SetFontAndColor(&font, B_FONT_FAMILY_AND_STYLE | B_FONT_FACE);
 
 	BMenuItem* superItem;
 	superItem = fFontMenu->FindItem(fontFamily);

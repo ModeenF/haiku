@@ -1,3 +1,5 @@
+.. _building_packages:
+
 =================
 Building Packages
 =================
@@ -8,11 +10,9 @@ second section refers to building packages with the ``haikuporter`` tool.
 
 Building a Package with the "package" Command
 =============================================
-The package file format is specified in detail in a `separate document`_. This
+The package file format is specified in detail in :ref:`hpkg_file_format`. This
 section presents information from the perspective of how to build a package file
 with the ``package`` command.
-
-.. _separate document: FileFormat.rst
 
 An hpkg file is an archive file (just like tar or zip files) that additionally
 contains package meta information in a separate section of the file. When
@@ -179,7 +179,10 @@ The supported attributes are:
 - ``post-install-scripts``: A list of paths of files included in the package,
   which shall be executed on package activation. Each path must start with
   "boot/post-install/". All the files in that directory are also run on first
-  boot after installing or copying the OS to a new disk.
+  boot after installing or copying the OS to a new disk.  As an odd bonus,
+  they're also run when you boot the installer disc, and the installer copies
+  some of the resulting settings data to the new install too.  So try to
+  handle being run twice.
 - ``pre-uninstall-scripts``: A list of paths of files included in the package,
   which shall be executed on package deactivation. For consistency, each path
   should start with "boot/pre-uninstall/".

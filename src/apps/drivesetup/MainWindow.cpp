@@ -206,12 +206,12 @@ private:
 MainWindow::MainWindow()
 	:
 	BWindow(BRect(50, 50, 600, 500), B_TRANSLATE_SYSTEM_NAME("DriveSetup"),
-		B_DOCUMENT_WINDOW, B_ASYNCHRONOUS_CONTROLS),
+		B_DOCUMENT_WINDOW, B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS),
 	fCurrentDisk(NULL),
 	fCurrentPartitionID(-1),
 	fSpaceIDMap()
 {
-	fMenuBar = new BMenuBar(Bounds(), "root menu");
+	fMenuBar = new BMenuBar("root menu");
 
 	// create all the menu items
 	fWipeMenuItem = new BMenuItem(B_TRANSLATE("Wipe (not implemented)"),
@@ -281,6 +281,9 @@ MainWindow::MainWindow()
 	fPartitionMenu->AddItem(fOpenDiskProbeMenuItem);
 	fMenuBar->AddItem(fPartitionMenu);
 
+	BGroupLayout* layout = new BGroupLayout(B_VERTICAL, 0);
+	layout->SetInsets(-1, 0, -1, -1);
+	SetLayout(layout);
 	AddChild(fMenuBar);
 
 	// Partition / Drives context menu
@@ -312,18 +315,11 @@ MainWindow::MainWindow()
 	fContextMenu->SetTargetForItems(this);
 
 	// add DiskView
-	BRect r(Bounds());
-	r.top = fMenuBar->Frame().bottom + 1;
-	r.bottom = floorf(r.top + r.Height() * 0.33);
-	fDiskView = new DiskView(r, B_FOLLOW_LEFT_RIGHT | B_FOLLOW_TOP,
-		fSpaceIDMap);
+	fDiskView = new DiskView(fSpaceIDMap);
 	AddChild(fDiskView);
 
 	// add PartitionListView
-	r.top = r.bottom + 2;
-	r.bottom = Bounds().bottom;
-	r.InsetBy(-1, -1);
-	fListView = new PartitionListView(r, B_FOLLOW_ALL);
+	fListView = new PartitionListView();
 	AddChild(fListView);
 
 	// configure PartitionListView
@@ -566,7 +562,7 @@ MainWindow::_ScanDrives()
 	PartitionListRow* previousSelection
 		= fListView->FindRow(fCurrentPartitionID);
 	if (previousSelection) {
-		fListView->AddToSelection(previousSelection);
+		fListView->SetFocusRow(previousSelection, true);
 		_UpdateMenus(fCurrentDisk, fCurrentPartitionID,
 			previousSelection->ParentID());
 		fDiskView->ForceUpdate();
@@ -664,7 +660,7 @@ MainWindow::_UpdateMenus(BDiskDevice* disk,
 	fUnmountContextMenuItem->SetEnabled(false);
 	fFormatContextMenuItem->SetEnabled(false);
 
-	if (!disk) {
+	if (disk == NULL) {
 		fWipeMenuItem->SetEnabled(false);
 		fEjectMenuItem->SetEnabled(false);
 		fSurfaceTestMenuItem->SetEnabled(false);
@@ -694,9 +690,9 @@ MainWindow::_UpdateMenus(BDiskDevice* disk,
 		fDeleteMenuItem->SetEnabled(prepared);
 		fChangeMenuItem->SetEnabled(prepared);
 
-		fChangeContextMenuItem->SetEnabled(prepared);
-		fDeleteContextMenuItem->SetEnabled(prepared);
 		fFormatContextMenuItem->SetEnabled(prepared);
+		fDeleteContextMenuItem->SetEnabled(prepared);
+		fChangeContextMenuItem->SetEnabled(prepared);
 
 		BPartition* partition = disk->FindDescendant(selectedPartition);
 
@@ -750,19 +746,21 @@ MainWindow::_UpdateMenus(BDiskDevice* disk,
 				&& partition->IsDevice()
 				&& fDiskInitMenu->CountItems() > 0);
 
-			fChangeMenuItem->SetEnabled(notMountedAndWritable);
+			fChangeMenuItem->SetEnabled(writable
+				&& partition->CanEditParameters());
+			fChangeContextMenuItem->SetEnabled(writable
+				&& partition->CanEditParameters());
 
 			fDeleteMenuItem->SetEnabled(notMountedAndWritable
 				&& !partition->IsDevice());
+			fDeleteContextMenuItem->SetEnabled(notMountedAndWritable
+				&& !partition->IsDevice());
 
 			fMountMenuItem->SetEnabled(!partition->IsMounted());
+			fMountContextMenuItem->SetEnabled(!partition->IsMounted());
 
 			fFormatContextMenuItem->SetEnabled(notMountedAndWritable
 				&& fFormatContextMenuItem->CountItems() > 0);
-			fChangeContextMenuItem->SetEnabled(notMountedAndWritable);
-			fDeleteContextMenuItem->SetEnabled(notMountedAndWritable
-				&& !partition->IsDevice());
-			fMountContextMenuItem->SetEnabled(notMountedAndWritable);
 
 			bool unMountable = false;
 			if (partition->IsMounted()) {
@@ -790,11 +788,11 @@ MainWindow::_UpdateMenus(BDiskDevice* disk,
 			fFormatContextMenuItem->SetEnabled(false);
 		}
 
-		fOpenDiskProbeMenuItem->SetEnabled(true);
-		fOpenDiskProbeContextMenuItem->SetEnabled(true);
-
 		if (prepared)
 			disk->CancelModifications();
+
+		fOpenDiskProbeMenuItem->SetEnabled(true);
+		fOpenDiskProbeContextMenuItem->SetEnabled(true);
 
 		fMountAllMenuItem->SetEnabled(true);
 	}
@@ -988,7 +986,7 @@ MainWindow::_Initialize(BDiskDevice* disk, partition_id selectedPartition,
 	}
 
 	if (!found) {
-		_DisplayPartitionError(B_TRANSLATE("Disk system \"%s\" not found!"));
+		_DisplayPartitionError(B_TRANSLATE("Disk system %s not found!"));
 		return;
 	}
 
@@ -1083,13 +1081,13 @@ MainWindow::_Initialize(BDiskDevice* disk, partition_id selectedPartition,
 		if (partition->IsDevice()) {
 			message = B_TRANSLATE("Are you sure you "
 				"want to write the changes back to disk now?\n\n"
-				"All data on the disk %s will be irretrievably lost if you "
+				"All data on the disk \"%s\" will be irretrievably lost if you "
 				"do so!");
 			message.ReplaceFirst("%s", previousName.String());
 		} else {
 			message = B_TRANSLATE("Are you sure you "
 				"want to write the changes back to disk now?\n\n"
-				"All data on the partition %s will be irretrievably lost if you "
+				"All data on the partition \"%s\" will be irretrievably lost if you "
 				"do so!");
 			message.ReplaceFirst("%s", previousName.String());
 		}
@@ -1252,7 +1250,7 @@ MainWindow::_Create(BDiskDevice* disk, partition_id selectedPartition)
 	status = modificationPreparer.CommitModifications();
 
 	if (status != B_OK) {
-		_DisplayPartitionError(B_TRANSLATE("Failed to format the "
+		_DisplayPartitionError(B_TRANSLATE("Failed to create the "
 			"partition. No changes have been written to disk."), NULL, status);
 		return;
 	}
@@ -1378,9 +1376,6 @@ MainWindow::_ChangeParameters(BDiskDevice* disk, partition_id selectedPartition)
 			_DisplayPartitionError(B_TRANSLATE("The panel experienced a "
 				"problem!"), NULL, status);
 		}
-		// TODO: disk systems without an editor and support for name/type
-		// changing will return B_CANCELED here -- we need to check this
-		// before, and disable the menu entry instead
 		return;
 	}
 

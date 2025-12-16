@@ -17,18 +17,19 @@
 static const rgb_color kThumbRed = (rgb_color){ 255, 52, 52, 255 };
 
 
-SeekSlider::SeekSlider(const char* name, BMessage* message, int32 minValue,
-		int32 maxValue)
+SeekSlider::SeekSlider(const char* name, BMessage* message, BMessage* hoverMessage,
+		int32 minValue, int32 maxValue)
 	:
 	BSlider(name, NULL, NULL, minValue, maxValue, B_HORIZONTAL,
 		B_TRIANGLE_THUMB),
+	fHoverMessage(hoverMessage),
 	fTracking(false),
 	fLastTrackTime(0),
 	fDisabledString(""),
 	fScale(0.0f)
 {
 	BFont font(be_plain_font);
-	font.SetSize(9.0);
+	font.SetSize(font.Size() * 0.75f);
 	SetFont(&font);
 	SetSymbolScale(1.0);
 	rgb_color fillColor = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR),
@@ -117,6 +118,17 @@ SeekSlider::MouseUp(BPoint where)
 {
 	fTracking = false;
 	BSlider::MouseUp(where);
+}
+
+
+void
+SeekSlider::MouseMoved(BPoint point, uint32 transit, const BMessage* dragMessage)
+{
+	if (fHoverMessage != NULL) {
+		fHoverMessage->SetInt32("value", ValueForPoint(point));
+		BControl::Invoke(fHoverMessage);
+	}
+	BSlider::MouseMoved(point, transit, dragMessage);
 }
 
 

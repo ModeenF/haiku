@@ -34,7 +34,7 @@
 #include <find_directory_private.h>
 #include <fs/KPath.h>
 #include <heap.h>
-#include <int.h>
+#include <interrupts.h>
 #include <kernel.h>
 #include <kimage.h>
 #include <kscheduler.h>
@@ -51,6 +51,7 @@
 #include <syscalls.h>
 #include <tls.h>
 #include <tracing.h>
+#include <user_mutex.h>
 #include <user_runtime.h>
 #include <user_thread.h>
 #include <usergroup.h>
@@ -58,6 +59,7 @@
 #include <vm/vm.h>
 #include <vm/VMAddressSpace.h>
 #include <util/AutoLock.h>
+#include <util/ThreadAutoLock.h>
 
 #include "TeamThreadTables.h"
 
@@ -130,7 +132,7 @@ struct ProcessGroupHashDefinition {
 
 	ProcessGroup*& GetLink(ProcessGroup* value) const
 	{
-		return value->next;
+		return value->hash_next;
 	}
 };
 
@@ -428,7 +430,64 @@ Team::Team(team_id id, bool kernel)
 	// allocate an ID
 	this->id = id;
 	visible = true;
+
+	hash_next = parent = NULL;
 	serial_number = -1;
+
+	group_id = session_id = -1;
+	group = NULL;
+
+	num_threads = 0;
+	state = TEAM_STATE_BIRTH;
+	flags = 0;
+	io_context = NULL;
+	user_mutex_context = NULL;
+	realtime_sem_context = NULL;
+	xsi_sem_context = NULL;
+	death_entry = NULL;
+
+	dead_children.condition_variable.Init(&dead_children, "team children");
+	dead_children.count = 0;
+	dead_children.kernel_time = 0;
+	dead_children.user_time = 0;
+
+	job_control_entry = new(nothrow) ::job_control_entry;
+	if (job_control_entry != NULL) {
+		job_control_entry->state = JOB_CONTROL_STATE_NONE;
+		job_control_entry->thread = id;
+		job_control_entry->team = this;
+	}
+
+	address_space = NULL;
+	main_thread = NULL;
+	loading_info = NULL;
+
+	list_init(&watcher_list);
+	list_init(&sem_list);
+	list_init_etc(&port_list, port_team_link_offset());
+
+	user_data = 0;
+	user_data_area = -1;
+	used_user_data = 0;
+	user_data_size = 0;
+	free_user_threads = NULL;
+
+	commpage_address = NULL;
+
+	clear_team_debug_info(&debug_info, true);
+
+	dead_threads_kernel_time = 0;
+	dead_threads_user_time = 0;
+	cpu_clock_offset = 0;
+	B_INITIALIZE_SPINLOCK(&time_lock);
+
+	saved_set_uid = real_uid = effective_uid = -1;
+	saved_set_gid = real_gid = effective_gid = -1;
+
+	// exit status -- setting initialized to false suffices
+	exit.initialized = false;
+
+	B_INITIALIZE_SPINLOCK(&signal_lock);
 
 	// init mutex
 	if (kernel) {
@@ -439,71 +498,12 @@ Team::Team(team_id id, bool kernel)
 		mutex_init_etc(&fLock, lockName, MUTEX_FLAG_CLONE_NAME);
 	}
 
-	hash_next = siblings_next = children = parent = NULL;
 	fName[0] = '\0';
 	fArgs[0] = '\0';
-	num_threads = 0;
-	io_context = NULL;
-	address_space = NULL;
-	realtime_sem_context = NULL;
-	xsi_sem_context = NULL;
-	thread_list = NULL;
-	main_thread = NULL;
-	loading_info = NULL;
-	state = TEAM_STATE_BIRTH;
-	flags = 0;
-	death_entry = NULL;
-	user_data_area = -1;
-	user_data = 0;
-	used_user_data = 0;
-	user_data_size = 0;
-	free_user_threads = NULL;
-
-	commpage_address = NULL;
-
-	supplementary_groups = NULL;
-	supplementary_group_count = 0;
-
-	dead_threads_kernel_time = 0;
-	dead_threads_user_time = 0;
-	cpu_clock_offset = 0;
-
-	// dead threads
-	list_init(&dead_threads);
-
-	// dead children
-	dead_children.count = 0;
-	dead_children.kernel_time = 0;
-	dead_children.user_time = 0;
-
-	// job control entry
-	job_control_entry = new(nothrow) ::job_control_entry;
-	if (job_control_entry != NULL) {
-		job_control_entry->state = JOB_CONTROL_STATE_NONE;
-		job_control_entry->thread = id;
-		job_control_entry->team = this;
-	}
-
-	// exit status -- setting initialized to false suffices
-	exit.initialized = false;
-
-	list_init(&sem_list);
-	list_init_etc(&port_list, port_team_link_offset());
-	list_init(&image_list);
-	list_init(&watcher_list);
-
-	clear_team_debug_info(&debug_info, true);
-
-	// init dead/stopped/continued children condition vars
-	dead_children.condition_variable.Init(&dead_children, "team children");
-
-	B_INITIALIZE_SPINLOCK(&time_lock);
-	B_INITIALIZE_SPINLOCK(&signal_lock);
 
 	fQueuedSignalsCounter = new(std::nothrow) BKernel::QueuedSignalsCounter(
 		kernel ? -1 : MAX_QUEUED_SIGNALS);
 	memset(fSignalActions, 0, sizeof(fSignalActions));
-
 	fUserDefinedTimerCount = 0;
 
 	fCoreDumpCondition = NULL;
@@ -527,10 +527,8 @@ Team::~Team()
 	if (fQueuedSignalsCounter != NULL)
 		fQueuedSignalsCounter->ReleaseReference();
 
-	while (thread_death_entry* threadDeathEntry
-			= (thread_death_entry*)list_remove_head_item(&dead_threads)) {
+	while (thread_death_entry* threadDeathEntry = dead_threads.RemoveHead())
 		free(threadDeathEntry);
-	}
 
 	while (::job_control_entry* entry = dead_children.entries.RemoveHead())
 		delete entry;
@@ -539,8 +537,6 @@ Team::~Team()
 		free_user_threads = entry->next;
 		free(entry);
 	}
-
-	malloc_referenced_release(supplementary_groups);
 
 	delete job_control_entry;
 		// usually already NULL and transferred to the parent
@@ -574,6 +570,8 @@ Team::Create(team_id id, const char* name, bool kernel)
 		if (error != B_OK)
 			return NULL;
 	}
+
+	team->start_time = system_time();
 
 	// everything went fine
 	return teamDeleter.Detach();
@@ -646,10 +644,10 @@ Team::LockTeamAndParent(bool dontLockParentIfKernel)
 
 	while (true) {
 		// If the team doesn't have a parent, we're done. Otherwise try to lock
-		// the parent.This will succeed in most cases, simplifying things.
+		// the parent. This will succeed in most cases, simplifying things.
 		Team* parent = this->parent;
 		if (parent == NULL || (dontLockParentIfKernel && parent == sKernelTeam)
-			|| parent->TryLock()) {
+				|| parent->TryLock()) {
 			return;
 		}
 
@@ -731,7 +729,7 @@ Team::LockTeamAndProcessGroup()
 		// Try to lock the group. This will succeed in most cases, simplifying
 		// things.
 		ProcessGroup* group = this->group;
-		if (group->TryLock())
+		if (group == NULL || group->TryLock())
 			return;
 
 		// get a temporary reference to the group, unlock this team, lock the
@@ -936,8 +934,8 @@ Team::CPUTime(bool ignoreCurrentRun, Thread* lockedThread) const
 	Thread* currentThread = thread_get_current_thread();
 	bigtime_t now = system_time();
 
-	for (Thread* thread = thread_list; thread != NULL;
-			thread = thread->team_next) {
+	for (Thread* thread = thread_list.First(); thread != NULL;
+			thread = thread_list.GetNext(thread)) {
 		bool alreadyLocked = thread == lockedThread;
 		SpinLocker threadTimeLocker(thread->time_lock, alreadyLocked);
 		time += thread->kernel_time + thread->user_time;
@@ -968,8 +966,8 @@ Team::UserCPUTime() const
 
 	bigtime_t now = system_time();
 
-	for (Thread* thread = thread_list; thread != NULL;
-			thread = thread->team_next) {
+	for (Thread* thread = thread_list.First(); thread != NULL;
+			thread = thread_list.GetNext(thread)) {
 		SpinLocker threadTimeLocker(thread->time_lock);
 		time += thread->user_time;
 
@@ -987,7 +985,6 @@ Team::UserCPUTime() const
 ProcessGroup::ProcessGroup(pid_t id)
 	:
 	id(id),
-	teams(NULL),
 	fSession(NULL),
 	fInOrphanedCheckList(false)
 {
@@ -1071,7 +1068,7 @@ ProcessGroup::IsOrphaned() const
 	// group's session." (Open Group Base Specs Issue 7)
 	bool orphaned = true;
 
-	Team* team = teams;
+	Team* team = teams.First();
 	while (orphaned && team != NULL) {
 		team->LockTeamAndParent(false);
 
@@ -1083,7 +1080,7 @@ ProcessGroup::IsOrphaned() const
 
 		team->UnlockTeamAndParent();
 
-		team = team->group_next;
+		team = teams.GetNext(team);
 	}
 
 	return orphaned;
@@ -1115,7 +1112,7 @@ ProcessGroup::UnsetOrphanedCheck()
 ProcessSession::ProcessSession(pid_t id)
 	:
 	id(id),
-	controlling_tty(-1),
+	controlling_tty(NULL),
 	foreground_group(-1)
 {
 	char lockName[32];
@@ -1149,7 +1146,7 @@ _dump_team_info(Team* team)
 	} else
 		kprintf("\n");
 
-	kprintf("children:         %p\n", team->children);
+	kprintf("children:         %p\n", team->children.First());
 	kprintf("num_threads:      %d\n", team->num_threads);
 	kprintf("state:            %d\n", team->state);
 	kprintf("flags:            0x%" B_PRIx32 "\n", team->flags);
@@ -1160,7 +1157,7 @@ _dump_team_info(Team* team)
 		(void*)team->user_data, team->user_data_area);
 	kprintf("free user thread: %p\n", team->free_user_threads);
 	kprintf("main_thread:      %p\n", team->main_thread);
-	kprintf("thread_list:      %p\n", team->thread_list);
+	kprintf("thread_list:      %p\n", team->thread_list.First());
 	kprintf("group_id:         %" B_PRId32 "\n", team->group_id);
 	kprintf("session_id:       %" B_PRId32 "\n", team->session_id);
 }
@@ -1279,8 +1276,7 @@ insert_team_into_parent(Team* parent, Team* team)
 {
 	ASSERT(parent != NULL);
 
-	team->siblings_next = parent->children;
-	parent->children = team;
+	parent->children.Add(team, false);
 	team->parent = parent;
 }
 
@@ -1295,22 +1291,8 @@ insert_team_into_parent(Team* parent, Team* team)
 static void
 remove_team_from_parent(Team* parent, Team* team)
 {
-	Team* child;
-	Team* last = NULL;
-
-	for (child = parent->children; child != NULL;
-			child = child->siblings_next) {
-		if (child == team) {
-			if (last == NULL)
-				parent->children = child->siblings_next;
-			else
-				last->siblings_next = child->siblings_next;
-
-			team->parent = NULL;
-			break;
-		}
-		last = child;
-	}
+	parent->children.Remove(team);
+	team->parent = NULL;
 }
 
 
@@ -1345,8 +1327,7 @@ insert_team_into_group(ProcessGroup* group, Team* team)
 	team->group_id = group->id;
 	team->session_id = group->Session()->id;
 
-	team->group_next = group->teams;
-	group->teams = team;
+	group->teams.Add(team, false);
 	group->AcquireReference();
 }
 
@@ -1362,29 +1343,15 @@ static void
 remove_team_from_group(Team* team)
 {
 	ProcessGroup* group = team->group;
-	Team* current;
-	Team* last = NULL;
 
 	// the team must be in a process group to let this function have any effect
-	if  (group == NULL)
+	if (group == NULL)
 		return;
 
-	for (current = group->teams; current != NULL;
-			current = current->group_next) {
-		if (current == team) {
-			if (last == NULL)
-				group->teams = current->group_next;
-			else
-				last->group_next = current->group_next;
-
-			team->group = NULL;
-			break;
-		}
-		last = current;
-	}
+	group->teams.Remove(team);
 
 	team->group = NULL;
-	team->group_next = NULL;
+	team->group_id = -1;
 
 	group->ReleaseReference();
 }
@@ -1630,17 +1597,16 @@ team_create_thread_start_internal(void* args)
 		return B_BAD_ADDRESS;
 	}
 
-	TRACE(("team_create_thread_start: loading elf binary '%s'\n", path));
-
-	// set team args and update state
-	team->Lock();
-	team->SetArgs(path, teamArgs->flat_args + 1, argCount - 1);
-	team->state = TEAM_STATE_NORMAL;
-	team->Unlock();
-
 	free_team_arg(teamArgs);
 		// the arguments are already on the user stack, we no longer need
 		// them in this form
+
+	TRACE(("team_create_thread_start: loading elf binary '%s'\n", path));
+
+	// update state
+	team->Lock();
+	team->state = TEAM_STATE_NORMAL;
+	team->Unlock();
 
 	// Clone commpage area
 	area_id commPageArea = clone_commpage_area(team->id,
@@ -1671,6 +1637,7 @@ team_create_thread_start_internal(void* args)
 			strerror(image)));
 		return image;
 	}
+	user_debug_image_created(&imageInfo.basic_info);
 
 	// NOTE: Normally arch_thread_enter_userspace() never returns, that is
 	// automatic variables with function scope will never be destroyed.
@@ -1763,11 +1730,13 @@ load_image_internal(char**& _flatArgs, size_t flatArgsSize, int32 argCount,
 		return B_NO_MEMORY;
 	BReference<Team> teamReference(team, true);
 
+	BReference<Team> teamLoadingReference;
 	if ((flags & B_WAIT_TILL_LOADED) != 0) {
 		loadingInfo.condition.Init(team, "image load");
 		loadingInfo.condition.Add(&loadingWaitEntry);
 		loadingInfo.result = B_ERROR;
 		team->loading_info = &loadingInfo;
+		teamLoadingReference = teamReference;
 	}
 
 	// get the parent team
@@ -1783,8 +1752,9 @@ load_image_internal(char**& _flatArgs, size_t flatArgsSize, int32 argCount,
 	inherit_parent_user_and_group(team, parent);
 
 	// get a reference to the parent's I/O context -- we need it to create ours
-	parentIOContext = parent->io_context;
-	vfs_get_io_context(parentIOContext);
+	parentIOContext = (parent->id == B_SYSTEM_TEAM) ? NULL : parent->io_context;
+	if (parentIOContext != NULL)
+		vfs_get_io_context(parentIOContext);
 
 	team->Unlock();
 	parent->UnlockTeamAndProcessGroup();
@@ -1800,19 +1770,21 @@ load_image_internal(char**& _flatArgs, size_t flatArgsSize, int32 argCount,
 	_flatArgs = NULL;
 		// args are owned by the team_arg structure now
 
+	team->SetArgs(path, teamArgs->flat_args + 1, argCount - 1);
+
 	// create a new io_context for this team
+	// remove any fds that have the CLOEXEC flag set (emulating BeOS behaviour)
 	team->io_context = vfs_new_io_context(parentIOContext, true);
-	if (!team->io_context) {
+	if (team->io_context == NULL) {
 		status = B_NO_MEMORY;
 		goto err2;
 	}
 
-	// We don't need the parent's I/O context any longer.
-	vfs_put_io_context(parentIOContext);
-	parentIOContext = NULL;
-
-	// remove any fds that have the CLOEXEC flag set (emulating BeOS behaviour)
-	vfs_exec_io_context(team->io_context);
+	if (parentIOContext != NULL) {
+		// We don't need the parent's I/O context any longer.
+		vfs_put_io_context(parentIOContext);
+		parentIOContext = NULL;
+	}
 
 	// create an address space for this team
 	status = VMAddressSpace::Create(team->id, USER_BASE, USER_SIZE, false,
@@ -1877,6 +1849,10 @@ load_image_internal(char**& _flatArgs, size_t flatArgsSize, int32 argCount,
 	// more precisely: It's owned by the team's main thread, now.
 	teamReference.Detach();
 
+	// notify the debugger while the main thread is still suspended so that it
+	// has a chance to attach early to the child.
+	user_debug_team_created(teamID);
+
 	// wait for the loader of the new team to finish its work
 	if ((flags & B_WAIT_TILL_LOADED) != 0) {
 		if (mainThread != NULL) {
@@ -1890,12 +1866,16 @@ load_image_internal(char**& _flatArgs, size_t flatArgsSize, int32 argCount,
 		// responsible for unsetting `loading_info` in the team structure.
 		loadingWaitEntry.Wait();
 
+		// We must synchronize by temporarily reacquiring the Team lock, to
+		// ensure there are no remaining consumers of the team_loading_info.
+		team->Lock();
+		ASSERT(team->loading_info == NULL);
+		team->Unlock();
+		teamLoadingReference.Unset();
+
 		if (loadingInfo.result < B_OK)
 			return loadingInfo.result;
 	}
-
-	// notify the debugger
-	user_debug_team_created(teamID);
 
 	return thread;
 
@@ -1933,6 +1913,44 @@ err1:
 }
 
 
+/*!	Kill all threads but the main thread
+*/
+static void
+team_kill_other_threads_locked(TeamLocker &teamLocker, thread_id threadNotBeKilled = -1)
+{
+	Team* team = teamLocker.Get();
+	team_death_entry deathEntry;
+	deathEntry.condition.Init(team, "team death");
+
+	while (true) {
+		team->death_entry = &deathEntry;
+		deathEntry.remaining_threads = 0;
+
+		for (Thread* thread = team->thread_list.First(); thread != NULL;
+				thread = team->thread_list.GetNext(thread)) {
+			if (thread != team->main_thread && thread->id != threadNotBeKilled) {
+				Signal signal(SIGKILLTHR, SI_USER, B_OK, team->id);
+				send_signal_to_thread(thread, signal, B_DO_NOT_RESCHEDULE);
+				deathEntry.remaining_threads++;
+			}
+		}
+
+		if (deathEntry.remaining_threads == 0)
+			break;
+
+		// there are threads to wait for
+		ConditionVariableEntry entry;
+		deathEntry.condition.Add(&entry);
+
+		teamLocker.Unlock();
+		entry.Wait();
+		teamLocker.Lock();
+	}
+
+	team->death_entry = NULL;
+}
+
+
 /*!	Almost shuts down the current team and loads a new image into it.
 	If successful, this function does not return and will takeover ownership of
 	the arguments provided.
@@ -1962,8 +1980,7 @@ exec_team(const char* path, char**& _flatArgs, size_t flatArgsSize,
 		return B_NOT_ALLOWED;
 
 	// we currently need to be single threaded here
-	// TODO: maybe we should just kill all other threads and
-	//	make the current thread the team's main thread?
+	// TODO: make the current thread the team's main thread?
 	Thread* currentThread = thread_get_current_thread();
 	if (currentThread != team->main_thread)
 		return B_NOT_ALLOWED;
@@ -1979,11 +1996,7 @@ exec_team(const char* path, char**& _flatArgs, size_t flatArgsSize,
 
 	debugInfoLocker.Unlock();
 
-	for (Thread* thread = team->thread_list; thread != NULL;
-			thread = thread->team_next) {
-		if (thread != team->main_thread && thread->id != nubThreadID)
-			return B_NOT_ALLOWED;
-	}
+	team_kill_other_threads_locked(teamLocker, nubThreadID);
 
 	team->DeleteUserTimers(true);
 	team->ResetSignalsOnExec();
@@ -1997,6 +2010,8 @@ exec_team(const char* path, char**& _flatArgs, size_t flatArgsSize,
 
 	_flatArgs = NULL;
 		// args are owned by the team_arg structure now
+
+	team->SetArgs(path, teamArgs->flat_args + 1, argCount - 1);
 
 	// TODO: remove team resources if there are any left
 	// thread_atkernel_exit() might not be called at all
@@ -2012,6 +2027,8 @@ exec_team(const char* path, char**& _flatArgs, size_t flatArgsSize,
 	sem_delete_owned_sems(team);
 	remove_images(team);
 	vfs_exec_io_context(team->io_context);
+	delete_user_mutex_context(team->user_mutex_context);
+	team->user_mutex_context = NULL;
 	delete_realtime_sem_context(team->realtime_sem_context);
 	team->realtime_sem_context = NULL;
 
@@ -2251,6 +2268,7 @@ fork_team(void)
 			parentThread->name, parentThread->priority, NULL, team->id, thread);
 		threadCreationAttributes.forkArgs = forkArgs;
 		threadCreationAttributes.flags |= THREAD_CREATION_FLAG_DEFER_SIGNALS;
+		threadCreationAttributes.signal_mask = thread->sig_block_mask;
 		threadID = thread_create_thread(threadCreationAttributes, false);
 		if (threadID < 0) {
 			status = threadID;
@@ -2308,8 +2326,8 @@ err1:
 static bool
 has_children_in_group(Team* parent, pid_t groupID)
 {
-	for (Team* child = parent->children; child != NULL;
-			child = child->siblings_next) {
+	for (Team* child = parent->children.First(); child != NULL;
+			child = parent->children.GetNext(child)) {
 		TeamLocker childLocker(child);
 		if (child->group_id == groupID)
 			return true;
@@ -2513,7 +2531,7 @@ wait_for_child(pid_t child, uint32 flags, siginfo_t& _info,
 			// to the process group specification at all.
 			bool childrenExist = false;
 			if (child == -1) {
-				childrenExist = team->children != NULL;
+				childrenExist = !team->children.IsEmpty();
 			} else if (child < -1) {
 				childrenExist = has_children_in_group(team, -child);
 			} else if (child != team->id) {
@@ -2664,7 +2682,7 @@ wait_for_child(pid_t child, uint32 flags, siginfo_t& _info,
 static status_t
 fill_team_info(Team* team, team_info* info, size_t size)
 {
-	if (size != sizeof(team_info))
+	if (size > sizeof(team_info))
 		return B_BAD_VALUE;
 
 	// TODO: Set more informations for team_info
@@ -2688,6 +2706,21 @@ fill_team_info(Team* team, team_info* info, size_t size)
 	strlcpy(info->args, team->Args(), sizeof(info->args));
 	info->argc = 1;
 
+	if (size > offsetof(team_info, real_uid)) {
+		info->real_uid = team->real_uid;
+		info->real_gid = team->real_gid;
+		info->group_id = team->group_id;
+		info->session_id = team->session_id;
+
+		if (team->parent != NULL)
+			info->parent = team->parent->id;
+		else
+			info->parent = -1;
+
+		strlcpy(info->name, team->Name(), sizeof(info->name));
+		info->start_time = team->start_time;
+	}
+
 	return B_OK;
 }
 
@@ -2698,7 +2731,7 @@ fill_team_info(Team* team, team_info* info, size_t size)
 static bool
 process_group_has_stopped_processes(ProcessGroup* group)
 {
-	Team* team = group->teams;
+	Team* team = group->teams.First();
 	while (team != NULL) {
 		// the parent team's lock guards the job control entry -- acquire it
 		team->LockTeamAndParent(false);
@@ -2711,7 +2744,7 @@ process_group_has_stopped_processes(ProcessGroup* group)
 
 		team->UnlockTeamAndParent();
 
-		team = team->group_next;
+		team = group->teams.GetNext(team);
 	}
 
 	return false;
@@ -2782,9 +2815,8 @@ common_get_team_usage_info(team_id id, int32 who, team_usage_info* info,
 	switch (who) {
 		case B_TEAM_USAGE_SELF:
 		{
-			Thread* thread = team->thread_list;
-
-			for (; thread != NULL; thread = thread->team_next) {
+			for (Thread* thread = team->thread_list.First(); thread != NULL;
+					thread = team->thread_list.GetNext(thread)) {
 				InterruptsSpinLocker threadTimeLocker(thread->time_lock);
 				kernelTime += thread->kernel_time;
 				userTime += thread->user_time;
@@ -2797,13 +2829,12 @@ common_get_team_usage_info(team_id id, int32 who, team_usage_info* info,
 
 		case B_TEAM_USAGE_CHILDREN:
 		{
-			Team* child = team->children;
-			for (; child != NULL; child = child->siblings_next) {
+			Team* child = team->children.First();
+			for (; child != NULL; child = team->children.GetNext(child)) {
 				TeamLocker childLocker(child);
 
-				Thread* thread = team->thread_list;
-
-				for (; thread != NULL; thread = thread->team_next) {
+				for (Thread* thread = child->thread_list.First(); thread != NULL;
+						thread = child->thread_list.GetNext(thread)) {
 					InterruptsSpinLocker threadTimeLocker(thread->time_lock);
 					kernelTime += thread->kernel_time;
 					userTime += thread->user_time;
@@ -2859,6 +2890,8 @@ team_init(kernel_args* args)
 	sKernelTeam = Team::Create(1, "kernel_team", true);
 	if (sKernelTeam == NULL)
 		panic("could not create kernel team!\n");
+
+	sKernelTeam->address_space = VMAddressSpace::Kernel();
 	sKernelTeam->SetArgs(sKernelTeam->Name());
 	sKernelTeam->state = TEAM_STATE_NORMAL;
 
@@ -2869,7 +2902,6 @@ team_init(kernel_args* args)
 	sKernelTeam->real_gid = 0;
 	sKernelTeam->effective_gid = 0;
 	sKernelTeam->supplementary_groups = NULL;
-	sKernelTeam->supplementary_group_count = 0;
 
 	insert_team_into_group(group, sKernelTeam);
 
@@ -2975,7 +3007,7 @@ team_get_team_struct_locked(team_id id)
 
 
 void
-team_set_controlling_tty(int32 ttyIndex)
+team_set_controlling_tty(void* tty)
 {
 	// lock the team, so its session won't change while we're playing with it
 	Team* team = thread_get_current_thread()->team;
@@ -2986,12 +3018,12 @@ team_set_controlling_tty(int32 ttyIndex)
 	AutoLocker<ProcessSession> sessionLocker(session);
 
 	// set the session's fields
-	session->controlling_tty = ttyIndex;
+	session->controlling_tty = tty;
 	session->foreground_group = -1;
 }
 
 
-int32
+void*
 team_get_controlling_tty()
 {
 	// lock the team, so its session won't change while we're playing with it
@@ -3008,7 +3040,7 @@ team_get_controlling_tty()
 
 
 status_t
-team_set_foreground_process_group(int32 ttyIndex, pid_t processGroupID)
+team_set_foreground_process_group(void* tty, pid_t processGroupID)
 {
 	// lock the team, so its session won't change while we're playing with it
 	Thread* thread = thread_get_current_thread();
@@ -3020,7 +3052,7 @@ team_set_foreground_process_group(int32 ttyIndex, pid_t processGroupID)
 	AutoLocker<ProcessSession> sessionLocker(session);
 
 	// check given TTY -- must be the controlling tty of the calling process
-	if (session->controlling_tty != ttyIndex)
+	if (session->controlling_tty != tty)
 		return ENOTTY;
 
 	// check given process group -- must belong to our session
@@ -3108,14 +3140,14 @@ team_remove_team(Team* team, pid_t& _signalGroup)
 	_signalGroup = -1;
 	bool isSessionLeader = false;
 	if (team->session_id == team->id
-		&& team->group->Session()->controlling_tty >= 0) {
+		&& team->group->Session()->controlling_tty != NULL) {
 		isSessionLeader = true;
 
 		ProcessSession* session = team->group->Session();
 
 		AutoLocker<ProcessSession> sessionLocker(session);
 
-		session->controlling_tty = -1;
+		session->controlling_tty = NULL;
 		_signalGroup = session->foreground_group;
 	}
 
@@ -3123,7 +3155,7 @@ team_remove_team(Team* team, pid_t& _signalGroup)
 	remove_team_from_group(team);
 
 	// move the team's children to the kernel team
-	while (Team* child = team->children) {
+	while (Team* child = team->children.First()) {
 		// remove the child from the current team and add it to the kernel team
 		TeamLocker childLocker(child);
 
@@ -3131,9 +3163,9 @@ team_remove_team(Team* team, pid_t& _signalGroup)
 		insert_team_into_parent(sKernelTeam, child);
 
 		// move job control entries too
-		sKernelTeam->stopped_children.entries.MoveFrom(
+		sKernelTeam->stopped_children.entries.TakeFrom(
 			&team->stopped_children.entries);
-		sKernelTeam->continued_children.entries.MoveFrom(
+		sKernelTeam->continued_children.entries.TakeFrom(
 			&team->continued_children.entries);
 
 		// If the team was a session leader with controlling terminal,
@@ -3224,40 +3256,7 @@ team_shutdown_team(Team* team)
 
 	timeLocker.Unlock();
 
-	// kill all threads but the main thread
-	team_death_entry deathEntry;
-	deathEntry.condition.Init(team, "team death");
-
-	while (true) {
-		team->death_entry = &deathEntry;
-		deathEntry.remaining_threads = 0;
-
-		Thread* thread = team->thread_list;
-		while (thread != NULL) {
-			if (thread != team->main_thread) {
-				Signal signal(SIGKILLTHR, SI_USER, B_OK, team->id);
-				send_signal_to_thread(thread, signal, B_DO_NOT_RESCHEDULE);
-				deathEntry.remaining_threads++;
-			}
-
-			thread = thread->team_next;
-		}
-
-		if (deathEntry.remaining_threads == 0)
-			break;
-
-		// there are threads to wait for
-		ConditionVariableEntry entry;
-		deathEntry.condition.Add(&entry);
-
-		teamLocker.Unlock();
-
-		entry.Wait();
-
-		teamLocker.Lock();
-	}
-
-	team->death_entry = NULL;
+	team_kill_other_threads_locked(teamLocker);
 
 	return debuggerPort;
 }
@@ -3285,15 +3284,13 @@ team_delete_team(Team* team, port_id debuggerPort)
 
 	TeamLocker teamLocker(team);
 
-	if (team->loading_info) {
+	if (team->loading_info != NULL) {
 		// there's indeed someone waiting
-		struct team_loading_info* loadingInfo = team->loading_info;
-		team->loading_info = NULL;
-
-		loadingInfo->result = B_ERROR;
+		team->loading_info->result = B_ERROR;
 
 		// wake up the waiting thread
-		loadingInfo->condition.NotifyAll();
+		team->loading_info->condition.NotifyAll();
+		team->loading_info = NULL;
 	}
 
 	// notify team watchers
@@ -3309,12 +3306,35 @@ team_delete_team(Team* team, port_id debuggerPort)
 		}
 	}
 
+	// get team exit information
+	status_t exitStatus = -1;
+	int signal = -1;
+
+	switch (team->exit.reason) {
+		case CLD_EXITED:
+			exitStatus = team->exit.status;
+			break;
+		case CLD_KILLED:
+			signal = team->exit.signal;
+			break;
+	}
+
 	teamLocker.Unlock();
 
 	sNotificationService.Notify(TEAM_REMOVED, team);
 
+	// get team usage information
+	InterruptsSpinLocker timeLocker(team->time_lock);
+
+	team_usage_info usageInfo;
+	usageInfo.kernel_time = team->dead_threads_kernel_time;
+	usageInfo.user_time = team->dead_threads_user_time;
+
+	timeLocker.Unlock();
+
 	// free team resources
 
+	delete_user_mutex_context(team->user_mutex_context);
 	delete_realtime_sem_context(team->realtime_sem_context);
 	xsi_sem_undo(team);
 	remove_images(team);
@@ -3323,7 +3343,7 @@ team_delete_team(Team* team, port_id debuggerPort)
 	team->ReleaseReference();
 
 	// notify the debugger, that the team is gone
-	user_debug_team_deleted(teamID, debuggerPort);
+	user_debug_team_deleted(teamID, debuggerPort, exitStatus, signal, &usageInfo);
 }
 
 
@@ -3681,7 +3701,7 @@ AssociatedDataOwner::PrepareForDeletion()
 
 	// move all data to a temporary list and unset the owner
 	DataList list;
-	list.MoveFrom(&fList);
+	list.TakeFrom(&fList);
 
 	for (DataList::Iterator it = list.GetIterator();
 		AssociatedData* data = it.Next();) {
@@ -4106,12 +4126,28 @@ _user_setpgid(pid_t processID, pid_t groupID)
 			return ESRCH;
 		BReference<Team> teamReference(team, true);
 
+		// check the target team is the current team or a child of current team
+		for (Team* parentTeam = team; parentTeam != currentTeam; parentTeam = parentTeam->parent) {
+			if (parentTeam == NULL || parentTeam->id == 1)
+				return ESRCH;
+		}
+
+		// we must not change our process group ID if we're a session leader
+		if (is_session_leader(team))
+			return B_NOT_ALLOWED;
+
 		// lock the new process group and the team's current process group
 		while (true) {
 			// lock the team's current process group
 			team->LockProcessGroup();
 
 			ProcessGroup* oldGroup = team->group;
+			if (oldGroup == NULL) {
+				// This can only happen if the team is exiting.
+				ASSERT(team->state >= TEAM_STATE_SHUTDOWN);
+				return ESRCH;
+			}
+
 			if (oldGroup == group) {
 				// it's the same as the target group, so just bail out
 				oldGroup->Unlock();
@@ -4160,20 +4196,12 @@ _user_setpgid(pid_t processID, pid_t groupID)
 		TeamLocker teamLocker(team, true);
 
 		// perform the checks
-		if (team == currentTeam) {
-			// we set our own group
-
-			// we must not change our process group ID if we're a session leader
-			if (is_session_leader(currentTeam))
-				return B_NOT_ALLOWED;
-		} else {
+		if (team != currentTeam) {
 			// Calling team != target team. The target team must be a child of
 			// the calling team and in the same session. (If that's the case it
 			// isn't a session leader either.)
-			if (team->parent != currentTeam
-				|| team->session_id != currentTeam->session_id) {
+			if (team->session_id != currentTeam->session_id)
 				return B_NOT_ALLOWED;
-			}
 
 			// The call is also supposed to fail on a child, when the child has
 			// already executed exec*() [EACCES].
@@ -4324,8 +4352,14 @@ _user_exit_team(status_t returnValue)
 
 	// Stop the thread, if the team is being debugged and that has been
 	// requested.
+	// Note: GCC 13 marks the following call as potentially overflowing, since it thinks team may
+	//       be `nullptr`. This cannot be the case in reality, therefore ignore this specific
+	//       error.
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wstringop-overflow"
 	if ((atomic_get(&team->debug_info.flags) & B_TEAM_DEBUG_PREVENT_EXIT) != 0)
 		user_debug_stop_thread();
+	#pragma GCC diagnostic pop
 
 	// Send this thread a SIGKILL. This makes sure the thread will not return to
 	// userland. The signal handling code forwards the signal to the main
@@ -4343,17 +4377,20 @@ _user_kill_team(team_id team)
 
 
 status_t
-_user_get_team_info(team_id id, team_info* userInfo)
+_user_get_team_info(team_id id, team_info* userInfo, size_t size)
 {
 	status_t status;
 	team_info info;
 
+	if (size > sizeof(team_info))
+		return B_BAD_VALUE;
+
 	if (!IS_USER_ADDRESS(userInfo))
 		return B_BAD_ADDRESS;
 
-	status = _get_team_info(id, &info, sizeof(team_info));
+	status = _get_team_info(id, &info, size);
 	if (status == B_OK) {
-		if (user_memcpy(userInfo, &info, sizeof(team_info)) < B_OK)
+		if (user_memcpy(userInfo, &info, size) < B_OK)
 			return B_BAD_ADDRESS;
 	}
 
@@ -4362,23 +4399,26 @@ _user_get_team_info(team_id id, team_info* userInfo)
 
 
 status_t
-_user_get_next_team_info(int32* userCookie, team_info* userInfo)
+_user_get_next_team_info(int32* userCookie, team_info* userInfo, size_t size)
 {
 	status_t status;
 	team_info info;
 	int32 cookie;
+
+	if (size > sizeof(team_info))
+		return B_BAD_VALUE;
 
 	if (!IS_USER_ADDRESS(userCookie)
 		|| !IS_USER_ADDRESS(userInfo)
 		|| user_memcpy(&cookie, userCookie, sizeof(int32)) < B_OK)
 		return B_BAD_ADDRESS;
 
-	status = _get_next_team_info(&cookie, &info, sizeof(team_info));
+	status = _get_next_team_info(&cookie, &info, size);
 	if (status != B_OK)
 		return status;
 
 	if (user_memcpy(userCookie, &cookie, sizeof(int32)) < B_OK
-		|| user_memcpy(userInfo, &info, sizeof(team_info)) < B_OK)
+		|| user_memcpy(userInfo, &info, size) < B_OK)
 		return B_BAD_ADDRESS;
 
 	return status;
@@ -4423,6 +4463,15 @@ _user_get_extended_team_info(team_id teamID, uint32 flags, void* buffer,
 		return B_BAD_ADDRESS;
 	}
 
+	Team* team = Team::Get(teamID);
+	if (team == NULL)
+		return B_BAD_TEAM_ID;
+	BReference<Team> teamReference(team, true);
+
+	uid_t uid = geteuid();
+	if (uid != 0 && uid != team->effective_uid)
+		return B_NOT_ALLOWED;
+
 	KMessage info;
 
 	if ((flags & B_TEAM_INFO_BASIC) != 0) {
@@ -4440,12 +4489,7 @@ _user_get_extended_team_info(team_id teamID, uint32 flags, void* buffer,
 
 		io_context* ioContext;
 		{
-			// get the team structure
-			Team* team = Team::GetAndLock(teamID);
-			if (team == NULL)
-				return B_BAD_TEAM_ID;
-			BReference<Team> teamReference(team, true);
-			TeamLocker teamLocker(team, true);
+			TeamLocker teamLocker(team);
 
 			// copy the data
 			teamClone.id = team->id;
@@ -4480,7 +4524,7 @@ _user_get_extended_team_info(team_id teamID, uint32 flags, void* buffer,
 		dev_t cwdDevice;
 		ino_t cwdDirectory;
 		{
-			MutexLocker ioContextLocker(ioContext->io_mutex);
+			ReadLocker ioContextLocker(ioContext->lock);
 			vfs_vnode_to_node_ref(ioContext->cwd, &cwdDevice, &cwdDirectory);
 		}
 

@@ -1,4 +1,3 @@
-/*	$FreeBSD: releng/12.0/sys/dev/iwn/if_iwnvar.h 314923 2017-03-08 22:49:22Z avos $	*/
 /*	$OpenBSD: if_iwnvar.h,v 1.18 2010/04/30 16:06:46 damien Exp $	*/
 
 /*-
@@ -62,7 +61,7 @@ struct iwn_rx_radiotap_header {
 	uint16_t	wr_chan_flags;
 	int8_t		wr_dbm_antsignal;
 	int8_t		wr_dbm_antnoise;
-} __packed;
+} __packed __aligned(8);
 
 #define IWN_RX_RADIOTAP_PRESENT						\
 	((1 << IEEE80211_RADIOTAP_TSFT) |				\
@@ -100,6 +99,11 @@ struct iwn_tx_data {
 	bus_addr_t		scratch_paddr;
 	struct mbuf		*m;
 	struct ieee80211_node	*ni;
+	unsigned int		remapped:1;
+	unsigned int		long_retries:7;
+#define IWN_LONG_RETRY_FW_OVERFLOW	0x10
+#define IWN_LONG_RETRY_LIMIT_LOG	7
+#define IWN_LONG_RETRY_LIMIT		((1 << IWN_LONG_RETRY_LIMIT_LOG) - 3)
 };
 
 struct iwn_tx_ring {
@@ -138,8 +142,8 @@ struct iwn_node {
 	uint8_t				id;
 	struct {
 		uint64_t		bitmap;
+		int			short_retries;
 		int			startidx;
-		int			nframes;
 	} agg[IEEE80211_TID_SIZE];
 };
 

@@ -127,7 +127,6 @@ ExpanderWindow::ExpanderWindow(BRect frame, const entry_ref* ref,
 	fScrollView = new BScrollView("", fListingText,	B_INVALIDATE_AFTER_LAYOUT,
 		true, true);
 
-	const float spacing = be_control_look->DefaultItemSpacing();
 	BGroupLayout* pathLayout;
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.Add(fBar)
@@ -146,8 +145,7 @@ ExpanderWindow::ExpanderWindow(BRect frame, const entry_ref* ref,
 				.Add(fExpandButton)
 				.AddGroup(B_HORIZONTAL, B_USE_ITEM_SPACING)
 					.GetLayout(&pathLayout)
-					.Add(fShowContents = new BCheckBox(
-						B_TRANSLATE("Show contents"),
+					.Add(fShowContents = new BCheckBox(B_TRANSLATE("Show contents"),
 						new BMessage(MSG_SHOWCONTENTS)))
 					.Add(fStatusView = new StatusView())
 					.End()
@@ -158,14 +156,15 @@ ExpanderWindow::ExpanderWindow(BRect frame, const entry_ref* ref,
 
 	pathLayout->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
 	size = GetLayout()->View()->PreferredSize();
-	fSizeLimit = size.Height() - fScrollView->PreferredSize().height - spacing;
+	fSizeLimit = size.Height() - fScrollView->PreferredSize().height;
 
 	fStatusView->SetExplicitMinSize(BSize(50.0f, B_SIZE_UNSET));
 	fStatusView->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
 
-	ResizeTo(Bounds().Width(), fSizeLimit);
-	SetSizeLimits(size.Width(), 32767.0f, fSizeLimit, fSizeLimit);
-	SetZoomLimits(Bounds().Width(), fSizeLimit);
+	ResizeToPreferred();
+	SetSizeLimits(Size().Width(), 32767.0f, fSizeLimit, fSizeLimit);
+	SetZoomLimits(Size().Width(), fSizeLimit);
+	ResizeBy(be_plain_font->StringWidth("M") * 15, 0);
 	fPreviousHeight = -1;
 
 	fScrollView->Hide();
@@ -196,18 +195,18 @@ ExpanderWindow::ValidateDest()
 		BAlert* alert = new BAlert("destAlert",
 			B_TRANSLATE("Destination folder doesn't exist. "
 				"Would you like to create it?"),
-			B_TRANSLATE("Create"), B_TRANSLATE("Cancel"), NULL,
-			B_WIDTH_AS_USUAL, B_EVEN_SPACING, B_WARNING_ALERT);
+			B_TRANSLATE("Cancel"), B_TRANSLATE("Create"), NULL,
+			B_WIDTH_AS_USUAL, B_INFO_ALERT);
 		alert->SetShortcut(0, B_ESCAPE);
 
-		if (alert->Go() != 0)
+		if (alert->Go() == 0)
 			return false;
 
 		if (create_directory(fDestText->Text(), 0755) != B_OK) {
-			BAlert* alert = new BAlert("stopAlert",
+			BAlert* alert = new BAlert("destAlert",
 				B_TRANSLATE("Failed to create the destination folder."),
-				B_TRANSLATE("Cancel"), NULL, NULL,
-				B_WIDTH_AS_USUAL, B_EVEN_SPACING, B_WARNING_ALERT);
+				B_TRANSLATE("OK"), NULL, NULL,
+				B_WIDTH_AS_USUAL, B_WARNING_ALERT);
 			alert->SetFlags(alert->Flags() | B_CLOSE_ON_ESCAPE);
 			alert->Go();
 			return false;
@@ -216,14 +215,13 @@ ExpanderWindow::ValidateDest()
 		BEntry newEntry(fDestText->Text(), true);
 		newEntry.GetRef(&fDestRef);
 		return true;
-
 	}
 
 	if (!entry.IsDirectory()) {
 		BAlert* alert = new BAlert("destAlert",
 			B_TRANSLATE("The destination is not a folder."),
-			B_TRANSLATE("Cancel"), NULL, NULL,
-			B_WIDTH_AS_USUAL, B_EVEN_SPACING, B_WARNING_ALERT);
+			B_TRANSLATE("OK"), NULL, NULL,
+			B_WIDTH_AS_USUAL, B_WARNING_ALERT);
 		alert->SetFlags(alert->Flags() | B_CLOSE_ON_ESCAPE);
 		alert->Go();
 		return false;
@@ -232,8 +230,8 @@ ExpanderWindow::ValidateDest()
 	if (entry.GetVolume(&volume) != B_OK || volume.IsReadOnly()) {
 		BAlert* alert = new BAlert("destAlert",
 			B_TRANSLATE("The destination is read only."),
-			B_TRANSLATE("Cancel"), NULL, NULL, B_WIDTH_AS_USUAL,
-			B_EVEN_SPACING,	B_WARNING_ALERT);
+			B_TRANSLATE("OK"), NULL, NULL, B_WIDTH_AS_USUAL,
+			B_WARNING_ALERT);
 		alert->SetFlags(alert->Flags() | B_CLOSE_ON_ESCAPE);
 		alert->Go();
 		return false;

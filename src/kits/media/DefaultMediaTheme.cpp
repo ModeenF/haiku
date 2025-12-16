@@ -104,8 +104,21 @@ class ChannelSlider : public BChannelSlider {
 
 		virtual void AttachedToWindow();
 		virtual void DetachedFromWindow();
+		virtual void UpdateToolTip(int32 currentValue);
 	private:
 		BContinuousParameter &fParameter;
+};
+
+class TextControl : public BTextControl {
+	public:
+		TextControl(const char* name, const char* label,
+			BTextParameter &parameter);
+		virtual ~TextControl();
+
+		virtual void AttachedToWindow();
+		virtual void DetachedFromWindow();
+	private:
+		BTextParameter &fParameter;
 };
 
 class MessageFilter : public BMessageFilter {
@@ -140,6 +153,17 @@ class DiscreteMessageFilter : public MessageFilter {
 
 	private:
 		BDiscreteParameter	&fParameter;
+};
+
+class TextMessageFilter : public MessageFilter {
+	public:
+		TextMessageFilter(BControl *control, BTextParameter &parameter);
+		virtual ~TextMessageFilter();
+
+		virtual filter_result Filter(BMessage *message, BHandler **target);
+
+	private:
+		BTextParameter	&fParameter;
 };
 
 };
@@ -263,12 +287,8 @@ TitleView::Draw(BRect updateRect)
 	BRect rect(Bounds());
 	rect.left = (rect.Width() - StringWidth(fTitle)) / 2;
 
-	SetDrawingMode(B_OP_COPY);
-	SetHighColor(tint_color(ViewColor(), B_LIGHTEN_2_TINT));
-	DrawString(fTitle, BPoint(rect.left + 1, rect.bottom - 8));
-
 	SetDrawingMode(B_OP_OVER);
-	SetHighColor(80, 20, 20);
+	SetHighColor(mix_color(ui_color(B_PANEL_TEXT_COLOR), make_color(255, 0, 0), 100));
 	DrawString(fTitle, BPoint(rect.left, rect.bottom - 9));
 }
 
@@ -283,8 +303,7 @@ TitleView::GetPreferredSize(float *_width, float *_height)
 		font_height fontHeight;
 		GetFontHeight(&fontHeight);
 
-		*_height = fontHeight.ascent + fontHeight.descent + fontHeight.leading
-			+ 8;
+		*_height = fontHeight.ascent + fontHeight.descent + fontHeight.leading + 8;
 	}
 }
 
@@ -414,6 +433,45 @@ ChannelSlider::DetachedFromWindow()
 }
 
 
+void
+ChannelSlider::UpdateToolTip(int32 currentValue)
+{
+	BString valueString;
+	valueString.SetToFormat("%.1f", currentValue / 1000.0);
+	SetToolTip(valueString);
+}
+
+
+TextControl::TextControl(const char* name, const char* label,
+	BTextParameter &parameter)
+	: BTextControl(name, label, "", NULL),
+	fParameter(parameter)
+{
+}
+
+
+TextControl::~TextControl()
+{
+}
+
+
+void
+TextControl::AttachedToWindow()
+{
+	BTextControl::AttachedToWindow();
+
+	SetTarget(this);
+	start_watching_for_parameter_changes(this, fParameter);
+}
+
+
+void
+TextControl::DetachedFromWindow()
+{
+	stop_watching_for_parameter_changes(this, fParameter);
+}
+
+
 //	#pragma mark -
 
 
@@ -438,6 +496,10 @@ MessageFilter::FilterFor(BView *view, BParameter &parameter)
 		case BParameter::B_DISCRETE_PARAMETER:
 			return new DiscreteMessageFilter(control,
 				static_cast<BDiscreteParameter &>(parameter));
+
+		case BParameter::B_TEXT_PARAMETER:
+			return new TextMessageFilter(control,
+				static_cast<BTextParameter &>(parameter));
 
 		case BParameter::B_NULL_PARAMETER: /* fall through */
 		default:
@@ -643,6 +705,100 @@ DiscreteMessageFilter::Filter(BMessage *message, BHandler **target)
 	if (fParameter.SetValue((void *)&value, sizeof(value), -1) < B_OK) {
 		ERROR("DiscreteMessageFilter::Filter: Could not set parameter value for %p\n", &fParameter);
 		return B_DISPATCH_MESSAGE;
+	}
+
+	return B_SKIP_MESSAGE;
+}
+
+
+//	#pragma mark -
+
+
+TextMessageFilter::TextMessageFilter(BControl *control,
+		BTextParameter &parameter)
+	: MessageFilter(),
+	fParameter(parameter)
+{
+	// initialize view for us
+	control->SetMessage(new BMessage(kMsgParameterChanged));
+
+	// set initial value
+	if (BTextControl *textControl = dynamic_cast<BTextControl *>(control)) {
+		size_t valueSize = parameter.MaxBytes();
+		char* value = new char[valueSize + 1];
+
+		if (parameter.GetValue((void *)value, &valueSize, NULL) < B_OK) {
+			ERROR("TextMessageFilter: Could not get value for text "
+				"parameter %p (name '%s', node %d)\n", &parameter,
+				parameter.Name(), (int)(parameter.Web()->Node().node));
+		} else {
+			textControl->SetText(value);
+		}
+
+		delete[] value;
+	}
+
+	ERROR("TextMessageFilter: unknown text parameter view\n");
+}
+
+
+TextMessageFilter::~TextMessageFilter()
+{
+}
+
+
+filter_result
+TextMessageFilter::Filter(BMessage *message, BHandler **target)
+{
+	BControl *control;
+
+	if ((control = dynamic_cast<BControl *>(*target)) == NULL)
+		return B_DISPATCH_MESSAGE;
+
+	if (message->what == B_MEDIA_NEW_PARAMETER_VALUE) {
+		TRACE("TextMessageFilter::Filter: Got a new parameter value\n");
+		const media_node* node;
+		int32 parameterID;
+		ssize_t size;
+		if (message->FindInt32("parameter", &parameterID) != B_OK
+			|| fParameter.ID() != parameterID
+			|| message->FindData("node", B_RAW_TYPE, (const void**)&node,
+					&size) != B_OK
+			|| fParameter.Web()->Node() != *node)
+			return B_DISPATCH_MESSAGE;
+
+		if (BTextControl *textControl = dynamic_cast<BTextControl *>(control)) {
+			size_t valueSize = fParameter.MaxBytes();
+			char* value = new char[valueSize + 1];
+			if (fParameter.GetValue((void *)value, &valueSize, NULL) < B_OK) {
+				ERROR("TextMessageFilter: Could not get value for text "
+					"parameter %p (name '%s', node %d)\n", &fParameter,
+					fParameter.Name(), (int)(fParameter.Web()->Node().node));
+			} else {
+				textControl->SetText(value);
+			}
+
+			delete[] value;
+
+			return B_SKIP_MESSAGE;
+		}
+
+		return B_DISPATCH_MESSAGE;
+	}
+
+	if (message->what != kMsgParameterChanged)
+		return B_DISPATCH_MESSAGE;
+
+	// update parameter value
+
+	if (BTextControl *textControl = dynamic_cast<BTextControl *>(control)) {
+		BString value = textControl->Text();
+		TRACE("TextMessageFilter::Filter: update view %s, value = %s\n",
+			control->Name(), value.String());
+		if (fParameter.SetValue((void *)value.String(), value.Length() + 1, -1) < B_OK) {
+			ERROR("TextMessageFilter::Filter: Could not set parameter value for %p\n", &fParameter);
+			return B_DISPATCH_MESSAGE;
+		}
 	}
 
 	return B_SKIP_MESSAGE;
@@ -888,6 +1044,13 @@ DefaultMediaTheme::MakeViewFor(BParameter *parameter)
 				int32(continuous.MaxValue() * 1000), continuous);
 
 			return slider;
+		}
+
+		case BParameter::B_TEXT_PARAMETER:
+		{
+			BTextParameter &text
+				= static_cast<BTextParameter &>(*parameter);
+			return new TextControl(text.Name(), text.Name(), text);
 		}
 
 		default:

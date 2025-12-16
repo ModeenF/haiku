@@ -1,12 +1,12 @@
 /* renice.c - unixish renice command for BeOs
- * (c) 2001, 2002, François Revol (mmu_man) for OpenBeOS
+ * (c) 2001, 2002, François Revol (mmu_man) for Haiku
  * released under the MIT licence.
  *
  * How did I live without it before ??? ;)
  * ChangeLog:
  * 04-25-2002 v1.2
- *  Cleanup for inclusion in OpenBeOS,
- *  Used the code to rewrite the 'prio' BeOS command for OpenBeOS.
+ *  Cleanup for inclusion in Haiku,
+ *  Used the code to rewrite the 'prio' BeOS command for Haiku.
  * 04-14-2002 v1.1
  *  Added -f upon suggestion from Idéfix on BeShare
  * 2001 v1.0
@@ -87,7 +87,6 @@ int main(int argc, char **argv)
 	bool use_be_prio = false;
 	bool next_is_prio = true;
 	bool next_is_increment = false;
-	bool use_increment = false;
 	bool find_by_name = false;
 	int i = 0;
 	int32 teamcookie = 0;
@@ -106,7 +105,6 @@ int main(int argc, char **argv)
 		} else if (!strcmp(argv[i], "-n")) {
 			next_is_prio = false;
 			next_is_increment = true;
-			use_increment = true;
 		} else if (!strcmp(argv[i], "-b")) {
 			use_be_prio = true;
 		} else if (!strcmp(argv[i], "-f")) {

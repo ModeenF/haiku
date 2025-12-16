@@ -18,8 +18,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: releng/12.0/sys/dev/ral/rt2860.c 327479 2018-01-02 00:07:28Z adrian $");
-
 /*-
  * Ralink Technology RT2860/RT3090/RT3390/RT3562/RT5390/RT5392 chipset driver
  * http://www.ralinktech.com/
@@ -228,8 +226,6 @@ static const struct {
 	RT5392_DEF_RF
 };
 
-static const uint8_t rt2860_chan_2ghz[] =
-	{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 };
 static const uint8_t rt2860_chan_5ghz[] =
 	{ 36, 38, 40, 44, 46, 48, 52, 54, 56, 60, 62, 64, 100, 102, 104,
 	  108, 110, 112, 116, 118, 120, 124, 126, 128, 132, 134, 136, 140,
@@ -505,7 +501,6 @@ rt2860_dma_map_addr(void *arg, bus_dma_segment_t *segs, int nseg, int error)
 
 	*(bus_addr_t *)arg = segs[0].ds_addr;
 }
-
 
 static int
 rt2860_alloc_tx_ring(struct rt2860_softc *sc, struct rt2860_tx_ring *ring)
@@ -1094,9 +1089,8 @@ rt2860_drain_stats_fifo(struct rt2860_softc *sc)
 		DPRINTFN(4, ("tx stat 0x%08x\n", stat));
 
 		wcid = (stat >> RT2860_TXQ_WCID_SHIFT) & 0xff;
-		if (wcid == 0xFF)
+		if (wcid > RT2860_WCID_MAX)
 			continue;
-
 		ni = sc->wcid2ni[wcid];
 
 		/* if no ACK was requested, no feedback is available */
@@ -1473,7 +1467,7 @@ rt2860_tx(struct rt2860_softc *sc, struct mbuf *m, struct ieee80211_node *ni)
 	bus_dma_segment_t *seg;
 	u_int hdrlen;
 	uint16_t qos, dur;
-	uint8_t type, qsel, mcs, pid, tid, qid;
+	uint8_t type, qsel, mcs, pid, qid;
 	int i, nsegs, ntxds, pad, rate, ridx, error;
 
 	/* the data pool contains at least one element, pick the first */
@@ -1510,10 +1504,8 @@ rt2860_tx(struct rt2860_softc *sc, struct mbuf *m, struct ieee80211_node *ni)
 	qid = M_WME_GETAC(m);
 	if (IEEE80211_QOS_HAS_SEQ(wh)) {
 		qos = ((const struct ieee80211_qosframe *)wh)->i_qos[0];
-		tid = qos & IEEE80211_QOS_TID;
 	} else {
 		qos = 0;
-		tid = 0;
 	}
 	ring = &sc->txq[qid];
 	ridx = ieee80211_legacy_rate_lookup(ic->ic_rt, rate);
@@ -1747,7 +1739,7 @@ rt2860_tx_raw(struct rt2860_softc *sc, struct mbuf *m,
 	bus_dma_segment_t *seg;
 	u_int hdrlen;
 	uint16_t dur;
-	uint8_t type, qsel, mcs, pid, tid, qid;
+	uint8_t qsel, mcs, pid, qid;
 	int i, nsegs, ntxds, pad, rate, ridx, error;
 
 	/* the data pool contains at least one element, pick the first */
@@ -1755,7 +1747,6 @@ rt2860_tx_raw(struct rt2860_softc *sc, struct mbuf *m,
 
 	wh = mtod(m, struct ieee80211_frame *);
 	hdrlen = ieee80211_hdrsize(wh);
-	type = wh->i_fc[0] & IEEE80211_FC0_TYPE_MASK;
 
 	/* Choose a TX rate index. */
 	rate = params->ibp_rate0;
@@ -1768,7 +1759,6 @@ rt2860_tx_raw(struct rt2860_softc *sc, struct mbuf *m,
 	}
 
 	qid = params->ibp_pri & 3;
-	tid = 0;
 	ring = &sc->txq[qid];
 
 	/* get MCS code from rate index */
@@ -2227,7 +2217,7 @@ static void
 rt2860_enable_mrr(struct rt2860_softc *sc)
 {
 #define CCK(mcs)	(mcs)
-#define OFDM(mcs)	(1 << 3 | (mcs))
+#define	OFDM(mcs)	(1U << 3 | (mcs))
 	RAL_WRITE(sc, RT2860_LG_FBK_CFG0,
 	    OFDM(6) << 28 |	/* 54->48 */
 	    OFDM(5) << 24 |	/* 48->36 */
@@ -2317,8 +2307,7 @@ rt2860_getradiocaps(struct ieee80211com *ic, int maxchans, int *nchans,
 	memset(bands, 0, sizeof(bands));
 	setbit(bands, IEEE80211_MODE_11B);
 	setbit(bands, IEEE80211_MODE_11G);
-	ieee80211_add_channel_list_2ghz(chans, maxchans, nchans,
-	    rt2860_chan_2ghz, nitems(rt2860_chan_2ghz), bands, 0);
+	ieee80211_add_channels_default_2ghz(chans, maxchans, nchans, bands, 0);
 
 	if (sc->rf_rev == RT2860_RF_2750 || sc->rf_rev == RT2860_RF_2850) {
 		setbit(bands, IEEE80211_MODE_11A);
@@ -2596,7 +2585,7 @@ rt5390_set_chan(struct rt2860_softc *sc, u_int chan)
 	rf = MIN(rf, 0x5f);
 	if (tmp != rf)
 		rt2860_mcu_cmd(sc, 0x74, (tmp << 8 ) | rf, 0);
-	
+
 	if (sc->mac_ver == 0x5390) {
 		if (chan <= 4)
 			rf = 0x73;
@@ -3333,7 +3322,7 @@ b4inc(uint32_t b32, int8_t delta)
 			b4 = 0;
 		else if (b4 > 0xf)
 			b4 = 0xf;
-		b32 = b32 >> 4 | b4 << 28;
+		b32 = b32 >> 4 | (uint32_t)b4 << 28;
 	}
 	return b32;
 }

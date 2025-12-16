@@ -24,6 +24,7 @@
 #include "fssh_fs_volume.h"
 #include "fssh_kernel_export.h"
 #include "fssh_module.h"
+#include "fssh_node_monitor.h"
 #include "fssh_stat.h"
 #include "fssh_stdio.h"
 #include "fssh_string.h"
@@ -42,6 +43,7 @@
 #	define TRACE(x) ;
 #	define FUNCTION(x) ;
 #endif
+#	define CALLED() TRACE((__PRETTY_FUNCTION__));
 
 #define ADD_DEBUGGER_COMMANDS
 
@@ -590,7 +592,7 @@ remove_vnode_from_mount_list(struct vnode *vnode, struct fs_mount *mount)
 static fssh_status_t
 create_new_vnode(struct vnode **_vnode, fssh_mount_id mountID, fssh_vnode_id vnodeID)
 {
-	FUNCTION(("create_new_vnode()\n"));
+	CALLED();
 
 	struct vnode *vnode = (struct vnode *)malloc(sizeof(struct vnode));
 	if (vnode == NULL)
@@ -637,7 +639,7 @@ free_vnode(struct vnode *vnode, bool reenter)
 	// will be discarded
 
 	if (!vnode->remove && HAS_FS_CALL(vnode, fsync))
-		FS_CALL_NO_PARAMS(vnode, fsync);
+		FS_CALL(vnode, fsync, false);
 
 	if (!vnode->unpublished) {
 		if (vnode->remove)
@@ -1151,7 +1153,7 @@ vnode_path_to_vnode(struct vnode *vnode, char *path, bool traverseLeafLink,
 		}
 
 		// If the new node is a symbolic link, resolve it (if we've been told to do it)
-		if (FSSH_S_ISLNK(vnode->type)
+		if (FSSH_S_ISLNK(nextVnode->type)
 			&& !(!traverseLeafLink && nextPath[0] == '\0')) {
 			fssh_size_t bufferSize;
 			char *buffer;
@@ -1171,8 +1173,12 @@ vnode_path_to_vnode(struct vnode *vnode, char *path, bool traverseLeafLink,
 			}
 
 			if (HAS_FS_CALL(nextVnode, read_symlink)) {
+				bufferSize--;
 				status = FS_CALL(nextVnode, read_symlink, buffer,
 					&bufferSize);
+				// null-terminate
+				if (status >= 0 && bufferSize < FSSH_B_PATH_NAME_LENGTH)
+					buffer[bufferSize] = '\0';
 			} else
 				status = FSSH_B_BAD_VALUE;
 
@@ -1400,7 +1406,7 @@ get_vnode_name(struct vnode *vnode, struct vnode *parent, char *name,
 	char buffer[sizeof(struct fssh_dirent) + FSSH_B_FILE_NAME_LENGTH];
 	struct fssh_dirent *dirent = (struct fssh_dirent *)buffer;
 
-	fssh_status_t status = get_vnode_name(vnode, parent, buffer, sizeof(buffer));
+	fssh_status_t status = get_vnode_name(vnode, parent, dirent, sizeof(buffer));
 	if (status != FSSH_B_OK)
 		return status;
 
@@ -1464,7 +1470,6 @@ dir_vnode_to_path(struct vnode *vnode, char *buffer, fssh_size_t bufferSize)
 		char nameBuffer[sizeof(struct fssh_dirent) + FSSH_B_FILE_NAME_LENGTH];
 		char *name = &((struct fssh_dirent *)nameBuffer)->d_name[0];
 		struct vnode *parentVnode;
-		fssh_vnode_id parentID;
 
 		// lookup the parent vnode
 		status = lookup_dir_entry(vnode, "..", &parentVnode);
@@ -1480,7 +1485,6 @@ dir_vnode_to_path(struct vnode *vnode, char *buffer, fssh_size_t bufferSize)
 		if (mountPoint) {
 			put_vnode(parentVnode);
 			parentVnode = mountPoint;
-			parentID = parentVnode->id;
 		}
 
 		bool hitRoot = (parentVnode == vnode);
@@ -1803,7 +1807,7 @@ common_file_io_vec_pages(int fd, const fssh_file_io_vec *fileVecs,
 		fssh_off_t fileOffset = fileVec.offset;
 		fssh_off_t fileLeft = fssh_min_c((uint64_t)fileVec.length, (uint64_t)bytesLeft);
 
-		TRACE(("FILE VEC [%lu] length %Ld\n", fileVecIndex, fileLeft));
+		TRACE(("FILE VEC [%lu] length %lld\n", fileVecIndex, fileLeft));
 
 		// process the complete fileVec
 		while (fileLeft > 0) {
@@ -1881,7 +1885,7 @@ extern "C" fssh_status_t
 fssh_new_vnode(fssh_fs_volume *volume, fssh_vnode_id vnodeID,
 	void *privateNode, fssh_fs_vnode_ops *ops)
 {
-	FUNCTION(("new_vnode(volume = %p (%ld), vnodeID = %Ld, node = %p)\n",
+	FUNCTION(("new_vnode(volume = %p (%ld), vnodeID = %lld, node = %p)\n",
 		volume, volume->id, vnodeID, privateNode));
 
 	if (privateNode == NULL)
@@ -1921,7 +1925,7 @@ extern "C" fssh_status_t
 fssh_publish_vnode(fssh_fs_volume *volume, fssh_vnode_id vnodeID,
 	void *privateNode, fssh_fs_vnode_ops *ops, int type, uint32_t flags)
 {
-	FUNCTION(("publish_vnode()\n"));
+	CALLED();
 
 	MutexLocker locker(sVnodeMutex);
 
@@ -2117,51 +2121,6 @@ fssh_get_vnode_removed(fssh_fs_volume *volume, fssh_vnode_id vnodeID, bool* remo
 }
 
 
-extern "C" fssh_status_t
-fssh_mark_vnode_busy(fssh_fs_volume* volume, fssh_vnode_id vnodeID, bool busy)
-{
-	fssh_mutex_lock(&sVnodeMutex);
-
-	struct vnode* vnode = lookup_vnode(volume->id, vnodeID);
-	if (vnode == NULL) {
-		fssh_mutex_unlock(&sVnodeMutex);
-		return FSSH_B_ENTRY_NOT_FOUND;
-	}
-
-	// are we trying to mark an already busy node busy again?
-	if (busy && vnode->busy) {
-		fssh_mutex_unlock(&sVnodeMutex);
-		return FSSH_B_BUSY;
-	}
-
-	vnode->busy = busy;
-
-	fssh_mutex_unlock(&sVnodeMutex);
-	return FSSH_B_OK;
-}
-
-
-extern "C" fssh_status_t
-fssh_change_vnode_id(fssh_fs_volume* volume, fssh_vnode_id vnodeID,
-	fssh_vnode_id newID)
-{
-	fssh_mutex_lock(&sVnodeMutex);
-
-	struct vnode* vnode = lookup_vnode(volume->id, vnodeID);
-	if (vnode == NULL) {
-		fssh_mutex_unlock(&sVnodeMutex);
-		return FSSH_B_ENTRY_NOT_FOUND;
-	}
-
-	hash_remove(sVnodeTable, vnode);
-	vnode->id = newID;
-	hash_insert(sVnodeTable, vnode);
-
-	fssh_mutex_unlock(&sVnodeMutex);
-	return FSSH_B_OK;
-}
-
-
 extern "C" fssh_fs_volume*
 fssh_volume_for_vnode(fssh_fs_vnode *_vnode)
 {
@@ -2206,6 +2165,54 @@ fssh_check_access_permissions(int accessMode, fssh_mode_t mode,
 	}
 
 	return (accessMode & ~permissions) == 0 ? FSSH_B_OK : FSSH_B_NOT_ALLOWED;
+}
+
+
+extern "C" fssh_status_t
+fssh_check_write_stat_permissions(fssh_gid_t nodeGroupID, fssh_uid_t nodeUserID,
+	fssh_mode_t nodeMode, uint32_t mask, const struct fssh_stat* stat)
+{
+	uid_t uid = fssh_geteuid();
+
+	// root has all permissions
+	if (uid == 0)
+		return FSSH_B_OK;
+
+	const bool hasWriteAccess = fssh_check_access_permissions(FSSH_W_OK,
+		nodeMode, nodeGroupID, nodeUserID) == FSSH_B_OK;
+
+	if ((mask & FSSH_B_STAT_SIZE) != 0) {
+		if (!hasWriteAccess)
+			return FSSH_B_NOT_ALLOWED;
+	}
+
+	if ((mask & FSSH_B_STAT_UID) != 0) {
+		if (nodeUserID == uid && stat->fssh_st_uid == uid) {
+			// No change.
+		} else
+			return FSSH_B_NOT_ALLOWED;
+	}
+
+	if ((mask & FSSH_B_STAT_GID) != 0) {
+		if (nodeUserID != uid)
+			return FSSH_B_NOT_ALLOWED;
+
+		if (fssh_getegid() != stat->fssh_st_gid)
+			return FSSH_B_NOT_ALLOWED;
+	}
+
+	if ((mask & FSSH_B_STAT_MODE) != 0) {
+		if (nodeUserID != uid)
+			return FSSH_B_NOT_ALLOWED;
+	}
+
+	if ((mask & (FSSH_B_STAT_CREATION_TIME | FSSH_B_STAT_MODIFICATION_TIME
+			| FSSH_B_STAT_CHANGE_TIME)) != 0) {
+		if (!hasWriteAccess && nodeUserID != uid)
+			return FSSH_B_NOT_ALLOWED;
+	}
+
+	return FSSH_B_OK;
 }
 
 
@@ -3165,7 +3172,7 @@ file_open_entry_ref(fssh_mount_id mountID, fssh_vnode_id directoryID, const char
 	if (name == NULL || *name == '\0')
 		return FSSH_B_BAD_VALUE;
 
-	FUNCTION(("file_open_entry_ref(ref = (%ld, %Ld, %s), openMode = %d)\n",
+	FUNCTION(("file_open_entry_ref(ref = (%ld, %lld, %s), openMode = %d)\n",
 		mountID, directoryID, name, openMode));
 
 	// get the vnode matching the entry_ref
@@ -3239,7 +3246,7 @@ file_read(struct file_descriptor *descriptor, fssh_off_t pos, void *buffer, fssh
 {
 	struct vnode *vnode = descriptor->u.vnode;
 
-	FUNCTION(("file_read: buf %p, pos %Ld, len %p = %ld\n", buffer, pos, length, *length));
+	FUNCTION(("file_read: buf %p, pos %lld, len %p = %ld\n", buffer, pos, length, *length));
 	return FS_CALL(vnode, read, descriptor->cookie, pos, buffer, length);
 }
 
@@ -3249,7 +3256,7 @@ file_write(struct file_descriptor *descriptor, fssh_off_t pos, const void *buffe
 {
 	struct vnode *vnode = descriptor->u.vnode;
 
-	FUNCTION(("file_write: buf %p, pos %Ld, len %p\n", buffer, pos, length));
+	FUNCTION(("file_write: buf %p, pos %lld, len %p\n", buffer, pos, length));
 	return FS_CALL(vnode, write, descriptor->cookie, pos, buffer, length);
 }
 
@@ -3259,7 +3266,7 @@ file_seek(struct file_descriptor *descriptor, fssh_off_t pos, int seekType)
 {
 	fssh_off_t offset;
 
-	FUNCTION(("file_seek(pos = %Ld, seekType = %d)\n", pos, seekType));
+	FUNCTION(("file_seek(pos = %lld, seekType = %d)\n", pos, seekType));
 	// ToDo: seek should fail for pipes and FIFOs...
 
 	switch (seekType) {
@@ -3310,7 +3317,7 @@ dir_create_entry_ref(fssh_mount_id mountID, fssh_vnode_id parentID, const char *
 	if (name == NULL || *name == '\0')
 		return FSSH_B_BAD_VALUE;
 
-	FUNCTION(("dir_create_entry_ref(dev = %ld, ino = %Ld, name = '%s', perms = %d)\n", mountID, parentID, name, perms));
+	FUNCTION(("dir_create_entry_ref(dev = %ld, ino = %lld, name = '%s', perms = %d)\n", mountID, parentID, name, perms));
 
 	status = get_vnode(mountID, parentID, &vnode, kernel);
 	if (status < FSSH_B_OK)
@@ -3661,7 +3668,7 @@ common_fcntl(int fd, int op, uint32_t argument, bool kernel)
 
 
 static fssh_status_t
-common_sync(int fd, bool kernel)
+common_sync(int fd, bool dataOnly, bool kernel)
 {
 	struct file_descriptor *descriptor;
 	struct vnode *vnode;
@@ -3674,7 +3681,7 @@ common_sync(int fd, bool kernel)
 		return FSSH_B_FILE_ERROR;
 
 	if (HAS_FS_CALL(vnode, fsync))
-		status = FS_CALL_NO_PARAMS(vnode, fsync);
+		status = FS_CALL(vnode, fsync, dataOnly);
 	else
 		status = FSSH_EOPNOTSUPP;
 
@@ -3697,7 +3704,7 @@ common_lock_node(int fd, bool kernel)
 
 	// We need to set the locking atomically - someone
 	// else might set one at the same time
-#ifdef __x86_64__
+#if UINTPTR_MAX == UINT64_MAX
 	if (fssh_atomic_test_and_set64((int64_t *)&vnode->mandatory_locked_by,
 			(fssh_addr_t)descriptor, 0) != 0)
 #else
@@ -3725,7 +3732,7 @@ common_unlock_node(int fd, bool kernel)
 
 	// We need to set the locking atomically - someone
 	// else might set one at the same time
-#ifdef __x86_64__
+#if UINTPTR_MAX == UINT64_MAX
 	if (fssh_atomic_test_and_set64((int64_t *)&vnode->mandatory_locked_by,
 			0, (fssh_addr_t)descriptor) != (int64_t)descriptor)
 #else
@@ -4174,7 +4181,7 @@ attr_read(struct file_descriptor *descriptor, fssh_off_t pos, void *buffer, fssh
 {
 	struct vnode *vnode = descriptor->u.vnode;
 
-	FUNCTION(("attr_read: buf %p, pos %Ld, len %p = %ld\n", buffer, pos, length, *length));
+	FUNCTION(("attr_read: buf %p, pos %lld, len %p = %ld\n", buffer, pos, length, *length));
 	if (!HAS_FS_CALL(vnode, read_attr))
 		return FSSH_EOPNOTSUPP;
 
@@ -4187,7 +4194,7 @@ attr_write(struct file_descriptor *descriptor, fssh_off_t pos, const void *buffe
 {
 	struct vnode *vnode = descriptor->u.vnode;
 
-	FUNCTION(("attr_write: buf %p, pos %Ld, len %p\n", buffer, pos, length));
+	FUNCTION(("attr_write: buf %p, pos %lld, len %p\n", buffer, pos, length));
 	if (!HAS_FS_CALL(vnode, write_attr))
 		return FSSH_EOPNOTSUPP;
 
@@ -4946,7 +4953,7 @@ fs_sync(fssh_dev_t device)
 				put_vnode(previousVnode);
 
 			if (HAS_FS_CALL(vnode, fsync))
-				FS_CALL_NO_PARAMS(vnode, fsync);
+				FS_CALL(vnode, fsync, false);
 
 			// the next vnode might change until we lock the vnode list again,
 			// but this vnode won't go away since we keep a reference to it.
@@ -5214,6 +5221,7 @@ _kern_open_entry_ref(fssh_dev_t device, fssh_ino_t inode, const char *name, int 
 int
 _kern_open(int fd, const char *path, int openMode, int perms)
 {
+	CALLED();
 	KPath pathBuffer(path, false, FSSH_B_PATH_NAME_LENGTH + 1);
 	if (pathBuffer.InitCheck() != FSSH_B_OK)
 		return FSSH_B_NO_MEMORY;
@@ -5286,7 +5294,7 @@ _kern_fcntl(int fd, int op, uint32_t argument)
 fssh_status_t
 _kern_fsync(int fd)
 {
-	return common_sync(fd, true);
+	return common_sync(fd, false, true);
 }
 
 

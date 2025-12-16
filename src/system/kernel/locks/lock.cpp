@@ -8,18 +8,26 @@
  */
 
 
-/*! Mutex and recursive_lock code */
+#include <debug.h>
 
+#if KDEBUG
+#define KDEBUG_STATIC static
+static status_t _mutex_lock(struct mutex* lock, void* locker);
+static void _mutex_unlock(struct mutex* lock);
+#else
+#define KDEBUG_STATIC
+#define mutex_lock		mutex_lock_inline
+#define mutex_unlock	mutex_unlock_inline
+#define mutex_trylock	mutex_trylock_inline
+#define mutex_lock_with_timeout	mutex_lock_with_timeout_inline
+#endif
 
 #include <lock.h>
 
 #include <stdlib.h>
 #include <string.h>
 
-#include <OS.h>
-
-#include <debug.h>
-#include <int.h>
+#include <interrupts.h>
 #include <kernel.h>
 #include <listeners.h>
 #include <scheduling_analysis.h>
@@ -240,13 +248,7 @@ recursive_lock_switch_from_read_lock(rw_lock* from, recursive_lock* to)
 		to->holder = thread;
 #endif
 	} else {
-#if KDEBUG_RW_LOCK_DEBUG
-		_rw_lock_write_unlock(from);
-#else
-		int32 oldCount = atomic_add(&from->count, -1);
-		if (oldCount >= RW_LOCK_WRITER_COUNT_BASE)
-			_rw_lock_read_unlock(from);
-#endif
+		rw_lock_read_unlock(from);
 	}
 
 	to->recursion++;
@@ -318,6 +320,7 @@ rw_lock_wait(rw_lock* lock, bool writer, InterruptsSpinLocker& locker)
 	status_t result = thread_block();
 
 	locker.Lock();
+	ASSERT(result != B_OK || waiter.thread == NULL);
 	return result;
 }
 
@@ -345,8 +348,8 @@ rw_lock_unblock(rw_lock* lock)
 
 		// unblock thread
 		thread_unblock(waiter->thread, B_OK);
-
 		waiter->thread = NULL;
+
 		return RW_LOCK_WRITER_COUNT_BASE;
 	}
 
@@ -362,7 +365,6 @@ rw_lock_unblock(rw_lock* lock)
 
 		// unblock thread
 		thread_unblock(waiter->thread, B_OK);
-
 		waiter->thread = NULL;
 	} while ((waiter = lock->waiters) != NULL && !waiter->writer);
 
@@ -419,9 +421,9 @@ rw_lock_destroy(rw_lock* lock)
 	InterruptsSpinLocker locker(lock->lock);
 
 #if KDEBUG
-	if (lock->waiters != NULL && thread_get_current_thread_id()
-			!= lock->holder) {
-		panic("rw_lock_destroy(): there are blocking threads, but the caller "
+	if ((atomic_get(&lock->count) != 0 || lock->waiters != NULL)
+			&& thread_get_current_thread_id() != lock->holder) {
+		panic("rw_lock_destroy(): lock is in use and the caller "
 			"doesn't hold the write lock (%p)", lock);
 
 		locker.Unlock();
@@ -447,7 +449,56 @@ rw_lock_destroy(rw_lock* lock)
 }
 
 
-#if !KDEBUG_RW_LOCK_DEBUG
+#if KDEBUG_RW_LOCK_DEBUG
+
+bool
+_rw_lock_is_read_locked(rw_lock* lock)
+{
+	if (lock->holder == thread_get_current_thread_id())
+		return true;
+
+	Thread* thread = thread_get_current_thread();
+	for (size_t i = 0; i < B_COUNT_OF(Thread::held_read_locks); i++) {
+		if (thread->held_read_locks[i] == lock)
+			return true;
+	}
+	return false;
+}
+
+
+static void
+_rw_lock_set_read_locked(rw_lock* lock)
+{
+	Thread* thread = thread_get_current_thread();
+	for (size_t i = 0; i < B_COUNT_OF(Thread::held_read_locks); i++) {
+		if (thread->held_read_locks[i] != NULL)
+			continue;
+
+		thread->held_read_locks[i] = lock;
+		return;
+	}
+
+	panic("too many read locks!");
+}
+
+
+static void
+_rw_lock_unset_read_locked(rw_lock* lock)
+{
+	Thread* thread = thread_get_current_thread();
+	for (size_t i = 0; i < B_COUNT_OF(Thread::held_read_locks); i++) {
+		if (thread->held_read_locks[i] != lock)
+			continue;
+
+		thread->held_read_locks[i] = NULL;
+		return;
+	}
+
+	panic("_rw_lock_unset_read_locked(): lock %p not read-locked by current thread", lock);
+}
+
+#endif
+
 
 status_t
 _rw_lock_read_lock(rw_lock* lock)
@@ -456,6 +507,14 @@ _rw_lock_read_lock(rw_lock* lock)
 	if (!gKernelStartup && !are_interrupts_enabled()) {
 		panic("_rw_lock_read_lock(): called with interrupts disabled for lock %p",
 			lock);
+	}
+#endif
+#if KDEBUG_RW_LOCK_DEBUG
+	int32 oldCount = atomic_add(&lock->count, 1);
+	if (oldCount < RW_LOCK_WRITER_COUNT_BASE) {
+		ASSERT_UNLOCKED_RW_LOCK(lock);
+		_rw_lock_set_read_locked(lock);
+		return B_OK;
 	}
 #endif
 
@@ -467,6 +526,10 @@ _rw_lock_read_lock(rw_lock* lock)
 		return B_OK;
 	}
 
+	// If we hold a read lock already, but some other thread is waiting
+	// for a write lock, then trying to read-lock again will deadlock.
+	ASSERT_UNLOCKED_RW_LOCK(lock);
+
 	// The writer that originally had the lock when we called atomic_add() might
 	// already have gone and another writer could have overtaken us. In this
 	// case the original writer set pending_readers, so we know that we don't
@@ -477,13 +540,23 @@ _rw_lock_read_lock(rw_lock* lock)
 		if (lock->count >= RW_LOCK_WRITER_COUNT_BASE)
 			lock->active_readers++;
 
+#if KDEBUG_RW_LOCK_DEBUG
+		_rw_lock_set_read_locked(lock);
+#endif
 		return B_OK;
 	}
 
 	ASSERT(lock->count >= RW_LOCK_WRITER_COUNT_BASE);
 
 	// we need to wait
-	return rw_lock_wait(lock, false, locker);
+	status_t status = rw_lock_wait(lock, false, locker);
+
+#if KDEBUG_RW_LOCK_DEBUG
+	if (status == B_OK)
+		_rw_lock_set_read_locked(lock);
+#endif
+
+	return status;
 }
 
 
@@ -497,6 +570,14 @@ _rw_lock_read_lock_with_timeout(rw_lock* lock, uint32 timeoutFlags,
 			"disabled for lock %p", lock);
 	}
 #endif
+#if KDEBUG_RW_LOCK_DEBUG
+	int32 oldCount = atomic_add(&lock->count, 1);
+	if (oldCount < RW_LOCK_WRITER_COUNT_BASE) {
+		ASSERT_UNLOCKED_RW_LOCK(lock);
+		_rw_lock_set_read_locked(lock);
+		return B_OK;
+	}
+#endif
 
 	InterruptsSpinLocker locker(lock->lock);
 
@@ -505,6 +586,8 @@ _rw_lock_read_lock_with_timeout(rw_lock* lock, uint32 timeoutFlags,
 		lock->owner_count++;
 		return B_OK;
 	}
+
+	ASSERT_UNLOCKED_RW_LOCK(lock);
 
 	// The writer that originally had the lock when we called atomic_add() might
 	// already have gone and another writer could have overtaken us. In this
@@ -516,6 +599,9 @@ _rw_lock_read_lock_with_timeout(rw_lock* lock, uint32 timeoutFlags,
 		if (lock->count >= RW_LOCK_WRITER_COUNT_BASE)
 			lock->active_readers++;
 
+#if KDEBUG_RW_LOCK_DEBUG
+		_rw_lock_set_read_locked(lock);
+#endif
 		return B_OK;
 	}
 
@@ -544,6 +630,9 @@ _rw_lock_read_lock_with_timeout(rw_lock* lock, uint32 timeoutFlags,
 	if (error == B_OK || waiter.thread == NULL) {
 		// We were unblocked successfully -- potentially our unblocker overtook
 		// us after we already failed. In either case, we've got the lock, now.
+#if KDEBUG_RW_LOCK_DEBUG
+		_rw_lock_set_read_locked(lock);
+#endif
 		return B_OK;
 	}
 
@@ -582,15 +671,27 @@ _rw_lock_read_lock_with_timeout(rw_lock* lock, uint32 timeoutFlags,
 void
 _rw_lock_read_unlock(rw_lock* lock)
 {
+#if KDEBUG_RW_LOCK_DEBUG
+	int32 oldCount = atomic_add(&lock->count, -1);
+	if (oldCount < RW_LOCK_WRITER_COUNT_BASE) {
+		_rw_lock_unset_read_locked(lock);
+		return;
+	}
+#endif
+
 	InterruptsSpinLocker locker(lock->lock);
 
 	// If we're still holding the write lock or if there are other readers,
 	// no-one can be woken up.
 	if (lock->holder == thread_get_current_thread_id()) {
-		ASSERT(lock->owner_count % RW_LOCK_WRITER_COUNT_BASE > 0);
+		ASSERT((lock->owner_count % RW_LOCK_WRITER_COUNT_BASE) > 0);
 		lock->owner_count--;
 		return;
 	}
+
+#if KDEBUG_RW_LOCK_DEBUG
+	_rw_lock_unset_read_locked(lock);
+#endif
 
 	if (--lock->active_readers > 0)
 		return;
@@ -603,8 +704,6 @@ _rw_lock_read_unlock(rw_lock* lock)
 
 	rw_lock_unblock(lock);
 }
-
-#endif	// !KDEBUG_RW_LOCK_DEBUG
 
 
 status_t
@@ -626,6 +725,8 @@ rw_lock_write_lock(rw_lock* lock)
 		lock->owner_count += RW_LOCK_WRITER_COUNT_BASE;
 		return B_OK;
 	}
+
+	ASSERT_UNLOCKED_RW_LOCK(lock);
 
 	// announce our claim
 	int32 oldCount = atomic_add(&lock->count, RW_LOCK_WRITER_COUNT_BASE);
@@ -674,6 +775,11 @@ _rw_lock_write_unlock(rw_lock* lock)
 	lock->holder = -1;
 	lock->owner_count = 0;
 
+#if KDEBUG_RW_LOCK_DEBUG
+	if (readerCount != 0)
+		_rw_lock_set_read_locked(lock);
+#endif
+
 	int32 oldCount = atomic_add(&lock->count, -RW_LOCK_WRITER_COUNT_BASE);
 	oldCount -= RW_LOCK_WRITER_COUNT_BASE;
 
@@ -721,6 +827,22 @@ dump_rw_lock_info(int argc, char** argv)
 	kprintf("  pending readers  %d\n", lock->pending_readers);
 	kprintf("  owner count:     %#" B_PRIx32 "\n", lock->owner_count);
 	kprintf("  flags:           %#" B_PRIx32 "\n", lock->flags);
+
+#if KDEBUG_RW_LOCK_DEBUG
+	kprintf("  reader threads:");
+	if (lock->active_readers > 0) {
+		ThreadListIterator iterator;
+		while (Thread* thread = iterator.Next()) {
+			for (size_t i = 0; i < B_COUNT_OF(Thread::held_read_locks); i++) {
+				if (thread->held_read_locks[i] == lock) {
+					kprintf(" %" B_PRId32, thread->id);
+					break;
+				}
+			}
+		}
+	}
+	kprintf("\n");
+#endif
 
 	kprintf("  waiting threads:");
 	rw_lock_waiter* waiter = lock->waiters;
@@ -774,7 +896,7 @@ mutex_destroy(mutex* lock)
 #if KDEBUG
 	if (lock->holder != -1 && thread_get_current_thread_id() != lock->holder) {
 		panic("mutex_destroy(): the lock (%p) is held by %" B_PRId32 ", not "
-			"by the caller", lock, lock->holder);
+			"by the caller @! bt %" B_PRId32, lock, lock->holder, lock->holder);
 		if (_mutex_lock(lock, &locker) != B_OK)
 			return;
 		locker.Lock();
@@ -859,19 +981,13 @@ mutex_switch_from_read_lock(rw_lock* from, mutex* to)
 
 	InterruptsSpinLocker locker(to->lock);
 
-#if KDEBUG_RW_LOCK_DEBUG
-	_rw_lock_write_unlock(from);
-#else
-	int32 oldCount = atomic_add(&from->count, -1);
-	if (oldCount >= RW_LOCK_WRITER_COUNT_BASE)
-		_rw_lock_read_unlock(from);
-#endif
+	rw_lock_read_unlock(from);
 
 	return mutex_lock_threads_locked(to, &locker);
 }
 
 
-status_t
+KDEBUG_STATIC status_t
 _mutex_lock(mutex* lock, void* _locker)
 {
 #if KDEBUG
@@ -900,8 +1016,9 @@ _mutex_lock(mutex* lock, void* _locker)
 	} else if (lock->holder == thread_get_current_thread_id()) {
 		panic("_mutex_lock(): double lock of %p by thread %" B_PRId32, lock,
 			lock->holder);
-	} else if (lock->holder == 0)
+	} else if (lock->holder == 0) {
 		panic("_mutex_lock(): using uninitialized lock %p", lock);
+	}
 #else
 	if ((lock->flags & MUTEX_FLAG_RELEASED) != 0) {
 		lock->flags &= ~MUTEX_FLAG_RELEASED;
@@ -929,13 +1046,16 @@ _mutex_lock(mutex* lock, void* _locker)
 #if KDEBUG
 	if (error == B_OK) {
 		ASSERT(lock->holder == waiter.thread->id);
+	} else {
+		// This should only happen when the mutex was destroyed.
+		ASSERT(waiter.thread == NULL);
 	}
 #endif
 	return error;
 }
 
 
-void
+KDEBUG_STATIC void
 _mutex_unlock(mutex* lock)
 {
 	InterruptsSpinLocker locker(lock->lock);
@@ -977,25 +1097,7 @@ _mutex_unlock(mutex* lock)
 }
 
 
-status_t
-_mutex_trylock(mutex* lock)
-{
-#if KDEBUG
-	InterruptsSpinLocker _(lock->lock);
-
-	if (lock->holder < 0) {
-		lock->holder = thread_get_current_thread_id();
-		return B_OK;
-	} else if (lock->holder == 0)
-		panic("_mutex_trylock(): using uninitialized lock %p", lock);
-	return B_WOULD_BLOCK;
-#else
-	return mutex_trylock(lock);
-#endif
-}
-
-
-status_t
+KDEBUG_STATIC status_t
 _mutex_lock_with_timeout(mutex* lock, uint32 timeoutFlags, bigtime_t timeout)
 {
 #if KDEBUG
@@ -1016,8 +1118,9 @@ _mutex_lock_with_timeout(mutex* lock, uint32 timeoutFlags, bigtime_t timeout)
 	} else if (lock->holder == thread_get_current_thread_id()) {
 		panic("_mutex_lock(): double lock of %p by thread %" B_PRId32, lock,
 			lock->holder);
-	} else if (lock->holder == 0)
+	} else if (lock->holder == 0) {
 		panic("_mutex_lock(): using uninitialized lock %p", lock);
+	}
 #else
 	if ((lock->flags & MUTEX_FLAG_RELEASED) != 0) {
 		lock->flags &= ~MUTEX_FLAG_RELEASED;
@@ -1092,6 +1195,62 @@ _mutex_lock_with_timeout(mutex* lock, uint32 timeoutFlags, bigtime_t timeout)
 	}
 
 	return error;
+}
+
+
+#undef mutex_trylock
+status_t
+mutex_trylock(mutex* lock)
+{
+#if KDEBUG
+	InterruptsSpinLocker _(lock->lock);
+
+	if (lock->holder < 0) {
+		lock->holder = thread_get_current_thread_id();
+		return B_OK;
+	} else if (lock->holder == 0) {
+		panic("_mutex_trylock(): using uninitialized lock %p", lock);
+	}
+	return B_WOULD_BLOCK;
+#else
+	return mutex_trylock_inline(lock);
+#endif
+}
+
+
+#undef mutex_lock
+status_t
+mutex_lock(mutex* lock)
+{
+#if KDEBUG
+	return _mutex_lock(lock, NULL);
+#else
+	return mutex_lock_inline(lock);
+#endif
+}
+
+
+#undef mutex_unlock
+void
+mutex_unlock(mutex* lock)
+{
+#if KDEBUG
+	_mutex_unlock(lock);
+#else
+	mutex_unlock_inline(lock);
+#endif
+}
+
+
+#undef mutex_lock_with_timeout
+status_t
+mutex_lock_with_timeout(mutex* lock, uint32 timeoutFlags, bigtime_t timeout)
+{
+#if KDEBUG
+	return _mutex_lock_with_timeout(lock, timeoutFlags, timeout);
+#else
+	return mutex_lock_with_timeout_inline(lock, timeoutFlags, timeout);
+#endif
 }
 
 

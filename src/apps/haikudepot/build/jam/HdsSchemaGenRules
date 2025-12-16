@@ -1,5 +1,5 @@
 # =====================================
-# Copyright 2019, Andrew Lindesay
+# Copyright 2019-2023, Andrew Lindesay
 # Distributed under the terms of the MIT License.
 # =====================================
 
@@ -37,14 +37,14 @@ rule HdsSchemaGenModel
 	SEARCH on $(2) = [ FDirName $(SUBDIR) server schema ] ;
 	SEARCH on $(3) = [ FDirName $(SUBDIR) build scripts ] ;
 
-	Clean $(1:D) ;
-	Depends $(1) : $(2) $(3) ;
+	MkDir1 $(1:D) ;
+	CleanDir clean : $(1:D) ;
+	Depends $(1) : $(2) $(3) $(1:D) ;
 	HdsSchemaGenModel1 $(1) : $(2) $(3) $(1:D) ;
 }
 
 actions HdsSchemaGenModel1
 {
-	mkdir -p $(2[3])
 	$(HOST_PYTHON) $(2[2]) -i $(2[1]) --outputdirectory $(2[3])
 	touch $(1)
 }
@@ -60,15 +60,15 @@ rule HdsSchemaGenBulkParser
 	SEARCH on $(2) = [ FDirName $(SUBDIR) server schema ] ;
 	SEARCH on $(3) = [ FDirName $(SUBDIR) build scripts ] ;
 
-	Clean $(1:D) ;
-	Depends $(1) : $(2) $(3) ;
+	MkDir1 $(1:D) ;
+	CleanDir clean : $(1:D) ;
+	Depends $(1) : $(2) $(3) $(1:D) ;
 	HdsSchemaGenBulkParser1 $(1) : $(2) $(3) $(1:D) ;
 }
 
 actions HdsSchemaGenBulkParser1
 {
-	mkdir -p $(2[3])
-	$(HOST_PYTHON) $(2[2]) -i $(2[1]) --outputdirectory $(2[3]) --supportbulkcontainer
+	$(HOST_PYTHON) $(2[2]) -i $(2[1]) --outputdirectory $(2[3])
 	touch $(1)
 }
 
@@ -83,14 +83,14 @@ rule HdsSchemaGenParser
 	SEARCH on $(2) = [ FDirName $(SUBDIR) server schema ] ;
 	SEARCH on $(3) = [ FDirName $(SUBDIR) build scripts ] ;
 
-	Clean $(1:D) ;
-	Depends $(1) : $(2) $(3) ;
+	MkDir1 $(1:D) ;
+	CleanDir clean : $(1:D) ;
+	Depends $(1) : $(2) $(3) $(1:D) ;
 	HdsSchemaGenParser1 $(1) : $(2) $(3) $(1:D) ;
 }
 
 actions HdsSchemaGenParser1
 {
-	mkdir -p $(2[3])
 	$(HOST_PYTHON) $(2[2]) -i $(2[1]) --outputdirectory $(2[3])
 	touch $(1)
 }
@@ -102,15 +102,14 @@ actions HdsSchemaGenParser1
 # output files and the target for a given python script run.
 
 # 1 : generated files (.h and .cpp)
-# 2 : target that will generate the generated files (dummy file)
+# 2 : target directory generated files will be placed in
+# 3 : target that will generate the generated files (dummy file)
 
 rule HdsSchemaGenAppSrcDependsOnGeneration {
-	local generatedSource ;
-	local applicationSource ;
-
-	MakeLocate $(1) : $(2:D) ;
-	Depends $(1) : $(2) ;
-	Clean $(1) ;
+	MakeLocate $(1) : $(2) ;
+	MkDir1 $(2) ;
+	Depends $(1) : $(2) $(3) ;
+	Clean clean : $(1) ;
 
 	# just in case the dummy file ends up being newer than the generated
 	# sources, update the modified timestamp on the generated files.

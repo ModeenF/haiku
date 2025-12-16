@@ -15,8 +15,6 @@
  * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- *
- * $FreeBSD: releng/12.0/sys/dev/ath/ath_hal/ah_internal.h 326695 2017-12-08 15:57:29Z pfg $
  */
 #ifndef _ATH_AH_INTERAL_H_
 #define _ATH_AH_INTERAL_H_
@@ -848,7 +846,6 @@ typedef struct {
 	uint16_t	ee_off;		/* eeprom offset */
 	uint16_t	ee_data;	/* write data */
 } HAL_DIAG_EEVAL;
-
 
 typedef struct {
 	u_int offset;		/* reg offset */

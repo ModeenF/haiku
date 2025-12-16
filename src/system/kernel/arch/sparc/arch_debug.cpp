@@ -24,13 +24,6 @@ arch_debug_contains_call(Thread *thread, const char *symbol,
 }
 
 
-void *
-arch_debug_get_caller(void)
-{
-	return NULL;
-}
-
-
 void
 arch_debug_save_registers(struct arch_debug_registers* registers)
 {
@@ -96,6 +89,13 @@ arch_debug_get_interrupt_pc(bool* _isSyscall)
 {
 	// TODO: Implement!
 	return NULL;
+}
+
+
+void
+arch_debug_snooze(bigtime_t duration)
+{
+	spin(duration);
 }
 
 

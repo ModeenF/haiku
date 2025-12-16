@@ -34,7 +34,6 @@
  * SUCH DAMAGE.
  * 
  * $DragonFly: src/sys/dev/netif/bwi/if_bwivar.h,v 1.14 2008/02/15 11:15:38 sephe Exp $
- * $FreeBSD: releng/12.0/sys/dev/bwi/if_bwivar.h 326022 2017-11-20 19:36:21Z pfg $
  */
 
 #ifndef _IF_BWIVAR_H
@@ -305,7 +304,7 @@ struct bwi_fw_iv {
 	union {
 		uint32_t	val32;
 		uint16_t	val16;
-	} 			iv_val;
+	} __packed		iv_val;
 } __packed;
 
 #define BWI_FW_IV_OFS_MASK	__BITS(14, 0)
@@ -513,7 +512,7 @@ struct bwi_tx_radiotap_hdr {
 	uint8_t		wt_rate;
 	uint16_t	wt_chan_freq;
 	uint16_t	wt_chan_flags;
-};
+} __packed;
 
 #define BWI_RX_RADIOTAP_PRESENT				\
 	((1 << IEEE80211_RADIOTAP_TSFT) |		\
@@ -533,7 +532,7 @@ struct bwi_rx_radiotap_hdr {
 	int8_t		wr_antsignal;
 	int8_t		wr_antnoise;
 	/* TODO: sq */
-};
+} __packed __aligned(8);
 
 struct bwi_vap {
 	struct ieee80211vap	bv_vap;

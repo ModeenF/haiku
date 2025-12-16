@@ -16,9 +16,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
@@ -46,7 +43,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/rtwn/if_rtwn_tx.h>
 
 #include <dev/rtwn/rtl8192c/r92c_reg.h>
-
 
 static void
 rtwn_reset_beacon_valid(struct rtwn_softc *sc, int id)

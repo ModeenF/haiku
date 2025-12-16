@@ -47,7 +47,7 @@ PersonView::PersonView(const char* name, const char* categoryAttribute,
 	BGridView(),
 	fLastModificationTime(0),
 	fGroups(NULL),
-	fControls(20, false),
+	fControls(20),
 	fCategoryAttribute(categoryAttribute),
 	fPictureView(NULL),
 	fSaving(false)
@@ -166,6 +166,8 @@ PersonView::MessageReceived(BMessage* msg)
 			break;
 		}
 
+		default:
+			BGridView::MessageReceived(msg);
 	}
 }
 
@@ -386,8 +388,10 @@ PersonView::SetAttribute(const char* attribute, const char* value,
 		}
 	}
 
-	if (control == NULL)
+	if (control == NULL) {
+		UnlockLooper();
 		return;
+	}
 
 	if (update) {
 		control->SetText(value);

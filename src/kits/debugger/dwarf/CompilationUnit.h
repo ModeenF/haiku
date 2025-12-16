@@ -24,7 +24,8 @@ public:
 									off_t contentOffset,
 									off_t totalSize,
 									off_t abbreviationOffset,
-									uint8 addressSize, bool isDwarf64);
+									uint8 addressSize, bool isBigEndian,
+									bool isDwarf64);
 	virtual						~CompilationUnit();
 
 	inline	target_addr_t		MaxAddress() const;
@@ -55,8 +56,8 @@ public:
 
 private:
 			struct File;
-			typedef BObjectList<BString> DirectoryList;
-			typedef BObjectList<File> FileList;
+			typedef BObjectList<BString, true> DirectoryList;
+			typedef BObjectList<File, true> FileList;
 
 private:
 			DIECompileUnitBase*	fUnitEntry;

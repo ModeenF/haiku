@@ -1,7 +1,6 @@
-1	friulian	x-vnd.Haiku-Network	543099905
+1	friulian	x-vnd.Haiku-Network	3807978621
 Ethernet device	InterfaceListItem		Dispositîf ethernet
 Link speed:	IntefaceView		Velocitât colegament:
-disconnected	IntefaceView		disconetût
 WPA	WPA protected network		WPA
 Network:	IntefaceView		Rêt:
 Received:	IntefaceView		Ricevûts:
@@ -18,7 +17,7 @@ Netmask:	IntefaceAddressView		Mascare di rêt:
 EAP	EAP protected network		EAP
 Services	NetworkWindow		Servizis
 Installing NetworkStatus in Deskbar failed: %s	NetworkWindow		Instalazion di “Stât de Rêt” tal Deskbar falide: %s
-Revert	NetworkWindow		Torne indaûr
+Revert	NetworkWindow		Ripristine
 off	ServiceListItem		off
 WEP	WEP protected network		WEP
 <no wireless networks found>	IntefaceView		<nissune rêt cence fîi cjatade>
@@ -46,7 +45,7 @@ Choose automatically	IntefaceView		Sielç in automatic
 Status:	IntefaceView		Stât:
 Disable	IntefaceView		Disabilite
 Manage…	NetworkWindow		Gjestìs…
-open	Open network		vierç
+open	Open network		vierte
 Network	System name		Rêt
 Your gateway to the internet	IntefaceAddressView		Il to gateway par internet
 Enable	ServiceView		Abilite

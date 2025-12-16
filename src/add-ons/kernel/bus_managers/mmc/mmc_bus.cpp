@@ -49,16 +49,20 @@ MMCBus::~MMCBus()
 {
 	CALLED();
 
-	// stop worker thread
+	// Tell the worker thread we want to stop
 	fStatus = B_SHUTTING_DOWN;
 
+	// Delete the semaphores (this will unlock the worker thread if it was
+	// waiting on them)
+	delete_sem(fScanSemaphore);
+	delete_sem(fLockSemaphore);
+
+	// Wait for the worker thread to terminate
 	status_t result;
 	if (fWorkerThread != 0)
 		wait_for_thread(fWorkerThread, &result);
-	// TODO power off cards, stop clock, etc if needed.
 
-	delete_sem(fLockSemaphore);
-	delete_sem(fScanSemaphore);
+	// TODO power off cards, stop clock, etc if needed.
 }
 
 
@@ -159,6 +163,13 @@ MMCBus::_WorkerThread(void* cookie)
 	do {
 		bus->_AcquireScanSemaphore();
 
+		// Check if we need to exit early (possible if the parent device did
+		// not manage initialize itself correctly)
+		if (bus->fStatus == B_SHUTTING_DOWN) {
+			release_sem(bus->fLockSemaphore);
+			return B_OK;
+		}
+
 		TRACE("Reset the bus...\n");
 		result = bus->ExecuteCommand(0, SD_GO_IDLE_STATE, 0, NULL);
 		TRACE("CMD0 result: %s\n", strerror(result));
@@ -250,7 +261,9 @@ MMCBus::_WorkerThread(void* cookie)
 		// (and a matching published device on our side).
 		uint32_t cid[4];
 		
-		while (bus->ExecuteCommand(0, SD_ALL_SEND_CID, 0, cid) == B_OK) {
+		// This being an if statement as opposed to a while statement restricts
+		// it to one device per bus.
+		if (bus->ExecuteCommand(0, SD_ALL_SEND_CID, 0, cid) == B_OK) {
 			bus->ExecuteCommand(0, SD_SEND_RELATIVE_ADDR, 0, &response);
 
 			TRACE("RCA: %x Status: %x\n", response >> 16, response & 0xFFFF);
@@ -278,16 +291,16 @@ MMCBus::_WorkerThread(void* cookie)
 			uint16_t rca = response >> 16;
 				
 			device_attr attrs[] = {
-				{ B_DEVICE_BUS, B_STRING_TYPE, {string: "mmc" }},
-				{ B_DEVICE_PRETTY_NAME, B_STRING_TYPE, {string: "mmc device" }},
-				{ B_DEVICE_VENDOR_ID, B_UINT32_TYPE, {ui32: vendor}},
-				{ B_DEVICE_ID, B_STRING_TYPE, {string: name}},
-				{ B_DEVICE_UNIQUE_ID, B_UINT32_TYPE, {ui32: serial}},
-				{ "mmc/revision", B_UINT16_TYPE, {ui16: revision}},
-				{ "mmc/month", B_UINT8_TYPE, {ui8: month}},
-				{ "mmc/year", B_UINT16_TYPE, {ui16: year}},
-				{ kMmcRcaAttribute, B_UINT16_TYPE, {ui16: rca}},
-				{ kMmcTypeAttribute, B_UINT8_TYPE, {ui8: cardType}},
+				{ B_DEVICE_BUS, B_STRING_TYPE, {.string = "mmc" }},
+				{ B_DEVICE_PRETTY_NAME, B_STRING_TYPE, {.string = "mmc device" }},
+				{ B_DEVICE_VENDOR_ID, B_UINT32_TYPE, {.ui32 = vendor}},
+				{ B_DEVICE_ID, B_STRING_TYPE, {.string = name}},
+				{ B_DEVICE_UNIQUE_ID, B_UINT32_TYPE, {.ui32 = serial}},
+				{ "mmc/revision", B_UINT16_TYPE, {.ui16 = revision}},
+				{ "mmc/month", B_UINT8_TYPE, {.ui8 = month}},
+				{ "mmc/year", B_UINT16_TYPE, {.ui16 = year}},
+				{ kMmcRcaAttribute, B_UINT16_TYPE, {.ui16 = rca}},
+				{ kMmcTypeAttribute, B_UINT8_TYPE, {.ui8 = cardType}},
 				{}
 			};
 

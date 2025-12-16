@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2020, Axel Dörfler, axeld@pinc-software.de.
+ * Copyright 2001-2025, Axel Dörfler, axeld@pinc-software.de.
  * This file may be used under the terms of the MIT License.
  */
 
@@ -39,7 +39,7 @@ public:
 
 	virtual void AddDump(TraceOutput& out)
 	{
-		out.Print("bfs:Create %Ld (%p), parent %Ld (%p), \"%s\", "
+		out.Print("bfs:Create %lld (%p), parent %lld (%p), \"%s\", "
 			"mode %lx, omode %x, type %lx", fID, fInode, fParentID,
 			fParent, fName, fMode, fOpenMode, fType);
 	}
@@ -68,7 +68,7 @@ public:
 
 	virtual void AddDump(TraceOutput& out)
 	{
-		out.Print("bfs:Remove %Ld (%p), \"%s\"", fID, fInode, fName);
+		out.Print("bfs:Remove %lld (%p), \"%s\"", fID, fInode, fName);
 	}
 
 private:
@@ -90,7 +90,7 @@ public:
 
 	virtual void AddDump(TraceOutput& out)
 	{
-		out.Print("bfs:%s %Ld (%p)\n", fAction, fID, fInode);
+		out.Print("bfs:%s %lld (%p)\n", fAction, fID, fInode);
 	}
 
 private:
@@ -114,7 +114,7 @@ public:
 
 	virtual void AddDump(TraceOutput& out)
 	{
-		out.Print("bfs:%s %Ld (%p), %Ld -> %Ld", fTrim ? "Trim" : "Resize",
+		out.Print("bfs:%s %lld (%p), %lld -> %lld", fTrim ? "Trim" : "Resize",
 			fID, fInode, fOldSize, fNewSize);
 	}
 
@@ -481,7 +481,7 @@ Inode::WriteLockInTransaction(Transaction& transaction)
 	if ((Flags() & INODE_DELETED) != 0)
 		fVolume->RemovedInodes().Remove(this);
 
-	if (!fVolume->IsInitializing())
+	if (!fVolume->IsInitializing() && this != fVolume->IndicesNode())
 		acquire_vnode(fVolume->FSVolume(), ID());
 
 	rw_lock_write_lock(&Lock());
@@ -582,7 +582,7 @@ Inode::_MakeSpaceForSmallData(Transaction& transaction, bfs_inode* node,
 				break;
 		}
 
-		if (item->IsLast(node) || (int32)item->Size() < bytes)
+		if (item->IsLast(node) || (int32)item->Size() < bytes || max == NULL)
 			return B_ERROR;
 
 		bytes -= max->Size();
@@ -649,7 +649,7 @@ Inode::_RemoveSmallData(bfs_inode* node, small_data* item, int32 index)
 		memset(item, 0, item->Size());
 
 	// update all current iterators
-	SinglyLinkedList<AttributeIterator>::Iterator iterator
+	SinglyLinkedList<AttributeIterator>::ConstIterator iterator
 		= fIterators.GetIterator();
 	while (iterator.HasNext()) {
 		iterator.Next()->Update(index, -1);
@@ -853,7 +853,7 @@ Inode::_AddSmallData(Transaction& transaction, NodeGetter& nodeGetter,
 		memset(item, 0, (uint8*)node + fVolume->InodeSize() - (uint8*)item);
 
 	// update all current iterators
-	SinglyLinkedList<AttributeIterator>::Iterator iterator
+	SinglyLinkedList<AttributeIterator>::ConstIterator iterator
 		= fIterators.GetIterator();
 	while (iterator.HasNext()) {
 		iterator.Next()->Update(index, 1);
@@ -2509,7 +2509,7 @@ Inode::RemovedFromTransaction()
 
 	rw_lock_write_unlock(&Lock());
 
-	if (!fVolume->IsInitializing())
+	if (!fVolume->IsInitializing() && this != fVolume->IndicesNode())
 		put_vnode(fVolume->FSVolume(), ID());
 }
 
@@ -2669,8 +2669,7 @@ Inode::Create(Transaction& transaction, Inode* parent, const char* name,
 				return B_NOT_A_DIRECTORY;
 
 			// we want to open the file, so we should have the rights to do so
-			if (inode->CheckPermissions(open_mode_to_access(openMode)
-					| ((openMode & O_TRUNC) != 0 ? W_OK : 0)) != B_OK)
+			if (inode->CheckPermissions(open_mode_to_access(openMode)) != B_OK)
 				return B_NOT_ALLOWED;
 
 			if ((openMode & O_TRUNC) != 0) {
@@ -2834,6 +2833,31 @@ Inode::Create(Transaction& transaction, Inode* parent, const char* name,
 	// if either _id or _inode is passed, we will keep the inode locked
 	if (_id == NULL && _inode == NULL)
 		put_vnode(volume->FSVolume(), inode->ID());
+
+	return B_OK;
+}
+
+
+status_t
+Inode::CopyBlockTo(Transaction& transaction, off_t targetBlock)
+{
+	CachedBlock target(fVolume);
+	status_t status = target.SetToWritable(transaction, targetBlock, true);
+	if (status != B_OK)
+		RETURN_ERROR(status);
+
+	CachedBlock source(fVolume);
+	status = source.SetTo(fID);
+	if (status != B_OK)
+		return status;
+
+	uint8* targetData = (uint8*)target.WritableBlock();
+	const uint8* sourceData = source.Block();
+	memcpy(targetData, sourceData, fVolume->BlockSize());
+
+	// update inode ID in target block
+	bfs_inode* targetNode = (bfs_inode*)target.Block();
+	targetNode->inode_num = fVolume->ToBlockRun(targetBlock);
 
 	return B_OK;
 }

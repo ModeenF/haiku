@@ -19,7 +19,7 @@
 #include "AlphaMask.h"
 #include "DrawingEngine.h"
 #include "DrawState.h"
-#include "FontManager.h"
+#include "GlobalFontManager.h"
 #include "Layer.h"
 #include "ServerApp.h"
 #include "ServerBitmap.h"
@@ -323,17 +323,14 @@ draw_round_rect(void* _canvas, const BRect& _rect, const BPoint& radii,
 
 
 static void
-draw_bezier(void* _canvas, size_t numPoints, const BPoint viewPoints[],
-	bool fill)
+draw_bezier(void* _canvas, const BPoint viewPoints[4], bool fill)
 {
 	Canvas* const canvas = reinterpret_cast<Canvas*>(_canvas);
 
-	const size_t kSupportedPoints = 4;
-	if (numPoints != kSupportedPoints)
-		return;
+	const size_t kNumPoints = 4;
 
-	BPoint points[kSupportedPoints];
-	canvas->PenToScreenTransform().Apply(points, viewPoints, kSupportedPoints);
+	BPoint points[kNumPoints];
+	canvas->PenToScreenTransform().Apply(points, viewPoints, kNumPoints);
 	canvas->GetDrawingEngine()->DrawBezier(points, fill);
 }
 
@@ -429,19 +426,16 @@ draw_round_rect_gradient(void* _canvas, const BRect& _rect, const BPoint& radii,
 
 
 static void
-draw_bezier_gradient(void* _canvas, size_t numPoints, const BPoint viewPoints[], BGradient& gradient,
-	bool fill)
+draw_bezier_gradient(void* _canvas, const BPoint viewPoints[4], BGradient& gradient, bool fill)
 {
 	Canvas* const canvas = reinterpret_cast<Canvas*>(_canvas);
 
-	const size_t kSupportedPoints = 4;
-	if (numPoints != kSupportedPoints)
-		return;
+	const size_t kNumPoints = 4;
 
-	BPoint points[kSupportedPoints];
+	BPoint points[kNumPoints];
 	const SimpleTransform transform =
 		canvas->PenToScreenTransform();
-	transform.Apply(points, viewPoints, kSupportedPoints);
+	transform.Apply(points, viewPoints, kNumPoints);
 	transform.Apply(&gradient);
 	canvas->GetDrawingEngine()->FillBezier(points, gradient);
 }
@@ -605,7 +599,7 @@ draw_picture(void* _canvas, const BPoint& where, int32 token)
 
 
 static void
-set_clipping_rects(void* _canvas, size_t numRects, const BRect rects[])
+set_clipping_rects(void* _canvas, size_t numRects, const clipping_rect rects[])
 {
 	Canvas* const canvas = reinterpret_cast<Canvas*>(_canvas);
 
@@ -790,9 +784,11 @@ set_font_family(void* _canvas, const char* _family, size_t length)
 	Canvas* const canvas = reinterpret_cast<Canvas*>(_canvas);
 	BString family(_family, length);
 
+	gFontManager->Lock();
 	FontStyle* fontStyle = gFontManager->GetStyleByIndex(family, 0);
 	ServerFont font;
 	font.SetStyle(fontStyle);
+	gFontManager->Unlock();
 	canvas->CurrentState()->SetFont(font, B_FONT_FAMILY_AND_STYLE);
 }
 
@@ -805,9 +801,11 @@ set_font_style(void* _canvas, const char* _style, size_t length)
 
 	ServerFont font(canvas->CurrentState()->Font());
 
+	gFontManager->Lock();
 	FontStyle* fontStyle = gFontManager->GetStyle(font.Family(), style);
 
 	font.SetStyle(fontStyle);
+	gFontManager->Unlock();
 	canvas->CurrentState()->SetFont(font, B_FONT_FAMILY_AND_STYLE);
 }
 

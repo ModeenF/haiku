@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (c) 2011 Adrian Chadd, Xenion Pty Ltd.
  * All rights reserved.
@@ -30,8 +30,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: releng/12.0/sys/dev/ath/if_ath_tx_ht.c 326255 2017-11-27 14:52:40Z pfg $");
-
 #include "opt_inet.h"
 #include "opt_ath.h"
 #include "opt_wlan.h"
@@ -406,7 +404,6 @@ static int
 ath_compute_num_delims(struct ath_softc *sc, struct ath_buf *first_bf,
     uint16_t pktlen, int is_first)
 {
-#define	MS(_v, _f)	(((_v) & _f) >> _f##_S)
 	const HAL_RATE_TABLE *rt = sc->sc_currates;
 	struct ieee80211_node *ni = first_bf->bf_node;
 	struct ieee80211vap *vap = ni->ni_vap;
@@ -421,7 +418,8 @@ ath_compute_num_delims(struct ath_softc *sc, struct ath_buf *first_bf,
 	/*
 	 * Get the advertised density from the node.
 	 */
-	peer_mpdudensity = MS(ni->ni_htparam, IEEE80211_HTCAP_MPDUDENSITY);
+	peer_mpdudensity =
+	    _IEEE80211_MASKSHIFT(ni->ni_htparam, IEEE80211_HTCAP_MPDUDENSITY);
 
 	/*
 	 * vap->iv_ampdu_density is a net80211 value, rather than the actual
@@ -457,7 +455,7 @@ ath_compute_num_delims(struct ath_softc *sc, struct ath_buf *first_bf,
 	ndelim += ATH_AGGR_ENCRYPTDELIM;
 
 	/*
-	 * For AR9380, there's a minimum number of delimeters
+	 * For AR9380, there's a minimum number of delimiters
 	 * required when doing RTS.
 	 *
 	 * XXX TODO: this is only needed if (a) RTS/CTS is enabled for
@@ -528,7 +526,6 @@ ath_compute_num_delims(struct ath_softc *sc, struct ath_buf *first_bf,
 	    __func__, pktlen, minlen, rix, rc, width, half_gi, ndelim);
 
 	return ndelim;
-#undef	MS
 }
 
 /*
@@ -568,7 +565,6 @@ ath_get_aggr_limit(struct ath_softc *sc, struct ieee80211_node *ni,
 {
 	struct ieee80211vap *vap = ni->ni_vap;
 
-#define	MS(_v, _f)	(((_v) & _f) >> _f##_S)
 	int amin = ATH_AGGR_MAXSIZE;
 	int i;
 
@@ -583,8 +579,8 @@ ath_get_aggr_limit(struct ath_softc *sc, struct ieee80211_node *ni,
 	 * Check the HTCAP field for the maximum size the node has
 	 * negotiated.  If it's smaller than what we have, cap it there.
 	 */
-	amin = MIN(amin, ath_rx_ampdu_to_byte(MS(ni->ni_htparam,
-	    IEEE80211_HTCAP_MAXRXAMPDU)));
+	amin = MIN(amin, ath_rx_ampdu_to_byte(
+	    _IEEE80211_MASKSHIFT(ni->ni_htparam, IEEE80211_HTCAP_MAXRXAMPDU)));
 
 	for (i = 0; i < ATH_RC_NUM; i++) {
 		if (bf->bf_state.bfs_rc[i].tries == 0)
@@ -598,11 +594,10 @@ ath_get_aggr_limit(struct ath_softc *sc, struct ieee80211_node *ni,
 	    __func__,
 	    sc->sc_aggr_limit,
 	    vap->iv_ampdu_limit,
-	    MS(ni->ni_htparam, IEEE80211_HTCAP_MAXRXAMPDU),
+	    _IEEE80211_MASKSHIFT(ni->ni_htparam, IEEE80211_HTCAP_MAXRXAMPDU),
 	    amin);
 
 	return amin;
-#undef	MS
 }
 
 /*
@@ -840,16 +835,25 @@ ath_tx_form_aggr(struct ath_softc *sc, struct ath_node *an,
 		goto finish;
 	}
 
+	/*
+	 * Limit the maximum number of frames in this A-MPDU
+	 * to half of the window size.  This is done to prevent
+	 * sending a LOT of frames that may fail in one batch
+	 * when operating in higher MCS rates.  If there are more
+	 * frames available to send then up to two A-MPDUs will
+	 * be queued per hardware queue, so we'll "just" get
+	 * a second A-MPDU.
+	 */
 	h_baw = tap->txa_wnd / 2;
 
 	for (;;) {
 		bf = ATH_TID_FIRST(tid);
-		if (bf_first == NULL)
-			bf_first = bf;
 		if (bf == NULL) {
 			status = ATH_AGGR_DONE;
 			break;
-		} else {
+		}
+		if (bf_first == NULL) {
+			bf_first = bf;
 			/*
 			 * It's the first frame;
 			 * set the aggregation limit based on the
@@ -857,6 +861,10 @@ ath_tx_form_aggr(struct ath_softc *sc, struct ath_node *an,
 			 */
 			aggr_limit = ath_get_aggr_limit(sc, &an->an_node,
 			    bf_first);
+			if (bf_first->bf_state.bfs_rc_maxpktlen > 0) {
+				aggr_limit = MIN(aggr_limit,
+				    bf_first->bf_state.bfs_rc_maxpktlen);
+			}
 		}
 
 		/* Set this early just so things don't get confused */
@@ -1013,7 +1021,6 @@ ath_tx_form_aggr(struct ath_softc *sc, struct ath_node *an,
 			break;
 		}
 #endif
-
 	}
 
 finish:
@@ -1022,6 +1029,10 @@ finish:
 	 * dequeue a packet ..
 	 */
 	if (bf_first) {
+		DPRINTF(sc, ATH_DEBUG_SW_TX_AGGR,
+		"%s: al=%d bytes; requested %d bytes\n",
+		__func__, al, bf_first->bf_state.bfs_rc_maxpktlen);
+
 		bf_first->bf_state.bfs_al = al;
 		bf_first->bf_state.bfs_nframes = nframes;
 	}

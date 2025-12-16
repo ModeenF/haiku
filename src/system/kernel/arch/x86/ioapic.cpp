@@ -5,10 +5,10 @@
 
 #include <arch/x86/ioapic.h>
 
-#include <int.h>
+#include <interrupts.h>
 #include <vm/vm.h>
 
-#include "irq_routing_table.h"
+#include "acpi_irq_routing_table.h"
 
 #include <ACPI.h>
 #include <AutoDeleter.h>
@@ -108,6 +108,7 @@ struct ioapic {
 };
 
 
+static int32 sIOAPICPhys = 0;
 static ioapic* sIOAPICs = NULL;
 static int32 sSourceOverrides[ISA_INTERRUPT_COUNT];
 
@@ -355,8 +356,8 @@ ioapic_map_ioapic(struct ioapic& ioapic, phys_addr_t physicalAddress)
 		= ((ioapic.version >> IO_APIC_MAX_REDIRECTION_ENTRY_SHIFT)
 			& IO_APIC_MAX_REDIRECTION_ENTRY_MASK);
 	if (ioapic.max_redirection_entry >= MAX_SUPPORTED_REDIRECTION_ENTRIES) {
-		dprintf("io-apic %u entry count exceeds max supported, only using the "
-			"first %u entries", ioapic.number,
+		dprintf("io-apic %u entry count %d exceeds max supported, only using the "
+			"first %u entries\n", ioapic.number, ioapic.max_redirection_entry,
 			(uint8)MAX_SUPPORTED_REDIRECTION_ENTRIES);
 		ioapic.max_redirection_entry = MAX_SUPPORTED_REDIRECTION_ENTRIES - 1;
 	}
@@ -416,7 +417,7 @@ ioapic_source_override_handler(void* data)
 {
 	int32 vector = (addr_t)data;
 	bool levelTriggered = ioapic_is_level_triggered_interrupt(vector);
-	return int_io_interrupt_handler(vector, levelTriggered);
+	return io_interrupt_handler(vector, levelTriggered);
 }
 
 
@@ -591,17 +592,23 @@ acpi_configure_source_overrides(acpi_table_madt* madt)
 				break;
 			}
 
-#ifdef TRACE_IOAPIC
 			case ACPI_MADT_TYPE_LOCAL_APIC:
 			{
 				// purely informational
 				acpi_madt_local_apic* info = (acpi_madt_local_apic*)apicEntry;
-				dprintf("found local apic with id %u, processor id %u, "
+				TRACE("found local apic with id %u, processor id %u, "
 					"flags 0x%08" B_PRIx32 "\n", info->Id, info->ProcessorId,
 					(uint32)info->LapicFlags);
+				for (int32 i = 0; i < smp_get_num_cpus(); i++) {
+					if (x86_get_cpu_apic_id(i) == info->Id) {
+						gCPU[i].arch.acpi_processor_id = info->ProcessorId;
+						break;
+					}
+				}
 				break;
 			}
 
+#ifdef TRACE_IOAPIC
 			case ACPI_MADT_TYPE_LOCAL_APIC_NMI:
 			{
 				// TODO: take these into account, but at apic.cpp
@@ -670,7 +677,16 @@ ioapic_is_interrupt_available(int32 gsi)
 
 
 void
-ioapic_init(kernel_args* args)
+ioapic_preinit(kernel_args* args)
+{
+	sIOAPICPhys = args->arch_args.ioapic_phys;
+
+	// The real IO-APIC initialization occurs after PCI initialization.
+}
+
+
+void
+ioapic_init()
 {
 	static const interrupt_controller ioapicController = {
 		"82093AA IOAPIC",
@@ -683,10 +699,10 @@ ioapic_init(kernel_args* args)
 		&ioapic_assign_interrupt_to_cpu,
 	};
 
-	if (args->arch_args.apic == NULL)
+	if (!apic_available())
 		return;
 
-	if (args->arch_args.ioapic_phys == 0) {
+	if (sIOAPICPhys == 0) {
 		dprintf("no io-apics available, not using io-apics for interrupt "
 			"routing\n");
 		return;
@@ -698,12 +714,12 @@ ioapic_init(kernel_args* args)
 		return;
 	}
 
-	// load acpi module
+	// load ACPI module
 	status_t status;
 	acpi_module_info* acpiModule;
 	status = get_module(B_ACPI_MODULE_NAME, (module_info**)&acpiModule);
 	if (status != B_OK) {
-		dprintf("acpi module not available, not configuring io-apics\n");
+		dprintf("ACPI module not available, not configuring io-apics\n");
 		return;
 	}
 	BPrivate::CObjectDeleter<const char, status_t, put_module>
@@ -743,7 +759,7 @@ ioapic_init(kernel_args* args)
 	}
 
 	// use the boot CPU as the target for all interrupts
-	uint8 targetAPIC = args->arch_args.cpu_apic_id[0];
+	uint8 targetAPIC = x86_get_cpu_apic_id(0);
 
 	struct ioapic* current = sIOAPICs;
 	while (current != NULL) {

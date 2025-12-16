@@ -166,7 +166,7 @@ static bool sBlockDevicesAdded = false;
 static void
 check_cd_boot(BIOSDrive *drive)
 {
-	gBootVolume.SetInt32(BOOT_METHOD, BOOT_METHOD_HARD_DISK);
+	gBootParams.SetInt32(BOOT_METHOD, BOOT_METHOD_HARD_DISK);
 
 	if (drive->DriveID() != 0)
 		return;
@@ -184,7 +184,7 @@ check_cd_boot(BIOSDrive *drive)
 
 	specification_packet *packet = (specification_packet *)kDataSegmentScratch;
 	if (packet->media_type != 0)
-		gBootVolume.SetInt32(BOOT_METHOD, BOOT_METHOD_CD);
+		gBootParams.SetInt32(BOOT_METHOD, BOOT_METHOD_CD);
 
 #if 0
 	dprintf("got CD boot spec:\n");
@@ -207,7 +207,7 @@ are_extensions_available(uint8 drive)
 	regs.edx = drive;
 	call_bios(0x13, &regs);
 
-	TRACE(("checking extensions: carry: %u; ebx: 0x%08lx; ecx: 0x%08lx\n",
+	TRACE(("checking extensions: carry: %u; ebx: 0x%08" B_PRIx32 "; ecx: 0x%08" B_PRIx32 "\n",
 		regs.flags & CARRY_FLAG, regs.ebx, regs.ecx));
 	return (regs.flags & CARRY_FLAG) == 0 && regs.ebx == 0xaa55
 		&& (regs.ecx & 0x01 /* supports device access using packet */) != 0;
@@ -502,7 +502,7 @@ find_unique_check_sums(NodeList *devices)
 			disk.device.unknown.check_sums[i].offset = offset;
 			disk.device.unknown.check_sums[i].sum = compute_check_sum(drive, offset);
 
-			TRACE(("disk %x, offset %Ld, sum %lu\n", drive->DriveID(), offset,
+			TRACE(("disk %x, offset %lld, sum %" B_PRIu32 "\n", drive->DriveID(), offset,
 				disk.device.unknown.check_sums[i].sum));
 		}
 
@@ -584,10 +584,11 @@ BIOSDrive::BIOSDrive(uint8 driveID)
 			return;
 		}
 
-		TRACE(("  cylinders: %lu, heads: %lu, sectors: %lu, bytes_per_sector: %u\n",
+		TRACE(("  cylinders: %" B_PRIu32 ", heads: %" B_PRIu32 ", sectors: %" B_PRIu32
+			", bytes_per_sector: %u\n",
 			fParameters.cylinders, fParameters.heads, fParameters.sectors_per_track,
 			fParameters.bytes_per_sector));
-		TRACE(("  total sectors: %Ld\n", fParameters.sectors));
+		TRACE(("  total sectors: %lld\n", fParameters.sectors));
 
 		fBlockSize = 512;
 		fSize = fParameters.sectors * fBlockSize;
@@ -598,10 +599,11 @@ BIOSDrive::BIOSDrive(uint8 driveID)
 		TRACE(("drive_path_signature: %x\n", fParameters.device_path_signature));
 		TRACE(("host bus: \"%s\", interface: \"%s\"\n", fParameters.host_bus,
 			fParameters.interface_type));
-		TRACE(("cylinders: %lu, heads: %lu, sectors: %lu, bytes_per_sector: %u\n",
+		TRACE(("cylinders: %" B_PRIu32 ", heads: %" B_PRIu32 ", sectors: %" B_PRIu32
+			", bytes_per_sector: %u\n",
 			fParameters.cylinders, fParameters.heads, fParameters.sectors_per_track,
 			fParameters.bytes_per_sector));
-		TRACE(("total sectors: %Ld\n", fParameters.sectors));
+		TRACE(("total sectors: %lld\n", fParameters.sectors));
 
 		fBlockSize = fParameters.bytes_per_sector;
 		fSize = fParameters.sectors * fBlockSize;
@@ -632,7 +634,7 @@ BIOSDrive::ReadAt(void *cookie, off_t pos, void *buffer, size_t bufferSize)
 	uint32 blocksLeft = (bufferSize + offset + fBlockSize - 1) / fBlockSize;
 	int32 totalBytesRead = 0;
 
-	//TRACE(("BIOS reads %lu bytes from %Ld (offset = %lu), drive %u\n",
+	//TRACE(("BIOS reads %lu bytes from %lld (offset = %lu), drive %u\n",
 	//	blocksLeft * fBlockSize, pos * fBlockSize, offset, fDriveID));
 
 	uint32 scratchSize = 24 * 1024 / fBlockSize;
@@ -675,7 +677,7 @@ BIOSDrive::ReadAt(void *cookie, off_t pos, void *buffer, size_t bufferSize)
 			head %= fParameters.heads;
 
 			if (cylinder >= fParameters.cylinders) {
-				TRACE(("cylinder value %lu bigger than available %lu\n",
+				TRACE(("cylinder value %" B_PRIu32 " bigger than available %" PRIu32 "\n",
 					cylinder, fParameters.cylinders));
 				return B_BAD_VALUE;
 			}
@@ -713,7 +715,7 @@ BIOSDrive::ReadAt(void *cookie, off_t pos, void *buffer, size_t bufferSize)
 			}
 
 			if (!readWorked) {
-				dprintf("reading %ld bytes from drive %u failed at %Ld\n",
+				dprintf("reading %d bytes from drive %u failed at %" B_PRIdOFF "\n",
 					blocksRead, fDriveID, pos);
 				return B_ERROR;
 			}
@@ -869,31 +871,31 @@ platform_add_boot_device(struct stage2_args *args, NodeList *devicesList)
 		add_block_devices(devicesList, true);
 	}
 
-	TRACE(("boot drive size: %Ld bytes\n", drive->Size()));
-	gBootVolume.SetBool(BOOT_VOLUME_BOOTED_FROM_IMAGE, gBootedFromImage);
+	TRACE(("boot drive size: %lld bytes\n", drive->Size()));
+	gBootParams.SetBool(BOOT_VOLUME_BOOTED_FROM_IMAGE, gBootedFromImage);
 
 	return B_OK;
 }
 
 
 status_t
-platform_get_boot_partition(struct stage2_args *args, Node *bootDevice,
-	NodeList *list, boot::Partition **_partition)
+platform_get_boot_partitions(struct stage2_args *args, Node *bootDevice,
+	NodeList *list, NodeList *bootList)
 {
 	BIOSDrive *drive = static_cast<BIOSDrive *>(bootDevice);
 	off_t offset = (off_t)gBootPartitionOffset * drive->BlockSize();
 
-	dprintf("boot partition offset: %Ld\n", offset);
+	dprintf("boot partition offset: %lld\n", offset);
 
 	NodeIterator iterator = list->GetIterator();
 	boot::Partition *partition = NULL;
 	while ((partition = (boot::Partition *)iterator.Next()) != NULL) {
-		TRACE(("partition offset = %Ld, size = %Ld\n", partition->offset, partition->size));
+		TRACE(("partition offset = %lld, size = %lld\n", partition->offset, partition->size));
 		// search for the partition that contains the partition
 		// offset as reported by the BFS boot block
 		if (offset >= partition->offset
 			&& offset < partition->offset + partition->size) {
-			*_partition = partition;
+			bootList->Insert(partition);
 			return B_OK;
 		}
 	}
@@ -916,8 +918,8 @@ platform_register_boot_device(Node *device)
 
 	check_cd_boot(drive);
 
-	gBootVolume.SetInt64("boot drive number", drive->DriveID());
-	gBootVolume.SetData(BOOT_VOLUME_DISK_IDENTIFIER, B_RAW_TYPE,
+	gBootParams.SetInt64("boot drive number", drive->DriveID());
+	gBootParams.SetData(BOOT_VOLUME_DISK_IDENTIFIER, B_RAW_TYPE,
 		&drive->Identifier(), sizeof(disk_identifier));
 
 	return B_OK;

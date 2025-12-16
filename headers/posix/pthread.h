@@ -44,10 +44,12 @@
 
 #define PTHREAD_ONCE_INIT 			{ -1 }
 
-#define PTHREAD_BARRIER_SERIAL_THREAD -1
+#define PTHREAD_BARRIER_SERIAL_THREAD 1
+
 #define PTHREAD_PRIO_NONE			0
 #define PTHREAD_PRIO_INHERIT		1
 #define PTHREAD_PRIO_PROTECT		2
+
 
 /* private structure */
 struct __pthread_cleanup_handler {
@@ -92,8 +94,10 @@ extern int pthread_mutex_init(pthread_mutex_t *mutex,
 extern int pthread_mutex_lock(pthread_mutex_t *mutex);
 extern int pthread_mutex_setprioceiling(pthread_mutex_t *mutex,
 	int newPriorityCeiling, int *_oldPriorityCeiling);
+extern int pthread_mutex_clocklock(pthread_mutex_t *mutex,
+	clockid_t clock_id, const struct timespec *abstime);
 extern int pthread_mutex_timedlock(pthread_mutex_t *mutex,
-	const struct timespec *spec);
+	const struct timespec *abstime);
 extern int pthread_mutex_trylock(pthread_mutex_t *mutex);
 extern int pthread_mutex_unlock(pthread_mutex_t *mutex);
 
@@ -136,6 +140,8 @@ extern int pthread_cond_init(pthread_cond_t *cond,
 	const pthread_condattr_t *attr);
 extern int pthread_cond_broadcast(pthread_cond_t *cond);
 extern int pthread_cond_signal(pthread_cond_t *cond);
+extern int pthread_cond_clockwait(pthread_cond_t *cond, pthread_mutex_t *mutex,
+	clockid_t clock_id, const struct timespec *abstime);
 extern int pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex,
 	const struct timespec *abstime);
 extern int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex);
@@ -158,12 +164,16 @@ extern int pthread_rwlock_init(pthread_rwlock_t *lock,
 extern int pthread_rwlock_destroy(pthread_rwlock_t *lock);
 extern int pthread_rwlock_rdlock(pthread_rwlock_t *lock);
 extern int pthread_rwlock_tryrdlock(pthread_rwlock_t *lock);
+extern int pthread_rwlock_clockrdlock(pthread_rwlock_t* rwlock,
+	clockid_t clock_id, const struct timespec* abstime);
 extern int pthread_rwlock_timedrdlock(pthread_rwlock_t *lock,
-	const struct timespec *timeout);
+	const struct timespec *abstime);
 extern int pthread_rwlock_wrlock(pthread_rwlock_t *lock);
 extern int pthread_rwlock_trywrlock(pthread_rwlock_t *lock);
+extern int pthread_rwlock_clockwrlock(pthread_rwlock_t* rwlock,
+	clockid_t clock_id, const struct timespec* abstime);
 extern int pthread_rwlock_timedwrlock(pthread_rwlock_t *lock,
-	const struct timespec *timeout);
+	const struct timespec *abstime);
 extern int pthread_rwlock_unlock(pthread_rwlock_t *lock);
 
 /* rwlock attribute functions */
@@ -186,6 +196,7 @@ extern int pthread_atfork(void (*prepare)(void), void (*parent)(void),
 	void (*child)(void));
 extern int pthread_once(pthread_once_t *once_control,
 	void (*init_routine)(void));
+extern int pthread_getcpuclockid(pthread_t thread_id, clockid_t* clock_id);
 
 /* thread attributes functions */
 extern int pthread_attr_destroy(pthread_attr_t *attr);

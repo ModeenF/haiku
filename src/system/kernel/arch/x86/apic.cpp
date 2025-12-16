@@ -13,11 +13,20 @@
 #include <arch/x86/msi.h>
 
 #include <debug.h>
+#include <kernel/cpu.h>
 #include <safemode.h>
 #include <vm/vm.h>
 #include <util/AutoLock.h>
 
 #include "timers/apic_timer.h"
+
+
+//#define TRACE_APIC
+#ifdef TRACE_APIC
+#	define TRACE(x...) dprintf(x)
+#else
+#	define TRACE(x...) ;
+#endif
 
 
 static void *sLocalAPIC = NULL;
@@ -38,14 +47,14 @@ x2apic_available()
 }
 
 
-uint32
+static uint32
 apic_read(uint32 offset)
 {
 	return *(volatile uint32 *)((char *)sLocalAPIC + offset);
 }
 
 
-void
+static void
 apic_write(uint32 offset, uint32 data)
 {
 	*(volatile uint32 *)((char *)sLocalAPIC + offset) = data;
@@ -150,20 +159,16 @@ void
 apic_set_interrupt_command(uint32 destination, uint32 mode)
 {
 	if (sX2APIC) {
-		uint64 command = x86_read_msr(IA32_MSR_APIC_INTR_COMMAND);
-		command &= APIC_INTR_COMMAND_1_MASK;
+		uint64 command = 0;
 		command |= (uint64)destination << 32;
 		command |= mode;
 		x86_write_msr(IA32_MSR_APIC_INTR_COMMAND, command);
 	} else {
-		uint32 command2 = apic_read(APIC_INTR_COMMAND_2)
-				& APIC_INTR_COMMAND_2_MASK;
+		uint32 command2 = 0;
 		command2 |= destination << 24;
 		apic_write(APIC_INTR_COMMAND_2, command2);
 
-		uint32 command1 = apic_read(APIC_INTR_COMMAND_1)
-				& APIC_INTR_COMMAND_1_MASK;
-		command1 |= mode;
+		uint32 command1 = mode;
 		apic_write(APIC_INTR_COMMAND_1, command1);
 	}
 }
@@ -240,6 +245,16 @@ apic_set_lvt_initial_timer_count(uint32 config)
 
 
 uint32
+apic_lvt_current_timer_count()
+{
+	if (sX2APIC)
+		return x86_read_msr(IA32_MSR_APIC_CURRENT_TIMER_COUNT);
+	else
+		return apic_read(APIC_CURRENT_TIMER_COUNT);
+}
+
+
+uint32
 apic_lvt_timer_divide_config()
 {
 	if (sX2APIC)
@@ -270,10 +285,10 @@ apic_init(kernel_args *args)
 	if (x86_check_feature(IA32_FEATURE_EXT_X2APIC, FEATURE_EXT)
 		&& (x86_check_feature(IA32_FEATURE_EXT_HYPERVISOR, FEATURE_EXT)
 			|| ((apic_base & IA32_MSR_APIC_BASE_X2APIC) != 0))) {
-		dprintf("found x2apic\n");
+		TRACE("found x2apic\n");
 
 		if (get_safemode_boolean(B_SAFEMODE_DISABLE_X2APIC, false)) {
-			dprintf("x2apic disabled per safemode setting\n");
+			TRACE("x2apic disabled per safemode setting\n");
 		} else {
 			sX2APIC = true;
 			return B_OK;
@@ -281,7 +296,7 @@ apic_init(kernel_args *args)
 	}
 
 	sLocalAPIC = args->arch_args.apic;
-	dprintf("mapping local apic at %p\n", sLocalAPIC);
+	TRACE("mapping local apic at %p\n", sLocalAPIC);
 	if (vm_map_physical_memory(B_SYSTEM_TEAM, "local apic", &sLocalAPIC,
 			B_EXACT_ADDRESS, B_PAGE_SIZE,
 			B_KERNEL_READ_AREA | B_KERNEL_WRITE_AREA,
@@ -305,7 +320,7 @@ apic_per_cpu_init(kernel_args *args, int32 cpu)
 		}
 	}
 
-	dprintf("setting up %sapic for CPU %" B_PRId32 ": apic id %" B_PRIu32 ", "
+	TRACE("setting up %sapic for CPU %" B_PRId32 ": apic id %" B_PRIu32 ", "
 		"version %" B_PRIu32 "\n", sX2APIC ? "x2" : "", cpu, apic_local_id(),
 		apic_version());
 
@@ -322,8 +337,10 @@ apic_per_cpu_init(kernel_args *args, int32 cpu)
 	gCPU[cpu].arch.logical_apic_id = apic_logical_apic_id();
 	if (!sX2APIC)
 		gCPU[cpu].arch.logical_apic_id >>= 24;
-	dprintf("CPU %" B_PRId32 ": logical apic id: %#" B_PRIx32 "\n", cpu,
+	TRACE("CPU %" B_PRId32 ": logical apic id: %#" B_PRIx32 "\n", cpu,
 		gCPU[cpu].arch.logical_apic_id);
+
+	gCPU[cpu].arch.acpi_processor_id = -1;
 
 	/* set spurious interrupt vector to 0xff */
 	uint32 config = apic_spurious_intr_vector() & 0xffffff00;

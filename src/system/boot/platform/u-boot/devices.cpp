@@ -48,8 +48,8 @@ platform_add_boot_device(struct stage2_args *args, NodeList *devicesList)
 
 
 status_t
-platform_get_boot_partition(struct stage2_args *args, Node *device,
-	NodeList *list, boot::Partition **_partition)
+platform_get_boot_partitions(struct stage2_args *args, Node *device,
+	NodeList *list, NodeList *partitionList)
 {
 	TRACE("platform_get_boot_partition\n");
 
@@ -57,7 +57,7 @@ platform_get_boot_partition(struct stage2_args *args, Node *device,
 	boot::Partition *partition = NULL;
 	while ((partition = (boot::Partition *)iterator.Next()) != NULL) {
 		// ToDo: just take the first partition for now
-		*_partition = partition;
+		partitionList->Insert(partition);
 		return B_OK;
 	}
 
@@ -86,7 +86,7 @@ platform_register_boot_device(Node *device)
                 disk_ident.device.unknown.check_sums[i].sum = 0;
         }
 
-	gBootVolume.SetData(BOOT_VOLUME_DISK_IDENTIFIER, B_RAW_TYPE,
+	gBootParams.SetData(BOOT_VOLUME_DISK_IDENTIFIER, B_RAW_TYPE,
 		&disk_ident, sizeof(disk_ident));
 
 	return B_OK;

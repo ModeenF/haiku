@@ -34,6 +34,7 @@
 
 #include "FetchFileJob.h"
 #include "FetchUtils.h"
+using BPackageKit::BPrivate::FetchUtils;
 #include "PackageManagerUtils.h"
 
 #undef B_TRANSLATION_CONTEXT
@@ -41,7 +42,6 @@
 
 
 using BPackageKit::BPrivate::FetchFileJob;
-using BPackageKit::BPrivate::FetchUtils;
 using BPackageKit::BPrivate::ValidateChecksumJob;
 
 
@@ -67,9 +67,9 @@ BPackageManager::BPackageManager(BPackageInstallationLocation location,
 	fHomeRepository(new (std::nothrow) InstalledRepository("home",
 		B_PACKAGE_INSTALLATION_LOCATION_HOME, -3)),
 	fInstalledRepositories(10),
-	fOtherRepositories(10, true),
+	fOtherRepositories(10),
 	fLocalRepository(new (std::nothrow) MiscLocalRepository),
-	fTransactions(5, true),
+	fTransactions(5),
 	fInstallationInterface(installationInterface),
 	fUserInteractionHandler(userInteractionHandler)
 {
@@ -157,19 +157,22 @@ BPackageManager::SetDebugLevel(int32 level)
 
 
 void
-BPackageManager::Install(const char* const* packages, int packageCount)
+BPackageManager::Install(const char* const* packages, int packageCount, bool refresh)
 {
 	BSolverPackageSpecifierList packagesToInstall;
 	_AddPackageSpecifiers(packages, packageCount, packagesToInstall);
-	Install(packagesToInstall);
+	Install(packagesToInstall, refresh);
 }
 
 
 void
-BPackageManager::Install(const BSolverPackageSpecifierList& packages)
+BPackageManager::Install(const BSolverPackageSpecifierList& packages, bool refresh)
 {
-	Init(B_ADD_INSTALLED_REPOSITORIES | B_ADD_REMOTE_REPOSITORIES
-		| B_REFRESH_REPOSITORIES);
+	uint32 flags = B_ADD_INSTALLED_REPOSITORIES | B_ADD_REMOTE_REPOSITORIES;
+	if (refresh)
+		flags |= B_REFRESH_REPOSITORIES;
+
+	Init(flags);
 
 	// solve
 	const BSolverPackageSpecifier* unmatchedSpecifier;
@@ -564,7 +567,7 @@ BPackageManager::_PreparePackageChanges(
 		RemoteRepository* remoteRepository
 			= dynamic_cast<RemoteRepository*>(package->Repository());
 		if (remoteRepository != NULL) {
-			bool alreadyDownloaded = false;
+			bool reusingDownload = false;
 
 			// Check for matching files in already existing transaction
 			// directories
@@ -593,33 +596,42 @@ BPackageManager::_PreparePackageChanges(
 					path.Append(fileName);
 					if (bestFile != NULL && BCopyEngine().CopyEntry(bestFile,
 						path.Path()) == B_OK) {
-						alreadyDownloaded = FetchUtils::IsDownloadCompleted(
-							path.Path());
+						reusingDownload = true;
 						printf("Re-using download '%s' from previous "
 							"transaction%s\n", bestFile,
-							alreadyDownloaded ? "" : " (partial)");
+							FetchUtils::IsDownloadCompleted(
+								path.Path()) ? "" : " (partial)");
 					}
 					globfree(&globbuf);
 				}
 			}
 
-			if (!alreadyDownloaded) {
-				// download the package (this will resume the download if the
-				// file already exists)
-				BString url = remoteRepository->Config().PackagesURL();
-				url << '/' << fileName;
+			// download the package (this will resume the download if the
+			// file already exists)
+			BString url = remoteRepository->Config().PackagesURL();
+			url << '/' << fileName;
 
-				status_t error = DownloadPackage(url, entry,
-					package->Info().Checksum());
-				if (error != B_OK) {
-					if (error == B_BAD_DATA) {
-						// B_BAD_DATA is returned when there is a checksum
-						// mismatch. Make sure this download is not re-used.
-						entry.Remove();
+			status_t error;
+retryDownload:
+			error = DownloadPackage(url, entry,
+				package->Info().Checksum());
+			if (error != B_OK) {
+				if (error == B_BAD_DATA || error == ERANGE) {
+					// B_BAD_DATA is returned when there is a checksum
+					// mismatch. Make sure this download is not re-used.
+					entry.Remove();
+
+					if (reusingDownload) {
+						// Maybe the download we reused had some problem.
+						// Try again, this time without reusing the download.
+						printf("\nPrevious download '%s' was invalid. Redownloading.\n",
+							path.Path());
+						reusingDownload = false;
+						goto retryDownload;
 					}
-					DIE(error, "Failed to download package %s",
-						package->Info().Name().String());
 				}
+				DIE(error, "Failed to download package %s",
+					package->Info().Name().String());
 			}
 		} else if (package->Repository() != &installationRepository) {
 			// clone the existing package
@@ -717,9 +729,9 @@ BPackageManager::_FindBasePackage(const PackageList& packages,
 	BPackageResolvableExpression* basePackage = NULL;
 	int32 count = info.RequiresList().CountItems();
 	for (int32 i = 0; i < count; i++) {
-		BPackageResolvableExpression* requires = info.RequiresList().ItemAt(i);
-		if (requires->Name() == info.BasePackage()) {
-			basePackage = requires;
+		BPackageResolvableExpression* require = info.RequiresList().ItemAt(i);
+		if (require->Name() == info.BasePackage()) {
+			basePackage = require;
 			break;
 		}
 	}
@@ -967,7 +979,7 @@ BPackageManager::InstalledRepository::InstalledRepository(const char* name,
 	BPackageInstallationLocation location, int32 priority)
 	:
 	LocalRepository(),
-	fDisabledPackages(10, true),
+	fDisabledPackages(10),
 	fPackagesToActivate(),
 	fPackagesToDeactivate(),
 	fInitialName(name),

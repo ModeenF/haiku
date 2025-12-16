@@ -1,4 +1,4 @@
-1	lithuanian	x-vnd.Haiku-DriveSetup	1161978698
+1	lithuanian	x-vnd.Haiku-DriveSetup	1083453332
 Could not unmount partition %s.	MainWindow		Skaidinio „%s“ atjungti nepavyko.
 Mount all	MainWindow		Prijungti visus
 Disk	MainWindow		Diskas
@@ -22,7 +22,6 @@ Write changes	MainWindow		Įrašyti pakeitimus
 Initialization of the partition %s failed. (Nothing has been written to disk.)	MainWindow		Skaidinio „%s“ suženklinti nepavyko. Pakeitimai į diską neįrašyti.
 Validation of the given creation parameters failed.	MainWindow		Nurodyti netinkami kūrimo parametrai.
 Eject	MainWindow		Išimti
-Are you sure you want to write the changes back to disk now?\n\nAll data on the disk %s will be irretrievably lost if you do so!	MainWindow		Ar tikrai norite pakeitimus dabar įrašyti į diską?\n\nJei tęsite toliau – visi duomenys, esantys diske „%s“, bus negrįžtamai prarasti!
 Surface test (not implemented)	MainWindow		Patikrinti paviršių (dar nerealizuota)
 The panel could not return successfully.	MainWindow		Polangiui nepavyko sėkmingai grįžti.
 Failed to change the parameters of the partition. No changes have been written to disk.	MainWindow		Skaidinio savybių pakeisti nepavyko. Į diską neįrašyti jokie pakeitimai.
@@ -48,12 +47,11 @@ Volume name	PartitionList		Tomo pavadinimas
 Are you sure you want to write the changes back to disk now?\n\nAll data on the partition will be irretrievably lost if you do so!	MainWindow		Ar tikrai norite pakeitimus dabar įrašyti į diską?\n\nJei tęsite toliau – visi duomenys, esantys skaidinyje, bus negrįžtamai prarasti!
 Change	ChangeParametersPanel		Keisti
 Partition name:	ChangeParametersPanel		Skaidinio pavadinimas:
-Are you sure you want to write the changes back to disk now?\n\nAll data on the partition %s will be irretrievably lost if you do so!	MainWindow		Ar tikrai norite pakeitimus dabar įrašyti į diską?\n\nJei tęsite toliau – visi duomenys, esantys skaidinyje „%s“, bus negrįžtamai prarasti!
 Cancel	AbstractParametersPanel		Atsisakyti
 Format	MainWindow		Ženklinti
 OK	MainWindow		Gerai
 Could not delete the selected partition.	MainWindow		Pasirinkto skaidinio pašalinti nepavyko.
-Are you sure you want to initialize the selected disk? All data will be lost. You will be asked again before changes are written to the disk.\n	MainWindow		Ar tikrai norite suženklinti pasirinktąjį diską? Visi duomenys bus prarasti. Prieš įrašant pakeitimus į diską, Jūsų bus paklausta dar kartą.
+Are you sure you want to initialize the selected disk? All data will be lost. You will be asked again before changes are written to the disk.\n	MainWindow		Ar tikrai norite suženklinti pasirinktąjį diską? Visi duomenys bus prarasti. Prieš įrašant pakeitimus į diską, Jūsų bus paklausta dar kartą.\n
 There was an error preparing the disk for modifications.	MainWindow		Parengiant diską pakeitimams, įvyko klaida.
 The disk has been successfully initialized.\n	MainWindow		Diskas sėkmingai suženklintas.\n
 Should unmounting be forced?\n\nNote: If an application is currently writing to the volume, unmounting it now might result in loss of data.\n	MainWindow		Ar atjungti skaidinį priverstinai?\n\nPastaba: jeigu į skaidinį šiuo metu rašoma, jo atjungimas gali įtakoti duomenų praradimą.\n
@@ -79,7 +77,6 @@ Are you sure you want to write the changes back to disk now?\n\nAll data on the 
 Select a partition from the list below.	DiskView		Pasirinkite skaidinį iš žemiau esančio sąrašo.
 Active	PartitionList		Aktyvus
 Are you sure you want to delete the selected partition?\n\nAll data on the partition will be irretrievably lost if you do so!	MainWindow		Ar tikrai norite pašalinti pasirinktą skaidinį?\n\nJei tęsite toliau – visi duomenys, esantys skaidinyje, bus negrįžtamai prarasti!
-Failed to format the partition. No changes have been written to disk.	MainWindow		Skaidinio suženklinti nepavyko. Pakeitimai į diską neįrašyti.
 The partition %s has been successfully formatted.\n	MainWindow		Skaidinys „%s“ sėkmingai suženklintas.\n
 The partition %s is already mounted.	MainWindow		Skaidinys „%s“ jau yra prijungtas.
 Size	PartitionList		Dydis

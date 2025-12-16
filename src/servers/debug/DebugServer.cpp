@@ -783,7 +783,7 @@ TeamDebugHandler::_WriteCoreFile()
 
 	debug_nub_write_core_file_reply reply;
 
-	error = send_debug_message(&fDebugContext, B_DEBUG_WRITE_CORE_FILE,
+	error = send_debug_message(&fDebugContext, B_DEBUG_MESSAGE_WRITE_CORE_FILE,
 			&message, sizeof(message), &reply, sizeof(reply));
 	if (error == B_OK)
 		error = reply.error;
@@ -913,13 +913,13 @@ TeamDebugHandler::_LookupSymbolAddress(
 		// we were able to look something up
 		if (strlen(symbolName) > 0) {
 			// we even got a symbol
-			snprintf(buffer, bufferSize, "%s + %#lx%s", symbolName,
+			snprintf(buffer, bufferSize, "<%s> %s + %#lx%s", imageName, symbolName,
 				(addr_t)address - (addr_t)baseAddress,
 				(exactMatch ? "" : " (closest symbol)"));
 
 		} else {
 			// no symbol: image relative address
-			snprintf(buffer, bufferSize, "(%s + %#lx)", imageName,
+			snprintf(buffer, bufferSize, "<%s> %#lx", imageName,
 				(addr_t)address - (addr_t)baseAddress);
 		}
 
@@ -957,7 +957,7 @@ TeamDebugHandler::_PrintStackTrace(thread_id thread)
 	if (error == B_OK) {
 		// create a symbol lookup context
 		debug_symbol_lookup_context *lookupContext = NULL;
-		error = debug_create_symbol_lookup_context(fTeam, -1, &lookupContext);
+		error = debug_create_symbol_lookup_context(&fDebugContext, -1, &lookupContext);
 		if (error != B_OK) {
 			debug_printf("debug_server: Failed to create symbol lookup "
 				"context: %s\n", strerror(error));

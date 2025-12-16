@@ -1,9 +1,10 @@
 /*
- * Copyright 2019, Haiku, Inc.
+ * Copyright 2019-2025, Haiku, Inc.
  * Distributed under the terms of the MIT License.
  *
- * Author:
+ * Authors:
  *		Preetpal Kaur <preetpalok123@gmail.com>
+ *		Samuel Rodríguez Pérez <samuelrp84@gmail.com>
  */
 
 
@@ -15,8 +16,8 @@
 #include <CheckBox.h>
 #include <GroupView.h>
 #include <Invoker.h>
-#include <StringView.h>
 #include <Slider.h>
+#include <StringView.h>
 #include <View.h>
 
 #include "InputTouchpadPref.h"
@@ -36,6 +37,8 @@ const uint TAP_CONTROL_CHANGED = '&tcc';
 const uint DEFAULT_SETTINGS = '&dse';
 const uint REVERT_SETTINGS = '&rse';
 const uint PADBLOCK_TIME_CHANGED = '&ptc';
+const uint PAD_SPEED_CHANGED = '&psc';
+const uint PAD_ACCELERATION_CHANGED = '&pac';
 
 class DeviceListView;
 
@@ -92,6 +95,7 @@ public:
 private:
 			TouchpadPref	fTouchpadPref;
 			TouchpadView*	fTouchpadView;
+			BCheckBox*		fScrollReverseBox;
 			BCheckBox*		fTwoFingerBox;
 			BCheckBox*		fTwoFingerHorizontalBox;
 			BSlider*		fScrollStepXSlider;
@@ -99,6 +103,8 @@ private:
 			BSlider*		fScrollAccelSlider;
 			BSlider*		fPadBlockerSlider;
 			BSlider*		fTapSlider;
+			BSlider*		fSpeedSlider;
+			BSlider*		fAccelSlider;
 			BButton*		fDefaultButton;
 			BButton*		fRevertButton;
 };

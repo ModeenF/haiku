@@ -13,7 +13,7 @@ NotFile $(HAIKU_CD_BOOT_IMAGE_CONTAINER_NAME) ;
 
 # common extra files to put on the boot iso
 local extras = README.html ;
-SEARCH on $(extras) = [ FDirName $(HAIKU_TOP) data boot_cd ] ;
+SEARCH on $(extras) = [ FDirName $(HAIKU_TOP) data boot extras ] ;
 
 if $(TARGET_ARCH) = ppc {
 	local elfloader = boot_loader_openfirmware ;
@@ -24,9 +24,8 @@ if $(TARGET_ARCH) = ppc {
 	local chrpscript = ofboot.chrp ;
 	# HFS creator and application type mapping for mkisofs
 	local hfsmaps = hfs.map ;
-
-	SEARCH on $(chrpscript) $(hfsmaps) $(extras)
-		= [ FDirName $(HAIKU_TOP) data boot_cd ] ;
+	SEARCH on $(chrpscript) = [ FDirName $(HAIKU_TOP) data boot openfirmware ] ;
+	SEARCH on $(hfsmaps) = [ FDirName $(HAIKU_TOP) data boot openfirmware ] ;
 
 	BuildCDBootPPCImage $(HAIKU_CD_BOOT_IMAGE) : $(hfsmaps)
 		: $(elfloader) : $(coffloader) : $(chrpscript) : $(extras) ;
@@ -38,15 +37,11 @@ if $(TARGET_ARCH) = ppc {
 			if $(TARGET_BOOT_PLATFORM) = efi {
 				local efiLoader = haiku_loader.efi ;
 				local efiPartition = esp.image ;
-				MakeLocate $(efiPartition) : $(HAIKU_OUTPUT_DIR) ;
+				MakeLocateDebug $(efiPartition) : system boot ;
 				BuildEfiSystemPartition $(efiPartition) : $(efiLoader) ;
 
-				BuildCDBootImage $(HAIKU_CD_BOOT_IMAGE) : $(HAIKU_BOOT_FLOPPY)
+				BuildCDBootImageEFI $(HAIKU_CD_BOOT_IMAGE) : $(HAIKU_BOOT_FLOPPY)
 					: $(efiPartition) : $(extras) ;
-
-			} else if $(HAIKU_ANYBOOT_LEGACY) = 1 {
-				BuildCDBootImage $(HAIKU_CD_BOOT_IMAGE) : $(HAIKU_BOOT_FLOPPY) : 
-					: $(extras) ;
 			}
 		}
 	}

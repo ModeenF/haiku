@@ -30,7 +30,7 @@ PackageDaemon::PackageDaemon(status_t* _error)
 	:
 	BServer(B_PACKAGE_DAEMON_APP_SIGNATURE, false, _error),
 	fSystemRoot(NULL),
-	fRoots(10, true),
+	fRoots(10),
 	fVolumeWatcher()
 {
 }
@@ -38,6 +38,9 @@ PackageDaemon::PackageDaemon(status_t* _error)
 
 PackageDaemon::~PackageDaemon()
 {
+	for (int32 i = 0; Root* root = fRoots.ItemAt(i); i++)
+		root->ReleaseReference();
+	fRoots.MakeEmpty(false);
 }
 
 

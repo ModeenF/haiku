@@ -1,11 +1,9 @@
-1	esperanto	x-vnd.Haiku-Input	1950274171
+1	esperanto	x-vnd.Haiku-Input	4063065788
 Defaults	InputMouse		Defaŭltoj
 Scrolling	TouchpadPrefView		Rulumado
 Long	KeyboardView		Longa
-Normal	SettingsView		Normala
 Cancel	TouchpadPrefView		Nuligi
 Slow	TouchpadPrefView		Malrapida
-Warp	SettingsView		Deformiĝo
 Device List	InputWindow		Listo de aparatoj
 Double-click speed	SettingsView		Rapideco de duobla alklako
 5-Button	SettingsView		5-butona
@@ -22,13 +20,12 @@ Slow	KeyboardView		Malrapide
 2-Button	SettingsView		2-butona
 Click to focus and raise	SettingsView		Alklaki por enfokusigi kaj suprenigi
 Vertical	TouchpadPrefView		Vertikala
-Double-click test area	SettingsView		Loko por testi duoblalklakon
 Focus follows mouse	SettingsView		Fokuso sekvas muson
+Double-click test area	SettingsView		Loko por testi duoblalklakon
 Focus mode:	SettingsView		Reĝimo de fokusigo:
 Revert	TouchpadPrefView		Malfari
 4-Button	SettingsView		4-butona
 Tapping sensitivity	TouchpadPrefView		Frapsentemo
-Instant warp	SettingsView		Tuja deformiĝo
 Revert	InputKeyboard		Malfari
 Mouse type:	SettingsView		Speco de muso:
 Off	TouchpadPrefView		Malŝalti
@@ -39,13 +36,12 @@ Click to focus	SettingsView		Klaki por fokusigi
 Acceleration	TouchpadPrefView		Akcelado
 Accept first click	SettingsView		Akcepti unuan klakon
 OK	TouchpadPrefView		Bone
-Keyboard Lock Delay	TouchpadPrefView		Prokrasto de klavara ŝlosigo
 Delay until key repeat	KeyboardView		Prokrasto dum klava ripeto
 Two finger scrolling	TouchpadPrefView		Rulumado per du fingroj
 The new scroll area is very large and may impede normal mouse operation. Do you really want to change it?	TouchpadPrefView		La nova areo por rulumo estas tre vasta kaj povas malhelpi operaciojn per muso. Ĉu vi vere volas ŝanĝi ĝin?
 Mouse acceleration	SettingsView		Akcelado de muso
-Defaults	TouchpadPrefView		Defaŭltoj
 High	TouchpadPrefView		Alta
+Defaults	TouchpadPrefView		Defaŭltoj
 1-Button	SettingsView		1-butona
 Defaults	InputKeyboard		Defaŭltoj
 Key repeat rate	KeyboardView		Klavripeta rapido

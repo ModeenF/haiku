@@ -1,4 +1,4 @@
-1	esperanto	x-vnd.Haiku-MediaPlayer	1961774506
+1	esperanto	x-vnd.Haiku-MediaPlayer	1441754962
 Remove Entry into Trash	MediaPlayer-RemovePLItemsCmd		Movi la dosieron al la Rubujo
 Close	MediaPlayer-PlaylistWindow		Fermi
 Volume of background clips	MediaPlayer-SettingsWindow		Laŭteco de fonaj aŭdvidaĵoj
@@ -16,7 +16,6 @@ DrawBitmap	MediaPlayer-InfoWin		DrawBitmap
 File info	MediaPlayer-InfoWin		Dosiera informo
 raw audio	MediaPlayer-InfoWin		neprilaborita aŭdaĵo
 Select all	MediaPlayer-PlaylistWindow		Elekti ĉion
-New player…	MediaPlayer-Main		Nova ludilo…
 Move Entries	MediaPlayer-MovePLItemsCmd		Movi anojn
 OK	MediaPlayer-Main		Bone
 Remove	MediaPlayer-PlaylistWindow		Forigi
@@ -25,10 +24,9 @@ Resume:	MediaPlayer-SettingsWindow		Daŭrigi:
 Duration	MediaPlayer-InfoWin		Daŭro
 Import Entries	MediaPlayer-ImportPLItemsCmd		Importi anojn
 Open network stream	MediaPlayer-Main		Uzi retan datumfluon
-Move file to Trash	MediaPlayer-PlaylistWindow		Movi dosieron al la Rubujo
 Open file…	MediaPlayer-Main		Uzi dosieron…
 Scale controls in full screen mode	MediaPlayer-SettingsWindow		Skalilo en la plenekrana reĝimo
-View options	MediaPlayer-SettingsWindow		Rigardi opciojn
+View options	MediaPlayer-SettingsWindow		Kontroli agordojn
 %d kHz	MediaPlayer-InfoWin		%d kHz
 Full volume	MediaPlayer-SettingsWindow		Plena laŭteco
 <untitled>	PlaylistItem-title		<sentitola>

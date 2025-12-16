@@ -25,6 +25,7 @@
 
 #include "debug_utils.h"
 
+#include "signals.h"
 #include "Context.h"
 #include "MemoryReader.h"
 #include "Syscall.h"
@@ -82,6 +83,11 @@ static const char *kUsage =
 "  -d <name>      - Filter the types that have their contents retrieved.\n"
 "                   <name> is one of: strings, enums, simple, complex or\n"
 "                                     pointer_values\n"
+"  -e <names>     - Filter the syscalls.\n"
+"                   <names> is a comma-separated list of names which can be:\n"
+"                       * a syscall name\n"
+"                       * %%memory for memory mapping related syscalls\n"
+"                       * %%network or %%net for network related syscalls\n"
 "  -f             - Fast mode. Syscall arguments contents aren't retrieved.\n"
 "  -h, --help     - Print this text.\n"
 "  -i             - Print integers in decimal format instead of hexadecimal.\n"
@@ -158,7 +164,8 @@ struct Team {
 		}
 
 		// set team debugging flags
-		int32 teamDebugFlags = (traceTeam ? B_TEAM_DEBUG_POST_SYSCALL : 0)
+		int32 teamDebugFlags =
+			(traceTeam ? B_TEAM_DEBUG_PRE_SYSCALL | B_TEAM_DEBUG_POST_SYSCALL : 0)
 			| (traceChildTeams ? B_TEAM_DEBUG_TEAM_CREATION : 0)
 			| (traceSignal ? B_TEAM_DEBUG_SIGNALS : 0);
 		if (set_team_debugging_flags(fNubPort, teamDebugFlags) != B_OK)
@@ -221,9 +228,41 @@ patch_syscalls()
 	// instead of having this done here manually we should either add the
 	// patching step to gensyscalls also manually or add metadata to
 	// kernel/syscalls.h and have it parsed automatically
-	extern void patch_ioctl();
 
+	extern void patch_area();
+	extern void patch_events();
+	extern void patch_exec();
+	extern void patch_fcntl();
+	extern void patch_file();
+	extern void patch_ioctl();
+	extern void patch_mutex();
+	extern void patch_network();
+	extern void patch_rlimit();
+	extern void patch_signal();
+
+	for (size_t i = 0; i < sSyscallVector.size(); i++) {
+		Syscall *syscall = sSyscallVector[i];
+
+		// patch return type handlers
+		const string returnTypeName = syscall->ReturnType()->TypeName();
+		if (returnTypeName == "int" || returnTypeName == "status_t"
+				|| returnTypeName == "area_id") {
+			syscall->ReturnType()->SetHandler(create_status_t_type_handler());
+		} else if (returnTypeName == "ssize_t") {
+			syscall->ReturnType()->SetHandler(create_ssize_t_type_handler());
+		}
+	}
+
+	patch_area();
+	patch_events();
+	patch_exec();
+	patch_fcntl();
+	patch_file();
 	patch_ioctl();
+	patch_mutex();
+	patch_network();
+	patch_rlimit();
+	patch_signal();
 }
 
 
@@ -269,6 +308,9 @@ record_syscall_stats(const Syscall& syscall, debug_post_syscall& message)
 	syscall_stats& stats = sSyscallStats[syscall.Name()];
 	stats.count++;
 
+	if (message.start_time == 0)
+		return;
+
 	bigtime_t time = message.end_time - message.start_time;
 	stats.time += time;
 	sSyscallTime += time;
@@ -294,38 +336,51 @@ print_to_string(char **_buffer, int32 *_length, const char *format, ...)
 	ssize_t length = vsnprintf(*_buffer, *_length, format, list);
 	va_end(list);
 
+	if (length > *_length)
+		length = *_length;
+
 	*_buffer += length;
 	*_length -= length;
 }
 
 
 static void
-print_syscall(FILE *outputFile, Syscall* syscall, debug_post_syscall &message,
+print_syscall(FILE *outputFile, Syscall* syscall, debug_pre_syscall &message,
 	MemoryReader &memoryReader, bool printArguments, uint32 contentsFlags,
-	bool printReturnValue, bool colorize, bool decimal)
+	bool colorize, bool decimal, thread_id &currentThreadID)
 {
 	char buffer[4096], *string = buffer;
 	int32 length = (int32)sizeof(buffer);
 
 	Context ctx(syscall, (char *)message.args, memoryReader,
-		    contentsFlags, decimal);
+		    contentsFlags | Context::INPUT_VALUES, decimal);
+
+	if (currentThreadID != message.origin.thread) {
+		if (currentThreadID != -1)
+			print_to_string(&string, &length, " <unfinished ...>\n");
+		currentThreadID = message.origin.thread;
+	}
 
 	// print syscall name, without the "_kern_"
 	if (colorize) {
-		print_to_string(&string, &length, "[%6ld] %s%s%s(",
+		print_to_string(&string, &length, "[%6" B_PRId32 "] %s%s%s",
 			message.origin.thread, kTerminalTextBlue,
 			syscall->Name().c_str() + 6, kTerminalTextNormal);
 	} else {
-		print_to_string(&string, &length, "[%6ld] %s(",
+		print_to_string(&string, &length, "[%6" B_PRId32 "] %s",
 			message.origin.thread, syscall->Name().c_str() + 6);
 	}
 
 	// print arguments
 	if (printArguments) {
+		print_to_string(&string, &length, "(");
+
 		int32 count = syscall->CountParameters();
 		for (int32 i = 0; i < count; i++) {
 			// get the value
 			Parameter *parameter = syscall->ParameterAt(i);
+			if (parameter->Out())
+				continue;
 			TypeHandler *handler = parameter->Handler();
 			::string value =
 				handler->GetParameterValue(ctx, parameter,
@@ -334,35 +389,93 @@ print_syscall(FILE *outputFile, Syscall* syscall, debug_post_syscall &message,
 			print_to_string(&string, &length, (i > 0 ? ", %s" : "%s"),
 				value.c_str());
 		}
+
+		print_to_string(&string, &length, ")");
 	}
 
-	print_to_string(&string, &length, ")");
+	print_buffer(outputFile, buffer, sizeof(buffer) - length);
+}
+
+
+static void
+print_syscall(FILE *outputFile, Syscall* syscall, debug_post_syscall &message,
+	MemoryReader &memoryReader, bool printArguments, uint32 contentsFlags,
+	bool printReturnValue, bool colorize, bool decimal,
+	thread_id &currentThreadID)
+{
+	char buffer[4096], *string = buffer;
+	int32 length = (int32)sizeof(buffer);
+	bool threadChanged = false;
+
+	Context ctx(syscall, (char *)message.args, memoryReader,
+		    contentsFlags | Context::OUTPUT_VALUES, decimal, message.return_value);
+
+	if (currentThreadID != message.origin.thread) {
+		if (currentThreadID != -1) {
+			print_to_string(&string, &length, " <unfinished ...>\n");
+		}
+		threadChanged = true;
+	}
+	currentThreadID = -1;
 
 	// print return value
 	if (printReturnValue) {
+		if (threadChanged) {
+			// print syscall name, without the "_kern_"
+			if (colorize) {
+				print_to_string(&string, &length, "[%6" B_PRId32 "] <... "
+					"%s%s%s resumed> ", message.origin.thread, kTerminalTextBlue,
+					syscall->Name().c_str() + 6, kTerminalTextNormal);
+			} else {
+				print_to_string(&string, &length, "[%6" B_PRId32 "] <... %s"
+					" resumed> ", message.origin.thread,
+					syscall->Name().c_str() + 6);
+			}
+		}
+
 		Type *returnType = syscall->ReturnType();
 		TypeHandler *handler = returnType->Handler();
 		::string value = handler->GetReturnValue(ctx, message.return_value);
-		if (value.length() > 0) {
+		if (value.length() > 0)
 			print_to_string(&string, &length, " = %s", value.c_str());
-
-			// if the return type is status_t or ssize_t, print human-readable
-			// error codes
-			if (returnType->TypeName() == "status_t"
-				|| ((returnType->TypeName() == "ssize_t"
-						|| returnType->TypeName() == "int")
-					&& message.return_value < 0)) {
-				print_to_string(&string, &length, " %s", strerror(message.return_value));
-			}
-		}
 	}
 
+	// print arguments
+	if (printArguments) {
+		int32 count = syscall->CountParameters();
+		int added = 0;
+		bool printedParen = false;
+		for (int32 i = 0; i < count; i++) {
+			// get the value
+			Parameter *parameter = syscall->ParameterAt(i);
+			if (!parameter->InOut() && !parameter->Out())
+				continue;
+
+			TypeHandler *handler = parameter->Handler();
+			::string value =
+				handler->GetParameterValue(ctx, parameter,
+					ctx.GetValue(parameter));
+
+			if (!printedParen) {
+				print_to_string(&string, &length, " (");
+				printedParen = true;
+			}
+			print_to_string(&string, &length, (added > 0 ? ", %s" : "%s"),
+				value.c_str());
+			added++;
+		}
+		if (printedParen)
+			print_to_string(&string, &length, ")");
+	}
+
+	bigtime_t duration = 0;
+	if (message.start_time != 0)
+		duration = message.end_time - message.start_time;
 	if (colorize) {
 		print_to_string(&string, &length, " %s(%lld us)%s\n", kTerminalTextMagenta,
-			message.end_time - message.start_time, kTerminalTextNormal);
+			duration, kTerminalTextNormal);
 	} else {
-		print_to_string(&string, &length, " (%lld us)\n",
-			message.end_time - message.start_time);
+		print_to_string(&string, &length, " (%lld us)\n", duration);
 	}
 
 //for (int32 i = 0; i < 16; i++) {
@@ -379,18 +492,6 @@ print_syscall(FILE *outputFile, Syscall* syscall, debug_post_syscall &message,
 }
 
 
-static const char *
-signal_name(int signal)
-{
-	if (signal >= 0 && signal < NSIG)
-		return strsignal(signal);
-
-	static char buffer[32];
-	sprintf(buffer, "%d", signal);
-	return buffer;
-}
-
-
 static void
 print_signal(FILE *outputFile, debug_signal_received &message,
 	bool colorize)
@@ -401,13 +502,14 @@ print_signal(FILE *outputFile, debug_signal_received &message,
 
 	// print signal name
 	if (colorize) {
-		print_to_string(&string, &length, "[%6ld] --- %s%s (%s) %s---\n",
-			message.origin.thread, kTerminalTextRed, signal_name(signalNumber),
-			strsignal(signalNumber), kTerminalTextNormal);
+		print_to_string(&string, &length, "[%6" B_PRId32 "] --- %s%s (%s)%s %s ---\n",
+			message.origin.thread, kTerminalTextRed,
+			signal_name(signalNumber).c_str(), strsignal(signalNumber),
+			kTerminalTextNormal, signal_info(message.info).c_str());
 	} else {
-		print_to_string(&string, &length, "[%6ld] --- %s (%s) ---\n",
-			message.origin.thread, signal_name(signalNumber),
-			strsignal(signalNumber));
+		print_to_string(&string, &length, "[%6" B_PRId32 "] --- %s (%s) %s ---\n",
+			message.origin.thread, signal_name(signalNumber).c_str(),
+			strsignal(signalNumber), signal_info(message.info).c_str());
 	}
 
 	print_buffer(outputFile, buffer, sizeof(buffer) - length);
@@ -452,7 +554,7 @@ print_stats(FILE* outputFile)
 
 		print_to_string(&string, &length, "%6.2f %10" B_PRIu64 " %7" B_PRIu32
 			" %10" B_PRIu64 " %s\n", percent, stats.time, stats.count, perCall,
-			callIterator->first->c_str());
+			callIterator->first->c_str() + 6);
 	}
 
 	print_buffer(outputFile, buffer, sizeof(buffer) - length);
@@ -481,8 +583,11 @@ main(int argc, const char *const *argv)
 	bool traceTeam = false;
 	bool traceChildTeams = false;
 	bool traceSignal = true;
-	bool serialOutput = false;
+	bool traceFilter = false;
 	FILE *outputFile = stdout;
+
+	// initialize our syscalls vector and map
+	init_syscalls();
 
 	// parse arguments
 	for (int argi = 1; argi < argc; argi++) {
@@ -525,6 +630,78 @@ main(int argc, const char *const *argv)
 						kCommandName, what);
 					exit(1);
 				}
+			} else if (strcmp(arg, "-e") == 0) {
+				traceFilter = true;
+				// read filter string
+				const char *filterString = NULL;
+				if (arg[2] == '=') {
+					// string follows
+					filterString = arg + 3;
+				} else if (arg[2] == '\0'
+					&& argi + 1 < argc && argv[argi + 1][0] != '-') {
+					// next arg is string
+					filterString = argv[++argi];
+				} else
+					print_usage_and_exit(true);
+				if (filterString != NULL) {
+					char* copy = strdup(filterString);
+					char *tok = strtok(copy, ",");
+					while (tok != NULL) {
+						if (tok[0] == '%') {
+							tok++;
+							// the following should be metadata in kernel/syscalls.h
+							if (strcmp(tok, "memory") == 0) {
+								sSyscallMap["_kern_clone_area"]->EnableTracing(true);
+								sSyscallMap["_kern_create_area"]->EnableTracing(true);
+								sSyscallMap["_kern_delete_area"]->EnableTracing(true);
+								sSyscallMap["_kern_find_area"]->EnableTracing(true);
+								sSyscallMap["_kern_resize_area"]->EnableTracing(true);
+								sSyscallMap["_kern_transfer_area"]->EnableTracing(true);
+								sSyscallMap["_kern_mlock"]->EnableTracing(true);
+								sSyscallMap["_kern_munlock"]->EnableTracing(true);
+								sSyscallMap["_kern_set_memory_protection"]->EnableTracing(true);
+								sSyscallMap["_kern_get_memory_properties"]->EnableTracing(true);
+								sSyscallMap["_kern_sync_memory"]->EnableTracing(true);
+								sSyscallMap["_kern_unmap_memory"]->EnableTracing(true);
+								sSyscallMap["_kern_memory_advice"]->EnableTracing(true);
+								sSyscallMap["_kern_reserve_address_range"]->EnableTracing(true);
+								sSyscallMap["_kern_unreserve_address_range"]->EnableTracing(true);
+								sSyscallMap["_kern_set_area_protection"]->EnableTracing(true);
+								sSyscallMap["_kern_map_file"]->EnableTracing(true);
+							} else if (strcmp(tok, "network") == 0 || strcmp(tok, "net") == 0) {
+								sSyscallMap["_kern_socket"]->EnableTracing(true);
+								sSyscallMap["_kern_bind"]->EnableTracing(true);
+								sSyscallMap["_kern_shutdown_socket"]->EnableTracing(true);
+								sSyscallMap["_kern_connect"]->EnableTracing(true);
+								sSyscallMap["_kern_listen"]->EnableTracing(true);
+								sSyscallMap["_kern_accept"]->EnableTracing(true);
+								sSyscallMap["_kern_recv"]->EnableTracing(true);
+								sSyscallMap["_kern_recvfrom"]->EnableTracing(true);
+								sSyscallMap["_kern_recvmsg"]->EnableTracing(true);
+								sSyscallMap["_kern_send"]->EnableTracing(true);
+								sSyscallMap["_kern_sendto"]->EnableTracing(true);
+								sSyscallMap["_kern_sendmsg"]->EnableTracing(true);
+								sSyscallMap["_kern_getsockopt"]->EnableTracing(true);
+								sSyscallMap["_kern_setsockopt"]->EnableTracing(true);
+								sSyscallMap["_kern_getpeername"]->EnableTracing(true);
+								sSyscallMap["_kern_getsockname"]->EnableTracing(true);
+								sSyscallMap["_kern_sockatmark"]->EnableTracing(true);
+								sSyscallMap["_kern_socketpair"]->EnableTracing(true);
+								sSyscallMap["_kern_get_next_socket_stat"]->EnableTracing(true);
+							} else
+								print_usage_and_exit(true);
+						} else {
+							char buffer[64];
+							snprintf(buffer, sizeof(buffer), "_kern_%s", tok);
+							Syscall* syscall = get_syscall(buffer);
+							if (syscall == NULL)
+								print_usage_and_exit(true);
+							syscall->EnableTracing(true);
+						}
+					    tok = strtok(NULL, ",");
+					}
+					free(copy);
+				}
 			} else if (strcmp(arg, "-f") == 0) {
 				fastMode = true;
 			} else if (strcmp(arg, "-i") == 0) {
@@ -542,7 +719,6 @@ main(int argc, const char *const *argv)
 			} else if (strcmp(arg, "-g") == 0) {
 				traceSignal = false;
 			} else if (strcmp(arg, "-S") == 0) {
-				serialOutput = true;
 				outputFile = NULL;
 			} else if (strncmp(arg, "-o", 2) == 0) {
 				// read filename
@@ -581,9 +757,6 @@ main(int argc, const char *const *argv)
 		contentsFlags = 0;
 	else if (contentsFlags == 0)
 		contentsFlags = Context::ALL;
-
-	// initialize our syscalls vector and map
-	init_syscalls();
 
 	// don't colorize the output, if we don't have a terminal
 	if (outputFile == stdout)
@@ -646,7 +819,7 @@ main(int argc, const char *const *argv)
 	if (threadID >= 0) {
 		int32 threadDebugFlags = 0;
 		if (!traceTeam) {
-			threadDebugFlags = B_THREAD_DEBUG_POST_SYSCALL
+			threadDebugFlags = B_THREAD_DEBUG_PRE_SYSCALL | B_THREAD_DEBUG_POST_SYSCALL
 				| (traceChildThreads
 					? B_THREAD_DEBUG_SYSCALL_TRACE_CHILD_THREADS : 0);
 		}
@@ -655,9 +828,11 @@ main(int argc, const char *const *argv)
 			exit(1);
 		}
 
-		// resume the target thread to be sure, it's running
-		resume_thread(threadID);
+		// resume the target thread to be sure it's running
+		continue_thread(nubPort, threadID);
 	}
+
+	thread_id currentThreadID = -1;
 
 	// debug loop
 	while (true) {
@@ -677,6 +852,33 @@ main(int argc, const char *const *argv)
 		}
 
 		switch (code) {
+			case B_DEBUGGER_MESSAGE_PRE_SYSCALL:
+			{
+				TeamMap::iterator it = debuggedTeams.find(message.origin.team);
+				if (it == debuggedTeams.end())
+					break;
+
+				Team* team = it->second;
+				MemoryReader& memoryReader = team->GetMemoryReader();
+
+				uint32 syscallNumber = message.pre_syscall.syscall;
+				if (syscallNumber >= sSyscallVector.size()) {
+					fprintf(stderr, "%s: invalid syscall %" B_PRIu32 " attempted\n",
+						kCommandName, syscallNumber);
+					break;
+				}
+				Syscall* syscall = sSyscallVector[syscallNumber];
+
+				if (trace) {
+					if (traceFilter && !syscall->TracingEnabled())
+						break;
+					print_syscall(outputFile, syscall, message.pre_syscall,
+						memoryReader, printArguments, contentsFlags,
+						colorize, decimalFormat, currentThreadID);
+				}
+				break;
+			}
+
 			case B_DEBUGGER_MESSAGE_POST_SYSCALL:
 			{
 				TeamMap::iterator it = debuggedTeams.find(message.origin.team);
@@ -698,9 +900,12 @@ main(int argc, const char *const *argv)
 					record_syscall_stats(*syscall, message.post_syscall);
 
 				if (trace) {
+					if (traceFilter && !syscall->TracingEnabled())
+						break;
 					print_syscall(outputFile, syscall, message.post_syscall,
 						memoryReader, printArguments, contentsFlags,
-						printReturnValues, colorize, decimalFormat);
+						printReturnValues, colorize, decimalFormat,
+						currentThreadID);
 				}
 				break;
 			}
@@ -717,7 +922,6 @@ main(int argc, const char *const *argv)
 			case B_DEBUGGER_MESSAGE_BREAKPOINT_HIT:
 			case B_DEBUGGER_MESSAGE_WATCHPOINT_HIT:
 			case B_DEBUGGER_MESSAGE_SINGLE_STEP:
-			case B_DEBUGGER_MESSAGE_PRE_SYSCALL:
 			case B_DEBUGGER_MESSAGE_EXCEPTION_OCCURRED:
 			case B_DEBUGGER_MESSAGE_THREAD_CREATED:
 			case B_DEBUGGER_MESSAGE_THREAD_DELETED:

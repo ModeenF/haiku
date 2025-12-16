@@ -34,7 +34,7 @@ Job::Job(const char* name)
 	fToken((uint32)B_PREFERRED_TOKEN),
 	fLaunchStatus(B_NO_INIT),
 	fTarget(NULL),
-	fPendingLaunchDataReplies(0, false),
+	fPendingLaunchDataReplies(0),
 	fTeamListener(NULL)
 {
 	mutex_init(&fLaunchStatusLock, "launch status lock");
@@ -54,7 +54,7 @@ Job::Job(const Job& other)
 	fToken((uint32)B_PREFERRED_TOKEN),
 	fLaunchStatus(B_NO_INIT),
 	fTarget(other.Target()),
-	fPendingLaunchDataReplies(0, false)
+	fPendingLaunchDataReplies(0)
 {
 	mutex_init(&fLaunchStatusLock, "launch status lock");
 
@@ -254,15 +254,15 @@ Job::Init(const Finder& finder, std::set<BString>& dependencies)
 	// Check dependencies
 
 	for (int32 index = 0; index < Requirements().CountStrings(); index++) {
-		const BString& requires = Requirements().StringAt(index);
-		if (dependencies.find(requires) != dependencies.end()) {
+		const BString& requirement = Requirements().StringAt(index);
+		if (dependencies.find(requirement) != dependencies.end()) {
 			// Found a cyclic dependency
 			// TODO: log error
 			return fInitStatus = B_ERROR;
 		}
-		dependencies.insert(requires);
+		dependencies.insert(requirement);
 
-		Job* dependency = finder.FindJob(requires);
+		Job* dependency = finder.FindJob(requirement);
 		if (dependency != NULL) {
 			std::set<BString> subDependencies = dependencies;
 
@@ -274,7 +274,7 @@ Job::Init(const Finder& finder, std::set<BString>& dependencies)
 
 			fInitStatus = _AddRequirement(dependency);
 		} else {
-			::Target* target = finder.FindTarget(requires);
+			::Target* target = finder.FindTarget(requirement);
 			if (target != NULL)
 				fInitStatus = _AddRequirement(dependency);
 			else {
@@ -475,7 +475,17 @@ Job::GetMessenger(BMessenger& messenger)
 	if (fDefaultPort < 0)
 		return B_NAME_NOT_FOUND;
 
-	BMessenger::Private(messenger).SetTo(fTeam, fDefaultPort, fToken);
+	app_info info;
+	status_t status = be_roster->GetRunningAppInfo(fTeam, &info);
+	if (status != B_OK)
+		return B_NAME_NOT_FOUND;
+
+	bool preRegistered = false;
+	status = BRoster::Private().IsAppRegistered(&info.ref, info.team, fToken, &preRegistered, NULL);
+	if (status != B_OK || preRegistered)
+		return B_NAME_NOT_FOUND;
+
+	BMessenger::Private(messenger).SetTo(fTeam, info.port, fToken);
 	return B_OK;
 }
 

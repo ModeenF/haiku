@@ -16,6 +16,7 @@
 #include <StringList.h>
 
 #include "BaseJob.h"
+#include "FileWatcher.h"
 #include "LaunchDaemon.h"
 #include "NetworkWatcher.h"
 #include "Utility.h"
@@ -32,7 +33,7 @@ protected:
 
 public:
 			void				AddEvent(Event* event);
-			BObjectList<Event>&	Events();
+			BObjectList<Event, true>& Events();
 
 			const BMessenger&	Target() const;
 
@@ -50,7 +51,7 @@ protected:
 protected:
 			BaseJob*			fOwner;
 			BMessenger			fTarget;
-			BObjectList<Event>	fEvents;
+			BObjectList<Event, true> fEvents;
 			bool				fRegistered;
 };
 
@@ -113,7 +114,7 @@ private:
 };
 
 
-class FileCreatedEvent : public Event {
+class FileCreatedEvent : public Event, FileListener {
 public:
 								FileCreatedEvent(Event* parent,
 									const BMessage& args);
@@ -122,6 +123,8 @@ public:
 	virtual	void				Unregister(EventRegistrator& registrator);
 
 	virtual	BString				ToString() const;
+
+	virtual void				FileCreated(const char* path);
 
 private:
 			BPath				fPath;
@@ -252,7 +255,7 @@ EventContainer::EventContainer(Event* parent, const BMessenger* target,
 	const BMessage& args)
 	:
 	Event(parent),
-	fEvents(5, true),
+	fEvents(5),
 	fRegistered(false)
 {
 	if (target != NULL)
@@ -277,7 +280,7 @@ EventContainer::EventContainer(BaseJob* owner, const BMessenger& target)
 	Event(NULL),
 	fOwner(owner),
 	fTarget(target),
-	fEvents(5, true),
+	fEvents(5),
 	fRegistered(false)
 {
 }
@@ -291,7 +294,7 @@ EventContainer::AddEvent(Event* event)
 }
 
 
-BObjectList<Event>&
+BObjectList<Event, true>&
 EventContainer::Events()
 {
 	return fEvents;
@@ -566,14 +569,14 @@ FileCreatedEvent::FileCreatedEvent(Event* parent, const BMessage& args)
 status_t
 FileCreatedEvent::Register(EventRegistrator& registrator)
 {
-	// TODO: implement!
-	return B_ERROR;
+	return FileWatcher::Register(this, fPath);
 }
 
 
 void
 FileCreatedEvent::Unregister(EventRegistrator& registrator)
 {
+	FileWatcher::Unregister(this, fPath);
 }
 
 
@@ -583,6 +586,14 @@ FileCreatedEvent::ToString() const
 	BString string = "file_created ";
 	string << fPath.Path();
 	return string;
+}
+
+
+void
+FileCreatedEvent::FileCreated(const char* path)
+{
+	if (strcmp(fPath.Path(), path) == 0)
+		Trigger(this);
 }
 
 
@@ -703,74 +714,53 @@ Events::AddOnDemand(const BMessenger& target, Event* event)
 }
 
 
-/*static*/ bool
+/*static*/ Event*
 Events::ResolveExternalEvent(Event* event, const char* name, uint32 flags)
 {
 	if (event == NULL)
-		return false;
+		return NULL;
 
 	if (EventContainer* container = dynamic_cast<EventContainer*>(event)) {
 		for (int32 index = 0; index < container->Events().CountItems();
 				index++) {
-			Event* event = container->Events().ItemAt(index);
-			if (ExternalEvent* external = dynamic_cast<ExternalEvent*>(event)) {
-				if (external->Name() == name && external->Resolve(flags))
-					return true;
-			} else if (dynamic_cast<EventContainer*>(event) != NULL) {
-				if (ResolveExternalEvent(event, name, flags))
-					return true;
-			}
+			Event* event = ResolveExternalEvent(container->Events().ItemAt(index), name, flags);
+			if (event != NULL)
+				return event;
 		}
+	} else if (ExternalEvent* external = dynamic_cast<ExternalEvent*>(event)) {
+		if (external->Name() == name && external->Resolve(flags))
+			return external;
 	}
-	return false;
+
+	return NULL;
 }
 
 
 /*static*/ void
-Events::TriggerExternalEvent(Event* event, const char* name)
+Events::TriggerExternalEvent(Event* event)
 {
 	if (event == NULL)
 		return;
 
-	if (EventContainer* container = dynamic_cast<EventContainer*>(event)) {
-		for (int32 index = 0; index < container->Events().CountItems();
-				index++) {
-			Event* event = container->Events().ItemAt(index);
-			if (ExternalEvent* external = dynamic_cast<ExternalEvent*>(event)) {
-				if (external->Name() == name) {
-					external->Trigger(container);
-					return;
-				}
-			} else if (dynamic_cast<EventContainer*>(event) != NULL) {
-				TriggerExternalEvent(event, name);
-			}
-		}
-	}
-	return;
+	ExternalEvent* external = dynamic_cast<ExternalEvent*>(event);
+	if (external == NULL)
+		return;
+
+	external->Trigger(external);
 }
 
 
 /*static*/ void
-Events::ResetStickyExternalEvent(Event* event, const char* name)
+Events::ResetStickyExternalEvent(Event* event)
 {
 	if (event == NULL)
 		return;
 
-	if (EventContainer* container = dynamic_cast<EventContainer*>(event)) {
-		for (int32 index = 0; index < container->Events().CountItems();
-				index++) {
-			Event* event = container->Events().ItemAt(index);
-			if (ExternalEvent* external = dynamic_cast<ExternalEvent*>(event)) {
-				if (external->Name() == name) {
-					external->ResetSticky();
-					return;
-				}
-			} else if (dynamic_cast<EventContainer*>(event) != NULL) {
-				ResetStickyExternalEvent(event, name);
-			}
-		}
-	}
-	return;
+	ExternalEvent* external = dynamic_cast<ExternalEvent*>(event);
+	if (external == NULL)
+		return;
+
+	external->ResetSticky();
 }
 
 

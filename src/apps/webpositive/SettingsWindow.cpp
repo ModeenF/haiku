@@ -25,6 +25,7 @@
 #include <TabView.h>
 #include <TextControl.h>
 #include <debugger.h>
+#include <SettingsMessage.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,7 +35,6 @@
 #include "BrowserWindow.h"
 #include "FontSelectionView.h"
 #include "SettingsKeys.h"
-#include "SettingsMessage.h"
 #include "WebSettings.h"
 
 
@@ -160,6 +160,12 @@ void
 SettingsWindow::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
+		case B_COLORS_UPDATED:
+			fStandardFontView->MessageReceived(message);
+			fSerifFontView->MessageReceived(message);
+			fSansSerifFontView->MessageReceived(message);
+			fFixedFontView->MessageReceived(message);
+			break;
 		case MSG_APPLY:
 			_ApplySettings();
 			break;
@@ -254,7 +260,7 @@ SettingsWindow::QuitRequested()
 void
 SettingsWindow::Show()
 {
-	// When showing the window, the this is always the
+	// When showing the window, this is always the
 	// point to which we can revert the settings.
 	_RevertSettings();
 	BWindow::Show();
@@ -689,7 +695,7 @@ SettingsWindow::_ApplySettings()
 	fSettings->SetValue(kSettingsKeyNewWindowPolicy, _NewWindowPolicy());
 	fSettings->SetValue(kSettingsKeyNewTabPolicy, _NewTabPolicy());
 
-	// Store fond settings
+	// Store font settings
 	fSettings->SetValue("standard font", fStandardFontView->Font());
 	fSettings->SetValue("serif font", fSerifFontView->Font());
 	fSettings->SetValue("sans serif font", fSansSerifFontView->Font());

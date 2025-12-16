@@ -38,6 +38,7 @@ All rights reserved.
 
 #include <AppFileInfo.h>
 #include <Bitmap.h>
+#include <ControlLook.h>
 #include <Debug.h>
 #include <Directory.h>
 #include <LocaleRoster.h>
@@ -45,6 +46,7 @@ All rights reserved.
 #include <Roster.h>
 #include <Screen.h>
 #include <String.h>
+#include <StringList.h>
 
 #include "icons.h"
 #include "BarApp.h"
@@ -65,8 +67,6 @@ const int32 kDefaultRecentAppCount = 10;
 
 const int32 kMenuTrackMargin = 20;
 const float kMinTeamItemHeight = 20.0f;
-const float kVPad = 2.0f;
-const float kIconPadding = 8.0f;
 const float kScrollerDimension = 12.0f;
 
 const uint32 kUpdateOrientation = 'UpOr';
@@ -474,7 +474,8 @@ TBarView::PlaceDeskbarMenu()
 			height = std::max(fTabHeight,
 				kGutter + fReplicantTray->MaxReplicantHeight() + kGutter);
 		} else {
-			width = gMinimumWindowWidth / 2 + kIconPadding;
+			width = gMinimumWindowWidth / 2
+				+ be_control_look->ComposeSpacing(kIconPadding);
 			height = std::max(TeamMenuItemHeight(),
 				kGutter + fReplicantTray->MaxReplicantHeight() + kGutter);
 		}
@@ -528,10 +529,10 @@ TBarView::PlaceTray(bool vertSwap, bool leftSwap)
 		if (fLeft) {
 			// move replicant tray past dragger width on left
 			// also down 1px so it won't cover the border
-			fReplicantTray->MoveTo(kDragWidth + kGutter, kGutter);
+			fReplicantTray->MoveTo(gDragWidth + kGutter, kGutter);
 
 			// shrink width by same amount
-			fReplicantTray->ResizeBy(-(kDragWidth + kGutter), 0);
+			fReplicantTray->ResizeBy(-(gDragWidth + kGutter), 0);
 		} else {
 			// move replicant tray down 1px so it won't cover the border
 			fReplicantTray->MoveTo(0, kGutter);
@@ -548,7 +549,7 @@ TBarView::PlaceTray(bool vertSwap, bool leftSwap)
 
 			// move past dragger and top border
 			// and make room for the top and bottom borders
-			fReplicantTray->MoveTo(fLeft ? kDragWidth : 0, kGutter);
+			fReplicantTray->MoveTo(fLeft ? gDragWidth : 0, kGutter);
 			fReplicantTray->ResizeBy(0, -4);
 		} else {
 			// move tray right and down to not cover border, resize by same
@@ -563,12 +564,12 @@ TBarView::PlaceTray(bool vertSwap, bool leftSwap)
 	fDragRegion->MoveTo(statusLoc);
 
 	// make room for top and bottom border
-	fResizeControl->ResizeTo(kDragWidth, fDragRegion->Bounds().Height() - 2);
+	fResizeControl->ResizeTo(gDragWidth, fDragRegion->Bounds().Height() - 2);
 
 	if (fVertical) {
 		// move resize control into place based on width setting
 		fResizeControl->MoveTo(
-			fLeft ? fBarApp->Settings()->width - kDragWidth : 0, 1);
+			fLeft ? fBarApp->Settings()->width - gDragWidth : 0, 1);
 		if (fResizeControl->IsHidden())
 			fResizeControl->Show();
 	} else {
@@ -618,10 +619,8 @@ TBarView::PlaceApplicationBar()
 		// top or bottom
 		expandoFrame.top = 0;
 		expandoFrame.bottom = TeamMenuItemHeight();
-		expandoFrame.left = gMinimumWindowWidth / 2 + kIconPadding;
-		expandoFrame.right = screenFrame.Width();
-		if (fTrayLocation != 0 && fDragRegion != NULL)
-			expandoFrame.right -= fDragRegion->Frame().Width() + 1;
+		expandoFrame.left = screenFrame.left + fBarMenuBar->Frame().Width();
+		expandoFrame.right = screenFrame.right - fDragRegion->Frame().Width() - 1;
 	}
 
 	fInlineScrollView->DetachScrollers();
@@ -1021,7 +1020,7 @@ TBarView::AppCanHandleTypes(const char* signature)
 	}
 
 	if (!signature || strlen(signature) == 0
-		|| !fCachedTypesList || fCachedTypesList->CountItems() == 0)
+		|| !fCachedTypesList || fCachedTypesList->CountStrings() == 0)
 		return false;
 
 	if (strcasecmp(signature, kTrackerSignature) == 0) {
@@ -1044,9 +1043,9 @@ TBarView::AppCanHandleTypes(const char* signature)
 	// supports anything in the list
 	// only one item needs to match in the list of refs
 
-	int32 count = fCachedTypesList->CountItems();
+	int32 count = fCachedTypesList->CountStrings();
 	for (int32 i = 0 ; i < count ; i++) {
-		if (fileinfo.IsSupportedType(fCachedTypesList->ItemAt(i)->String()))
+		if (fileinfo.IsSupportedType(fCachedTypesList->StringAt(i).String()))
 			return true;
 	}
 
@@ -1264,8 +1263,11 @@ TBarView::IconFrame(const char* name) const
 float
 TBarView::TeamMenuItemHeight() const
 {
-	const int32 iconSize = fBarApp->IconSize();
-	float iconSizePadded = kVPad + iconSize + kVPad;
+	const int32 iconSize = fBarApp->TeamIconSize();
+	const float iconPadding = be_control_look->ComposeSpacing(kIconPadding);
+	float iconOnlyHeight = iconSize + iconPadding / 2;
+	const int32 large = be_control_look->ComposeIconSize(B_LARGE_ICON)
+		.IntegerWidth() + 1;
 
 	font_height fontHeight;
 	if (fExpandoMenuBar != NULL)
@@ -1277,17 +1279,16 @@ TBarView::TeamMenuItemHeight() const
 	labelHeight = labelHeight < kMinTeamItemHeight ? kMinTeamItemHeight
 		: ceilf(labelHeight * 1.1f);
 
-	bool hideLabels = static_cast<TBarApp*>(be_app)->Settings()->hideLabels;
-	if (hideLabels && iconSize > B_MINI_ICON) {
+	if (fBarApp->Settings()->hideLabels && iconSize > B_MINI_ICON) {
 		// height is determined based solely on icon size
-		return iconSizePadded;
-	} else if (!fVertical || (fVertical && iconSize <= B_LARGE_ICON)) {
+		return iconOnlyHeight;
+	} else if (!fVertical || (fVertical && iconSize <= large)) {
 		// horizontal or vertical with label on same row as icon:
 		// height based on icon size or font size, whichever is bigger
-		return std::max(iconSizePadded, labelHeight);
-	} else if (fVertical && iconSize > B_LARGE_ICON) {
+		return std::max(iconOnlyHeight, labelHeight);
+	} else if (fVertical && iconSize > large) {
 		// vertical with label below icon: height based on icon and label
-		return ceilf(iconSizePadded + labelHeight);
+		return ceilf(iconOnlyHeight + labelHeight);
 	} else {
 		// height is determined based solely on label height
 		return labelHeight;

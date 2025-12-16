@@ -31,34 +31,12 @@
 using std::nothrow;
 
 
-static const uint32 kDiskSystemFlags =
-	0
-//	| B_DISK_SYSTEM_SUPPORTS_CHECKING
-//	| B_DISK_SYSTEM_SUPPORTS_REPAIRING
-	| B_DISK_SYSTEM_SUPPORTS_RESIZING
-	| B_DISK_SYSTEM_SUPPORTS_MOVING
-//	| B_DISK_SYSTEM_SUPPORTS_SETTING_CONTENT_NAME
-	| B_DISK_SYSTEM_SUPPORTS_SETTING_CONTENT_PARAMETERS
-	| B_DISK_SYSTEM_SUPPORTS_INITIALIZING
-//	| B_DISK_SYSTEM_SUPPORTS_CONTENT_NAME
-
-	| B_DISK_SYSTEM_SUPPORTS_RESIZING_CHILD
-	| B_DISK_SYSTEM_SUPPORTS_MOVING_CHILD
-//	| B_DISK_SYSTEM_SUPPORTS_SETTING_NAME
-	| B_DISK_SYSTEM_SUPPORTS_SETTING_TYPE
-//	| B_DISK_SYSTEM_SUPPORTS_SETTING_PARAMETERS
-	| B_DISK_SYSTEM_SUPPORTS_CREATING_CHILD
-	| B_DISK_SYSTEM_SUPPORTS_DELETING_CHILD
-//	| B_DISK_SYSTEM_SUPPORTS_NAME
-;
-
-
 // #pragma mark - PartitionMapAddOn
 
 
 PartitionMapAddOn::PartitionMapAddOn()
 	:
-	BDiskSystemAddOn(kPartitionTypeIntel, kDiskSystemFlags)
+	BDiskSystemAddOn(kPartitionTypeIntel)
 {
 }
 
@@ -236,7 +214,7 @@ PartitionMapHandle::SupportedChildOperations(const BMutablePartition* child,
 {
 	return B_DISK_SYSTEM_SUPPORTS_RESIZING_CHILD
 		| B_DISK_SYSTEM_SUPPORTS_MOVING_CHILD
-		| B_DISK_SYSTEM_SUPPORTS_SETTING_TYPE
+		| B_DISK_SYSTEM_SUPPORTS_SETTING_PARAMETERS
 		| B_DISK_SYSTEM_SUPPORTS_DELETING_CHILD;
 }
 
@@ -257,7 +235,7 @@ PartitionMapHandle::GetNextSupportedType(const BMutablePartition* child,
 		index++;
 		if (nextType->used)
 			break;
-	}
+}
 
 	if (!nextType)
 		return B_ENTRY_NOT_FOUND;
@@ -295,6 +273,44 @@ PartitionMapHandle::GetPartitioningInfo(BPartitioningInfo* info)
 
 
 status_t
+PartitionMapHandle::ValidateSetParameters(const BMutablePartition* child,
+	const char* parameters)
+{
+	if (child == NULL || parameters == NULL)
+		return B_NO_INIT;
+
+	void* handle = parse_driver_settings_string(parameters);
+	if (handle == NULL)
+		return B_BAD_DATA;
+
+	unload_driver_settings(handle);
+
+	return B_OK;
+}
+
+
+status_t
+PartitionMapHandle::SetParameters(BMutablePartition* child,
+	const char* parameters)
+{
+	void* handle = parse_driver_settings_string(parameters);
+	if (handle == NULL)
+		return B_BAD_DATA;
+
+	bool active = get_driver_boolean_parameter(handle, "active", false, true);
+	unload_driver_settings(handle);
+
+	// Update our local state
+	PrimaryPartition* partition = (PrimaryPartition*)child->ChildCookie();
+	partition->SetActive(active);
+
+	// Forward the request to the BMutablePartition so it can be committed to
+	// disk
+	return child->SetParameters(parameters);
+}
+
+
+status_t
 PartitionMapHandle::GetParameterEditor(B_PARAMETER_EDITOR_TYPE type,
 	BPartitionParameterEditor** editor)
 {
@@ -302,7 +318,7 @@ PartitionMapHandle::GetParameterEditor(B_PARAMETER_EDITOR_TYPE type,
 	if (type == B_CREATE_PARAMETER_EDITOR
 		|| type == B_PROPERTIES_PARAMETER_EDITOR) {
 		try {
-			*editor = new PrimaryPartitionEditor();
+			*editor = new PrimaryPartitionEditor(type == B_CREATE_PARAMETER_EDITOR);
 		} catch (std::bad_alloc&) {
 			return B_NO_MEMORY;
 		}
@@ -319,11 +335,11 @@ PartitionMapHandle::ValidateCreateChild(off_t* _offset, off_t* _size,
 	// check type
 	PartitionType type;
 	if (!type.SetType(typeString) || type.IsEmpty())
-		return B_BAD_VALUE;
+		return B_BAD_TYPE;
 
 	if (type.IsExtended() && fPartitionMap.ExtendedPartitionIndex() >= 0) {
 		// There can only be a single extended partition
-		return B_BAD_VALUE;
+		return B_NAME_IN_USE;
 	}
 
 	// check name
@@ -335,11 +351,11 @@ PartitionMapHandle::ValidateCreateChild(off_t* _offset, off_t* _size,
 	if (handle == NULL)
 		return B_ERROR;
 	get_driver_boolean_parameter(handle, "active", false, true);
-	delete_driver_settings(handle);
+	unload_driver_settings(handle);
 
 	// do we have a spare primary partition?
 	if (fPartitionMap.CountNonEmptyPrimaryPartitions() == 4)
-		return B_BAD_VALUE;
+		return B_BAD_INDEX;
 
 	// check the free space situation
 	BPartitioningInfo info;
@@ -350,7 +366,7 @@ PartitionMapHandle::ValidateCreateChild(off_t* _offset, off_t* _size,
 	// any space in the partition at all?
 	int32 spacesCount = info.CountPartitionableSpaces();
 	if (spacesCount == 0)
-		return B_BAD_VALUE;
+		return B_DEVICE_FULL;
 
 	// check offset and size
 	off_t offset = sector_align(*_offset, Partition()->BlockSize());
@@ -451,7 +467,7 @@ PartitionMapHandle::CreateChild(off_t offset, off_t size,
 		return B_ERROR;
 
 	bool active = get_driver_boolean_parameter(handle, "active", false, true);
-	delete_driver_settings(handle);
+	unload_driver_settings(handle);
 
 	// get a spare primary partition
 	PrimaryPartition* primary = NULL;

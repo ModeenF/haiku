@@ -301,8 +301,6 @@ echo "Creating filesystem indices..."
 	$mkindex -t string MAIL:account
 	$mkindex -t string MAIL:cc
 	$mkindex -t string MAIL:chain
-	$mkindex -t string MAIL:draft
-	$mkindex -t string MAIL:flags
 	$mkindex -t string MAIL:from
 	$mkindex -t string MAIL:name
 	$mkindex -t string MAIL:pending_chain
@@ -332,6 +330,8 @@ echo "Creating filesystem indices..."
 	$mkindex -t int32 MAIL:account_id
 	$mkindex -t int32 MAIL:read
 	$mkindex -t int32 MAIL:when
+	$mkindex -t int32 MAIL:draft
+	$mkindex -t int32 MAIL:flags
 fi
 
 echo "Populating image ..."
@@ -374,7 +374,7 @@ fi
 
 # install default settings for packages
 for packageFile in $systemPackages; do
-	if $package list -p $packageFile | egrep '^settings/' > /dev/null; then
+	if $package list -p $packageFile | grep -E '^settings/' > /dev/null; then
 		extractFile $packageFile system/settings settings
 	fi
 done
@@ -388,7 +388,7 @@ if [ $isCD ]; then
 	echo "Copying boot image ..."
 	$cp "$cdBootFloppy" "$outputDir"
 
-	if [ $(which xorriso) ]; then
+	if command -v xorriso; then
 		# build the iso image using xorriso
 		echo "Building CD image..."
 		xorriso -as mkisofs -r -b `basename $cdBootFloppy` \

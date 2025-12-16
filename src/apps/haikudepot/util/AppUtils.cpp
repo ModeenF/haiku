@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2020, Andrew Lindesay <apl@lindesay.co.nz>.
+ * Copyright 2018-2024, Andrew Lindesay <apl@lindesay.co.nz>.
  * All rights reserved. Distributed under the terms of the MIT License.
  */
 
@@ -8,8 +8,10 @@
 
 #include <string.h>
 
+#include <AppFileInfo.h>
 #include <Application.h>
 #include <MenuItem.h>
+#include <Roster.h>
 #include <String.h>
 
 #include "HaikuDepotConstants.h"
@@ -21,7 +23,8 @@
  */
 
 /*static*/ void
-AppUtils::NotifySimpleError(const char* title, const char* text)
+AppUtils::NotifySimpleError(const char* title, const char* text,
+	alert_type type)
 {
 	BMessage message(MSG_ALERT_SIMPLE_ERROR);
 
@@ -31,30 +34,32 @@ AppUtils::NotifySimpleError(const char* title, const char* text)
 	if (text != NULL && strlen(text) != 0)
 		message.AddString(KEY_ALERT_TEXT, text);
 
+	message.AddInt32(KEY_ALERT_TYPE, static_cast<int>(type));
+
 	be_app->PostMessage(&message);
 }
 
 
 /*static*/ status_t
-AppUtils::MarkItemWithCodeInMenuOrFirst(const BString& code, BMenu* menu)
+AppUtils::MarkItemWithKeyValueInMenuOrFirst(BMenu* menu, const BString& key, const BString& value)
 {
-	status_t result = AppUtils::MarkItemWithCodeInMenu(code, menu);
-	if (result != B_OK)
+	status_t result = AppUtils::MarkItemWithKeyValueInMenu(menu, key, value);
+	if (result != B_OK && menu->CountItems() > 0)
 		menu->ItemAt(0)->SetMarked(true);
 	return result;
 }
 
 
 /*static*/ status_t
-AppUtils::MarkItemWithCodeInMenu(const BString& code, BMenu* menu)
+AppUtils::MarkItemWithKeyValueInMenu(BMenu* menu, const BString& key, const BString& value)
 {
 	if (menu->CountItems() == 0)
 		HDFATAL("menu contains no items; not able to mark the item");
 
-	int32 index = AppUtils::IndexOfCodeInMenu(code, menu);
+	int32 index = AppUtils::IndexOfKeyValueInMenu(menu, key, value);
 
 	if (index == -1) {
-		HDINFO("unable to find the menu item [%s]", code.String());
+		HDINFO("unable to find the menu item with [%s] = [%s]", key.String(), value.String());
 		return B_ERROR;
 	}
 
@@ -64,13 +69,13 @@ AppUtils::MarkItemWithCodeInMenu(const BString& code, BMenu* menu)
 
 
 /*static*/ int32
-AppUtils::IndexOfCodeInMenu(const BString& code, BMenu* menu)
+AppUtils::IndexOfKeyValueInMenu(BMenu* menu, const BString& key, const BString& value)
 {
 	BString itemCode;
 	for (int32 i = 0; i < menu->CountItems(); i++) {
-		if (AppUtils::GetCodeAtIndexInMenu(menu, i, &itemCode) == B_OK
-				&& itemCode == code) {
-			return i;
+		if (AppUtils::GetValueForKeyAtIndexInMenu(menu, i, key, &itemCode) == B_OK) {
+			if (itemCode == value)
+				return i;
 		}
 	}
 
@@ -79,10 +84,43 @@ AppUtils::IndexOfCodeInMenu(const BString& code, BMenu* menu)
 
 
 /*static*/ status_t
-AppUtils::GetCodeAtIndexInMenu(BMenu* menu, int32 index, BString* result)
+AppUtils::GetValueForKeyAtIndexInMenu(BMenu* menu, int32 index, const BString& key, BString* result)
 {
 	BMessage *itemMessage = menu->ItemAt(index)->Message();
 	if (itemMessage == NULL)
 		return B_ERROR;
-	return itemMessage->FindString("code", result);
+	return itemMessage->FindString(key, result);
+}
+
+
+/*static*/ status_t
+AppUtils::GetAppVersionString(BString& result)
+{
+	app_info info;
+
+	if (be_app->GetAppInfo(&info) != B_OK) {
+		HDERROR("Unable to get the application info");
+		return B_ERROR;
+	}
+
+	BFile file(&info.ref, B_READ_ONLY);
+
+	if (file.InitCheck() != B_OK) {
+		HDERROR("Unable to access the application info file");
+		return B_ERROR;
+	}
+
+	BAppFileInfo appFileInfo(&file);
+	version_info versionInfo;
+
+	if (appFileInfo.GetVersionInfo(
+			&versionInfo, B_APP_VERSION_KIND) != B_OK) {
+		HDERROR("Unable to establish the application version");
+		return B_ERROR;
+	}
+
+	result.SetToFormat("%" B_PRId32 ".%" B_PRId32 ".%" B_PRId32,
+		versionInfo.major, versionInfo.middle, versionInfo.minor);
+
+	return B_OK;
 }

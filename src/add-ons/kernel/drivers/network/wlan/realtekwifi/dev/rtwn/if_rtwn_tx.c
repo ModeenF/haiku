@@ -19,8 +19,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_wlan.h"
 
 #include <sys/param.h>
@@ -55,7 +53,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/rtwn/if_rtwn_debug.h>
 #include <dev/rtwn/if_rtwn_ridx.h>
 #include <dev/rtwn/if_rtwn_tx.h>
-
 
 void
 rtwn_drain_mbufq(struct rtwn_softc *sc)
@@ -266,6 +263,11 @@ rtwn_start(struct rtwn_softc *sc)
 	struct mbuf *m;
 
 	RTWN_ASSERT_LOCKED(sc);
+
+	/* Ensure no work is scheduled during reset/teardown */
+	if ((sc->sc_flags & RTWN_RUNNING) == 0)
+		return;
+
 	while ((m = mbufq_dequeue(&sc->sc_snd)) != NULL) {
 		if (sc->qfullmsk != 0) {
 			mbufq_prepend(&sc->sc_snd, m);

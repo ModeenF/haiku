@@ -18,7 +18,7 @@
 #include <debug.h>
 #include <kernel.h>
 #include <ksignal.h>
-#include <int.h>
+#include <interrupts.h>
 #include <team.h>
 #include <thread.h>
 #include <tls.h>
@@ -200,8 +200,8 @@ arch_thread_init_kthread_stack(Thread* thread, void* _stack, void* _stackTop,
 		*--stackTop = 0;
 
 	// save the stack position
-	thread->arch_info.current_stack.esp = stackTop;
-	thread->arch_info.current_stack.ss = (addr_t*)KERNEL_DATA_SELECTOR;
+	thread->arch_info.current_stack.esp = (uint32*)stackTop;
+	thread->arch_info.current_stack.ss = (uint32*)KERNEL_DATA_SELECTOR;
 }
 
 
@@ -251,8 +251,7 @@ arch_thread_enter_userspace(Thread* thread, addr_t entry, void* args1,
 	frame.ds = USER_DATA_SELECTOR;
 	frame.ip = entry;
 	frame.cs = USER_CODE_SELECTOR;
-	frame.flags = X86_EFLAGS_RESERVED1 | X86_EFLAGS_INTERRUPT
-		| (3 << X86_EFLAGS_IO_PRIVILEG_LEVEL_SHIFT);
+	frame.flags = X86_EFLAGS_RESERVED1 | X86_EFLAGS_INTERRUPT;
 	frame.user_sp = stackTop;
 	frame.user_ss = USER_DATA_SELECTOR;
 
@@ -323,6 +322,16 @@ arch_setup_signal_frame(Thread* thread, struct sigaction* action,
 	// Fill in signalFrameData->context.uc_stack
 	signal_get_user_stack(frame->user_sp, &signalFrameData->context.uc_stack);
 
+	signalFrameData->context.uc_mcontext.xregs.state.new_format.fault_address = x86_read_cr2();
+	signalFrameData->context.uc_mcontext.xregs.state.new_format.error_code = frame->error_code;
+	signalFrameData->context.uc_mcontext.xregs.state.new_format.cs = frame->cs;
+	signalFrameData->context.uc_mcontext.xregs.state.new_format.ds = frame->ds;
+	signalFrameData->context.uc_mcontext.xregs.state.new_format.es = frame->es;
+	signalFrameData->context.uc_mcontext.xregs.state.new_format.fs = frame->fs;
+	signalFrameData->context.uc_mcontext.xregs.state.new_format.gs = frame->gs;
+	signalFrameData->context.uc_mcontext.xregs.state.new_format.ss = frame->user_ss;
+	signalFrameData->context.uc_mcontext.xregs.state.new_format.trap_number = frame->vector;
+
 	// store orig_eax/orig_edx in syscall_restart_return_value
 	signalFrameData->syscall_restart_return_value
 		= (uint64)frame->orig_edx << 32 | frame->orig_eax;
@@ -360,6 +369,7 @@ arch_setup_signal_frame(Thread* thread, struct sigaction* action,
 	frame->ip = x86_get_user_signal_handler_wrapper(
 		(action->sa_flags & SA_BEOS_COMPATIBLE_HANDLER) != 0,
 		thread->team->commpage_address);
+	frame->flags &= ~(X86_EFLAGS_TRAP | X86_EFLAGS_DIRECTION);
 
 	return B_OK;
 }
@@ -387,6 +397,17 @@ arch_restore_signal_frame(struct signal_frame_data* signalFrameData)
 	frame->di = signalFrameData->context.uc_mcontext.edi;
 	frame->si = signalFrameData->context.uc_mcontext.esi;
 	frame->bx = signalFrameData->context.uc_mcontext.ebx;
+
+	// Note: the error_code and vector fields are not restored. These are provided to the signal
+	// handler for information purposes only, and are not used after the signal handling is
+	// complete.
+
+	frame->cs = signalFrameData->context.uc_mcontext.xregs.state.new_format.cs;
+	frame->ds = signalFrameData->context.uc_mcontext.xregs.state.new_format.ds;
+	frame->es = signalFrameData->context.uc_mcontext.xregs.state.new_format.es;
+	frame->fs = signalFrameData->context.uc_mcontext.xregs.state.new_format.fs;
+	frame->gs = signalFrameData->context.uc_mcontext.xregs.state.new_format.gs;
+	frame->user_ss = signalFrameData->context.uc_mcontext.xregs.state.new_format.ss;
 
 	x86_frstor((void*)(&signalFrameData->context.uc_mcontext.xregs));
 

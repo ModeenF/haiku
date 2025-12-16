@@ -14,11 +14,10 @@
 #include <Referenceable.h>
 
 
-#ifndef LIBNETAPI_DEPRECATED
 namespace BPrivate {
 
 namespace Network {
-#endif
+
 
 class BUrlContext: public BReferenceable {
 public:
@@ -47,7 +46,7 @@ private:
 private:
 			BNetworkCookieJar	fCookieJar;
 			BHttpAuthenticationMap* fAuthenticationMap;
-			typedef BObjectList<const BCertificate> BCertificateSet;
+			typedef BObjectList<const BCertificate, true> BCertificateSet;
 			BCertificateSet		fCertificates;
 
 			BString				fProxyHost;
@@ -55,11 +54,8 @@ private:
 };
 
 
-#ifndef LIBNETAPI_DEPRECATED
 } // namespace Network
 
 } // namespace BPrivate
-#endif
-
 
 #endif // _B_URL_CONTEXT_H_

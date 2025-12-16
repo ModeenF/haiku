@@ -27,16 +27,12 @@ struct ARMVMTranslationMap32Bit : ARMVMTranslationMap {
 									vm_page_reservation* reservation);
 	virtual	status_t			Unmap(addr_t start, addr_t end);
 
-	virtual	status_t			DebugMarkRangePresent(addr_t start, addr_t end,
-									bool markPresent);
-
 	virtual	status_t			UnmapPage(VMArea* area, addr_t address,
-									bool updatePageQueue);
+									bool updatePageQueue,
+									bool deletingAddressSpace, uint32* _flags);
 	virtual	void				UnmapPages(VMArea* area, addr_t base,
-									size_t size, bool updatePageQueue);
-	virtual	void				UnmapArea(VMArea* area,
-									bool deletingAddressSpace,
-									bool ignoreTopCachePageFlags);
+									size_t size, bool updatePageQueue,
+									bool deletingAddressSpace);
 
 	virtual	status_t			Query(addr_t virtualAddress,
 									phys_addr_t* _physicalAddress,
@@ -47,6 +43,8 @@ struct ARMVMTranslationMap32Bit : ARMVMTranslationMap {
 
 	virtual	status_t			Protect(addr_t base, addr_t top,
 									uint32 attributes, uint32 memoryType);
+
+	virtual status_t			SetFlags(addr_t virtualAddress, uint32 flags);
 
 	virtual	status_t			ClearFlags(addr_t virtualAddress,
 									uint32 flags);

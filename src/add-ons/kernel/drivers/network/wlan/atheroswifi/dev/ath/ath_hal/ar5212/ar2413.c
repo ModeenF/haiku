@@ -15,8 +15,6 @@
  * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- *
- * $FreeBSD: releng/12.0/sys/dev/ath/ath_hal/ar5212/ar2413.c 326695 2017-12-08 15:57:29Z pfg $
  */
 #include "opt_ah.h"
 
@@ -624,7 +622,7 @@ ar2413GetMaxPower(struct ath_hal *ah, const RAW_DATA_PER_CHANNEL_2413 *data)
 {
 	uint32_t ii;
 	uint16_t Pmax=0,numVpd;
-	
+
 	for (ii=0; ii< MAX_NUM_PDGAINS_PER_CHANNEL; ii++) {
 		/* work forwards cuase lowest pdGain for highest power */
 		numVpd = data->pDataPerPDGain[ii].numVpd;
@@ -659,7 +657,7 @@ ar2413GetChannelMaxMinPower(struct ath_hal *ah,
 
 	numChannels = pRawDataset->numChannels;
 	data = pRawDataset->pDataPerChannel;
-	
+
 	/* Make sure the channel is in the range of the TP values 
 	 *  (freq piers)
 	 */

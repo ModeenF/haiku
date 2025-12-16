@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (c) 2007-2008 Sam Leffler, Errno Consulting
  * All rights reserved.
@@ -26,8 +26,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: releng/12.0/sys/net80211/ieee80211_phy.c 326272 2017-11-27 15:23:17Z pfg $");
-
 /*
  * IEEE 802.11 PHY-related support.
  */
@@ -581,7 +579,6 @@ static const uint16_t ht40_bps[32] = {
 	162, 324, 486, 648, 972, 1296, 1458, 1620,
 	216, 432, 648, 864, 1296, 1728, 1944, 2160
 };
-
 
 #define	OFDM_PLCP_BITS	22
 #define	HT_L_STF	8

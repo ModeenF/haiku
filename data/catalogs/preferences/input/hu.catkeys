@@ -1,8 +1,7 @@
-1	hungarian	x-vnd.Haiku-Input	1847308736
+1	hungarian	x-vnd.Haiku-Input	993392905
 Defaults	InputMouse		Alapértékek
 Scrolling	TouchpadPrefView		Görgetés
 Long	KeyboardView		Hosszú
-Normal	SettingsView		Normál
 Cancel	TouchpadPrefView		Mégse
 Slow	TouchpadPrefView		Lassú
 Device List	InputWindow		Eszközök
@@ -11,8 +10,12 @@ Double-click speed	SettingsView		Dupla-kattintás sebessége
 Typing test area	KeyboardView		Gépelés próba
 Fast	KeyboardView		Gyors
 Please confirm	TouchpadPrefView		Kérlek erősítsd meg
+Trackpad speed	TouchpadPrefView		Tapipad sebessége
 Mouse speed	SettingsView		Egér sebessége
+Trackpad acceleration	TouchpadPrefView		Tapipad gyorsítása
 Horizontal scrolling	TouchpadPrefView		Vízszintes görgetés
+Reverse scroll direction	TouchpadPrefView		Fordított görgetési irány
+Keyboard lock delay	TouchpadPrefView		Billentyűzetzár késleltetése
 Input	System name		Bemenet
 Quick	TouchpadPrefView		Gyors
 Short	KeyboardView		Rövid
@@ -21,8 +24,9 @@ Slow	KeyboardView		Lassú
 2-Button	SettingsView		2 gombos
 Click to focus and raise	SettingsView		Fókusz és előtérbe hozás kattintásra
 Vertical	TouchpadPrefView		Függőleges
-Double-click test area	SettingsView		Dupla-kattintási terület
+Low	TouchpadPrefView		Kicsi
 Focus follows mouse	SettingsView		A fókusz kövesse az egeret
+Double-click test area	SettingsView		Dupla-kattintási terület
 Focus mode:	SettingsView		Fókusz-mód
 Revert	TouchpadPrefView		Visszaállít
 4-Button	SettingsView		4 gombos
@@ -41,8 +45,8 @@ Delay until key repeat	KeyboardView		Billentyű-ismétlés késleltetése
 Two finger scrolling	TouchpadPrefView		Két ujjas görgetés
 The new scroll area is very large and may impede normal mouse operation. Do you really want to change it?	TouchpadPrefView		Az új görgető-terület nagyon nagy és akadályozhatja a hagyományos egér-műveleteket. Biztosan megváltoztatod?
 Mouse acceleration	SettingsView		Egér gyorsítása
-Defaults	TouchpadPrefView		Alapértékek
 High	TouchpadPrefView		Nagy
+Defaults	TouchpadPrefView		Alapértékek
 1-Button	SettingsView		1 gombos
 Defaults	InputKeyboard		Alapértékek
 Key repeat rate	KeyboardView		Billentyű-ismétlés

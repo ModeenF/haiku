@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (c) 2007-2008 Sam Leffler, Errno Consulting
  * All rights reserved.
@@ -23,8 +23,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD: releng/12.0/sys/net80211/ieee80211_phy.h 326272 2017-11-27 15:23:17Z pfg $
  */
 
 #ifndef _NET80211_IEEE80211_PHY_H_
@@ -55,8 +53,23 @@
 #define IEEE80211_DUR_SHSLOT	9	/* ERP short slottime */
 #define IEEE80211_DUR_OFDM_SLOT	9	/* OFDM slottime */
 
+/*
+ * For drivers that don't implement per-VAP slot time
+ * (ie, they rely on net80211 figuring out the union
+ * between VAPs to program a single radio) - return
+ * the current radio configured slot time.
+ */
 #define IEEE80211_GET_SLOTTIME(ic) \
 	((ic->ic_flags & IEEE80211_F_SHSLOT) ? \
+	    IEEE80211_DUR_SHSLOT : IEEE80211_DUR_SLOT)
+
+/*
+ * For drivers that implement per-VAP slot time; look
+ * at the per-VAP flags to determine whether this VAP
+ * is in short or long slot time.
+ */
+#define IEEE80211_VAP_GET_SLOTTIME(vap) \
+	((vap->iv_flags & IEEE80211_F_SHSLOT) ? \
 	    IEEE80211_DUR_SHSLOT : IEEE80211_DUR_SLOT)
 
 /*
@@ -91,7 +104,6 @@ const struct ieee80211_rate_table *ieee80211_get_ratetable(
 static __inline__ uint8_t
 ieee80211_ack_rate(const struct ieee80211_rate_table *rt, uint8_t rate)
 {
-	uint8_t cix;
 	/*
 	 * XXX Assert this is for a legacy rate; not for an MCS rate.
 	 * If the caller wishes to use it for a basic rate, they should
@@ -99,7 +111,7 @@ ieee80211_ack_rate(const struct ieee80211_rate_table *rt, uint8_t rate)
 	 */
 	KASSERT(! (rate & 0x80), ("rate %d is basic/mcs?", rate));
 
-	cix = rt->info[rt->rateCodeToIndex[rate & IEEE80211_RATE_VAL]].ctlRateIndex;
+	uint8_t cix = rt->info[rt->rateCodeToIndex[rate & IEEE80211_RATE_VAL]].ctlRateIndex;
 	KASSERT(cix != (uint8_t)-1, ("rate %d has no info", rate));
 	return rt->info[cix].dot11Rate;
 }
@@ -107,7 +119,6 @@ ieee80211_ack_rate(const struct ieee80211_rate_table *rt, uint8_t rate)
 static __inline__ uint8_t
 ieee80211_ctl_rate(const struct ieee80211_rate_table *rt, uint8_t rate)
 {
-	uint8_t cix;
 	/*
 	 * XXX Assert this is for a legacy rate; not for an MCS rate.
 	 * If the caller wishes to use it for a basic rate, they should
@@ -115,7 +126,7 @@ ieee80211_ctl_rate(const struct ieee80211_rate_table *rt, uint8_t rate)
 	 */
 	KASSERT(! (rate & 0x80), ("rate %d is basic/mcs?", rate));
 
-	cix = rt->info[rt->rateCodeToIndex[rate & IEEE80211_RATE_VAL]].ctlRateIndex;
+	uint8_t cix = rt->info[rt->rateCodeToIndex[rate & IEEE80211_RATE_VAL]].ctlRateIndex;
 	KASSERT(cix != (uint8_t)-1, ("rate %d has no info", rate));
 	return rt->info[cix].dot11Rate;
 }
@@ -123,7 +134,6 @@ ieee80211_ctl_rate(const struct ieee80211_rate_table *rt, uint8_t rate)
 static __inline__ enum ieee80211_phytype
 ieee80211_rate2phytype(const struct ieee80211_rate_table *rt, uint8_t rate)
 {
-	uint8_t rix;
 	/*
 	 * XXX Assert this is for a legacy rate; not for an MCS rate.
 	 * If the caller wishes to use it for a basic rate, they should
@@ -131,7 +141,7 @@ ieee80211_rate2phytype(const struct ieee80211_rate_table *rt, uint8_t rate)
 	 */
 	KASSERT(! (rate & 0x80), ("rate %d is basic/mcs?", rate));
 
-	rix = rt->rateCodeToIndex[rate & IEEE80211_RATE_VAL];
+	uint8_t rix = rt->rateCodeToIndex[rate & IEEE80211_RATE_VAL];
 	KASSERT(rix != (uint8_t)-1, ("rate %d has no info", rate));
 	return (enum ieee80211_phytype)rt->info[rix].phy;
 }

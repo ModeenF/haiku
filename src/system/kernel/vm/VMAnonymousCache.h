@@ -19,6 +19,7 @@ typedef uint32 swap_addr_t;
 	// TODO: Should be wider, but RadixBitmap supports only a 32 bit type ATM!
 struct swap_block;
 struct system_memory_info;
+namespace BKernel { class Bitmap; }
 
 
 extern "C" {
@@ -30,7 +31,7 @@ extern "C" {
 }
 
 
-class VMAnonymousCache : public VMCache {
+class VMAnonymousCache final : public VMCache {
 public:
 	virtual						~VMAnonymousCache();
 
@@ -39,16 +40,19 @@ public:
 									int32 numGuardPages,
 									uint32 allocationFlags);
 
+			status_t			SetCanSwapPages(off_t base, size_t size, bool canSwap);
+
 	virtual	status_t			Resize(off_t newSize, int priority);
 	virtual	status_t			Rebase(off_t newBase, int priority);
 	virtual	status_t			Adopt(VMCache* source, off_t offset,
 									off_t size, off_t newOffset);
 
-	virtual	status_t			Discard(off_t offset, off_t size);
+	virtual	ssize_t				Discard(off_t offset, off_t size);
 
+	virtual	bool				CanOvercommit();
 	virtual	status_t			Commit(off_t size, int priority);
-	virtual	bool				HasPage(off_t offset);
-	virtual	bool				DebugHasPage(off_t offset);
+	virtual	bool				StoreHasPage(off_t offset);
+	virtual	bool				DebugStoreHasPage(off_t offset);
 
 	virtual	int32				GuardSize()	{ return fGuardedSize; }
 	virtual	void				SetGuardSize(int32 guardSize)
@@ -73,6 +77,8 @@ public:
 
 	virtual	void				Merge(VMCache* source);
 
+	virtual	status_t			AcquireUnreferencedStoreRef();
+
 protected:
 	virtual	void				DeleteObject();
 
@@ -86,8 +92,6 @@ private:
 			swap_addr_t			_SwapBlockGetAddress(off_t pageIndex);
 			status_t			_Commit(off_t size, int priority);
 
-			void				_MergePagesSmallerSource(
-									VMAnonymousCache* source);
 			void				_MergePagesSmallerConsumer(
 									VMAnonymousCache* source);
 			void				_MergeSwapPages(VMAnonymousCache* source);
@@ -102,6 +106,7 @@ private:
 			bool				fHasPrecommitted;
 			uint8				fPrecommittedPages;
 			int32				fGuardedSize;
+			BKernel::Bitmap*	fNoSwapPages;
 			off_t				fCommittedSwapSize;
 			off_t				fAllocatedSwapSize;
 };

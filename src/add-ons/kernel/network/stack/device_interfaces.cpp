@@ -42,7 +42,7 @@ static uint32 sDeviceIndex;
 
 
 /*!	A service thread for each device interface. It just reads as many packets
-	as availabe, deframes them, and puts them into the receive queue of the
+	as available, deframes them, and puts them into the receive queue of the
 	device interface.
 */
 static status_t
@@ -64,13 +64,25 @@ device_reader_thread(void* _interface)
 
 			if (interface->deframe_func(interface->device, buffer) != B_OK) {
 				gNetBufferModule.free(buffer);
+				atomic_add((int32*)&device->stats.receive.dropped, 1);
 				continue;
 			}
 
-			fifo_enqueue_buffer(&interface->receive_queue, buffer);
+			const size_t packetSize = buffer->size;
+			status = fifo_enqueue_buffer(&interface->receive_queue, buffer);
+			if (status == B_OK) {
+				atomic_add((int32*)&device->stats.receive.packets, 1);
+				atomic_add64((int64*)&device->stats.receive.bytes, packetSize);
+			} else {
+				gNetBufferModule.free(buffer);
+				atomic_add((int32*)&device->stats.receive.dropped, 1);
+			}
 		} else if (status == B_DEVICE_NOT_FOUND) {
-				device_removed(device);
+			device_removed(device);
+			return status;
 		} else {
+			atomic_add((int32*)&device->stats.receive.errors, 1);
+
 			// In case of error, give the other threads some
 			// time to run since this is a high priority time thread.
 			snooze(10000);
@@ -546,14 +558,17 @@ down_device_interface(net_device_interface* interface)
 	// Known callers are `interface_protocol_down' which gets
 	// here via one of the following paths:
 	//
-	// - domain_interface_control() [rx lock held, domain lock held]
-	//    interface_set_down()
+	// - Interface::Control()
+	//    Interface::SetDown()
 	//     interface_protocol_down()
 	//
-	// - domain_interface_control() [rx lock held, domain lock held]
-	//    remove_interface_from_domain()
-	//     delete_interface()
-	//      interface_set_down()
+	// - datalink_control()
+	//    remove_interface()
+	//     Interface::SetDown() etc.
+	//
+	// - device_removed()
+	//    interface_removed_device_interface()
+	//     remove_interface() etc.
 
 	net_device* device = interface->device;
 
@@ -566,6 +581,7 @@ down_device_interface(net_device_interface* interface)
 		thread_id readerThread = interface->reader_thread;
 
 		// make sure the reader thread is gone before shutting down the interface
+		// (note that we may be the reader thread)
 		status_t status;
 		wait_for_thread(readerThread, &status);
 	}
@@ -816,7 +832,13 @@ device_enqueue_buffer(net_device* device, net_buffer* buffer)
 	if (interface == NULL)
 		return B_DEVICE_NOT_FOUND;
 
-	status_t status = fifo_enqueue_buffer(&interface->receive_queue, buffer);
+	status_t status = interface->deframe_func(interface->device, buffer);
+	if (status != B_OK) {
+		gNetBufferModule.free(buffer);
+		return status;
+	}
+
+	status = fifo_enqueue_buffer(&interface->receive_queue, buffer);
 
 	put_device_interface(interface);
 	return status;

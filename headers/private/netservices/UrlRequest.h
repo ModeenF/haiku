@@ -14,15 +14,16 @@
 #include <Referenceable.h>
 
 
-#ifndef LIBNETAPI_DEPRECATED
 namespace BPrivate {
 
 namespace Network {
-#endif
+
 
 class BUrlRequest {
 public:
+
 									BUrlRequest(const BUrl& url,
+										BDataIO* output,
 										BUrlProtocolListener* listener,
 										BUrlContext* context,
 										const char* threadName,
@@ -31,8 +32,7 @@ public:
 
 	// URL protocol thread management
 	virtual	thread_id				Run();
-	virtual status_t				Pause();
-	virtual status_t				Resume();
+
 	virtual	status_t				Stop();
 	virtual void					SetTimeout(bigtime_t timeout) {}
 
@@ -40,12 +40,14 @@ public:
 			status_t				SetUrl(const BUrl& url);
 			status_t				SetContext(BUrlContext* context);
 			status_t				SetListener(BUrlProtocolListener* listener);
+			status_t				SetOutput(BDataIO* output);
 
 	// URL protocol parameters access
 			const BUrl&				Url() const;
 			BUrlContext*			Context() const;
 			BUrlProtocolListener*	Listener() const;
 			const BString&			Protocol() const;
+			BDataIO*				Output() const;
 
 	// URL protocol informations
 			bool					IsRunning() const;
@@ -63,6 +65,7 @@ protected:
 			BUrl					fUrl;
 			BReference<BUrlContext>	fContext;
 			BUrlProtocolListener*	fListener;
+			BDataIO*				fOutput;
 
 			bool					fQuit;
 			bool					fRunning;
@@ -72,10 +75,9 @@ protected:
 			BString					fProtocol;
 };
 
-#ifndef LIBNETAPI_DEPRECATED
+
 } // namespace Network
 
 } // namespace BPrivate
-#endif
 
 #endif // _B_URL_REQUEST_H_

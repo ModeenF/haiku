@@ -18,10 +18,7 @@
 #include <String.h>
 #include <UrlResult.h>
 
-
-#ifndef LIBNETAPI_DEPRECATED
 using namespace BPrivate::Network;
-#endif
 
 
 extern const char* kUrlProtocolMessageType;
@@ -103,60 +100,17 @@ BUrlProtocolAsynchronousListener::MessageReceived(BMessage* message)
 			break;
 
 		case B_URL_PROTOCOL_HEADERS_RECEIVED:
+			HeadersReceived(caller);
+			break;
+
+		case B_URL_PROTOCOL_BYTES_WRITTEN:
 			{
-				BMessage archive;
-				message->FindMessage("url:result", &archive);
-				BUrlResult* result = dynamic_cast<BUrlResult*>(
-					instantiate_object(&archive));
-				if (result == NULL) {
-					debugger("Failed to unarchive BUrlResult");
-					result = new BUrlResult();
-				}
-				HeadersReceived(caller, *result);
-				delete result;
+				size_t bytesWritten = message->FindInt32("url:bytesWritten");
+
+				BytesWritten(caller, bytesWritten);
 			}
 			break;
 
-		case B_URL_PROTOCOL_DATA_RECEIVED:
-			{
-				const char* data;
-				ssize_t		size = 0;
-				if (message->FindData("url:data", B_STRING_TYPE,
-					reinterpret_cast<const void**>(&data), &size) != B_OK) {
-					printf("BOGUS DATA MESSAGE\n");
-					message->PrintToStream();
-					return;
-				}
-
-				off_t position = message->FindInt32("url:position");
-
-				DataReceived(caller, data, position, size);
-			}
-			break;
-
-#ifdef LIBNETAPI_DEPRECATED
-		case B_URL_PROTOCOL_DOWNLOAD_PROGRESS:
-			{
-				int32 bytesReceived;
-				int32 bytesTotal;
-				message->FindInt32("url:bytesReceived", &bytesReceived);
-				message->FindInt32("url:bytesTotal", &bytesTotal);
-
-				DownloadProgress(caller, bytesReceived, bytesTotal);
-			}
-			break;
-
-		case B_URL_PROTOCOL_UPLOAD_PROGRESS:
-			{
-				int32 bytesSent;
-				int32 bytesTotal;
-				message->FindInt32("url:bytesSent", &bytesSent);
-				message->FindInt32("url:bytesTotal", &bytesTotal);
-
-				UploadProgress(caller, bytesSent, bytesTotal);
-			}
-			break;
-#else
 		case B_URL_PROTOCOL_DOWNLOAD_PROGRESS:
 			{
 				off_t bytesReceived;
@@ -178,7 +132,6 @@ BUrlProtocolAsynchronousListener::MessageReceived(BMessage* message)
 				UploadProgress(caller, bytesSent, bytesTotal);
 			}
 			break;
-#endif // LIBNETAPI_DEPRECATED
 
 		case B_URL_PROTOCOL_REQUEST_COMPLETED:
 			{

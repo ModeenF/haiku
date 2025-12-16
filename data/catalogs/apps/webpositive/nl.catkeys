@@ -1,4 +1,4 @@
-1	dutch; flemish	x-vnd.Haiku-WebPositive	440329287
+1	dutch; flemish	x-vnd.Haiku-WebPositive	861169737
 Authentication required	Authentication Panel		Aanmelding is vereist
 Previous	WebPositive Window		Vorige
 (Finish: %date)	Download Window		(Voltooid: %date)
@@ -13,22 +13,21 @@ Bookmarks	WebPositive Window		Bladwijzers
 Use proxy server to connect to the internet	Settings Window		Gebruik een proxyserver om met het internet te verbinden
 %url finished	WebPositive Window	Loading URL finished. Don't translate variable %url.	%url gereed
 Auto-hide interface in full screen mode	Settings Window		Verberg interface automatisch in volledig-scherm modus
-There was an error retrieving the bookmark folder.\n\nError: %error	WebPositive Window	Don't translate the variable %error	Er was een fout bij het ophalen van de bladwijzermap.\n\nFout: %error
 Delete	Cookie Manager		Verwijderen
+There was an error retrieving the bookmark folder.\n\nError: %error	WebPositive Window	Don't translate the variable %error	Er was een fout bij het ophalen van de bladwijzermap.\n\nFout: %error
 (Finish: %date - Over %duration left)	Download Window		(Voltooid: %date - Meer dan %duration te doen)
 Open containing folder	Download Window		Bijbehorende map openen
 Find previous	WebPositive Window		Vorige zoeken
 Full screen	WebPositive Window		Volledig scherm
 Downloads in progress	WebPositive		Actieve downloads
-Do you want to open %addedCount bookmarks all at once?	WebPositive Window	Don't translate variable %addedCount.	Wilt u %addedCount bladwijzers tegelijkertijd openen?
 Copy URL to clipboard	Download Window		URL naar klembord kopiëren
+Do you want to open %addedCount bookmarks all at once?	WebPositive Window	Don't translate variable %addedCount.	Wilt u %addedCount bladwijzers tegelijkertijd openen?
 Clone current page	Settings Window		Huidige pagina klonen
 Start page:	Settings Window		Startpagina:
 Cancel	Download Window		Annuleren
 Settings	Settings Window		Instellingen
 Downloads	WebPositive Window		Downloads
 Browse…	Settings Window		Bladeren…
-A bookmark for this page (%bookmarkName) already exists.	WebPositive Window	Don't translate variable %bookmarkName	Een bladwijzer voor deze pagina (%bookmarkName) bestaat al.
 Resume prior session	Settings Window		Vorige sessie hervatten
 Match case	WebPositive Window		Hoofdlettergevoelig
 Proxy password:	Settings Window		Wachtwoord proxyserver:
@@ -45,22 +44,24 @@ New tabs:	Settings Window		Nieuwe tabbladen:
 %url failed	WebPositive Window	Loading URL failed. Don't translate variable %url.	%url mislukt
 Open downloads folder	Download Window		Downloadmap openen
 Proxy server	Settings Window		Proxyserver
+Darn!	WebPositive		Verdorie!
 Decrease size	WebPositive Window		Grootte verkleinen
 Default fixed font size:	Settings Window		Standaardgrootte van proportioneel lettertype:
 Sans serif font:	Settings Window		Schreefloos lettertype:
 Clear	WebPositive Window		Wissen
-Cookies for %s	Cookie Manager		Cookies voor %s
 The download could not be opened.	Download Window		De download kan niet worden geöpend.
+Cookies for %s	Cookie Manager		Cookies voor %s
 Close	Download Window		Sluiten
 WebPositive	System name		WebPositive
 %s - Search term	Settings Window		%s - Zoek term
-Reload	WebPositive Window		Herladen
 Expiration	Cookie Manager		Vervaldatum
+Reload	WebPositive Window		Herladen
+Your CPU is too old and does not support the SSE2 extensions, without which WebPositive cannot run. We recommend installing NetSurf instead.	WebPositive		Je CPU is te oud en ondersteund geen SSE2 extensies, zonder deze werkt WebPositive niet. We raden je aan om NetSurf te installeren in de plaats.
 Download finished	Download Window		Download gereed
 Cookie manager	WebPositive Window		Cookiemanager
-OK	Authentication Panel		Ok
-Hide password text	Authentication Panel		Wachtwoordtekst verbergen
 Username:	Authentication Panel		Gebruikersnaam:
+Hide password text	Authentication Panel		Wachtwoordtekst verbergen
+OK	Authentication Panel		Ok
 Name	Cookie Manager		Naam
 Remove finished	Download Window		Voltooide verwijderen
 Earlier	WebPositive Window		Vroeger
@@ -78,8 +79,8 @@ View	WebPositive Window		Beeld
 Paste	URL Bar		Plakken
 Find next	WebPositive Window		Volgende zoeken
 Open search page	Settings Window		Zoekpagina openen
-Increase size	WebPositive Window		Vergroten
 New tab	WebPositive Window		Nieuw tabblad
+Increase size	WebPositive Window		Vergroten
 Today	WebPositive Window		Vandaag
 Open location	WebPositive Window		Locatie openen
 New browser window	Download Window		Nieuw browservenster
@@ -101,17 +102,18 @@ There was an error trying to show the Bookmarks folder.\n\nError: %error	WebPosi
 Revert	Settings Window		Ongedaan maken
 Copy	WebPositive Window		Kopiëren
 Default standard font size:	Settings Window		Standaard lettertypegrootte:
+Custom	Settings Window		Aangepast
 Bookmark this page	WebPositive Window		Bladwijzer van deze pagina maken
 Show tabs if only one page is open	Settings Window		Tabbladen ook tonen als slechts een pagina open is
-Close tab	WebPositive Window		Tabblad sluiten
 Remove	Download Window		Verwijderen
+Close tab	WebPositive Window		Tabblad sluiten
 About	WebPositive Window		Over
-There are still downloads in progress, do you really want to quit WebPositive now?	WebPositive		Er zijn nog downloads bezig, wilt u WebPositive echt afsluiten?
 Continue downloads	WebPositive		Downloads hervatten
+There are still downloads in progress, do you really want to quit WebPositive now?	WebPositive		Er zijn nog downloads bezig, wilt u WebPositive echt afsluiten?
 Proxy server requires authentication	Settings Window		Proxyserver vereist authenticatie
 Cancel	Settings Window		Annuleren
-History	WebPositive Window		Geschiedenis
 Reset size	WebPositive Window		Grootte opnieuw instellen
+History	WebPositive Window		Geschiedenis
 Do you really want to clear the browsing history?	WebPositive Window		Wilt u echt de browsergeschiedenis wissen?
 Find next occurrence of search terms	WebPositive Window	find bar next button tooltip	Naar de volgende plek met deze zoektermen gaan
 Fixed font:	Settings Window		Lettertype met vaste breedte:
@@ -130,9 +132,10 @@ Double-click or middle-click to open new tab.	Tab Manager		Dubbelklik of middel-
 Next	WebPositive Window		Volgende
 Bookmark error	WebPositive Window		Bladwijzerfout
 OK	WebPositive Window		Ok
+(%currentSize% of %expectedSize%, %rate%/s)	Download Window		(%currentSize% van %expectedSize%, %rate%/s)
 WebPositive	Download Window		WebPositive
-Zoom text only	WebPositive Window		Alleen tekst inzoomen
 Save page as…	WebPositive Window		Pagina opslaan als…
+Zoom text only	WebPositive Window		Alleen tekst inzoomen
 Page source error	WebPositive Window		Paginabronfout
 Auto-hide mouse pointer	Settings Window		Muisaanwijzer automatisch verbergen
 Requesting %url	WebPositive Window		Opvragen van %url
@@ -147,13 +150,13 @@ The quick brown fox jumps over the lazy dog.	Font Selection view	Don't translate
 Start up:	Settings Window		Opstarten:
 Confirmation	WebPositive Window		Bevestiging
 Session cookie	Cookie Manager		Sessiecookie
+No SSE2 support	WebPositive		Geen SSE2 ondersteuning
 Open all	WebPositive Window		Alles openen
 Cut	WebPositive Window		Knippen
 Downloads	Download Window		Downloads
 Open blank page	Settings Window		Lege pagina openen
 Clear history	WebPositive Window		Geschiedenis legen
 Cancel	WebPositive Window		Annuleren
-Bookmark info	WebPositive Window		Bladwijzerinfo
 Script console	Console Window		Scriptconsole
 Copy	URL Bar		Kopiëren
 Open start page	Settings Window		Startpagina openen

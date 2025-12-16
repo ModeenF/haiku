@@ -28,7 +28,7 @@ struct screen_mode {
 	bool			use_laptop_panel;
 	uint32			tv_standard;
 
-	void SetTo(display_mode& mode);
+	void SetTo(const display_mode& mode);
 	int32 BitsPerPixel() const;
 
 	bool operator==(const screen_mode &otherMode) const;
@@ -60,6 +60,7 @@ public:
 									color_space space);
 			status_t			GetRefreshLimits(const screen_mode& mode,
 									float& min, float& max);
+			const char*			GetManufacturerFromID(const char* id) const;
 			status_t			GetMonitorInfo(monitor_info& info,
 									float* _diagonalInches = NULL);
 

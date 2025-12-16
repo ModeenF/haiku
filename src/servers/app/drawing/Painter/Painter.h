@@ -89,8 +89,7 @@ public:
 			void				SetStrokeMode(cap_mode lineCap,
 									join_mode joinMode, float miterLimit);
 			void				SetFillRule(int32 fillRule);
-			void				SetPattern(const pattern& p,
-									bool drawingText = false);
+			void				SetPattern(const pattern& p);
 	inline	pattern				Pattern() const
 									{ return *fPatternHandler.GetR5Pattern(); }
 			void				SetDrawingMode(drawing_mode mode);
@@ -122,20 +121,20 @@ public:
 									BPoint pt3) const;
 			BRect				FillTriangle(BPoint pt1, BPoint pt2,
 									BPoint pt3,
-									const BGradient& gradient) const;
+									const BGradient& gradient);
 
 								// polygons
 			BRect				DrawPolygon(BPoint* ptArray, int32 numPts,
 									bool filled, bool closed) const;
 			BRect				FillPolygon(BPoint* ptArray, int32 numPts,
 									const BGradient& gradient,
-									bool closed) const;
+									bool closed);
 
 								// bezier curves
 			BRect				DrawBezier(BPoint* controlPoints,
 									bool filled) const;
 			BRect				FillBezier(BPoint* controlPoints,
-									const BGradient& gradient) const;
+									const BGradient& gradient);
 
 								// shapes
 			BRect				DrawShape(const int32& opCount,
@@ -148,7 +147,7 @@ public:
 									const BPoint* ptList,
 									const BGradient& gradient,
 									const BPoint& viewToScreenOffset,
-									float viewScale) const;
+									float viewScale);
 
 								// rects
 			BRect				StrokeRect(const BRect& r) const;
@@ -159,7 +158,7 @@ public:
 
 			BRect				FillRect(const BRect& r) const;
 			BRect				FillRect(const BRect& r,
-									const BGradient& gradient) const;
+									const BGradient& gradient);
 
 			// fills a solid rect with color c, no blending
 			void				FillRect(const BRect& r,
@@ -184,7 +183,7 @@ public:
 									float yRadius) const;
 			BRect				FillRoundRect(const BRect& r, float xRadius,
 									float yRadius,
-									const BGradient& gradient) const;
+									const BGradient& gradient);
 
 								// ellipses
 			void				AlignEllipseRect(BRect* rect,
@@ -192,7 +191,7 @@ public:
 
 			BRect				DrawEllipse(BRect r, bool filled) const;
 			BRect				FillEllipse(BRect r,
-									const BGradient& gradient) const;
+									const BGradient& gradient);
 
 								// arcs
 			BRect				StrokeArc(BPoint center, float xRadius,
@@ -204,7 +203,7 @@ public:
 									float span) const;
 			BRect				FillArc(BPoint center, float xRadius,
 									float yRadius, float angle, float span,
-									const BGradient& gradient) const;
+									const BGradient& gradient);
 
 								// strings
 			BRect				DrawString(const char* utf8String,
@@ -240,7 +239,7 @@ public:
 								// some convenience stuff
 			BRect				FillRegion(const BRegion* region) const;
 			BRect				FillRegion(const BRegion* region,
-									const BGradient& gradient) const;
+									const BGradient& gradient);
 
 			BRect				InvertRect(const BRect& r) const;
 
@@ -266,7 +265,7 @@ private:
 
 			void				_UpdateFont() const;
 			void				_UpdateLineWidth();
-			void				_UpdateDrawingMode(bool drawingText = false);
+			void				_UpdateDrawingMode();
 			void				_SetRendererColor(const rgb_color& color) const;
 
 								// drawing functions stroke/fill
@@ -299,10 +298,10 @@ private:
 
 			template<class VertexSource>
 			BRect				_FillPath(VertexSource& path,
-									const BGradient& gradient) const;
+									const BGradient& gradient);
 			template<class VertexSource>
 			BRect				_RasterizePath(VertexSource& path,
-									const BGradient& gradient) const;
+									const BGradient& gradient);
 
 			void				_CalcLinearGradientTransform(BPoint startPoint,
 									BPoint endPoint, agg::trans_affine& mtx,
@@ -324,7 +323,7 @@ private:
 									const BGradient& gradient,
 									GradientFunction function,
 									agg::trans_affine& gradientTransform,
-									int gradientStop = 100) const;
+									int gradientStop = 100);
 
 private:
 	class BitmapPainter;
@@ -332,12 +331,9 @@ private:
 	friend class BitmapPainter; // needed only for gcc2
 
 private:
-	mutable	PainterAggInterface	fInternal;
-
 	// for internal coordinate rounding/transformation
 			bool				fSubpixelPrecise : 1;
 			bool				fValidClipping : 1;
-			bool				fDrawingText : 1;
 			bool				fAttached : 1;
 			bool				fIdentityTransform : 1;
 
@@ -357,6 +353,8 @@ private:
 	// it is setup to load from a specific Freetype supported
 	// font file which it gets from ServerFont
 	mutable	AGGTextRenderer		fTextRenderer;
+
+	mutable	PainterAggInterface	fInternal;
 };
 
 

@@ -32,10 +32,11 @@ _start(int argc, char **argv, char **environment)
 {
 	int returnCode;
 
+	// These are kept here to make our glue code usable under older Haiku versions.
 	argv_save = argv;
 	__main_thread_id = find_thread(NULL);
 
-#ifdef _BEOS_R5_COMPATIBLE_
+#ifdef __HAIKU_BEOS_COMPATIBLE
 	// These two are called to make our glue code usable under BeOS R5
 	// - in Haiku, they are both empty.
 	_init_c_library_(argc, argv, environment);

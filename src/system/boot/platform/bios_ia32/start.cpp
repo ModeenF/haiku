@@ -11,6 +11,7 @@
 #include <arch/x86/arch_cpu.h>
 
 #include <boot/arch/x86/arch_cpu.h>
+#include <boot/arch/x86/arch_hpet.h>
 #include <boot/platform.h>
 #include <boot/heap.h>
 #include <boot/stage2.h>
@@ -21,7 +22,6 @@
 #include "console.h"
 #include "cpu.h"
 #include "debug.h"
-#include "hpet.h"
 #include "interrupts.h"
 #include "keyboard.h"
 #include "long.h"
@@ -29,9 +29,6 @@
 #include "multiboot.h"
 #include "serial.h"
 #include "smp.h"
-
-
-#define HEAP_SIZE ((1024 + 256) * 1024)
 
 
 // GCC defined globals
@@ -142,13 +139,14 @@ platform_start_kernel(void)
 	smp_init_other_cpus();
 	debug_cleanup();
 	mmu_init_for_kernel();
+	heap_release();
 
 	// We're about to enter the kernel -- disable console output.
 	stdout = NULL;
 
 	smp_boot_other_cpus(smp_start_kernel);
 
-	dprintf("kernel entry at %lx\n", image->elf_header.e_entry);
+	dprintf("kernel entry at %x\n", image->elf_header.e_entry);
 
 	asm("movl	%0, %%eax;	"			// move stack out of way
 		"movl	%%eax, %%esp; "
@@ -184,7 +182,7 @@ _start(void)
 	call_ctors();
 		// call C++ constructors before doing anything else
 
-	args.heap_size = HEAP_SIZE;
+	args.heap_size = 0;
 	args.arguments = NULL;
 
 	serial_init();

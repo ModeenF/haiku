@@ -6,23 +6,24 @@
  *  mccall@digitalparadise.co.uk
  *  Jérôme Duval
  *  Marcus Overhagen
-*/
+ */
 
 
 #ifndef KEYBOARD_SETTINGS_H_
 #define KEYBOARD_SETTINGS_H_
 
 #include <SupportDefs.h>
+
 #include "kb_mouse_settings.h"
 
-class KeyboardSettings{
+class KeyboardSettings {
 public :
 	KeyboardSettings();
 	~KeyboardSettings();
 
 	void Revert();
 	void Defaults();
-	bool IsDefaultable();
+	bool IsDefaultable() const;
 
 	int32 KeyboardRepeatRate() const
 		{ return fSettings.key_repeat_rate; }

@@ -44,8 +44,10 @@
 #include <slab/Slab.h>
 #include <syscalls.h>
 #include <system_info.h>
+#include <thread.h>
 #include <tracing.h>
 #include <util/AutoLock.h>
+#include <util/Bitmap.h>
 #include <util/DoublyLinkedList.h>
 #include <util/OpenHashTable.h>
 #include <util/RadixBitmap.h>
@@ -56,7 +58,6 @@
 #include <vm/VMAddressSpace.h>
 
 #include "IORequest.h"
-#include "VMUtils.h"
 
 
 #if	ENABLE_SWAP_SUPPORT
@@ -427,7 +428,6 @@ public:
 		}
 
 		fNextCallback->IOFinished(status, partialTransfer, bytesTransferred);
-
 		delete this;
 	}
 
@@ -444,6 +444,9 @@ private:
 
 VMAnonymousCache::~VMAnonymousCache()
 {
+	delete fNoSwapPages;
+	fNoSwapPages = NULL;
+
 	_FreeSwapPageRange(virtual_base, virtual_end, false);
 	swap_space_unreserve(fCommittedSwapSize);
 	if (committed_size > fCommittedSwapSize)
@@ -460,17 +463,54 @@ VMAnonymousCache::Init(bool canOvercommit, int32 numPrecommittedPages,
 		")\n", this, canOvercommit ? "yes" : "no", numPrecommittedPages,
 		numGuardPages);
 
-	status_t error = VMCache::Init(CACHE_TYPE_RAM, allocationFlags);
+	status_t error = VMCache::Init("VMAnonymousCache", CACHE_TYPE_RAM, allocationFlags);
 	if (error != B_OK)
 		return error;
 
 	fCanOvercommit = canOvercommit;
 	fHasPrecommitted = false;
 	fPrecommittedPages = min_c(numPrecommittedPages, 255);
+	fNoSwapPages = NULL;
 	fGuardedSize = numGuardPages * B_PAGE_SIZE;
 	fCommittedSwapSize = 0;
 	fAllocatedSwapSize = 0;
 
+	return B_OK;
+}
+
+
+status_t
+VMAnonymousCache::SetCanSwapPages(off_t base, size_t size, bool canSwap)
+{
+	const page_num_t first = base >> PAGE_SHIFT;
+	const size_t count = PAGE_ALIGN(size + ((first << PAGE_SHIFT) - base)) >> PAGE_SHIFT;
+
+	if (count == 0)
+		return B_OK;
+	if (canSwap && fNoSwapPages == NULL)
+		return B_OK;
+
+	if (fNoSwapPages == NULL)
+		fNoSwapPages = new(std::nothrow) Bitmap(0);
+	if (fNoSwapPages == NULL)
+		return B_NO_MEMORY;
+
+	const page_num_t pageCount = PAGE_ALIGN(virtual_end) >> PAGE_SHIFT;
+
+	if (fNoSwapPages->Resize(pageCount) != B_OK)
+		return B_NO_MEMORY;
+
+	for (size_t i = 0; i < count; i++) {
+		if (canSwap)
+			fNoSwapPages->Clear(first + i);
+		else
+			fNoSwapPages->Set(first + i);
+	}
+
+	if (fNoSwapPages->GetHighestSet() < 0) {
+		delete fNoSwapPages;
+		fNoSwapPages = NULL;
+	}
 	return B_OK;
 }
 
@@ -540,6 +580,11 @@ VMAnonymousCache::_FreeSwapPageRange(off_t fromOffset, off_t toOffset,
 status_t
 VMAnonymousCache::Resize(off_t newSize, int priority)
 {
+	if (fNoSwapPages != NULL) {
+		if (fNoSwapPages->Resize(PAGE_ALIGN(newSize) >> PAGE_SHIFT) != B_OK)
+			return B_NO_MEMORY;
+	}
+
 	_FreeSwapPageRange(newSize + B_PAGE_SIZE - 1,
 		virtual_end + B_PAGE_SIZE - 1);
 	return VMCache::Resize(newSize, priority);
@@ -549,16 +594,24 @@ VMAnonymousCache::Resize(off_t newSize, int priority)
 status_t
 VMAnonymousCache::Rebase(off_t newBase, int priority)
 {
+	if (fNoSwapPages != NULL) {
+		const ssize_t sizeDifference = (newBase >> PAGE_SHIFT) - (virtual_base >> PAGE_SHIFT);
+		fNoSwapPages->Shift(sizeDifference);
+	}
+
 	_FreeSwapPageRange(virtual_base, newBase);
 	return VMCache::Rebase(newBase, priority);
 }
 
 
-status_t
+ssize_t
 VMAnonymousCache::Discard(off_t offset, off_t size)
 {
 	_FreeSwapPageRange(offset, offset + size);
-	return VMCache::Discard(offset, size);
+	const ssize_t discarded = VMCache::Discard(offset, size);
+	if (discarded > 0 && fCanOvercommit)
+		Commit(committed_size - discarded, VM_PRIORITY_USER);
+	return discarded;
 }
 
 
@@ -660,7 +713,18 @@ VMAnonymousCache::Adopt(VMCache* _source, off_t offset, off_t size,
 
 	locker.Unlock();
 
-	return VMCache::Adopt(source, offset, size, newOffset);
+	uint32 initialPageCount = page_count;
+	status_t status = VMCache::Adopt(source, offset, size, newOffset);
+
+	if (fCanOvercommit) {
+		// We need to adopt the commitment for these pages.
+		uint32 newPages = page_count - initialPageCount;
+		off_t pagesCommitment = newPages * B_PAGE_SIZE;
+		source->committed_size -= pagesCommitment;
+		committed_size += pagesCommitment;
+	}
+
+	return status;
 }
 
 
@@ -668,6 +732,10 @@ status_t
 VMAnonymousCache::Commit(off_t size, int priority)
 {
 	TRACE("%p->VMAnonymousCache::Commit(%" B_PRIdOFF ")\n", this, size);
+
+	AssertLocked();
+	ASSERT_PRINT(size >= (page_count * B_PAGE_SIZE),
+		"cache %p @! cache %p", this, this);
 
 	// If we can overcommit, we don't commit here, but in Fault(). We always
 	// unreserve memory, if we're asked to shrink our commitment, though.
@@ -677,9 +745,12 @@ VMAnonymousCache::Commit(off_t size, int priority)
 
 		// pre-commit some pages to make a later failure less probable
 		fHasPrecommitted = true;
-		uint32 precommitted = fPrecommittedPages * B_PAGE_SIZE;
+		uint32 precommitted = (fPrecommittedPages * B_PAGE_SIZE);
 		if (size > precommitted)
 			size = precommitted;
+
+		// pre-commit should not shrink existing commitment
+		size += committed_size;
 	}
 
 	return _Commit(size, priority);
@@ -687,7 +758,14 @@ VMAnonymousCache::Commit(off_t size, int priority)
 
 
 bool
-VMAnonymousCache::HasPage(off_t offset)
+VMAnonymousCache::CanOvercommit()
+{
+	return fCanOvercommit;
+}
+
+
+bool
+VMAnonymousCache::StoreHasPage(off_t offset)
 {
 	if (_SwapBlockGetAddress(offset >> PAGE_SHIFT) != SWAP_SLOT_NONE)
 		return true;
@@ -697,7 +775,7 @@ VMAnonymousCache::HasPage(off_t offset)
 
 
 bool
-VMAnonymousCache::DebugHasPage(off_t offset)
+VMAnonymousCache::DebugStoreHasPage(off_t offset)
 {
 	off_t pageIndex = offset >> PAGE_SHIFT;
 	swap_hash_key key = { this, pageIndex };
@@ -890,10 +968,14 @@ VMAnonymousCache::WriteAsync(off_t offset, const generic_io_vec* vecs,
 bool
 VMAnonymousCache::CanWritePage(off_t offset)
 {
+	const off_t pageIndex = offset >> PAGE_SHIFT;
+	if (fNoSwapPages != NULL && fNoSwapPages->Get(pageIndex))
+		return false;
+
 	// We can write the page, if we have not used all of our committed swap
 	// space or the page already has a swap slot assigned.
 	return fAllocatedSwapSize < fCommittedSwapSize
-		|| _SwapBlockGetAddress(offset >> PAGE_SHIFT) != SWAP_SLOT_NONE;
+		|| _SwapBlockGetAddress(pageIndex) != SWAP_SLOT_NONE;
 }
 
 
@@ -924,7 +1006,7 @@ VMAnonymousCache::Fault(struct VMAddressSpace* aspace, off_t offset)
 		}
 	}
 
-	if (fCanOvercommit && LookupPage(offset) == NULL && !HasPage(offset)) {
+	if (fCanOvercommit && LookupPage(offset) == NULL && !StoreHasPage(offset)) {
 		if (fPrecommittedPages == 0) {
 			// never commit more than needed
 			if (committed_size / B_PAGE_SIZE > page_count)
@@ -969,7 +1051,7 @@ VMAnonymousCache::Merge(VMCache* _source)
 	committed_size += source->committed_size;
 	source->committed_size = 0;
 
-	off_t actualSize = virtual_end - virtual_base;
+	off_t actualSize = PAGE_ALIGN(virtual_end - virtual_base);
 	if (committed_size > actualSize)
 		_Commit(actualSize, VM_PRIORITY_USER);
 
@@ -978,10 +1060,21 @@ VMAnonymousCache::Merge(VMCache* _source)
 	_MergeSwapPages(source);
 
 	// Move all not shadowed pages from the source to the consumer cache.
-	if (source->page_count < page_count)
-		_MergePagesSmallerSource(source);
-	else
+	if (source->page_count > page_count
+			&& source->virtual_base == virtual_base
+			&& source->virtual_end == virtual_end) {
 		_MergePagesSmallerConsumer(source);
+	} else {
+		VMCache::Merge(source);
+	}
+}
+
+
+status_t
+VMAnonymousCache::AcquireUnreferencedStoreRef()
+{
+	// No reference needed.
+	return B_OK;
 }
 
 
@@ -1149,36 +1242,19 @@ VMAnonymousCache::_Commit(off_t size, int priority)
 
 
 void
-VMAnonymousCache::_MergePagesSmallerSource(VMAnonymousCache* source)
-{
-	// The source cache has less pages than the consumer (this cache), so we
-	// iterate through the source's pages and move the ones that are not
-	// shadowed up to the consumer.
-
-	for (VMCachePagesTree::Iterator it = source->pages.GetIterator();
-			vm_page* page = it.Next();) {
-		// Note: Removing the current node while iterating through a
-		// IteratableSplayTree is safe.
-		vm_page* consumerPage = LookupPage(
-			(off_t)page->cache_offset << PAGE_SHIFT);
-		if (consumerPage == NULL) {
-			// the page is not yet in the consumer cache - move it upwards
-			ASSERT_PRINT(!page->busy, "page: %p", page);
-			MovePage(page);
-		}
-	}
-}
-
-
-void
 VMAnonymousCache::_MergePagesSmallerConsumer(VMAnonymousCache* source)
 {
 	// The consumer (this cache) has less pages than the source, so we move the
 	// consumer's pages to the source (freeing shadowed ones) and finally just
 	// all pages of the source back to the consumer.
 
-	for (VMCachePagesTree::Iterator it = pages.GetIterator();
-		vm_page* page = it.Next();) {
+	// It is possible that some of the pages we are moving here are actually "busy".
+	// Since all the pages that belong to this cache will belong to it again by
+	// the time we unlock, that should be fine.
+
+	VMCachePagesTree::Iterator it = pages.GetIterator();
+	vm_page_reservation reservation = {};
+	while (vm_page* page = it.Next()) {
 		// If a source page is in the way, remove and free it.
 		vm_page* sourcePage = source->LookupPage(
 			(off_t)page->cache_offset << PAGE_SHIFT);
@@ -1189,13 +1265,14 @@ VMAnonymousCache::_MergePagesSmallerConsumer(VMAnonymousCache* source)
 					&& sourcePage->mappings.IsEmpty(),
 				"sourcePage: %p, page: %p", sourcePage, page);
 			source->RemovePage(sourcePage);
-			vm_page_free(source, sourcePage);
+			vm_page_free_etc(source, sourcePage, &reservation);
 		}
 
 		// Note: Removing the current node while iterating through a
 		// IteratableSplayTree is safe.
 		source->MovePage(page);
 	}
+	vm_page_unreserve_pages(&reservation);
 
 	MoveAllPages(source);
 }
@@ -1398,7 +1475,7 @@ swap_file_add(const char* path)
 	}
 
 	// do the allocations and prepare the swap_file structure
-	swap_file* swap = (swap_file*)malloc(sizeof(swap_file));
+	swap_file* swap = new(std::nothrow) swap_file;
 	if (swap == NULL) {
 		close(fd);
 		return B_NO_MEMORY;
@@ -1411,7 +1488,7 @@ swap_file_add(const char* path)
 	uint32 pageCount = st.st_size >> PAGE_SHIFT;
 	swap->bmp = radix_bitmap_create(pageCount);
 	if (swap->bmp == NULL) {
-		free(swap);
+		delete swap;
 		close(fd);
 		return B_NO_MEMORY;
 	}
@@ -1476,9 +1553,10 @@ swap_file_delete(const char* path)
 		* B_PAGE_SIZE;
 	mutex_unlock(&sAvailSwapSpaceLock);
 
+	truncate(path, 0);
 	close(swapFile->fd);
 	radix_bitmap_destroy(swapFile->bmp);
-	free(swapFile);
+	delete swapFile;
 
 	return B_OK;
 }
@@ -1488,8 +1566,7 @@ void
 swap_init(void)
 {
 	// create swap block cache
-	sSwapBlockCache = create_object_cache("swapblock", sizeof(swap_block),
-		sizeof(void*), NULL, NULL, NULL);
+	sSwapBlockCache = create_object_cache("swapblock", sizeof(swap_block), 0);
 	if (sSwapBlockCache == NULL)
 		panic("swap_init(): can't create object cache for swap blocks\n");
 
@@ -1604,6 +1681,7 @@ swap_init_post_modules()
 
 	if (!swapEnabled || swapSize < B_PAGE_SIZE) {
 		dprintf("%s: virtual_memory is disabled\n", __func__);
+		truncate(kDefaultSwapPath, 0);
 		return;
 	}
 
@@ -1632,7 +1710,7 @@ swap_init_post_modules()
 			else {
 				KPath devPath, mountPoint;
 				visitor.fBestPartition->GetPath(&devPath);
-				get_mount_point(visitor.fBestPartition, &mountPoint);
+				visitor.fBestPartition->GetMountPoint(&mountPoint);
 				const char* mountPath = mountPoint.Path();
 				mkdir(mountPath, S_IRWXU | S_IRWXG | S_IRWXO);
 				swapDeviceID = _kern_mount(mountPath, devPath.Path(),

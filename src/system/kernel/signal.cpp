@@ -35,6 +35,7 @@
 #include <user_debugger.h>
 #include <user_thread.h>
 #include <util/AutoLock.h>
+#include <util/ThreadAutoLock.h>
 
 
 //#define TRACE_SIGNAL
@@ -62,6 +63,7 @@
 	| SIGNAL_RANGE_TO_MASK(SIGNAL_REALTIME_MIN, SIGNAL_REALTIME_MAX))
 #define NON_DEFERRABLE_SIGNALS	\
 	(KILL_SIGNALS				\
+	| SIGNAL_TO_MASK(SIGNAL_DEBUG_THREAD) \
 	| SIGNAL_TO_MASK(SIGILL)	\
 	| SIGNAL_TO_MASK(SIGFPE)	\
 	| SIGNAL_TO_MASK(SIGSEGV))
@@ -783,8 +785,8 @@ update_current_thread_signals_flag()
 static void
 update_team_threads_signal_flag(Team* team)
 {
-	for (Thread* thread = team->thread_list; thread != NULL;
-			thread = thread->team_next) {
+	for (Thread* thread = team->thread_list.First(); thread != NULL;
+			thread = team->thread_list.GetNext(thread)) {
 		update_thread_signals_flag(thread);
 	}
 }
@@ -820,8 +822,19 @@ notify_debugger(Thread* thread, Signal* signal, struct sigaction& handler,
 
 	threadDebugInfoLocker.Unlock();
 
+	siginfo_t info;
+	info.si_signo = signal->Number();
+	info.si_code = signal->SignalCode();
+	info.si_errno = signal->ErrorCode();
+	info.si_pid = signal->SendingProcess();
+	info.si_uid = signal->SendingUser();
+	info.si_addr = signal->Address();
+	info.si_status = signal->Status();
+	info.si_band = signal->PollBand();
+	info.si_value = signal->UserValue();
+
 	// deliver the event
-	return user_debug_handle_signal(signal->Number(), &handler, deadly);
+	return user_debug_handle_signal(signal->Number(), &handler, &info, deadly);
 }
 
 
@@ -929,17 +942,17 @@ handle_signals(Thread* thread)
 	sigset_t nonBlockedMask = ~thread->sig_block_mask;
 	sigset_t signalMask = thread->AllPendingSignals() & nonBlockedMask;
 
-	set_ac();
+	arch_cpu_enable_user_access();
 	if (thread->user_thread->defer_signals > 0
 		&& (signalMask & NON_DEFERRABLE_SIGNALS) == 0
 		&& thread->sigsuspend_original_unblocked_mask == 0) {
 		thread->user_thread->pending_signals = signalMask;
-		clear_ac();
+		arch_cpu_disable_user_access();
 		return;
 	}
 
 	thread->user_thread->pending_signals = 0;
-	clear_ac();
+	arch_cpu_disable_user_access();
 
 	// determine syscall restart behavior
 	uint32 restartFlags = atomic_and(&thread->flags,
@@ -1294,8 +1307,8 @@ is_team_signal_blocked(Team* team, int signal)
 {
 	sigset_t mask = SIGNAL_TO_MASK(signal);
 
-	for (Thread* thread = team->thread_list; thread != NULL;
-			thread = thread->team_next) {
+	for (Thread* thread = team->thread_list.First(); thread != NULL;
+			thread = team->thread_list.GetNext(thread)) {
 		if ((thread->sig_block_mask & mask) == 0)
 			return false;
 	}
@@ -1642,7 +1655,7 @@ send_signal_to_team_locked(Team* team, uint32 signalNumber, Signal* signal,
 			// (only the main thread shuts down the team).
 			Thread* mainThread = team->main_thread;
 			if (mainThread != NULL) {
-				mainThread->AddPendingSignal(SIGKILLTHR);
+				mainThread->AddPendingSignal(signalNumber);
 
 				// wake up main thread
 				mainThread->going_to_suspend = false;
@@ -1659,8 +1672,8 @@ send_signal_to_team_locked(Team* team, uint32 signalNumber, Signal* signal,
 		case SIGCONT:
 			// Wake up any suspended threads, interrupt the others, if they
 			// don't block the signal.
-			for (Thread* thread = team->thread_list; thread != NULL;
-					thread = thread->team_next) {
+			for (Thread* thread = team->thread_list.First(); thread != NULL;
+					thread = team->thread_list.GetNext(thread)) {
 				thread->going_to_suspend = false;
 
 				SpinLocker _(thread->scheduler_lock);
@@ -1685,8 +1698,8 @@ send_signal_to_team_locked(Team* team, uint32 signalNumber, Signal* signal,
 		case SIGTTOU:
 			// send the stop signal to all threads
 			// TODO: Is that correct or should we only target the main thread?
-			for (Thread* thread = team->thread_list; thread != NULL;
-					thread = thread->team_next) {
+			for (Thread* thread = team->thread_list.First(); thread != NULL;
+					thread = team->thread_list.GetNext(thread)) {
 				thread->AddPendingSignal(signalNumber);
 			}
 
@@ -1701,8 +1714,8 @@ send_signal_to_team_locked(Team* team, uint32 signalNumber, Signal* signal,
 		default:
 			// Interrupt all interruptibly waiting threads, if the signal is
 			// not masked.
-			for (Thread* thread = team->thread_list; thread != NULL;
-					thread = thread->team_next) {
+			for (Thread* thread = team->thread_list.First(); thread != NULL;
+					thread = team->thread_list.GetNext(thread)) {
 				sigset_t nonBlocked = ~thread->sig_block_mask
 					| SIGNAL_TO_MASK(SIGCHLD);
 				if ((thread->AllPendingSignals() & nonBlocked) != 0) {
@@ -1815,7 +1828,7 @@ send_signal_to_process_group_locked(ProcessGroup* group, const Signal& signal,
 
 	bool firstTeam = true;
 
-	for (Team* team = group->teams; team != NULL; team = team->group_next) {
+	for (Team* team = group->teams.First(); team != NULL; team = group->teams.GetNext(team)) {
 		status_t error = send_signal_to_team(team, signal,
 			flags | B_DO_NOT_RESCHEDULE);
 		// If sending to the first team in the group failed, let the whole call
@@ -1859,7 +1872,7 @@ send_signal_to_process_group(pid_t groupID, const Signal& signal, uint32 flags)
 	ProcessGroup* group = ProcessGroup::Get(groupID);
 	if (group == NULL)
 		return B_BAD_TEAM_ID;
-	BReference<ProcessGroup> groupReference(group);
+	BReference<ProcessGroup> groupReference(group, true);
 
 	T(SendSignal(-group->id, signal.Number(), flags));
 
@@ -2017,8 +2030,8 @@ sigaction_internal(int signal, const struct sigaction* act,
 
 		team->RemovePendingSignal(signal);
 
-		for (Thread* thread = team->thread_list; thread != NULL;
-				thread = thread->team_next) {
+		for (Thread* thread = team->thread_list.First(); thread != NULL;
+				thread = team->thread_list.GetNext(thread)) {
 			thread->RemovePendingSignal(signal);
 		}
 	}

@@ -19,8 +19,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_wlan.h"
 
 #include <sys/param.h>
@@ -55,7 +53,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/rtwn/rtl8188e/r88e.h>
 #include <dev/rtwn/rtl8188e/r88e_priv.h>
 #include <dev/rtwn/rtl8188e/r88e_reg.h>
-
 
 static int
 r88e_get_power_group(struct rtwn_softc *sc, struct ieee80211_channel *c)

@@ -1,5 +1,5 @@
 1	turkish	x-vnd.Haiku-Sudoku	3382377306
-Restore snapshot	SudokuWindow		Anlık görüntüyü eski durumuna getir
+Restore snapshot	SudokuWindow		Anlık görüntüyü geri yükle
 File	SudokuWindow		Dosya
 Mark invalid values	SudokuWindow		Geçersiz değerleri imle
 Solve single field	SudokuWindow		Tek alanı çöz
@@ -11,9 +11,9 @@ Undo	SudokuWindow		Geri al
 Export as…	SudokuWindow		Dışarı aktar…
 Quit	SudokuWindow		Çık
 Redo	SudokuWindow		Yinele
-Could not open \"%s\":\n%s\n	SudokuWindow		\"%s\" açılamıyor:\n%s\n
+Could not open \"%s\":\n%s\n	SudokuWindow		“%s” açılamadı:\n%s\n
 Blank	SudokuWindow		Boş
-Sudoku solved - congratulations!\n	SudokuWindow		Sudokü çözüldü - tebrikler!\n
+Sudoku solved - congratulations!\n	SudokuWindow		Sudokü çözüldü — tebrikler!\n
 Text	SudokuWindow		Metin
 Copy	SudokuWindow		Kopyala
 Solve	SudokuWindow		Çöz
@@ -28,7 +28,7 @@ OK	SudokuWindow		Tamam
 Sudoku	System name		Sudoku
 Progress monitor	ProgressWindow		Durum monitörü
 Creating solvable field	SudokuGenerator		Çözülebilir alan yaratılıyor
-View	SudokuWindow		Görünüm
+View	SudokuWindow		Görüntü
 Snapshot current	SudokuWindow		Geçerli durumun görüntüsünü al
 Mark valid hints	SudokuWindow		Geçerli ipuçlarını imle
 Sudoku request	SudokuWindow		Sudoku isteği

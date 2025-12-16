@@ -15,7 +15,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
  * $OpenBSD: if_urtwnreg.h,v 1.3 2010/11/16 18:02:59 damien Exp $
- * $FreeBSD$
  */
 
 #ifndef IF_RTWNVAR_H
@@ -33,7 +32,7 @@
 #define RTWN_MACID_VALID 	0x8000
 #define RTWN_MACID_LIMIT	128
 
-#define RTWN_TX_TIMEOUT		5000	/* ms */
+#define RTWN_TX_TIMEOUT		1000	/* ms */
 #define RTWN_MAX_EPOUT		4
 #define RTWN_PORT_COUNT		2
 
@@ -62,9 +61,10 @@ struct rtwn_rx_radiotap_header {
 struct rtwn_tx_radiotap_header {
 	struct ieee80211_radiotap_header wt_ihdr;
 	uint8_t		wt_flags;
+	uint8_t		wt_pad;
 	uint16_t	wt_chan_freq;
 	uint16_t	wt_chan_flags;
-} __packed __aligned(8);
+} __packed;
 
 #define RTWN_TX_RADIOTAP_PRESENT			\
 	(1 << IEEE80211_RADIOTAP_FLAGS |		\
@@ -78,7 +78,6 @@ struct rtwn_tx_buf {
 struct rtwn_tx_phystat {
 	uint32_t	phydw[RTWN_PHY_STATUS_SIZE / sizeof(uint32_t)];
 };
-
 
 struct rtwn_softc;
 
@@ -172,9 +171,8 @@ struct rtwn_softc {
 	struct mbufq		sc_snd;
 	device_t		sc_dev;
 
-#if 1
 	int			sc_ht40;
-#endif
+	int			sc_ena_tsf64;
 	uint32_t		sc_debug;
 	int			sc_hwcrypto;
 	int			sc_ratectl_sysctl;
@@ -422,14 +420,12 @@ MALLOC_DECLARE(M_RTWN_PRIV);
 #define RTWN_NT_LOCK_INITIALIZED(sc)	mtx_initialized(&(sc)->nt_mtx)
 #define RTWN_NT_LOCK_DESTROY(sc)	mtx_destroy(&(sc)->nt_mtx)
 
-
 void	rtwn_sysctlattach(struct rtwn_softc *);
 
 int	rtwn_attach(struct rtwn_softc *);
 void	rtwn_detach(struct rtwn_softc *);
 void	rtwn_resume(struct rtwn_softc *);
 void	rtwn_suspend(struct rtwn_softc *);
-
 
 /* Interface-specific. */
 #define rtwn_write_1(_sc, _addr, _val) \
@@ -589,7 +585,6 @@ void	rtwn_suspend(struct rtwn_softc *);
 	(((_sc)->sc_post_init)((_sc)))
 #define rtwn_init_bcnq1_boundary(_sc) \
 	(((_sc)->sc_init_bcnq1_boundary)((_sc)))
-
 
 /*
  * Methods to access subfields in registers.

@@ -209,11 +209,11 @@ NotificationWindow::MessageReceived(BMessage* message)
 					} else
 						group = aIt->second;
 
-					NotificationView* view = new NotificationView(notification,
-						timeout, fIconSize);
+					NotificationView* view = new NotificationView(notification, timeout);
 
 					group->AddInfo(view);
 
+					SetPosition();
 					_ShowHide();
 
 					reply.AddInt32("error", B_OK);
@@ -255,13 +255,6 @@ NotificationWindow::MessageReceived(BMessage* message)
 }
 
 
-icon_size
-NotificationWindow::IconSize()
-{
-	return fIconSize;
-}
-
-
 int32
 NotificationWindow::Timeout()
 {
@@ -284,10 +277,8 @@ NotificationWindow::_ShowHide()
 		return;
 	}
 
-	if (IsHidden()) {
-		SetPosition();
+	if (IsHidden())
 		Show();
-	}
 }
 
 
@@ -315,10 +306,8 @@ NotificationWindow::SetPosition()
 
 	// If notification and deskbar position are same
 	// then follow deskbar position
-	uint32 position = (is_overlapping(deskbar.Location(), fPosition))
-			? B_FOLLOW_DESKBAR
-			: fPosition;
-
+	bool overlapping = is_overlapping(deskbar.Location(), fPosition);
+	uint32 position = overlapping ? B_FOLLOW_DESKBAR : fPosition;
 
 	if (position == B_FOLLOW_DESKBAR) {
 		BRect frame = deskbar.Frame();
@@ -448,18 +437,11 @@ NotificationWindow::_LoadGeneralSettings(BMessage& settings)
 void
 NotificationWindow::_LoadDisplaySettings(BMessage& settings)
 {
-	int32 setting;
 	float originalWidth = fWidth;
-
 	if (settings.FindFloat(kWidthName, &fWidth) != B_OK)
-		fWidth = kDefaultWidth;
+		fWidth = kDefaultWidth * be_plain_font->Size() / 12.0f;
 	if (originalWidth != fWidth)
 		GetLayout()->SetExplicitSize(BSize(fWidth, B_SIZE_UNSET));
-
-	if (settings.FindInt32(kIconSizeName, &setting) != B_OK)
-		fIconSize = kDefaultIconSize;
-	else
-		fIconSize = (icon_size)setting;
 
 	int32 position;
 	if (settings.FindInt32(kNotificationPositionName, &position) != B_OK)

@@ -12,7 +12,7 @@
 
 
 #include <cpu.h>
-#include <int.h>
+#include <interrupts.h>
 #include <kscheduler.h>
 #include <team.h>
 #include <thread.h>
@@ -28,6 +28,7 @@
 #include <arch/x86/msi.h>
 #include <arch/x86/msi_priv.h>
 
+#include <fenv.h>
 #include <stdio.h>
 
 // interrupt controllers
@@ -89,8 +90,9 @@ x86_invalid_exception(iframe* frame)
 	Thread* thread = thread_get_current_thread();
 	char name[32];
 	panic("unhandled trap 0x%lx (%s) at ip 0x%lx, thread %" B_PRId32 "!\n",
-		frame->vector, exception_name(frame->vector, name, sizeof(name)),
-		frame->ip, thread ? thread->id : -1);
+		(long unsigned int)frame->vector,
+		exception_name(frame->vector, name, sizeof(name)),
+		(long unsigned int)frame->ip, thread ? thread->id : -1);
 }
 
 
@@ -99,7 +101,8 @@ x86_fatal_exception(iframe* frame)
 {
 	char name[32];
 	panic("Fatal exception \"%s\" occurred! Error code: 0x%lx\n",
-		exception_name(frame->vector, name, sizeof(name)), frame->error_code);
+		exception_name(frame->vector, name, sizeof(name)),
+		(long unsigned int)frame->error_code);
 }
 
 
@@ -155,13 +158,39 @@ x86_unexpected_exception(iframe* frame)
 			break;
 
 		case 16: 	// x87 FPU Floating-Point Error (#MF)
+		case 19: 	// SIMD Floating-Point Exception (#XF)
+		{
 			type = B_FLOATING_POINT_EXCEPTION;
 			signalNumber = SIGFPE;
-			signalCode = FPE_FLTDIV;
-				// TODO: Determine the correct cause via the FPU status
-				// register!
+			signalCode = FPE_FLTINV;
 			signalAddress = frame->ip;
+
+			uint32 status = 0;
+			if (frame->vector == 19) {
+				// MXCSR is only available on SSE, however exception 19 should only
+				// ever occur if the processor has SSE anyway and OSXMMEXCPT is set.
+				__stmxcsr(&status);
+			} else {
+				uint16 fsw = 0;
+				__fnstsw(&fsw);
+				status = fsw;
+			}
+
+			// Determine the real cause of the exception, if possible.
+			if ((status & FE_INVALID) != 0)
+				signalCode = FPE_FLTINV;
+			else if ((status & FE_DENORMAL) != 0)
+				signalCode = FPE_FLTUND;
+			else if ((status & FE_DIVBYZERO) != 0)
+				signalCode = FPE_FLTDIV;
+			else if ((status & FE_OVERFLOW) != 0)
+				signalCode = FPE_FLTOVF;
+			else if ((status & FE_UNDERFLOW) != 0)
+				signalCode = FPE_FLTUND;
+			else if ((status & FE_INEXACT) != 0)
+				signalCode = FPE_FLTRES;
 			break;
+		}
 
 		case 17: 	// Alignment Check Exception (#AC)
 			type = B_ALIGNMENT_EXCEPTION;
@@ -170,14 +199,6 @@ x86_unexpected_exception(iframe* frame)
 			// TODO: Also get the address (from where?). Since we don't enable
 			// alignment checking this exception should never happen, though.
 			signalError = EFAULT;
-			break;
-
-		case 19: 	// SIMD Floating-Point Exception (#XF)
-			type = B_FLOATING_POINT_EXCEPTION;
-			signalNumber = SIGFPE;
-			signalCode = FPE_FLTDIV;
-				// TODO: Determine the correct cause via the MXCSR register!
-			signalAddress = frame->ip;
 			break;
 
 		default:
@@ -207,7 +228,7 @@ x86_unexpected_exception(iframe* frame)
 		panic("Unexpected exception \"%s\" occurred in kernel mode! "
 			"Error code: 0x%lx\n",
 			exception_name(frame->vector, name, sizeof(name)),
-			frame->error_code);
+			(long unsigned int)(frame->error_code));
 	}
 }
 
@@ -233,7 +254,7 @@ x86_hardware_interrupt(struct iframe* frame)
 			apic_end_of_interrupt();
 	}
 
-	int_io_interrupt_handler(vector, levelTriggered);
+	io_interrupt_handler(vector, levelTriggered);
 
 	if (levelTriggered) {
 		if (!sCurrentPIC->end_of_interrupt(vector))
@@ -241,12 +262,7 @@ x86_hardware_interrupt(struct iframe* frame)
 	}
 
 	cpu_status state = disable_interrupts();
-	if (thread->cpu->invoke_scheduler) {
-		SpinLocker schedulerLocker(thread->scheduler_lock);
-		scheduler_reschedule(B_THREAD_READY);
-		schedulerLocker.Unlock();
-		restore_interrupts(state);
-	} else if (thread->post_interrupt_callback != NULL) {
+	if (thread->post_interrupt_callback != NULL) {
 		void (*callback)(void*) = thread->post_interrupt_callback;
 		void* data = thread->post_interrupt_data;
 
@@ -256,6 +272,11 @@ x86_hardware_interrupt(struct iframe* frame)
 		restore_interrupts(state);
 
 		callback(data);
+	} else if (thread->cpu->invoke_scheduler) {
+		SpinLocker schedulerLocker(thread->scheduler_lock);
+		scheduler_reschedule(B_THREAD_READY);
+		schedulerLocker.Unlock();
+		restore_interrupts(state);
 	}
 }
 
@@ -360,7 +381,7 @@ x86_page_fault_exception(struct iframe* frame)
 
 
 void
-x86_set_irq_source(int irq, irq_source source)
+x86_set_irq_source(int32 irq, irq_source source)
 {
 	sVectorSources[irq] = source;
 }
@@ -370,21 +391,21 @@ x86_set_irq_source(int irq, irq_source source)
 
 
 void
-arch_int_enable_io_interrupt(int irq)
+arch_int_enable_io_interrupt(int32 irq)
 {
 	sCurrentPIC->enable_io_interrupt(irq);
 }
 
 
 void
-arch_int_disable_io_interrupt(int irq)
+arch_int_disable_io_interrupt(int32 irq)
 {
 	sCurrentPIC->disable_io_interrupt(irq);
 }
 
 
 void
-arch_int_configure_io_interrupt(int irq, uint32 config)
+arch_int_configure_io_interrupt(int32 irq, uint32 config)
 {
 	sCurrentPIC->configure_io_interrupt(irq, config);
 }
@@ -424,7 +445,7 @@ arch_int_are_interrupts_enabled(void)
 }
 
 
-void
+int32
 arch_int_assign_to_cpu(int32 irq, int32 cpu)
 {
 	switch (sVectorSources[irq]) {
@@ -440,6 +461,7 @@ arch_int_assign_to_cpu(int32 irq, int32 cpu)
 		default:
 			break;
 	}
+	return cpu;
 }
 
 
@@ -466,7 +488,7 @@ status_t
 arch_int_init_io(kernel_args* args)
 {
 	msi_init(args);
-	ioapic_init(args);
+	ioapic_preinit(args);
 	return B_OK;
 }
 

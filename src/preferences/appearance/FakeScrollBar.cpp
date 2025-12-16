@@ -35,8 +35,10 @@ FakeScrollBar::FakeScrollBar(bool drawArrows, bool doubleArrows,
 	fDrawArrows(drawArrows),
 	fDoubleArrows(doubleArrows)
 {
-	SetExplicitMinSize(BSize(160, 20));
-	SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 20));
+	float height = be_control_look->GetScrollBarWidth(B_HORIZONTAL);
+	height += be_control_look->ComposeSpacing(B_USE_HALF_ITEM_SPACING);
+		// add some height to draw the ring around the scroll bar
+	SetExplicitSize(BSize(B_SIZE_UNSET, height));
 }
 
 
@@ -49,6 +51,7 @@ void
 FakeScrollBar::Draw(BRect updateRect)
 {
 	rgb_color base = ui_color(B_PANEL_BACKGROUND_COLOR);
+	rgb_color text = ui_color(B_PANEL_TEXT_COLOR);
 
 	uint32 flags = BControlLook::B_PARTIALLY_ACTIVATED;
 
@@ -82,21 +85,21 @@ FakeScrollBar::Draw(BRect updateRect)
 		BRect buttonFrame(rect.left, rect.top, rect.left + rect.Height(),
 			rect.bottom);
 		be_control_look->DrawScrollBarButton(this, buttonFrame, updateRect,
-			base, flags, BControlLook::B_LEFT_ARROW, B_HORIZONTAL);
+			base, text, flags, BControlLook::B_LEFT_ARROW, B_HORIZONTAL);
 		if (fDoubleArrows) {
 			buttonFrame.OffsetBy(rect.Height() + 1, 0.0f);
 			be_control_look->DrawScrollBarButton(this, buttonFrame,
-				updateRect, base, flags, BControlLook::B_RIGHT_ARROW,
+				updateRect, base, text, flags, BControlLook::B_RIGHT_ARROW,
 				B_HORIZONTAL);
 			buttonFrame.OffsetTo(rect.right - ((rect.Height() * 2) + 1),
 				rect.top);
 			be_control_look->DrawScrollBarButton(this, buttonFrame,
-				updateRect, base, flags, BControlLook::B_LEFT_ARROW,
+				updateRect, base, text, flags, BControlLook::B_LEFT_ARROW,
 				B_HORIZONTAL);
 		}
 		buttonFrame.OffsetTo(rect.right - rect.Height(), rect.top);
 		be_control_look->DrawScrollBarButton(this, buttonFrame, updateRect,
-			base, flags, BControlLook::B_RIGHT_ARROW, B_HORIZONTAL);
+			base, text, flags, BControlLook::B_RIGHT_ARROW, B_HORIZONTAL);
 	}
 
 	// inset rect to make room for arrows

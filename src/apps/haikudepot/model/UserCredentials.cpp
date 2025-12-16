@@ -22,8 +22,7 @@ UserCredentials::UserCredentials(BMessage* from)
 }
 
 
-UserCredentials::UserCredentials(const BString& nickname,
-	const BString& passwordClear)
+UserCredentials::UserCredentials(const BString& nickname, const BString& passwordClear)
 	:
 	fNickname(nickname),
 	fPasswordClear(passwordClear),
@@ -52,6 +51,31 @@ UserCredentials::UserCredentials()
 
 UserCredentials::~UserCredentials()
 {
+}
+
+
+UserCredentials&
+UserCredentials::operator=(const UserCredentials& other)
+{
+	fNickname = other.fNickname;
+	fPasswordClear = other.fPasswordClear;
+	fIsSuccessful = other.fIsSuccessful;
+	return *this;
+}
+
+
+bool
+UserCredentials::operator==(const UserCredentials& other) const
+{
+	return fNickname == other.fNickname && fPasswordClear == other.fPasswordClear
+		&& fIsSuccessful == other.fIsSuccessful;
+}
+
+
+bool
+UserCredentials::operator!=(const UserCredentials& other) const
+{
+	return !(*this == other);
 }
 
 
@@ -101,16 +125,6 @@ void
 UserCredentials::SetIsSuccessful(bool value)
 {
 	fIsSuccessful = value;
-}
-
-
-UserCredentials&
-UserCredentials::operator=(const UserCredentials& other)
-{
-	fNickname = other.fNickname;
-	fPasswordClear = other.fPasswordClear;
-	fIsSuccessful = other.fIsSuccessful;
-	return *this;
 }
 
 

@@ -35,6 +35,8 @@ Application Terminal :
 	TermViewHighlight.cpp
 	TermViewStates.cpp
 	TermWindow.cpp
+	ThemeView.cpp
+	ThemeWindow.cpp
 	TitlePlaceholderMapper.cpp
 	VTKeyTbl.c
 	VTPrsTbl.c
@@ -60,5 +62,7 @@ DoCatalogs Terminal :
 	TermView.cpp
 	TermViewStates.cpp
 	TermWindow.cpp
+	ThemeView.cpp
+	ThemeWindow.cpp
 	: en.catalog
 ;

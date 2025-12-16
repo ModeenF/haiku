@@ -33,7 +33,8 @@ Contributing
 -------------------
 Haiku is a meritocratic open source project with a large variety of tasks. Even
 if you can't write code, *you can still help*! Haiku needs designers,
-(technical) writers, translators, testers... Get involved and help out!
+(technical) writers, translators, testers... [Get involved](https://www.haiku-os.org/community/getting-involved/)
+and help out!
 
 ### Contributing code
 If you're submitting a patch to us, please make sure you're following the
@@ -42,7 +43,7 @@ If you're submitting a patch to us, please make sure you're following the
 If you're having trouble finding something in the source tree, you can use
 one of our web-based source code browsers:
 
- * https://xref.landonf.org/ (OpenGrok, provided by Landon Fuller)
+ * https://grok.nikisoft.one/opengrok/ (OpenGrok, provided by Niklas Poslovski)
  * https://git.haiku-os.org/ (git, provided by Haiku, Inc.)
 
 ### Contributing documentation

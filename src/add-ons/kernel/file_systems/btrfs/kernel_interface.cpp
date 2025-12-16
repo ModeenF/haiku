@@ -24,6 +24,12 @@
 #define INFORM(x...) TRACE(x)
 #define init_debugging()
 #define exit_debugging()
+#define FUNCTION() dprintf("\33[34mbtrfs:\33[0m %s()\n",__PRETTY_FUNCTION__);
+#define REPORT_ERROR(status) \
+	dprintf("btrfs: %s:%d: %s\n", __FUNCTION__, __LINE__, strerror(status));
+#define RETURN_ERROR(err) \
+	{ status_t _status = err; if (_status < B_OK) REPORT_ERROR(_status); return _status;}
+#define PRINT(x) { dprintf("btrfs: "); dprintf x; }
 #else
 #include <DebugSupport.h>
 #endif
@@ -382,8 +388,12 @@ btrfs_lookup(fs_volume* _volume, fs_vnode* _directory, const char* name,
 		return status;
 
 	status = DirectoryIterator(directory).Lookup(name, strlen(name), _vnodeID);
-	if (status != B_OK)
+	if (status != B_OK) {
+		if (status == B_ENTRY_NOT_FOUND)
+			entry_cache_add_missing(volume->ID(), directory->ID(), name);
 		return status;
+	}
+	entry_cache_add(volume->ID(), directory->ID(), name, *_vnodeID);
 
 	return get_vnode(volume->FSVolume(), *_vnodeID, NULL);
 }
@@ -531,8 +541,7 @@ btrfs_open(fs_volume* /*_volume*/, fs_vnode* _node, int openMode,
 	if (inode->IsDirectory() && (openMode & O_RWMASK) != 0)
 		return B_IS_A_DIRECTORY;
 
-	status_t status =  inode->CheckPermissions(open_mode_to_access(openMode)
-		| (openMode & O_TRUNC ? W_OK : 0));
+	status_t status =  inode->CheckPermissions(open_mode_to_access(openMode));
 	if (status != B_OK)
 		return status;
 
@@ -584,6 +593,7 @@ static status_t
 btrfs_read(fs_volume* _volume, fs_vnode* _node, void* _cookie, off_t pos,
 	void* buffer, size_t* _length)
 {
+	FUNCTION();
 	Inode* inode = (Inode*)_node->private_node;
 
 	if (!inode->IsFile()) {
@@ -629,6 +639,7 @@ static status_t
 btrfs_read_link(fs_volume* _volume, fs_vnode* _node, char* buffer,
 	size_t* _bufferSize)
 {
+	FUNCTION();
 	Inode* inode = (Inode*)_node->private_node;
 
 	if (!inode->IsSymLink())
@@ -814,7 +825,7 @@ btrfs_read_dir(fs_volume* _volume, fs_vnode* _node, void* _cookie,
 
 	while (count < maxCount && bufferSize > sizeof(struct dirent)) {
 		ino_t id;
-		size_t length = bufferSize - sizeof(struct dirent) + 1;
+		size_t length = bufferSize - offsetof(struct dirent, d_name);
 
 		status_t status = iterator->GetNext(dirent->d_name, &length,
 			&id);
@@ -834,7 +845,7 @@ btrfs_read_dir(fs_volume* _volume, fs_vnode* _node, void* _cookie,
 
 		dirent->d_dev = volume->ID();
 		dirent->d_ino = id;
-		dirent->d_reclen = sizeof(struct dirent) + length;
+		dirent->d_reclen = offsetof(struct dirent, d_name) + length + 1;
 
 		bufferSize -= dirent->d_reclen;
 		dirent = (struct dirent*)((uint8*)dirent + dirent->d_reclen);
@@ -928,7 +939,7 @@ btrfs_read_attr_dir(fs_volume* _volume, fs_vnode* _node,
 
 	Volume* volume = (Volume*)_volume->private_volume;
 	dirent->d_dev = volume->ID();
-	dirent->d_reclen = sizeof(struct dirent) + length;
+	dirent->d_reclen = offsetof(struct dirent, d_name) + length + 1;
 	*_num = 1;
 
 	return B_OK;
@@ -1040,17 +1051,6 @@ btrfs_remove_attr(fs_volume* _volume, fs_vnode* vnode,
 {
 	return EROFS;
 }
-
-static uint32
-btrfs_get_supported_operations(partition_data* partition, uint32 mask)
-{
-	// TODO: We should at least check the partition size.
-	return B_DISK_SYSTEM_SUPPORTS_INITIALIZING
-		| B_DISK_SYSTEM_SUPPORTS_CONTENT_NAME
-//		| B_DISK_SYSTEM_SUPPORTS_WRITING
-		;
-}
-
 
 static status_t
 btrfs_initialize(int fd, partition_id partitionID, const char* name,
@@ -1238,9 +1238,11 @@ static file_system_module_info sBtrfsFileSystem = {
 
 	// DDM flags
 	0
+#if 0
 	| B_DISK_SYSTEM_SUPPORTS_INITIALIZING
 	| B_DISK_SYSTEM_SUPPORTS_CONTENT_NAME
 //	| B_DISK_SYSTEM_SUPPORTS_WRITING
+#endif
 	,
 
 	// scanning
@@ -1251,9 +1253,8 @@ static file_system_module_info sBtrfsFileSystem = {
 
 	&btrfs_mount,
 
-
 	/* capability querying operations */
-	&btrfs_get_supported_operations,
+	NULL,	// get_supported_operations
 
 	NULL,	// validate_resize
 	NULL,	// validate_move

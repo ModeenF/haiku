@@ -99,6 +99,7 @@ then
 		"<libroot.so> BPrivate::Libroot::LocaleBackend::LoadBackend" \
 		"<libbe.so> initialize_before " \
 		"<libbe.so> initialize_after " \
+		"<libbe.so> __initialize_locale_kit" \
 		"<libbe.so> _control_input_server_" \
 		"<libbe.so> BApplication::_InitGUIContext" \
 		"<libbe.so> BApplication::_InitAppResources" \
@@ -132,12 +133,12 @@ do
 done
 
 
-ALLOCATIONS=$(cat "$FILENAME" | egrep "^allocation: |^	" | tr '\n' '^' \
+ALLOCATIONS=$(cat "$FILENAME" | grep -E "^allocation: |^	" | tr '\n' '^' \
 	| sed 's/\^a/~a/g' | tr '~' '\n' | sed 's/$/^/' | c++filt)
 
 if [ ! -z "$EXCLUDE_PATTERN" ]
 then
-	ALLOCATIONS=$(echo "$ALLOCATIONS" | egrep -v "$EXCLUDE_PATTERN")
+	ALLOCATIONS=$(echo "$ALLOCATIONS" | grep -E -v "$EXCLUDE_PATTERN")
 fi
 
 if [ -z "$ALLOCATIONS" ]

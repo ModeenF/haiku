@@ -15,8 +15,6 @@
  * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- *
- * $FreeBSD: releng/12.0/sys/dev/ath/ath_hal/ar5416/ar5416_beacon.c 326695 2017-12-08 15:57:29Z pfg $
  */
 #include "opt_ah.h"
 
@@ -155,7 +153,7 @@ ar5416SetStaBeaconTimers(struct ath_hal *ah, const HAL_BEACON_STATE *bs)
 	uint32_t nextTbtt, nextdtim,beaconintval, dtimperiod;
 
 	HALASSERT(bs->bs_intval != 0);
-	
+
 	/* NB: no cfp setting since h/w automatically takes care */
 
 	OS_REG_WRITE(ah, AR_NEXT_TBTT, TU_TO_USEC(bs->bs_nexttbtt));

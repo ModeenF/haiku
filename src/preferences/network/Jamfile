@@ -6,7 +6,7 @@ UsePrivateHeaders net shared storage ;
 SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src apps networkstatus ]
 	[ FDirName $(HAIKU_TOP) src bin network ifconfig ] ;
 
-Preference Network :
+Application Network :
 	Network.cpp
 	NetworkWindow.cpp
 	NetworkProfile.cpp
@@ -24,10 +24,8 @@ Preference Network :
 	RadioView.cpp
 	WirelessNetworkMenuItem.cpp
 
-	# from ifconfig
-	MediaTypes.cpp
-
-	: be bnetapi shared [ TargetLibstdc++ ] localestub
+	: <src!bin!network!ifconfig>MediaTypes.o
+	be bnetapi shared [ TargetLibstdc++ ] localestub
 	: Network.rdef InterfaceIcons.rdef
 ;
 

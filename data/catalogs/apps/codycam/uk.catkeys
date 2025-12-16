@@ -45,11 +45,11 @@ Cannot find an available video stream	CodyCam		Неможливо знайти �
 Upload…	VideoConsumer.cpp		Вивантаження…
 password expected	CodyCam		очікується пароль
 SFTP	CodyCam		SFTP
-Output	CodyCam		Вивід
+Output	CodyCam		Вивід знімків
 server address expected	CodyCam		вкажіть адресу сервера
 Cannot start the video window	CodyCam		Неможливо запустити вікно відео
 reply: %d, %d\n	FtpClient		відповідь: %d, %d\n
-Cannot set the time source for the video window	CodyCam		Неможливо встановити лічильник для відео вікна
+Cannot set the time source for the video window	CodyCam		Неможливо встановити лічильник для вікна відео
 Every 15 minutes	CodyCam		Кожні 15 хвилин
 Every 24 hours	CodyCam		Кожні 24 години
 Image Format Menu	CodyCam		Меню формата зображення
@@ -60,7 +60,7 @@ Start video	CodyCam		Запустити відео
 Connected…	VideoConsumer.cpp		Підключення…
 upload client name expected	CodyCam		вкажіть ім’я клієнта вивантаження
 Every 15 seconds	CodyCam		Кожні 15 секунд
-Error getting initial latency for the capture node	CodyCam		Помилка при отриманні затримки для вузла захоплення
+Error getting initial latency for the capture node	CodyCam		Помилка при отриманні затримки для ноди захоплення
 password	CodyCam		пароль
 Local	CodyCam		Локальний
 Stop video	CodyCam		Зупинити відео
@@ -69,7 +69,7 @@ Rate:	CodyCam		Періодичність:
 Couldn't find requested directory on server	VideoConsumer.cpp		Неможливо знайти потрібний каталог на сервері
 Cannot find the media roster	CodyCam		Неможливо знайти медіа ростер
 Type:	CodyCam		Тип:
-Rename failed	VideoConsumer.cpp		Збій переіменування
+Rename failed	VideoConsumer.cpp		Збій перейменування
 unrecognized upload client specified	CodyCam		нерозпізнаний клієнт вивантаження
 Server:	CodyCam		Сервер:
 Login:	CodyCam		Логін:
@@ -85,4 +85,4 @@ Cannot find a video source.\nYou need a webcam to use CodyCam.	CodyCam		Не з�
 Logging in…	VideoConsumer.cpp		Авторизація…
 CodyCam	System name		CodyCam
 Error writing output file	VideoConsumer.cpp		Помилка запису вихідного файлу
-Capture controls	CodyCam		Управління захопленням
+Capture controls	CodyCam		Настройки стоп-кадру

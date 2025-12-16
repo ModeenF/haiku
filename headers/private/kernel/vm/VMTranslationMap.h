@@ -39,14 +39,14 @@ public:
 									vm_page_reservation* reservation) = 0;
 	virtual	status_t			Unmap(addr_t start, addr_t end) = 0;
 
-	virtual	status_t			DebugMarkRangePresent(addr_t start, addr_t end,
-									bool markPresent);
-
 	// map not locked
 	virtual	status_t			UnmapPage(VMArea* area, addr_t address,
-									bool updatePageQueue) = 0;
+									bool updatePageQueue,
+									bool deletingAddressSpace = false,
+									uint32* _flags = NULL) = 0;
 	virtual	void				UnmapPages(VMArea* area, addr_t base,
-									size_t size, bool updatePageQueue);
+									size_t size, bool updatePageQueue,
+									bool deletingAddressSpace = false);
 	virtual	void				UnmapArea(VMArea* area,
 									bool deletingAddressSpace,
 									bool ignoreTopCachePageFlags);
@@ -84,7 +84,8 @@ public:
 protected:
 			void				PageUnmapped(VMArea* area,
 									page_num_t pageNumber, bool accessed,
-									bool modified, bool updatePageQueue);
+									bool modified, bool updatePageQueue,
+									VMAreaMappings* mappingsQueue = NULL);
 			void				UnaccessedPageUnmapped(VMArea* area,
 									page_num_t pageNumber);
 
@@ -151,7 +152,6 @@ VMTranslationMap::ProtectPage(VMArea* area, addr_t address, uint32 attributes)
 }
 
 
-#include <vm/VMArea.h>
 inline status_t
 VMTranslationMap::ProtectArea(VMArea* area, uint32 attributes)
 {

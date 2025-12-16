@@ -42,9 +42,16 @@
 
 
 bool
+ext2_super_block::IsMagicValid()
+{
+	return Magic() == (uint32)EXT2_SUPER_BLOCK_MAGIC;
+}
+
+
+bool
 ext2_super_block::IsValid()
 {
-	if (Magic() != (uint32)EXT2_SUPER_BLOCK_MAGIC
+	if (!IsMagicValid()
 			|| BlockShift() > 16
 			|| BlocksPerGroup() != (1UL << BlockShift()) * 8
 			|| InodeSize() > (1UL << BlockShift())
@@ -109,10 +116,8 @@ Volume::HasExtendedAttributes() const
 const char*
 Volume::Name() const
 {
-	if (fSuperBlock.name[0])
-		return fSuperBlock.name;
-
-	return fName;
+	// The name may be empty, in that case, userspace will generate one.
+	return fSuperBlock.name;
 }
 
 
@@ -167,6 +172,16 @@ Volume::Mount(const char* deviceName, uint32 flags)
 
 	if (!_VerifySuperBlock())
 		return B_ERROR;
+
+	if ((fSuperBlock.State() & EXT2_FS_STATE_VALID) == 0
+		|| (fSuperBlock.State() & EXT2_FS_STATE_ERROR) != 0) {
+		if (!IsReadOnly()) {
+			FATAL("Volume::Mount(): can't mount R/W, volume not clean\n");
+			return B_NOT_ALLOWED;
+		} else {
+			FATAL("Volume::Mount(): warning: volume not clean\n");
+		}
+	}
 
 	// initialize short hands to the superblock (to save byte swapping)
 	fBlockShift = fSuperBlock.BlockShift();
@@ -233,8 +248,10 @@ Volume::Mount(const char* deviceName, uint32 flags)
 	status = opener.GetSize(&diskSize);
 	if (status != B_OK)
 		return status;
-	if (diskSize < ((off_t)NumBlocks() << BlockShift()))
+	if ((diskSize + fBlockSize) <= ((off_t)NumBlocks() << BlockShift())) {
+		FATAL("diskSize is too small for the number of blocks!\n");
 		return B_BAD_VALUE;
+	}
 
 	fBlockCache = opener.InitCache(NumBlocks(), fBlockSize);
 	if (fBlockCache == NULL)
@@ -321,26 +338,6 @@ Volume::Mount(const char* deviceName, uint32 flags)
 	// all went fine
 	opener.Keep();
 
-	if (!fSuperBlock.name[0]) {
-		// generate a more or less descriptive volume name
-		off_t divisor = 1ULL << 40;
-		char unit = 'T';
-		if (diskSize < divisor) {
-			divisor = 1UL << 30;
-			unit = 'G';
-			if (diskSize < divisor) {
-				divisor = 1UL << 20;
-				unit = 'M';
-			}
-		}
-
-		double size = double((10 * diskSize + divisor - 1) / divisor);
-			// %g in the kernel does not support precision...
-
-		snprintf(fName, sizeof(fName), "%g %cB Ext2 Volume",
-			size / 10, unit);
-	}
-
 	return B_OK;
 }
 
@@ -401,7 +398,8 @@ Volume::_UnsupportedIncompatibleFeatures(ext2_super_block& superBlock)
 		| EXT2_INCOMPATIBLE_FEATURE_JOURNAL
 		| EXT2_INCOMPATIBLE_FEATURE_EXTENTS
 		| EXT2_INCOMPATIBLE_FEATURE_FLEX_GROUP
-		| EXT2_INCOMPATIBLE_FEATURE_64BIT;
+		| EXT2_INCOMPATIBLE_FEATURE_64BIT
+		| EXT2_INCOMPATIBLE_FEATURE_CSUM_SEED;
 		/*| EXT2_INCOMPATIBLE_FEATURE_META_GROUP*/;
 	uint32 unsupported = superBlock.IncompatibleFeatures()
 		& ~supportedIncompatible;
@@ -594,93 +592,6 @@ Volume::ActivateDirNLink(Transaction& transaction)
 
 
 status_t
-Volume::SaveOrphan(Transaction& transaction, ino_t newID, ino_t& oldID)
-{
-	oldID = fSuperBlock.LastOrphan();
-	TRACE("Volume::SaveOrphan(): Old: %d, New: %d\n", (int)oldID, (int)newID);
-	fSuperBlock.SetLastOrphan(newID);
-
-	return WriteSuperBlock(transaction);
-}
-
-
-status_t
-Volume::RemoveOrphan(Transaction& transaction, ino_t id)
-{
-	ino_t currentID = fSuperBlock.LastOrphan();
-	TRACE("Volume::RemoveOrphan(): ID: %d\n", (int)id);
-	if (currentID == 0)
-		return B_OK;
-
-	CachedBlock cached(this);
-
-	off_t blockNum;
-	status_t status = GetInodeBlock(currentID, blockNum);
-	if (status != B_OK)
-		return status;
-
-	uint8* block = cached.SetToWritable(transaction, blockNum);
-	if (block == NULL)
-		return B_IO_ERROR;
-
-	ext2_inode* inode = (ext2_inode*)(block
-		+ InodeBlockIndex(currentID) * InodeSize());
-
-	if (currentID == id) {
-		TRACE("Volume::RemoveOrphan(): First entry. Updating head to: %d\n",
-			(int)inode->NextOrphan());
-		fSuperBlock.SetLastOrphan(inode->NextOrphan());
-
-		return WriteSuperBlock(transaction);
-	}
-
-	currentID = inode->NextOrphan();
-	if (currentID == 0)
-		return B_OK;
-
-	do {
-		off_t lastBlockNum = blockNum;
-		status = GetInodeBlock(currentID, blockNum);
-		if (status != B_OK)
-			return status;
-
-		if (blockNum != lastBlockNum) {
-			block = cached.SetToWritable(transaction, blockNum);
-			if (block == NULL)
-				return B_IO_ERROR;
-		}
-
-		ext2_inode* inode = (ext2_inode*)(block
-			+ InodeBlockIndex(currentID) * InodeSize());
-
-		currentID = inode->NextOrphan();
-		if (currentID == 0)
-			return B_OK;
-	} while (currentID != id);
-
-	CachedBlock cachedRemoved(this);
-
-	status = GetInodeBlock(id, blockNum);
-	if (status != B_OK)
-		return status;
-
-	uint8* removedBlock = cachedRemoved.SetToWritable(transaction, blockNum);
-	if (removedBlock == NULL)
-		return B_IO_ERROR;
-
-	ext2_inode* removedInode = (ext2_inode*)(removedBlock
-		+ InodeBlockIndex(id) * InodeSize());
-
-	// Next orphan is stored inside deletion time
-	inode->deletion_time = removedInode->deletion_time;
-	TRACE("Volume::RemoveOrphan(): Updated pointer to %d\n",
-		(int)inode->NextOrphan());
-
-	return status;
-}
-
-
-status_t
 Volume::AllocateInode(Transaction& transaction, Inode* parent, int32 mode,
 	ino_t& id)
 {
@@ -860,6 +771,9 @@ Volume::Identify(int fd, ext2_super_block* superBlock)
 	if (read_pos(fd, EXT2_SUPER_BLOCK_OFFSET, superBlock,
 			sizeof(ext2_super_block)) != sizeof(ext2_super_block))
 		return B_IO_ERROR;
+
+	if (!superBlock->IsMagicValid())
+		return B_BAD_VALUE;
 
 	if (!superBlock->IsValid()) {
 		FATAL("invalid superblock!\n");

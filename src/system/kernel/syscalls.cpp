@@ -23,11 +23,12 @@
 #include <debug.h>
 #include <disk_device_manager/ddm_userland_interface.h>
 #include <elf.h>
+#include <event_queue.h>
 #include <frame_buffer_console.h>
 #include <fs/fd.h>
 #include <fs/node_monitor.h>
 #include <generic_syscall.h>
-#include <int.h>
+#include <interrupts.h>
 #include <kernel.h>
 #include <kimage.h>
 #include <ksignal.h>
@@ -193,14 +194,10 @@ _user_is_computer_on(void)
 int32
 syscall_dispatcher(uint32 callIndex, void* args, uint64* _returnValue)
 {
-	bigtime_t startTime;
-
 //	dprintf("syscall_dispatcher: thread 0x%x call 0x%x, arg0 0x%x, arg1 0x%x arg2 0x%x arg3 0x%x arg4 0x%x\n",
 //		thread_get_current_thread_id(), call_num, arg0, arg1, arg2, arg3, arg4);
 
 	user_debug_pre_syscall(callIndex, args);
-
-	startTime = system_time();
 
 	switch (callIndex) {
 		// the cases are auto-generated
@@ -210,7 +207,7 @@ syscall_dispatcher(uint32 callIndex, void* args, uint64* _returnValue)
 			*_returnValue = (uint64)B_BAD_VALUE;
 	}
 
-	user_debug_post_syscall(callIndex, args, *_returnValue, startTime);
+	user_debug_post_syscall(callIndex, args, *_returnValue);
 
 //	dprintf("syscall_dispatcher: done with syscall 0x%x\n", callIndex);
 
@@ -232,7 +229,7 @@ generic_syscall_init(void)
 		"pre syscall trace entry is encountered, the corresponding post\n"
 		"syscall traced entry is also printed, even if it doesn't match the\n"
 		"given filter.\n", 0);
-#endif	// ENABLE_TRACING
+#endif	// SYSCALL_TRACING
 
 	return B_OK;
 }

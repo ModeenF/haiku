@@ -219,7 +219,7 @@ DownloadProgressView::Init(BMessage* archive)
 	fProcessStartTime = fLastSpeedReferenceTime
 		= fEstimatedFinishReferenceTime	= system_time();
 
-	SetViewColor(245, 245, 245);
+	SetViewUIColor(B_LIST_BACKGROUND_COLOR);
 	SetFlags(Flags() | B_FULL_UPDATE_ON_RESIZE | B_WILL_DRAW);
 
 	if (archive) {
@@ -346,11 +346,14 @@ DownloadProgressView::AllAttached()
 {
 	fStatusBar->SetLowColor(ViewColor());
 	fInfoView->SetLowColor(ViewColor());
-	fInfoView->SetHighColor(0, 0, 0, 255);
+	fInfoView->SetHighUIColor(B_LIST_ITEM_TEXT_COLOR);
 
 	SetViewColor(B_TRANSPARENT_COLOR);
-	SetLowColor(245, 245, 245);
-	SetHighColor(tint_color(LowColor(), B_DARKEN_1_TINT));
+	SetLowUIColor(B_LIST_BACKGROUND_COLOR);
+	if (LowColor().IsLight())
+		SetHighColor(tint_color(LowColor(), B_DARKEN_1_TINT));
+	else
+		SetHighColor(tint_color(LowColor(), B_LIGHTEN_1_TINT));
 }
 
 
@@ -535,32 +538,26 @@ DownloadProgressView::MessageReceived(BMessage* message)
 			break;
 		case OPEN_CONTAINING_FOLDER:
 			if (fPath.InitCheck() == B_OK) {
-				BEntry selected(fPath.Path());
-				if (!selected.Exists())
+				BEntry entry(fPath.Path());
+				if (!entry.Exists())
 					break;
 
-				BPath containingFolder;
-				if (fPath.GetParent(&containingFolder) != B_OK)
-					break;
-				entry_ref ref;
-				if (get_ref_for_path(containingFolder.Path(), &ref) != B_OK)
-					break;
+				node_ref node;
+				entry.GetNodeRef(&node);
+
+				BEntry parent;
+				entry.GetParent(&parent);
+				entry_ref parentRef;
+				parent.GetRef(&parentRef);
 
 				// Ask Tracker to open the containing folder and select the
 				// file inside it.
 				BMessenger trackerMessenger("application/x-vnd.Be-TRAK");
-
 				if (trackerMessenger.IsValid()) {
-					BMessage selectionCommand(B_REFS_RECEIVED);
-					selectionCommand.AddRef("refs", &ref);
-
-					node_ref selectedRef;
-					if (selected.GetNodeRef(&selectedRef) == B_OK) {
-						selectionCommand.AddData("nodeRefToSelect", B_RAW_TYPE,
-							(void*)&selectedRef, sizeof(node_ref));
-					}
-
-					trackerMessenger.SendMessage(&selectionCommand);
+					BMessage message(B_REFS_RECEIVED);
+					message.AddRef("refs", &parentRef);
+					message.AddData("nodeRefToSelect", B_RAW_TYPE, &node, sizeof(node_ref));
+					trackerMessenger.SendMessage(&message);
 				}
 			}
 			break;

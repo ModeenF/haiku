@@ -10,11 +10,6 @@
 
 /**	BCursor describes a view-wide or application-wide cursor. */
 
-/**
-	@note:	As BeOS only supports 16x16 monochrome cursors, and I would like
-			to see a nice shadowes one, we will need to extend this one.
- */
-
 
 #include <AppDefs.h>
 #include <Bitmap.h>
@@ -96,20 +91,21 @@ BCursor::BCursor(const BBitmap* bitmap, const BPoint& hotspot)
 	if (bitmap == NULL)
 		return;
 
-	int32 size = bitmap->BitsLength();
 	BRect bounds = bitmap->Bounds();
 	color_space colorspace = bitmap->ColorSpace();
 	void* bits = bitmap->Bits();
+	int32 size = bitmap->BitsLength();
 	if (bits == NULL || size <= 0)
 		return;
 
 	// Send data directly to server
 	BPrivate::AppServerLink link;
 	link.StartMessage(AS_CREATE_CURSOR_BITMAP);
-	link.Attach<int32>(size);
 	link.Attach<BRect>(bounds);
-	link.Attach<color_space>(colorspace);
 	link.Attach<BPoint>(hotspot);
+	link.Attach<color_space>(colorspace);
+	link.Attach<int32>(bitmap->BytesPerRow());
+	link.Attach<int32>(size);
 	link.Attach(bits, size);
 
 	status_t status;
@@ -159,14 +155,20 @@ BCursor::operator=(const BCursor& other)
 		_FreeCursorData();
 
 		fServerToken = other.fServerToken;
-		fNeedToFree = other.fNeedToFree;
 
-		if (fNeedToFree) {
-			// Tell app_server that there is another reference for this
-			// cursor data!
+		if (other.fNeedToFree) {
 			BPrivate::AppServerLink link;
-			link.StartMessage(AS_REFERENCE_CURSOR);
-			link.Attach<int32>(fServerToken);
+			link.StartMessage(AS_CLONE_CURSOR);
+			link.Attach<int32>(other.fServerToken);
+
+			status_t status;
+			if (link.FlushWithReply(status) == B_OK) {
+				if (status == B_OK) {
+					link.Read<int32>(&fServerToken);
+					fNeedToFree = true;
+				} else
+					fServerToken = status;
+			}
 		}
 	}
 	return *this;
@@ -211,4 +213,3 @@ BCursor::_FreeCursorData()
 		link.Flush();
 	}
 }
-

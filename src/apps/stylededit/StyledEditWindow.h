@@ -126,6 +126,8 @@ private:
 
 			BMenuItem*			fBoldItem;
 			BMenuItem*			fItalicItem;
+			BMenuItem*			fUnderlineItem;
+			BMenuItem*			fStrikeoutItem;
 
 			BMenuItem*			fWrapItem;
 			BMenuItem*			fAlignLeft;

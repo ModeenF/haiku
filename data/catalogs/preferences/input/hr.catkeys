@@ -1,6 +1,5 @@
-1	croatian	x-vnd.Haiku-Input	406154614
+1	croatian	x-vnd.Haiku-Input	2621911666
 Defaults	InputMouse		Zadano
-Normal	SettingsView		Normalno
 Cancel	TouchpadPrefView		Otkaži
 Slow	TouchpadPrefView		Sporo
 Device List	InputWindow		Lista uređaja
@@ -21,7 +20,7 @@ Acceleration	TouchpadPrefView		Ubrzanje
 Accept first click	SettingsView		Prihvati prvi klik
 OK	TouchpadPrefView		U redu
 Mouse acceleration	SettingsView		Ubrzanje miša
-Defaults	TouchpadPrefView		Zadani
 High	TouchpadPrefView		Visoko
+Defaults	TouchpadPrefView		Zadani
 Defaults	InputKeyboard		Zadani
 Horizontal	TouchpadPrefView		Vodoravno

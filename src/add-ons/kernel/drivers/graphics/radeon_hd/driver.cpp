@@ -503,6 +503,7 @@ const struct supported_device {
 
 	// WARN: DCE versions below here get sketchy
 
+#if 0 /* disabled for R1/beta5 */
 	// Introduced: 2014
 	// Codename: Volcanic Islands
 	// Process: 28 nm
@@ -537,78 +538,125 @@ const struct supported_device {
 	// Introduced: 2016
 	// Codename: Artic Islands / Polaris
 	// Process: 14 nm
-	// Polaris 11
-	{0x67e0, 12, 1, RADEON_POLARIS11, CHIP_STD, "Radeon Pro WX 4170"},
-	{0x67e3, 12, 1, RADEON_POLARIS11, CHIP_STD, "Radeon Pro WX 4100"},
-	{0x67e8, 12, 1, RADEON_POLARIS11, CHIP_STD, "Radeon Pro WX 4130"},
-	{0x67eb, 12, 1, RADEON_POLARIS11, CHIP_STD, "Radeon Pro V5300X"},
-	{0x67ef, 12, 1, RADEON_POLARIS11, CHIP_STD, "Radeon RX 460"},
-	{0x67ff, 12, 1, RADEON_POLARIS11, CHIP_STD, "Radeon RX 560"},
-	{0x67e1, 12, 1, RADEON_POLARIS11, CHIP_STD, "Radeon Polaris 11"},
-	{0x67e7, 12, 1, RADEON_POLARIS11, CHIP_STD, "Radeon Polaris 11"},
-	{0x67e9, 12, 1, RADEON_POLARIS11, CHIP_STD, "Radeon Polaris 11"},
 	// Polaris 10
-	{0x67c0, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Pro WX 7100 Mobile"},
-	{0x67c1, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Polaris 10"},
-	{0x67c2, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Pro V7300X"},
-	{0x67c4, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Pro WX 7100"},
-	{0x67c7, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Pro WX 5100"},
-	{0x67c8, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Polaris 10"},
-	{0x67c9, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Polaris 10"},
-	{0x67ca, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Polaris 10"},
-	{0x67cc, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Polaris 10"},
-	{0x67cf, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Polaris 10"},
-	{0x67d0, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon Pro V7300X"},
-	{0x67df, 12, 0, RADEON_POLARIS10, CHIP_STD, "Radeon RX 470/480"},
+	{0x67c0, 11, 2, RADEON_POLARIS10, CHIP_STD, "Radeon Pro WX 7100 Mobile"},
+	{0x67c1, 11, 2, RADEON_POLARIS10, CHIP_STD, "Radeon Polaris 10"},
+	{0x67c2, 11, 2, RADEON_POLARIS10, CHIP_STD, "Radeon Pro V7300X"},
+	{0x67c4, 11, 2, RADEON_POLARIS10, CHIP_STD, "Radeon Pro WX 7100"},
+	{0x67c7, 11, 2, RADEON_POLARIS10, CHIP_STD, "Radeon Pro WX 5100"},
+	{0x67c8, 11, 2, RADEON_POLARIS10, CHIP_STD, "Radeon Polaris 10"},
+	{0x67c9, 11, 2, RADEON_POLARIS10, CHIP_STD, "Radeon Polaris 10"},
+	{0x67ca, 11, 2, RADEON_POLARIS10, CHIP_STD, "Radeon Polaris 10"},
+	{0x67cc, 11, 2, RADEON_POLARIS10, CHIP_STD, "Radeon Polaris 10"},
+	{0x67cf, 11, 2, RADEON_POLARIS10, CHIP_STD, "Radeon Polaris 10"},
+	{0x67d0, 11, 2, RADEON_POLARIS10, CHIP_STD, "Radeon Pro V7300X"},
+	{0x67df, 11, 2, RADEON_POLARIS10, CHIP_STD, "Radeon RX 470/480/570/580/590"},
+	// Polaris 11
+	{0x67e0, 11, 2, RADEON_POLARIS11, CHIP_STD, "Radeon Pro WX 4170"},
+	{0x67e3, 11, 2, RADEON_POLARIS11, CHIP_STD, "Radeon Pro WX 4100"},
+	{0x67e8, 11, 2, RADEON_POLARIS11, CHIP_STD, "Radeon Pro WX 4130"},
+	{0x67eb, 11, 2, RADEON_POLARIS11, CHIP_STD, "Radeon Pro V5300X"},
+	{0x67ef, 11, 2, RADEON_POLARIS11, CHIP_STD, "Radeon RX 460"},
+	{0x67ff, 11, 2, RADEON_POLARIS11, CHIP_STD, "Radeon RX 560"},
+	{0x67e1, 11, 2, RADEON_POLARIS11, CHIP_STD, "Radeon Polaris 11"},
+	{0x67e7, 11, 2, RADEON_POLARIS11, CHIP_STD, "Radeon Polaris 11"},
+	{0x67e9, 11, 2, RADEON_POLARIS11, CHIP_STD, "Radeon Polaris 11"},
 	// Polaris 12
-	{0x6980, 12, 2, RADEON_POLARIS12, CHIP_STD, "Radeon Polaris 12"},
-	{0x6981, 12, 2, RADEON_POLARIS12, CHIP_STD, "Radeon Pro WX 3200"},
-	{0x6985, 12, 2, RADEON_POLARIS12, CHIP_STD, "Radeon Pro WX 3100"},
-	{0x6986, 12, 2, RADEON_POLARIS12, CHIP_STD, "Radeon Polaris 12"},
-	{0x6987, 12, 2, RADEON_POLARIS12, CHIP_STD, "Radeon 540X/550X/RX 640"},
-	{0x6995, 12, 2, RADEON_POLARIS12, CHIP_STD, "Radeon Pro WX 2100"},
-	{0x6997, 12, 2, RADEON_POLARIS12, CHIP_STD, "Radeon Polaris 12"},
-	{0x699f, 12, 2, RADEON_POLARIS12, CHIP_STD, "Radeon 540/540X/RX 540X"},
+	{0x6980, 11, 2, RADEON_POLARIS12, CHIP_STD, "Radeon Polaris 12"},
+	{0x6981, 11, 2, RADEON_POLARIS12, CHIP_STD, "Radeon Pro WX 3200"},
+	{0x6985, 11, 2, RADEON_POLARIS12, CHIP_STD, "Radeon Pro WX 3100"},
+	{0x6986, 11, 2, RADEON_POLARIS12, CHIP_STD, "Radeon Polaris 12"},
+	{0x6987, 11, 2, RADEON_POLARIS12, CHIP_STD, "Radeon 540X/550X/RX 640"},
+	{0x6995, 11, 2, RADEON_POLARIS12, CHIP_STD, "Radeon Pro WX 2100"},
+	{0x6997, 11, 2, RADEON_POLARIS12, CHIP_STD, "Radeon Polaris 12"},
+	{0x699f, 11, 2, RADEON_POLARIS12, CHIP_STD, "Radeon 540/540X/RX 540X"},
 
 	// Introduced: 2017
 	// Codename: Vega
 	// Process: 14nm
-	{0x694c, 13, 0, RADEON_VEGAM, CHIP_MOBILE, "Radeon RX Vega M GH"},
-	{0x694e, 13, 0, RADEON_VEGAM, CHIP_MOBILE, "Radeon RX Vega M GL"},
-	{0x694f, 13, 0, RADEON_VEGAM, CHIP_MOBILE, "Radeon Pro WX Vega M GL"},
+	{0x694c, 12, 0, RADEON_VEGAM, CHIP_MOBILE, "Radeon RX Vega M GH"},
+	{0x694e, 12, 0, RADEON_VEGAM, CHIP_MOBILE, "Radeon RX Vega M GL"},
+	{0x694f, 12, 0, RADEON_VEGAM, CHIP_MOBILE, "Radeon Pro WX Vega M GL"},
 	// Vega 10
-	{0x6860, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Instinct MI25"},
-	{0x6861, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Pro WX 9100"},
-	{0x6862, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Pro SSG"},
-	{0x6863, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega Frontier"},
-	{0x6864, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Pro V340"},
-	{0x6867, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Pro Vega 56"},
-	{0x6868, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Pro WX 8100/8200"},
-	{0x6869, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 10"},
-	{0x686a, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 10"},
-	{0x686b, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 10"},
-	{0x686c, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Instinct MI25 MxGPU"},
-	{0x686d, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 10"},
-	{0x686e, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 10"},
-	{0x686f, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 10"},
-	{0x687f, 13, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 56/64"},
+	{0x6860, 12, 0, RADEON_VEGA10, CHIP_STD, "Radeon Instinct MI25"},
+	{0x6861, 12, 0, RADEON_VEGA10, CHIP_STD, "Radeon Pro WX 9100"},
+	{0x6862, 12, 0, RADEON_VEGA10, CHIP_STD, "Radeon Pro SSG"},
+	{0x6863, 12, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega Frontier"},
+	{0x6864, 12, 0, RADEON_VEGA10, CHIP_STD, "Radeon Pro V340"},
+	{0x6867, 12, 0, RADEON_VEGA10, CHIP_STD, "Radeon Pro Vega 56"},
+	{0x6868, 12, 0, RADEON_VEGA10, CHIP_STD, "Radeon Pro WX 8100/8200"},
+	{0x6869, 12, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 10"},
+	{0x686a, 12, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 10"},
+	{0x686b, 12, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 10"},
+	{0x686c, 12, 0, RADEON_VEGA10, CHIP_STD, "Radeon Instinct MI25 MxGPU"},
+	{0x686d, 12, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 10"},
+	{0x686e, 12, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 10"},
+	{0x686f, 12, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 10"},
+	{0x687f, 12, 0, RADEON_VEGA10, CHIP_STD, "Radeon Vega 56/64"},
 	// Vega 12
-	{0x69a0, 13, 0, RADEON_VEGA12, CHIP_STD, "Radeon Vega 12"},
-	{0x69a1, 13, 0, RADEON_VEGA12, CHIP_STD, "Radeon Vega 12"},
-	{0x69a2, 13, 0, RADEON_VEGA12, CHIP_STD, "Radeon Vega 12"},
-	{0x69a3, 13, 0, RADEON_VEGA12, CHIP_STD, "Radeon Vega 12"},
-	{0x69af, 13, 0, RADEON_VEGA12, CHIP_STD, "Radeon Pro Vega 12"},
+	{0x69a0, 12, 0, RADEON_VEGA12, CHIP_STD, "Radeon Vega 12"},
+	{0x69a1, 12, 0, RADEON_VEGA12, CHIP_STD, "Radeon Vega 12"},
+	{0x69a2, 12, 0, RADEON_VEGA12, CHIP_STD, "Radeon Vega 12"},
+	{0x69a3, 12, 0, RADEON_VEGA12, CHIP_STD, "Radeon Vega 12"},
+	{0x69af, 12, 0, RADEON_VEGA12, CHIP_STD, "Radeon Pro Vega 12"},
 	// Vega 20
-	{0x66a0, 13, 2, RADEON_VEGA20, CHIP_STD, "Radeon Vega 20"},
-	{0x66a1, 13, 2, RADEON_VEGA20, CHIP_STD, "Radeon Vega 20"},
-	{0x66a2, 13, 2, RADEON_VEGA20, CHIP_STD, "Radeon Vega 20"},
-	{0x66a3, 13, 2, RADEON_VEGA20, CHIP_STD, "Radeon Vega 20"},
-	{0x66a4, 13, 2, RADEON_VEGA20, CHIP_STD, "Radeon Vega 20"},
-	{0x66a7, 13, 2, RADEON_VEGA20, CHIP_STD, "Radeon Pro Vega 20"},
-	{0x66af, 13, 2, RADEON_VEGA20, CHIP_STD, "Radeon Pro Vega 20"},
+	{0x66a0, 12, 2, RADEON_VEGA20, CHIP_STD, "Radeon Vega 20"},
+	{0x66a1, 12, 2, RADEON_VEGA20, CHIP_STD, "Radeon Vega 20"},
+	{0x66a2, 12, 2, RADEON_VEGA20, CHIP_STD, "Radeon Vega 20"},
+	{0x66a3, 12, 2, RADEON_VEGA20, CHIP_STD, "Radeon Vega 20"},
+	{0x66a4, 12, 2, RADEON_VEGA20, CHIP_STD, "Radeon Vega 20"},
+	{0x66a7, 12, 2, RADEON_VEGA20, CHIP_STD, "Radeon Pro Vega 20"},
+	{0x66af, 12, 2, RADEON_VEGA20, CHIP_STD, "Radeon Pro Vega 20"},
 	// Raven (APU)
-	{0x15dd, 13, 0, RADEON_RAVEN, CHIP_APU, "Radeon Vega Raven"},
-	{0x15d8, 13, 0, RADEON_RAVEN, CHIP_APU, "Radeon Vega Raven"},
+	{0x15dd, 12, 0, RADEON_RAVEN, CHIP_APU, "Radeon Vega Raven"},
+	{0x15d8, 12, 0, RADEON_RAVEN, CHIP_APU, "Radeon Vega Raven"},
+
+	// TODO: We might need to split NAVI into NAVI10, NAVI12, etc
+
+	// Introduced: 2019
+	// Codename: Navi
+	// Process: 7nm FinFET
+	// Navi 10
+	{0x7310, 13, 3, RADEON_NAVI, CHIP_STD, "Radeon RX Navi"},
+	{0x7312, 13, 3, RADEON_NAVI, CHIP_STD, "Radeon RX Navi"},
+	{0x7318, 13, 3, RADEON_NAVI, CHIP_STD, "Radeon RX Navi"},
+	{0x7319, 13, 3, RADEON_NAVI, CHIP_STD, "Radeon RX Navi"},
+	{0x731a, 13, 3, RADEON_NAVI, CHIP_STD, "Radeon RX Navi"},
+	{0x731b, 13, 3, RADEON_NAVI, CHIP_STD, "Radeon RX Navi"},
+	{0x731e, 13, 3, RADEON_NAVI, CHIP_STD, "Radeon RX Navi"},
+	{0x731f, 13, 3, RADEON_NAVI, CHIP_STD, "Radeon RX 5600 / 5700"},
+	// Renoir?
+	{0x1636, 13, 3, RADEON_NAVI, CHIP_APU, "Radeon Renoir"},
+	{0x1638, 13, 3, RADEON_NAVI, CHIP_APU, "Radeon Renoir"},
+#if 0
+	// Not working: #17516
+	{0x164c, 13, 3, RADEON_NAVI, CHIP_APU, "Radeon Renoir"},
+	// Navi 14
+	// Not working: #17473
+	{0x7340, 13, 3, RADEON_NAVI, CHIP_STD, "Radeon RX 5500"},
+#endif
+	// Navi 21/22 aka "Sienna Cichlid"?
+	{0x73a0, 13, 4, RADEON_NAVI, CHIP_STD, "Radeon RX Navi"},
+	{0x73a1, 13, 4, RADEON_NAVI, CHIP_STD, "Radeon RX Navi"},
+	{0x73a2, 13, 4, RADEON_NAVI, CHIP_STD, "Radeon RX Navi"},
+	{0x73a3, 13, 4, RADEON_NAVI, CHIP_STD, "Radeon RX Navi"},
+	{0x73ab, 13, 4, RADEON_NAVI, CHIP_STD, "Radeon RX Navi"},
+	{0x73ae, 13, 4, RADEON_NAVI, CHIP_STD, "Radeon RX Navi"},
+	{0x73bf, 13, 4, RADEON_NAVI, CHIP_STD, "Radeon RX 6800 / 6900 XT"},
+	{0x73cf, 13, 4, RADEON_NAVI, CHIP_STD, "Radeon RX Navi"},
+	// Van Gogh?
+	{0x163f, 13, 4, RADEON_NAVI, CHIP_STD, "Radeon RX Navi (Van Gogh)"},
+	// Navy Flounder?
+	{0x73c0, 13, 5, RADEON_NAVI, CHIP_STD, "Radeon RX Navi (Navy)"},
+	{0x73c1, 13, 5, RADEON_NAVI, CHIP_STD, "Radeon RX Navi (Navy)"},
+	{0x73c3, 13, 5, RADEON_NAVI, CHIP_STD, "Radeon RX Navi (Navy)"},
+	{0x73df, 13, 5, RADEON_NAVI, CHIP_STD, "Radeon RX 6700 XT"},
+	// Dimgrey Cavefish?
+	{0x73e0, 13, 5, RADEON_NAVI, CHIP_STD, "Radeon RX Navi (Dimgrey)"},
+	{0x73e1, 13, 5, RADEON_NAVI, CHIP_STD, "Radeon RX Navi (Dimgrey)"},
+	{0x73e2, 13, 5, RADEON_NAVI, CHIP_STD, "Radeon RX Navi (Dimgrey)"},
+	{0x73ff, 13, 5, RADEON_NAVI, CHIP_STD, "Radeon RX Navi (Dimgrey)"},
+#endif
 };
 
 

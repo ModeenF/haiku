@@ -23,12 +23,12 @@ AddFilesToPackage lib $(architecture) : $(developmentLibs) ;
 local lib ;
 for lib in [ HaikuImageGetSystemLibs ] $(developmentLibs) {
 	AddSymlinkToPackage develop lib $(architecture)
-		: /system/lib/$(architecture) $(lib:BS) ;
+		: ../../../lib/$(architecture) $(lib:BS) ;
 	local abiVersion = [ on $(lib) return $(HAIKU_LIB_ABI_VERSION) ] ;
 	if $(abiVersion) {
 		local abiVersionedLib = $(lib:BS).$(abiVersion) ;
 		AddSymlinkToPackage develop lib $(architecture)
-			: /system/lib/$(architecture) $(abiVersionedLib) ;
+			: ../../../lib/$(architecture) $(abiVersionedLib) ;
 	}
 }
 
@@ -41,6 +41,13 @@ AddFilesToPackage develop lib $(architecture) :
 	<$(architecture)>libnetservices.a
 	<$(architecture)>libpthread.a
 	<$(architecture)>libshared.a ;
+
+# libnetservices2.a
+if $(HAIKU_CC_IS_LEGACY_GCC_$(architecture)) = 0 {
+	# Modern C++ only; skip on gcc2
+	AddFilesToPackage develop lib $(architecture) :
+		<$(architecture)>libnetservices2.a ;
+}
 
 # the POSIX error code mapper library
 AddFilesToPackage develop lib $(architecture)

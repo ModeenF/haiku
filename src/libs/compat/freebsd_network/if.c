@@ -80,25 +80,25 @@ remove_from_device_name_list(struct ifnet * ifp)
 }
 
 
-struct ifnet *
-ifnet_byindex(u_short idx)
+static struct ifnet *
+ifnet_byindex_locked(u_int idx)
+{
+	struct ifnet *ifp;
+
+	ifp = gDevices[idx];
+
+	return (ifp);
+}
+
+
+if_t
+ifnet_byindex(u_int idx)
 {
 	struct ifnet *ifp;
 
 	IFNET_RLOCK_NOSLEEP();
 	ifp = ifnet_byindex_locked(idx);
 	IFNET_RUNLOCK_NOSLEEP();
-
-	return (ifp);
-}
-
-
-struct ifnet *
-ifnet_byindex_locked(u_short idx)
-{
-	struct ifnet *ifp;
-
-	ifp = gDevices[idx];
 
 	return (ifp);
 }
@@ -149,32 +149,17 @@ ifindex_free_locked(u_short idx)
 }
 
 
-struct ifnet *
-if_alloc(u_char type)
+int
+if_alloc_inplace(struct ifnet *ifp, u_char type)
 {
 	char semName[64];
 	u_short index;
-
-	struct ifnet *ifp = _kernel_malloc(sizeof(struct ifnet), M_ZERO);
-	if (ifp == NULL)
-		return NULL;
 
 	snprintf(semName, sizeof(semName), "%s receive", gDriverName);
 
 	ifp->receive_sem = create_sem(0, semName);
 	if (ifp->receive_sem < B_OK)
-		goto err1;
-
-	switch (type) {
-		case IFT_ETHER:
-		{
-			ifp->if_l2com = _kernel_malloc(sizeof(struct arpcom), M_ZERO);
-			if (ifp->if_l2com == NULL)
-				goto err2;
-			IFP2AC(ifp)->ac_ifp = ifp;
-			break;
-		}
-	}
+		return ifp->receive_sem;
 
 	ifp->link_state_sem = -1;
 	ifp->open_count = 0;
@@ -183,14 +168,14 @@ if_alloc(u_char type)
 	ifq_init(&ifp->receive_queue, semName);
 
 	ifp->scan_done_sem = -1;
-		// WLAN specific, doesn't hurt when initilized for other devices
+		// WLAN specific, doesn't hurt when initialized for other devices
 
 	// Search for the first free device slot, and use that one
 	IFNET_WLOCK();
 	if (ifindex_alloc_locked(&index) != ENOERR) {
 		IFNET_WUNLOCK();
 		panic("too many devices");
-		goto err3;
+		goto err2;
 	}
 	ifnet_setbyindex_locked(index, IFNET_HOLD);
 	IFNET_WUNLOCK();
@@ -199,26 +184,33 @@ if_alloc(u_char type)
 	ifnet_setbyindex(ifp->if_index, ifp);
 
 	IF_ADDR_LOCK_INIT(ifp);
-	return ifp;
-
-err3:
-	switch (type) {
-		case IFT_ETHER:
-			_kernel_free(ifp->if_l2com);
-			break;
-	}
+	return 0;
 
 err2:
 	delete_sem(ifp->receive_sem);
 
-err1:
-	_kernel_free(ifp);
-	return NULL;
+	return -1;
+}
+
+
+struct ifnet *
+if_alloc(u_char type)
+{
+	struct ifnet *ifp = _kernel_malloc(sizeof(struct ifnet), M_ZERO);
+	if (ifp == NULL)
+		return NULL;
+
+	if (if_alloc_inplace(ifp, type) != 0) {
+		_kernel_free(ifp);
+		return NULL;
+	}
+
+	return ifp;
 }
 
 
 void
-if_free(struct ifnet *ifp)
+if_free_inplace(struct ifnet *ifp)
 {
 	// IEEE80211 devices won't be in this list,
 	// so don't try to remove them.
@@ -230,14 +222,16 @@ if_free(struct ifnet *ifp)
 	IFNET_WUNLOCK();
 
 	IF_ADDR_LOCK_DESTROY(ifp);
-	switch (ifp->if_type) {
-		case IFT_ETHER:
-			_kernel_free(ifp->if_l2com);
-			break;
-	}
 
 	delete_sem(ifp->receive_sem);
 	ifq_uninit(&ifp->receive_queue);
+}
+
+
+void
+if_free(struct ifnet *ifp)
+{
+	if_free_inplace(ifp);
 
 	_kernel_free(ifp);
 }
@@ -287,7 +281,7 @@ ifq_uninit(struct ifqueue *ifq)
 
 
 static int
-if_transmit(struct ifnet *ifp, struct mbuf *m)
+if_transmit_default(struct ifnet *ifp, struct mbuf *m)
 {
 	int error;
 
@@ -350,7 +344,7 @@ if_attach(struct ifnet *ifp)
 	ifq_init((struct ifqueue *) &ifp->if_snd, ifp->if_xname);
 
 	if (ifp->if_transmit == NULL) {
-		ifp->if_transmit = if_transmit;
+		ifp->if_transmit = if_transmit_default;
 		ifp->if_qflush = if_qflush;
 	}
 	if (ifp->if_input == NULL)
@@ -408,10 +402,6 @@ if_detach(struct ifnet *ifp)
 void
 if_start(struct ifnet *ifp)
 {
-#ifdef IFF_NEEDSGIANT
-	if (ifp->if_flags & IFF_NEEDSGIANT)
-	panic("freebsd compat.: unsupported giant requirement");
-#endif
 	ifp->if_start(ifp);
 }
 
@@ -713,18 +703,6 @@ if_delmulti(struct ifnet *ifp, struct sockaddr *sa)
 }
 
 
-void
-if_purgemaddrs(struct ifnet *ifp)
-{
-	struct ifmultiaddr *ifma;
-	struct ifmultiaddr *next;
-
-	IF_ADDR_LOCK(ifp);
-	TAILQ_FOREACH_SAFE(ifma, &ifp->if_multiaddrs, ifma_link, next)
-		if_delmulti_locked(ifp, ifma, 1);
-	IF_ADDR_UNLOCK(ifp);
-}
-
 /*
  * Return counter values from counter(9)s stored in ifnet.
  */
@@ -797,16 +775,28 @@ int
 ether_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 	struct route *ro)
 {
-	int error = 0;
-	IFQ_HANDOFF(ifp, m, error);
-	return error;
+	return ifp->if_transmit(ifp, m);
 }
 
 
-static void ether_input(struct ifnet *ifp, struct mbuf *m)
+static void
+ether_input(struct ifnet *ifp, struct mbuf *m)
 {
-	IF_ENQUEUE(&ifp->receive_queue, m);
-	release_sem_etc(ifp->receive_sem, 1, B_DO_NOT_RESCHEDULE);
+	int32 count = 0;
+
+	IF_LOCK(&ifp->receive_queue);
+	while (m != NULL) {
+		struct mbuf *mn = m->m_nextpkt;
+		m->m_nextpkt = NULL;
+
+		_IF_ENQUEUE(&ifp->receive_queue, m);
+		count++;
+
+		m = mn;
+	}
+	IF_UNLOCK(&ifp->receive_queue);
+
+	release_sem_etc(ifp->receive_sem, count, B_DO_NOT_RESCHEDULE);
 }
 
 
@@ -846,14 +836,13 @@ ether_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 {
 	struct ifreq *ifr = (struct ifreq *) data;
 
+	//dprintf("ether_ioctl: received %d\n", command);
+
 	switch (command) {
 		case SIOCSIFMTU:
-			if (ifr->ifr_mtu > ETHERMTU)
+			if (ifr->ifr_mtu < ETHERMIN || ifr->ifr_mtu > ETHERMTU)
 				return EINVAL;
-			else
-				;
-			// need to fix our ifreq to work with C...
-			// ifp->ifr_mtu = ifr->ifr_mtu;
+			ifp->if_mtu = ifr->ifr_mtu;
 			break;
 
 		default:
@@ -888,21 +877,6 @@ fail:
 	free(ifa);
 
 	return (NULL);
-}
-
-void
-ifa_ref(struct ifaddr *ifa)
-{
-	//refcount_acquire(&ifa->ifa_refcnt);
-}
-
-void
-ifa_free(struct ifaddr *ifa)
-{
-
-	//if (refcount_release(&ifa->ifa_refcnt)) {
-	//	free(ifa);
-	//}
 }
 
 void
@@ -950,353 +924,6 @@ if_inc_counter(struct ifnet *ifp, ift_counter cnt, int64_t inc)
 	}
 }
 
-
-/* API for driver access to network stack owned ifnet.*/
-uint64_t
-if_setbaudrate(struct ifnet *ifp, uint64_t baudrate)
-{
-	uint64_t oldbrate;
-
-	oldbrate = ifp->if_baudrate;
-	ifp->if_baudrate = baudrate;
-	return (oldbrate);
-}
-
-uint64_t
-if_getbaudrate(if_t ifp)
-{
-
-	return (((struct ifnet *)ifp)->if_baudrate);
-}
-
-int
-if_setcapabilities(if_t ifp, int capabilities)
-{
-	((struct ifnet *)ifp)->if_capabilities = capabilities;
-	return (0);
-}
-
-int
-if_setcapabilitiesbit(if_t ifp, int setbit, int clearbit)
-{
-	((struct ifnet *)ifp)->if_capabilities |= setbit;
-	((struct ifnet *)ifp)->if_capabilities &= ~clearbit;
-
-	return (0);
-}
-
-int
-if_getcapabilities(if_t ifp)
-{
-	return ((struct ifnet *)ifp)->if_capabilities;
-}
-
-int
-if_setcapenable(if_t ifp, int capabilities)
-{
-	((struct ifnet *)ifp)->if_capenable = capabilities;
-	return (0);
-}
-
-int
-if_setcapenablebit(if_t ifp, int setcap, int clearcap)
-{
-	if(setcap)
-		((struct ifnet *)ifp)->if_capenable |= setcap;
-	if(clearcap)
-		((struct ifnet *)ifp)->if_capenable &= ~clearcap;
-
-	return (0);
-}
-
-const char *
-if_getdname(if_t ifp)
-{
-	return ((struct ifnet *)ifp)->if_dname;
-}
-
-int
-if_togglecapenable(if_t ifp, int togglecap)
-{
-	((struct ifnet *)ifp)->if_capenable ^= togglecap;
-	return (0);
-}
-
-int
-if_getcapenable(if_t ifp)
-{
-	return ((struct ifnet *)ifp)->if_capenable;
-}
-
-/*
- * This is largely undesirable because it ties ifnet to a device, but does
- * provide flexiblity for an embedded product vendor. Should be used with
- * the understanding that it violates the interface boundaries, and should be
- * a last resort only.
- */
-int
-if_setdev(if_t ifp, void *dev)
-{
-	return (0);
-}
-
-int
-if_setdrvflagbits(if_t ifp, int set_flags, int clear_flags)
-{
-	((struct ifnet *)ifp)->if_drv_flags |= set_flags;
-	((struct ifnet *)ifp)->if_drv_flags &= ~clear_flags;
-
-	return (0);
-}
-
-int
-if_getdrvflags(if_t ifp)
-{
-	if ((struct ifnet *)ifp == NULL)
-		return 0;
-	return ((struct ifnet *)ifp)->if_drv_flags;
-}
-
-int
-if_setdrvflags(if_t ifp, int flags)
-{
-	((struct ifnet *)ifp)->if_drv_flags = flags;
-	return (0);
-}
-
-
-int
-if_setflags(if_t ifp, int flags)
-{
-	((struct ifnet *)ifp)->if_flags = flags;
-	return (0);
-}
-
-int
-if_setflagbits(if_t ifp, int set, int clear)
-{
-	((struct ifnet *)ifp)->if_flags |= set;
-	((struct ifnet *)ifp)->if_flags &= ~clear;
-
-	return (0);
-}
-
-int
-if_getflags(if_t ifp)
-{
-	return ((struct ifnet *)ifp)->if_flags;
-}
-
-int
-if_clearhwassist(if_t ifp)
-{
-	((struct ifnet *)ifp)->if_hwassist = 0;
-	return (0);
-}
-
-int
-if_sethwassistbits(if_t ifp, int toset, int toclear)
-{
-	((struct ifnet *)ifp)->if_hwassist |= toset;
-	((struct ifnet *)ifp)->if_hwassist &= ~toclear;
-
-	return (0);
-}
-
-int
-if_sethwassist(if_t ifp, int hwassist_bit)
-{
-	((struct ifnet *)ifp)->if_hwassist = hwassist_bit;
-	return (0);
-}
-
-int
-if_gethwassist(if_t ifp)
-{
-	return ((struct ifnet *)ifp)->if_hwassist;
-}
-
-int
-if_setmtu(if_t ifp, int mtu)
-{
-	((struct ifnet *)ifp)->if_mtu = mtu;
-	return (0);
-}
-
-int
-if_getmtu(if_t ifp)
-{
-	return ((struct ifnet *)ifp)->if_mtu;
-}
-
-int
-if_setsoftc(if_t ifp, void *softc)
-{
-	((struct ifnet *)ifp)->if_softc = softc;
-	return (0);
-}
-
-void *
-if_getsoftc(if_t ifp)
-{
-	return ((struct ifnet *)ifp)->if_softc;
-}
-
-void
-if_setrcvif(struct mbuf *m, if_t ifp)
-{
-	m->m_pkthdr.rcvif = (struct ifnet *)ifp;
-}
-
-void
-if_setvtag(struct mbuf *m, uint16_t tag)
-{
-	m->m_pkthdr.ether_vtag = tag;
-}
-
-uint16_t
-if_getvtag(struct mbuf *m)
-{
-
-	return (m->m_pkthdr.ether_vtag);
-}
-
-int
-if_sendq_empty(if_t ifp)
-{
-	return IFQ_DRV_IS_EMPTY(&((struct ifnet *)ifp)->if_snd);
-}
-
-int
-if_getamcount(if_t ifp)
-{
-	return ((struct ifnet *)ifp)->if_amcount;
-}
-
-
-int
-if_setsendqready(if_t ifp)
-{
-	IFQ_SET_READY(&((struct ifnet *)ifp)->if_snd);
-	return (0);
-}
-
-int
-if_setsendqlen(if_t ifp, int tx_desc_count)
-{
-	IFQ_SET_MAXLEN(&((struct ifnet *)ifp)->if_snd, tx_desc_count);
-	((struct ifnet *)ifp)->if_snd.ifq_drv_maxlen = tx_desc_count;
-
-	return (0);
-}
-
-int
-if_vlantrunkinuse(if_t ifp)
-{
-	return ((struct ifnet *)ifp)->if_vlantrunk != NULL?1:0;
-}
-
-int
-if_input(if_t ifp, struct mbuf* sendmp)
-{
-	(*((struct ifnet *)ifp)->if_input)((struct ifnet *)ifp, sendmp);
-	return (0);
-
-}
-
-/* XXX */
-#ifndef ETH_ADDR_LEN
-#define ETH_ADDR_LEN 6
-#endif
-
-int
-if_setupmultiaddr(if_t ifp, void *mta, int *cnt, int max)
-{
-	struct ifmultiaddr *ifma;
-	uint8_t *lmta = (uint8_t *)mta;
-	int mcnt = 0;
-
-	TAILQ_FOREACH(ifma, &((struct ifnet *)ifp)->if_multiaddrs, ifma_link) {
-		if (ifma->ifma_addr->sa_family != AF_LINK)
-			continue;
-
-		if (mcnt == max)
-			break;
-
-		bcopy(LLADDR((struct sockaddr_dl *)ifma->ifma_addr),
-		    &lmta[mcnt * ETH_ADDR_LEN], ETH_ADDR_LEN);
-		mcnt++;
-	}
-	*cnt = mcnt;
-
-	return (0);
-}
-
-int
-if_multiaddr_array(if_t ifp, void *mta, int *cnt, int max)
-{
-	int error;
-
-	if_maddr_rlock(ifp);
-	error = if_setupmultiaddr(ifp, mta, cnt, max);
-	if_maddr_runlock(ifp);
-	return (error);
-}
-
-int
-if_multiaddr_count(if_t ifp, int max)
-{
-	struct ifmultiaddr *ifma;
-	int count;
-
-	count = 0;
-	if_maddr_rlock(ifp);
-	TAILQ_FOREACH(ifma, &((struct ifnet *)ifp)->if_multiaddrs, ifma_link) {
-		if (ifma->ifma_addr->sa_family != AF_LINK)
-			continue;
-		count++;
-		if (count == max)
-			break;
-	}
-	if_maddr_runlock(ifp);
-	return (count);
-}
-
-struct mbuf *
-if_dequeue(if_t ifp)
-{
-	struct mbuf *m;
-	IFQ_DRV_DEQUEUE(&((struct ifnet *)ifp)->if_snd, m);
-
-	return (m);
-}
-
-int
-if_sendq_prepend(if_t ifp, struct mbuf *m)
-{
-	IFQ_DRV_PREPEND(&((struct ifnet *)ifp)->if_snd, m);
-	return (0);
-}
-
-int
-if_setifheaderlen(if_t ifp, int len)
-{
-	((struct ifnet *)ifp)->if_hdrlen = len;
-	return (0);
-}
-
-caddr_t
-if_getlladdr(if_t ifp)
-{
-	return (IF_LLADDR((struct ifnet *)ifp));
-}
-
-void *
-if_gethandle(u_char type)
-{
-	return (if_alloc(type));
-}
-
 void
 if_bpfmtap(if_t ifh, struct mbuf *m)
 {
@@ -1312,47 +939,3 @@ if_etherbpfmtap(if_t ifh, struct mbuf *m)
 
 	ETHER_BPF_MTAP(ifp, m);
 }
-
-void
-if_vlancap(if_t ifh)
-{
-	struct ifnet *ifp = (struct ifnet *)ifh;
-	VLAN_CAPABILITIES(ifp);
-}
-
-void
-if_setinitfn(if_t ifp, void (*init_fn)(void *))
-{
-	((struct ifnet *)ifp)->if_init = init_fn;
-}
-
-void
-if_setioctlfn(if_t ifp, int (*ioctl_fn)(if_t, u_long, caddr_t))
-{
-	((struct ifnet *)ifp)->if_ioctl = (void *)ioctl_fn;
-}
-
-void
-if_setstartfn(if_t ifp, void (*start_fn)(if_t))
-{
-	((struct ifnet *)ifp)->if_start = (void *)start_fn;
-}
-
-void
-if_settransmitfn(if_t ifp, if_transmit_fn_t start_fn)
-{
-	((struct ifnet *)ifp)->if_transmit = start_fn;
-}
-
-void if_setqflushfn(if_t ifp, if_qflush_fn_t flush_fn)
-{
-	((struct ifnet *)ifp)->if_qflush = flush_fn;
-}
-
-void
-if_setgetcounterfn(if_t ifp, if_get_counter_t fn)
-{
-
-	ifp->if_get_counter = fn;
-}
-

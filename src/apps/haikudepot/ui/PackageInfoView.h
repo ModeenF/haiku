@@ -1,6 +1,6 @@
 /*
  * Copyright 2013-2014, Stephan Aßmus <superstippi@gmx.de>.
- * Copyright 2020, Andrew Lindesay <apl@lindesay.co.nz>
+ * Copyright 2020-2025, Andrew Lindesay <apl@lindesay.co.nz>
  * All rights reserved. Distributed under the terms of the MIT License.
  */
 #ifndef PACKAGE_INFO_VIEW_H
@@ -11,12 +11,12 @@
 #include "Model.h"
 #include "PackageInfo.h"
 #include "PackageInfoListener.h"
+#include "ProcessCoordinator.h"
 
 
 class BCardLayout;
 class BLocker;
 class OnePackageMessagePackageListener;
-class PackageActionHandler;
 class PackageActionView;
 class PagesView;
 class TitleView;
@@ -30,16 +30,29 @@ enum {
 class PackageInfoView : public BView {
 public:
 								PackageInfoView(Model* model,
-									PackageActionHandler* handler);
+									ProcessCoordinatorConsumer*
+										processCoordinatorConsumer);
 	virtual						~PackageInfoView();
 
 	virtual void				AttachedToWindow();
-	virtual	void				MessageReceived(BMessage* message);
 
 			void				SetPackage(const PackageInfoRef& package);
 			const PackageInfoRef& Package() const
 									{ return fPackage; }
 			void				Clear();
+
+			void				HandleScreenshotCached(const ScreenshotCoordinate& coordinate);
+			void				HandleIconsChanged();
+			void				HandlePackagesChanged(const PackageInfoEvents& events);
+
+private:
+	static const ScreenshotCoordinate
+								_ScreenshotThumbCoordinate(const PackageInfoRef& package);
+			void				_SetPackageScreenshotThumb(const PackageInfoRef& package);
+			void				_HandleScreenshotCached(const PackageInfoRef& package,
+									const ScreenshotCoordinate& coordinate);
+
+			void				_HandlePackageChanged(const PackageInfoEvent& event);
 
 private:
 			Model*				fModel;
@@ -50,7 +63,10 @@ private:
 			PagesView*			fPagesView;
 
 			PackageInfoRef		fPackage;
-			OnePackageMessagePackageListener* fPackageListener;
+			OnePackageMessagePackageListener*
+								fPackageListener;
+			ProcessCoordinatorConsumer*
+								fProcessCoordinatorConsumer;
 };
 
 #endif // PACKAGE_INFO_VIEW_H

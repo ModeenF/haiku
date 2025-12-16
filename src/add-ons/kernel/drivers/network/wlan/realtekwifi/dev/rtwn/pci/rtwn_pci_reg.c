@@ -18,9 +18,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
@@ -49,7 +46,6 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/rtwn/pci/rtwn_pci_var.h>
 #include <dev/rtwn/pci/rtwn_pci_reg.h>
-
 
 int
 rtwn_pci_write_1(struct rtwn_softc *sc, uint16_t addr, uint8_t val)
@@ -118,6 +114,6 @@ rtwn_pci_delay(struct rtwn_softc *sc, int usec)
 		DELAY(usec);
 	else {
 		(void) mtx_sleep(sc, &sc->sc_mtx, 0, "rtwn_pci",
-		    MAX(msecs_to_ticks(usec / 1000), 1));
+		    msecs_to_ticks(usec / 1000));
 	}
 }

@@ -30,7 +30,7 @@ DirectoryIterator::GetNextEntry(char *name, uint32 *length, ino_t *id)
 	if (fAtBeginning) {
 		TRACE(("DirectoryIterator::GetNextEntry: .\n"));
 		sprintf(name, ".");
-		*length = 2;
+		*length = 1;
 		*id = Parent()->Id();
 		fAtBeginning = false;
 	} else {
@@ -58,7 +58,7 @@ DirectoryIterator::GetNextEntry(char *name, uint32 *length, ino_t *id)
 			if (entry->is_parent()) {
 				TRACE(("DirectoryIterator::GetNextEntry: ..\n"));
 				sprintf(name, "..");
-				*length = 3;
+				*length = 2;
 			} else {
 				UdfString string(entry->id(), entry->id_length());
 				TRACE(("DirectoryIterator::GetNextEntry: UfdString id == `%s', "
@@ -453,7 +453,7 @@ Icb::_Read(DescriptorList &list, off_t pos, void *_buffer, size_t *length, uint3
 				" block_cache_get_etc()\n", readLength, diskBlock));
 			const uint8 *data;
 			status = block_cache_get_etc(volume->BlockCache(),
-				diskBlock, 0, readLength, (const void**)&data);
+				diskBlock, (const void**)&data);
 			if (status != B_OK)
 				break;
 			memcpy(buffer, data + blockOffset, readLength);

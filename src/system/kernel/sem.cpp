@@ -22,7 +22,7 @@
 #include <boot/kernel_args.h>
 #include <cpu.h>
 #include <debug.h>
-#include <int.h>
+#include <interrupts.h>
 #include <kernel.h>
 #include <ksignal.h>
 #include <kscheduler.h>
@@ -468,12 +468,9 @@ haiku_sem_init(kernel_args *args)
 sem_id
 create_sem_etc(int32 count, const char* name, team_id owner)
 {
-	struct sem_entry* sem = NULL;
-	sem_id id = B_NO_MORE_SEMS;
-	char* tempName;
-	size_t nameLength;
-
-	if (sSemsActive == false || sUsedSems == sMaxSems)
+	if (count < 0)
+		return B_BAD_VALUE;
+	if (!sSemsActive || sUsedSems == sMaxSems)
 		return B_NO_MORE_SEMS;
 
 	if (name == NULL)
@@ -486,9 +483,9 @@ create_sem_etc(int32 count, const char* name, team_id owner)
 	BReference<Team> teamReference(team, true);
 
 	// clone the name
-	nameLength = strlen(name) + 1;
+	size_t nameLength = strlen(name) + 1;
 	nameLength = min_c(nameLength, B_OS_NAME_LENGTH);
-	tempName = (char*)malloc(nameLength);
+	char* tempName = (char*)malloc(nameLength);
 	if (tempName == NULL)
 		return B_NO_MEMORY;
 
@@ -497,8 +494,9 @@ create_sem_etc(int32 count, const char* name, team_id owner)
 	InterruptsSpinLocker _(&sSemsSpinlock);
 
 	// get the first slot from the free list
-	sem = sFreeSemsHead;
-	if (sem) {
+	struct sem_entry* sem = sFreeSemsHead;
+	sem_id id = B_NO_MORE_SEMS;
+	if (sem != NULL) {
 		// remove it from the free list
 		sFreeSemsHead = sem->u.unused.next;
 		if (!sFreeSemsHead)
@@ -914,7 +912,11 @@ release_sem_etc(sem_id id, int32 count, uint32 flags)
 	sSems[slot].u.used.last_release_count = count;
 #endif
 
-	if (flags & B_RELEASE_ALL) {
+	status_t unblockStatus = B_OK;
+	if ((flags & B_RELEASE_ALL) != 0) {
+		if (count < 0)
+			unblockStatus = count;
+
 		count = sSems[slot].u.used.net_count - sSems[slot].u.used.count;
 
 		// is there anything to do for us at all?
@@ -942,13 +944,13 @@ release_sem_etc(sem_id id, int32 count, uint32 flags)
 		if (thread_is_blocked(entry->thread)) {
 			// The thread is still waiting. If its count is satisfied,
 			// unblock it. Otherwise we can't unblock any other thread.
-			if (entry->count > sSems[slot].u.used.net_count + count) {
+			if (entry->count > (sSems[slot].u.used.net_count + count)) {
 				sSems[slot].u.used.count += count;
 				sSems[slot].u.used.net_count += count;
 				break;
 			}
 
-			thread_unblock_locked(entry->thread, B_OK);
+			thread_unblock_locked(entry->thread, unblockStatus);
 
 			int delta = min_c(count, entry->count);
 			sSems[slot].u.used.count += delta;

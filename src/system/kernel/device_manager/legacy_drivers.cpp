@@ -71,6 +71,8 @@ public:
 								void** _cookie);
 	virtual	status_t		Select(void* cookie, uint8 event, selectsync* sync);
 
+	virtual	status_t		Control(void* cookie, int32 op, void* buffer, size_t length);
+
 			bool			Republished() const { return fRepublished; }
 			void			SetRepublished(bool republished)
 								{ fRepublished = republished; }
@@ -347,7 +349,7 @@ republish_driver(legacy_driver* driver)
 		devfs_unpublish_device(device, true);
 	}
 
-	if (exported == 0 && driver->devices_used == 0) {
+	if (exported == 0 && driver->devices_used == 0 && gBootDevice >= 0) {
 		TRACE(("devfs: driver \"%s\" does not publish any more nodes and is "
 			"unloaded\n", driver->path));
 		unload_driver(driver);
@@ -527,12 +529,11 @@ get_priority(const char* path)
 	};
 	KPath pathBuffer;
 
-	for (uint32 index = 0; index < sizeof(whichPath) / sizeof(whichPath[0]);
-			index++) {
+	for (uint32 index = 0; index < B_COUNT_OF(whichPath); index++) {
 		if (__find_directory(whichPath[index], gBootDevice, false,
 			pathBuffer.LockBuffer(), pathBuffer.BufferSize()) == B_OK) {
 			pathBuffer.UnlockBuffer();
-			if (!strncmp(pathBuffer.Path(), path, pathBuffer.BufferSize()))
+			if (strncmp(pathBuffer.Path(), path, pathBuffer.Length()) == 0)
 				return index;
 		} else
 			pathBuffer.UnlockBuffer();
@@ -591,7 +592,7 @@ add_driver(const char* path, image_id image)
 	legacy_driver* driver = sDriverHash->Lookup(get_leaf(path));
 	if (driver != NULL) {
 		// we know this driver
-		if (strcmp(driver->path, path) != 0) {
+		if (strcmp(driver->path, path) != 0 && priority >= driver->priority) {
 			// TODO: do properly, but for now we just update the path if it
 			// isn't the same anymore so rescanning of drivers will work in
 			// case this driver was loaded so early that it has a boot module
@@ -602,7 +603,7 @@ add_driver(const char* path, image_id image)
 			driver->binary_updated = true;
 		}
 
-		// TODO: check if this driver is a different one and has precendence
+		// TODO: check if this driver is a different one and has precedence
 		// (ie. common supersedes system).
 		//dprintf("new driver has priority %ld, old %ld\n", priority, driver->priority);
 		if (priority >= driver->priority) {
@@ -747,14 +748,14 @@ handle_driver_events(void* /*_fs*/, int /*iteration*/)
 			}
 
 			case kAddWatcher:
-				TRACE(("  add watcher %ld:%lld\n", event->node.device,
+				TRACE(("  add watcher %" B_PRId32 ":%" B_PRIdINO "\n", event->node.device,
 					event->node.node));
 				add_node_listener(event->node.device, event->node.node,
 					B_WATCH_STAT | B_WATCH_NAME, sDriverWatcher);
 				break;
 
 			case kRemoveWatcher:
-				TRACE(("  remove watcher %ld:%lld\n", event->node.device,
+				TRACE(("  remove watcher %" B_PRId32 ":%" B_PRIdINO "\n", event->node.device,
 					event->node.node));
 				remove_node_listener(event->node.device, event->node.node,
 					sDriverWatcher);
@@ -937,14 +938,12 @@ DirectoryIterator::SetTo(const char* path, const char* subPath, bool recursive)
 	Unset();
 	fRecursive = recursive;
 
+	const bool disableUserAddOns = get_safemode_boolean(B_SAFEMODE_DISABLE_USER_ADD_ONS, false);
+
 	if (path == NULL) {
-		// add default paths
+		// add default paths in reverse order as AddPath() will add on a stack
 		KPath pathBuffer;
-
-		bool disableUserAddOns = get_safemode_boolean(
-			B_SAFEMODE_DISABLE_USER_ADD_ONS, false);
-
-		for (uint32 i = 0; i < sizeof(kDriverPaths) / sizeof(kDriverPaths[0]); i++) {
+		for (int32 i = B_COUNT_OF(kDriverPaths) - 1; i >= 0; i--) {
 			if (i < 3 && disableUserAddOns)
 				continue;
 
@@ -1131,13 +1130,13 @@ start_watching(const char* base, const char* sub)
 static struct driver_entry*
 new_driver_entry(const char* path, dev_t device, ino_t node)
 {
-	driver_entry* entry = (driver_entry*)malloc(sizeof(driver_entry));
+	driver_entry* entry = new(std::nothrow) driver_entry;
 	if (entry == NULL)
 		return NULL;
 
 	entry->path = strdup(path);
 	if (entry->path == NULL) {
-		free(entry);
+		delete entry;
 		return NULL;
 	}
 
@@ -1171,7 +1170,7 @@ try_drivers(DriverEntryList& list)
 		}
 
 		free(entry->path);
-		free(entry);
+		delete entry;
 	}
 
 	return B_OK;
@@ -1249,13 +1248,14 @@ LegacyDevice::LegacyDevice(legacy_driver* driver, const char* path,
 	fRemovedFromParent(false)
 {
 	fDeviceModule = (device_module_info*)malloc(sizeof(device_module_info));
-	if (fDeviceModule != NULL)
+	if (fDeviceModule != NULL) {
 		memset(fDeviceModule, 0, sizeof(device_module_info));
+		SetHooks(hooks);
+	}
 
 	fDeviceData = this;
 	fPath = strdup(path);
 
-	SetHooks(hooks);
 }
 
 
@@ -1320,6 +1320,20 @@ LegacyDevice::Removed()
 		fDriver->devices.Remove(this);
 
 	delete this;
+}
+
+
+status_t
+LegacyDevice::Control(void* _cookie, int32 op, void* buffer, size_t length)
+{
+	switch (op) {
+		case B_GET_DRIVER_FOR_DEVICE:
+			if (length != 0 && length <= strlen(fDriver->path))
+				return ERANGE;
+			return user_strlcpy(static_cast<char*>(buffer), fDriver->path, length);
+		default:
+			return AbstractModuleDevice::Control(_cookie, op, buffer, length);
+	}
 }
 
 
@@ -1503,7 +1517,7 @@ legacy_driver_probe(const char* subPath)
 extern "C" status_t
 legacy_driver_init(void)
 {
-	sDriverHash = new DriverTable();
+	sDriverHash = new(std::nothrow) DriverTable();
 	if (sDriverHash == NULL || sDriverHash->Init(DRIVER_HASH_SIZE) != B_OK)
 		return B_NO_MEMORY;
 

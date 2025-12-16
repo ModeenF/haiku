@@ -1,4 +1,4 @@
-1	italian	x-vnd.Haiku-DriveSetup	598604797
+1	italian	x-vnd.Haiku-DriveSetup	2521240656
 Could not unmount partition %s.	MainWindow		Impossibile smontare la partizione %s.
 Mount all	MainWindow		Monta tutto
 Disk	MainWindow		Disco
@@ -6,6 +6,7 @@ Are you sure you want to write the changes back to disk now?\n\nAll data on the 
 Device	PartitionList		Dispositivo
 Initialize	MainWindow		Inizializza
 Could not change the parameters of the selected partition.	MainWindow		Impossibile modificare i parametri della partizione selezionata.
+Are you sure you want to write the changes back to disk now?\n\nAll data on the partition \"%s\" will be irretrievably lost if you do so!	MainWindow		Sei sicuro di voler applicare le modifiche su disco adesso?\n\nTutti i dati contenuti nella partizione \"%s\" saranno irrimediabilmente persi se procedi!
 PGP encrypted	Encryption utils		Crittografia PGP
 Delete partition	MainWindow		Elimina partizione
 Error: 	MainWindow	in any error alert	Errore: 
@@ -14,6 +15,7 @@ Block size	PartitionList		Dimensioni blocco
 The panel experienced a problem!	MainWindow		Il pannello ha avuto un problema!
 Device	DiskView		Dispositivo
 Are you sure you want to format the Intel Extended Partition? Any subpartitions it contains will be overwritten if you continue. You will be asked again before changes are written to the disk.	MainWindow		Sei sicuro di voler formattare la partizione Intel Estesa? Tutte le sottopartizioni in essa contenuta saranno sovrascritte se continui. Ti verrà nuovamente richiesto prima che i cambiamenti siano scritti effettivamente sul disco.
+Physical block size	PartitionList		Dimensione blocco fisico
 Unmount	MainWindow		Smonta
 Failed to format the partition %s!\n	MainWindow		Non è stato possibile formattare la partizione %s!\n
 Partition size	CreateParametersPanel		Dimensione della partizione
@@ -21,12 +23,12 @@ Validation of the given parameters failed.	MainWindow		Validazione dei parametri
 Are you sure you want to format the partition \"%s\"? You will be asked again before changes are written to the disk.	MainWindow		Sei sicuro di voler formattare la partizione \"%s\"? Ti sarà nuovamente chiesta conferma prima di salvare i cambiamenti sul disco.
 DriveSetup	System name		Gestione Disco
 Mounted at	PartitionList		Montato su
+Disk system %s not found!	MainWindow		Il disco di sistema %s non è stato trovato!
 Create…	MainWindow		Crea…
 Write changes	MainWindow		Salva modifiche
 Initialization of the partition %s failed. (Nothing has been written to disk.)	MainWindow		L'inizializzazione della partizione %s è fallita. (Nessuna modifica è stata scritta sul disco.)
 Validation of the given creation parameters failed.	MainWindow		La validazione dei parametri di creazione forniti è fallita.
 Eject	MainWindow		Espelli
-Are you sure you want to write the changes back to disk now?\n\nAll data on the disk %s will be irretrievably lost if you do so!	MainWindow		Sei sicuro di voler salvare le modifiche sul disco?\n\nProcedendo con l'operazione, tutti i dati sul disco %s saranno irrimediabilmente perduti!
 Surface test (not implemented)	MainWindow		Verifica superficie (non implementato)
 Read only	PartitionList		Sola lettura
 The panel could not return successfully.	MainWindow		Il panello non è riuscito a completare l'attività.
@@ -41,6 +43,7 @@ Format	InitializeParametersPanel		Formatta
 Could not unmount partition	MainWindow		Impossibile smontare la partizione
 Create	CreateParametersPanel		Crea
 File system	PartitionList		File system
+Unknown (%s)	PartitionList		Sconosciuto (%s)
 The selected partition does not contain a partitioning system.	MainWindow		La partizione selezionata non contiene un sistema di partizionamento.
 End: %s	Support		Fine: %s
 Partition type	PartitionList		Tipo di partizione
@@ -50,6 +53,7 @@ Are you sure you want to format a raw disk? (Most people initialize the disk wit
 Wipe (not implemented)	MainWindow		Pulisci (non implementato)
 The currently selected partition does not have a parent partition.	MainWindow		La partizione attualmente selezionata non ha una sopra-partizione.
 Validation of the given initialization parameters failed.	MainWindow		La validazione dei parametri di inizializzazione forniti è fallita.
+Failed to create the partition. No changes have been written to disk.	MainWindow		Creazione della partizione fallita. Nessuna modifica è stata scritta sul disco.
 Shared	PartitionList		Condiviso
 MIMEs	PartitionList		MIME
 BitLocker encrypted	Encryption utils		Crittografia BitLocker
@@ -61,10 +65,11 @@ Are you sure you want to write the changes back to disk now?\n\nAll data on the 
 Change	ChangeParametersPanel		Modifica
 Partition name:	ChangeParametersPanel		Nome della partizione:
 LUKS encrypted	Encryption utils		Crittogradia LUKS
-Are you sure you want to write the changes back to disk now?\n\nAll data on the partition %s will be irretrievably lost if you do so!	MainWindow		Sei sicuro di voler salvare le modifiche sul disco?\n\nProcedendo con l'operazione, tutti i dati sulla partizione %s saranno irrimediabilmente perduti!
+Empty space	PartitionList		Spazio libero
 Cancel	AbstractParametersPanel		Annulla
 Format	MainWindow		Formatta
 OK	MainWindow		OK
+Empty space	DiskView		Spazio libero
 Open with DiskProbe	MainWindow		Apri con Analizza Disco
 Could not delete the selected partition.	MainWindow		Impossibile rimuovere la partizione selezionata.
 Are you sure you want to initialize the selected disk? All data will be lost. You will be asked again before changes are written to the disk.\n	MainWindow		Sei sicuro di voler inizializzare il disco selezionato? Tutti i dati saranno perduti. Ti sarà nuovamente chiesta conferma prima della scrittura delle modifiche sul disco.\n
@@ -80,7 +85,7 @@ Change parameters	MainWindow		Modifica i parametri
 Rescan	MainWindow		Riscansiona
 There was an error acquiring the partition row.	MainWindow		Errore durante l'acquisizione dei dati sulla partizione.
 Failed to initialize the disk %s!\n	MainWindow		Inizializzazione del disco %s fallita!\n
-Disk system \"%s\" not found!	MainWindow		Disco di sistema \"%s\" non trovato!
+The partition cannot be unmounted.	MainWindow		La partizione non può essere smontata.
 Delete	MainWindow		Rimuovi
 Partition type:	ChangeParametersPanel		Tipo di partizione:
 Parameters	PartitionList		Parametri
@@ -94,13 +99,13 @@ The partition %s is already unmounted.	MainWindow		La partizione %s è stata gi�
 Are you sure you want to change parameters of the selected partition?\n\nThe partition may no longer be recognized by other operating systems anymore!	MainWindow		Sei sicuro di voler modificare i parametri della partizione selezionata?\n\nLa partizione potrebbe non essere più riconosciuta da altri sistemi operativi!
 Boot	PartitionList		Avvio
 OK	AbstractParametersPanel		OK
+Are you sure you want to write the changes back to disk now?\n\nAll data on the disk \"%s\" will be irretrievably lost if you do so!	MainWindow		Sei sicuro di voler applicare le modifiche su disco adesso?\n\ntutti i dati contenuti nel disco \"%s\" saranno irrimediabilmente persi se procedi!
 Virtual	PartitionList		Virtuale
 Virtual	DiskView		Virtuale
 Are you sure you want to write the changes back to disk now?\n\nAll data on the selected disk will be irretrievably lost if you do so!	MainWindow		Sei sicuro di voler salvare le modifiche sul disco?\n\nProcedendo tutti i dati del disco selezionato saranno irrimediabilmente perduti!
 Select a partition from the list below.	DiskView		Seleziona una partizione dall'elenco sottostante.
 Active	PartitionList		Attivo
 Are you sure you want to delete the selected partition?\n\nAll data on the partition will be irretrievably lost if you do so!	MainWindow		Sei sicuro di voler eliminare la partizione selezionata?\n\nProcedendo con l'operazione, tutti i dati sulla partizione saranno irrimediabilmente perduti!
-Failed to format the partition. No changes have been written to disk.	MainWindow		Formattazione della partizione fallita. Nessuna modifica è stata scritta sul disco.
 The partition %s has been successfully formatted.\n	MainWindow		La partizione %s è stata formattata con successo.\n
 The partition %s is already mounted.	MainWindow		La partizione %s è stata già montata.
 Size	PartitionList		Dimensione

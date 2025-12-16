@@ -1,4 +1,3 @@
-/*	$FreeBSD: releng/12.0/sys/dev/ral/rt2661.c 330688 2018-03-09 11:33:56Z avos $	*/
 
 /*-
  * Copyright (c) 2006
@@ -18,8 +17,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: releng/12.0/sys/dev/ral/rt2661.c 330688 2018-03-09 11:33:56Z avos $");
-
 /*-
  * Ralink Technology RT2561, RT2561S and RT2661 chipset driver
  * http://www.ralinktech.com/
@@ -195,8 +192,6 @@ static const struct rfprog {
 	RT2661_RF5225_2
 };
 
-static const uint8_t rt2661_chan_2ghz[] =
-	{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 };
 static const uint8_t rt2661_chan_5ghz[] =
 	{ 36, 40, 44, 48, 52, 56, 60, 64,
 	  100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140,
@@ -334,7 +329,7 @@ rt2661_detach(void *xsc)
 {
 	struct rt2661_softc *sc = xsc;
 	struct ieee80211com *ic = &sc->sc_ic;
-	
+
 	RAL_LOCK(sc);
 	rt2661_stop_locked(sc);
 	RAL_UNLOCK(sc);
@@ -1444,7 +1439,7 @@ rt2661_tx_data(struct rt2661_softc *sc, struct mbuf *m0,
 	}
 	rate &= IEEE80211_RATE_VAL;
 
-	if (wh->i_fc[0] & IEEE80211_FC0_SUBTYPE_QOS)
+	if (wh->i_fc[0] & IEEE80211_FC0_SUBTYPE_QOS_DATA)
 		noack = !! ieee80211_wme_vap_ac_is_noack(vap, ac);
 
 	if (wh->i_fc[1] & IEEE80211_FC1_PROTECTED) {
@@ -2759,8 +2754,7 @@ rt2661_getradiocaps(struct ieee80211com *ic,
 	memset(bands, 0, sizeof(bands));
 	setbit(bands, IEEE80211_MODE_11B);
 	setbit(bands, IEEE80211_MODE_11G);
-	ieee80211_add_channel_list_2ghz(chans, maxchans, nchans,
-	    rt2661_chan_2ghz, nitems(rt2661_chan_2ghz), bands, 0);
+	ieee80211_add_channels_default_2ghz(chans, maxchans, nchans, bands, 0);
 
 	if (sc->rf_rev == RT2661_RF_5225 || sc->rf_rev == RT2661_RF_5325) {
 		setbit(bands, IEEE80211_MODE_11A);

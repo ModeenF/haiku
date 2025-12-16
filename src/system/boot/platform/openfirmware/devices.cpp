@@ -117,14 +117,14 @@ platform_add_boot_device(struct stage2_args *args, NodeList *devicesList)
 
 
 status_t
-platform_get_boot_partition(struct stage2_args *args, Node *device,
-	NodeList *list, boot::Partition **_partition)
+platform_get_boot_partitions(struct stage2_args *args, Node *device,
+	NodeList *list, NodeList *partitionList)
 {
 	NodeIterator iterator = list->GetIterator();
 	boot::Partition *partition = NULL;
 	while ((partition = (boot::Partition *)iterator.Next()) != NULL) {
 		// ToDo: just take the first partition for now
-		*_partition = partition;
+		partitionList->Insert(partition);
 		return B_OK;
 	}
 
@@ -232,7 +232,7 @@ platform_register_boot_device(Node *device)
 	disk.device_type = UNKNOWN_DEVICE;
 	disk.device.unknown.size = device->Size();
 
-	gBootVolume.SetData(BOOT_VOLUME_DISK_IDENTIFIER, B_RAW_TYPE, &disk,
+	gBootParams.SetData(BOOT_VOLUME_DISK_IDENTIFIER, B_RAW_TYPE, &disk,
 		sizeof(disk_identifier));
 
 	return B_OK;

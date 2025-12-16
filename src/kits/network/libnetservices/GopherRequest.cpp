@@ -23,10 +23,8 @@
 #include <String.h>
 #include <StringList.h>
 
-
-#ifndef LIBNETAPI_DEPRECATED
 using namespace BPrivate::Network;
-#endif
+
 
 /*
  * TODO: fix '+' in selectors, cf. gopher://gophernicus.org/1/doc/gopher/
@@ -183,17 +181,17 @@ static const int32 kGopherBufferSize = 4096;
 static const bool kInlineImages = true;
 
 
-BGopherRequest::BGopherRequest(const BUrl& url, BUrlProtocolListener* listener,
-	BUrlContext* context)
+BGopherRequest::BGopherRequest(const BUrl& url, BDataIO* output,
+	BUrlProtocolListener* listener, BUrlContext* context)
 	:
-	BNetworkRequest(url, listener, context, "BUrlProtocol.Gopher", "gopher"),
+	BNetworkRequest(url, output, listener, context, "BUrlProtocol.Gopher",
+		"gopher"),
 	fItemType(GOPHER_TYPE_NONE),
 	fPosition(0),
 	fResult()
 {
 	fSocket = new(std::nothrow) BSocket();
 
-	fUrl.UrlDecode();
 	// the first part of the path is actually the document type
 
 	fPath = Url().Path();
@@ -350,16 +348,22 @@ BGopherRequest::_ProtocolLoop()
 			// we don't really have headers but well...
 			//! ProtocolHook:HeadersReceived
 			if (fListener != NULL)
-				fListener->HeadersReceived(this, fResult);
+				fListener->HeadersReceived(this);
 		}
 
 		if (_NeedsParsing())
-			_ParseInput(receiveEnd);
+			readError = _ParseInput(receiveEnd);
 		else if (fInputBuffer.Size()) {
 			// send input directly
-			if (fListener != NULL) {
-				fListener->DataReceived(this, (const char *)fInputBuffer.Data(),
-					fPosition, fInputBuffer.Size());
+			if (fOutput != NULL) {
+				size_t written = 0;
+				readError = fOutput->WriteExactly(
+					(const char*)fInputBuffer.Data(), fInputBuffer.Size(),
+					&written);
+				if (fListener != NULL && written > 0)
+					fListener->BytesWritten(this, written);
+				if (readError != B_OK)
+					break;
 			}
 
 			fPosition += fInputBuffer.Size();
@@ -428,7 +432,7 @@ BGopherRequest::_NeedsLastDotStrip()
 }
 
 
-void
+status_t
 BGopherRequest::_ParseInput(bool last)
 {
 	BString line;
@@ -672,9 +676,14 @@ BGopherRequest::_ParseInput(bool last)
 				"</div>\n"
 				"<h1>" << pageTitle << "</h1>\n";
 
-			if (fListener != NULL) {
-				fListener->DataReceived(this, header.String(), fPosition,
-					header.Length());
+			if (fOutput != NULL) {
+				size_t written = 0;
+				status_t error = fOutput->WriteExactly(header.String(),
+					header.Length(), &written);
+				if (fListener != NULL && written > 0)
+					fListener->BytesWritten(this, written);
+				if (error != B_OK)
+					return error;
 			}
 
 			fPosition += header.Length();
@@ -684,9 +693,14 @@ BGopherRequest::_ParseInput(bool last)
 		}
 
 		if (item.Length()) {
-			if (fListener != NULL) {
-				fListener->DataReceived(this, item.String(), fPosition,
-					item.Length());
+			if (fOutput != NULL) {
+				size_t written = 0;
+				status_t error = fOutput->WriteExactly(item.String(),
+					item.Length(), &written);
+				if (fListener != NULL && written > 0)
+					fListener->BytesWritten(this, written);
+				if (error != B_OK)
+					return error;
 			}
 
 			fPosition += item.Length();
@@ -704,8 +718,13 @@ BGopherRequest::_ParseInput(bool last)
 			"</html>\n";
 
 		if (fListener != NULL) {
-			fListener->DataReceived(this, footer.String(), fPosition,
-				footer.Length());
+			size_t written = 0;
+			status_t error = fOutput->WriteExactly(footer.String(),
+				footer.Length(), &written);
+			if (fListener != NULL && written > 0)
+				fListener->BytesWritten(this, written);
+			if (error != B_OK)
+				return error;
 		}
 
 		fPosition += footer.Length();
@@ -713,6 +732,8 @@ BGopherRequest::_ParseInput(bool last)
 		if (fListener != NULL)
 			fListener->DownloadProgress(this, fPosition, 0);
 	}
+
+	return B_OK;
 }
 
 

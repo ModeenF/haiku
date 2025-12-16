@@ -25,8 +25,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_wlan.h"
 
 #include <sys/param.h>
@@ -61,7 +59,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/rtwn/rtl8812a/r12a_reg.h>
 #include <dev/rtwn/rtl8812a/r12a_var.h>
 #include <dev/rtwn/rtl8812a/r12a_fw_cmd.h>
-
 
 #ifndef RTWN_WITHOUT_UCODE
 void
@@ -174,8 +171,10 @@ r12a_iq_calib_fw(struct rtwn_softc *sc)
 	else
 		cmd.band_bw = RTWN_CMD_IQ_BAND_2GHZ;
 
-	/* TODO: 80/160 MHz. */
-	if (IEEE80211_IS_CHAN_HT40(c))
+	/* TODO: 160MHz */
+	if (IEEE80211_IS_CHAN_VHT80(c))
+		cmd.band_bw |= RTWN_CMD_IQ_CHAN_WIDTH_80;
+	else if (IEEE80211_IS_CHAN_HT40(c) || IEEE80211_IS_CHAN_VHT40(c))
 		cmd.band_bw |= RTWN_CMD_IQ_CHAN_WIDTH_40;
 	else
 		cmd.band_bw |= RTWN_CMD_IQ_CHAN_WIDTH_20;

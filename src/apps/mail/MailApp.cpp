@@ -392,7 +392,7 @@ TMailApp::MessageReceived(BMessage *msg)
 				case MAIL_WINDOW:
 				{
 					TMailWindow* window;
-					if( msg->FindPointer("window", (void**)&window) == B_OK)
+					if (msg->FindPointer("window", (void**)&window) == B_OK)
 						fWindowList.RemoveItem(window);
 					fWindowCount--;
 					break;
@@ -413,6 +413,14 @@ TMailApp::MessageReceived(BMessage *msg)
 				be_app->PostMessage(B_QUIT_REQUESTED);
 			break;
 
+		case kMsgQuitAndKeepAllStatus:
+		{
+			for (int32 i = 0; i < fWindowList.CountItems(); i++) {
+				TMailWindow* window = (TMailWindow*)fWindowList.ItemAt(i);
+				window->PostMessage(new BMessage(kMsgCloseAndKeepAllStatus));
+			}
+			break;
+		}
 		case B_REFS_RECEIVED:
 			RefsReceived(msg);
 			break;
@@ -623,7 +631,7 @@ TMailApp::RefsReceived(BMessage *msg)
 					|| strcmp(type, B_PARTIAL_MAIL_TYPE) == 0) {
 					window = NewWindow(&ref, NULL, false, &messenger);
 					window->Show();
-				} else if(strcmp(type, "application/x-person") == 0) {
+				} else if (strcmp(type, "application/x-person") == 0) {
 					/* Got a People contact info file, see if it has an Email address. */
 					BString name;
 					BString email;
@@ -640,7 +648,7 @@ TMailApp::RefsReceived(BMessage *msg)
 						/* we got something... */
 						if (email.Length() > 0) {
 							/* see if we can get a username as well */
-							if(file.GetAttrInfo("META:name", &info) == B_NO_ERROR) {
+							if (file.GetAttrInfo("META:name", &info) == B_NO_ERROR) {
 								attrib = (char *) malloc(info.size + 1);
 								file.ReadAttr("META:name", B_STRING_TYPE, 0, attrib, info.size);
 								attrib[info.size] = 0; // Just in case it wasn't NUL terminated.

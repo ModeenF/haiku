@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (c) 2011 Adrian Chadd, Xenion Lty Ltd
  * All rights reserved.
@@ -24,11 +24,6 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
-#include <sys/cdefs.h>
-#ifdef __FreeBSD__
-__FBSDID("$FreeBSD: releng/12.0/sys/net80211/ieee80211_alq.c 326272 2017-11-27 15:23:17Z pfg $");
-#endif
 
 /*
  * net80211 fast-logging support, primarily for debugging.
@@ -111,8 +106,10 @@ sysctl_ieee80211_alq_log(SYSCTL_HANDLER_ARGS)
 		return (ieee80211_alq_setlogging(enable));
 }
 
-SYSCTL_PROC(_net_wlan, OID_AUTO, alq, CTLTYPE_INT|CTLFLAG_RW,
-	0, 0, sysctl_ieee80211_alq_log, "I", "Enable net80211 alq logging");
+SYSCTL_PROC(_net_wlan, OID_AUTO, alq,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, 0, 0,
+    sysctl_ieee80211_alq_log, "I",
+    "Enable net80211 alq logging");
 SYSCTL_INT(_net_wlan, OID_AUTO, alq_size, CTLFLAG_RW,
 	&ieee80211_alq_qsize, 0, "In-memory log size (bytes)");
 SYSCTL_INT(_net_wlan, OID_AUTO, alq_lost, CTLFLAG_RW,

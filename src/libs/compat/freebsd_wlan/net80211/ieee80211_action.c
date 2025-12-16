@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (c) 2009 Sam Leffler, Errno Consulting
  * All rights reserved.
@@ -25,11 +25,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-#ifdef __FreeBSD__
-__FBSDID("$FreeBSD: releng/12.0/sys/net80211/ieee80211_action.c 326272 2017-11-27 15:23:17Z pfg $");
-#endif
-
 /*
  * IEEE 802.11 send/recv action frame support.
  */
@@ -41,7 +36,7 @@ __FBSDID("$FreeBSD: releng/12.0/sys/net80211/ieee80211_action.c 326272 2017-11-2
 #include <sys/kernel.h>
 #include <sys/malloc.h>
 #include <sys/systm.h> 
- 
+
 #include <sys/socket.h>
 
 #include <net/if.h>

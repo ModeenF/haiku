@@ -22,6 +22,7 @@
 
 #include <lock.h>
 #include <util/AutoLock.h>
+#include <util/Vector.h>
 
 #include <KernelExport.h>
 
@@ -102,20 +103,16 @@ struct ChainHash {
 	typedef chain_key	KeyType;
 	typedef	chain		ValueType;
 
-// TODO: check if this makes a good hash...
-#define HASH(o) ((uint32)(((o)->family) ^ ((o)->type) ^ ((o)->protocol)))
-
 	size_t HashKey(KeyType key) const
 	{
-		return HASH(&key);
+		// TODO: check if this makes a good hash...
+		return (uint32)(key.family ^ key.type ^ key.protocol);
 	}
 
 	size_t Hash(ValueType* value) const
 	{
-		return HASH(value);
+		return HashKey(chain_key { value->family, value->type, value->protocol });
 	}
-
-#undef HASH
 
 	bool Compare(KeyType key, ValueType* chain) const
 	{
@@ -360,7 +357,7 @@ chain::Add(ChainTable* chains, int family, int type, int protocol,
 		if (module == NULL)
 			break;
 
-		TRACE(("  [%ld] %s\n", count, module));
+		TRACE(("  [%" B_PRId32 "] %s\n", count, module));
 		chain->modules[count] = strdup(module);
 		if (chain->modules[count] == NULL
 			|| ++count >= MAX_CHAIN_MODULES) {
@@ -438,18 +435,16 @@ get_domain_protocols(net_socket* socket)
 		chain = chain::Lookup(sProtocolChains, socket->family, socket->type,
 			socket->type == SOCK_RAW ? 0 : socket->protocol);
 			// in SOCK_RAW mode, we ignore the protocol information
-		if (chain == NULL) {
-			// TODO: if we want to be POSIX compatible, we should also support
-			//	the error codes EPROTONOSUPPORT and EPROTOTYPE.
-			return EAFNOSUPPORT;
-		}
 	}
 
 	// create net_protocol objects for the protocols in the chain
-
-	status_t status = chain->Acquire();
-	if (status != B_OK)
-		return status;
+	if (chain == NULL || chain->Acquire() != B_OK) {
+		if (::family::Lookup(socket->family) == NULL)
+			return EAFNOSUPPORT;
+		if (socket->type != 0 && socket->protocol == 0)
+			return EPROTOTYPE;
+		return EPROTONOSUPPORT;
+	}
 
 	net_protocol* last = NULL;
 
@@ -489,9 +484,13 @@ put_domain_protocols(net_socket* socket)
 		MutexLocker _(sChainLock);
 
 		chain = chain::Lookup(sProtocolChains, socket->family, socket->type,
-			socket->protocol);
-		if (chain == NULL)
+			socket->type == SOCK_RAW ? 0 : socket->protocol);
+		if (chain == NULL) {
+			ASSERT_PRINT(socket->first_protocol == NULL,
+				"socket has first protocol but no chain for %d:%d:%d",
+					socket->family, socket->type, socket->protocol);
 			return B_ERROR;
+		}
 	}
 
 	uninit_domain_protocols(socket);
@@ -611,7 +610,7 @@ get_domain_receiving_protocol(net_domain* _domain, uint32 type,
 	struct net_domain_private* domain = (net_domain_private*)_domain;
 	struct chain* chain;
 
-	TRACE(("get_domain_receiving_protocol(family %d, type %lu)\n",
+	TRACE(("get_domain_receiving_protocol(family %d, type %" B_PRIu32 ")\n",
 		domain->family, type));
 
 	{
@@ -743,6 +742,7 @@ scan_modules(const char* path)
 	if (cookie == NULL)
 		return;
 
+	Vector<module_info*> modules;
 	while (true) {
 		char name[B_FILE_NAME_LENGTH];
 		size_t length = sizeof(name);
@@ -751,15 +751,19 @@ scan_modules(const char* path)
 
 		TRACE(("scan %s\n", name));
 
+		// we don't need the module right now, but we give it a chance
+		// to register itself
 		module_info* module;
-		if (get_module(name, &module) == B_OK) {
-			// we don't need the module right now, but we give it a chance
-			// to register itself
-			put_module(name);
-		}
+		if (get_module(name, &module) == B_OK)
+			modules.Add(module);
 	}
 
 	close_module_list(cookie);
+
+	// We don't need the modules right now, so put them all.
+	// (This is done at the end to avoid repeated loading/unloading of dependencies.)
+	for (int32 i = 0; i < modules.Count(); i++)
+		put_module(modules[i]->name);
 }
 
 
@@ -832,6 +836,8 @@ init_stack()
 
 	// TODO: for now!
 	register_domain_datalink_protocols(AF_INET, IFT_LOOP,
+		"network/datalink_protocols/loopback_frame/v1", NULL);
+	register_domain_datalink_protocols(AF_INET, IFT_TUNNEL,
 		"network/datalink_protocols/loopback_frame/v1", NULL);
 #if 0 // PPP is not (currently) included in the build
 	register_domain_datalink_protocols(AF_INET, IFT_PPP,
@@ -983,7 +989,8 @@ net_stack_module_info gNetStackModule = {
 	add_ancillary_data,
 	remove_ancillary_data,
 	move_ancillary_data,
-	next_ancillary_data
+	next_ancillary_data,
+	clone_ancillary_data
 };
 
 module_info* modules[] = {

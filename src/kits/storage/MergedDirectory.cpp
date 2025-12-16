@@ -30,7 +30,7 @@ struct BMergedDirectory::EntryNameSet : std::set<std::string> {
 BMergedDirectory::BMergedDirectory(BPolicy policy)
 	:
 	BEntryList(),
-	fDirectories(10, true),
+	fDirectories(10),
 	fPolicy(policy),
 	fDirectoryIndex(0),
 	fVisitedEntries(NULL)
@@ -111,16 +111,17 @@ BMergedDirectory::GetNextEntry(BEntry* entry, bool traverse)
 status_t
 BMergedDirectory::GetNextRef(entry_ref* ref)
 {
-	BPrivate::Storage::LongDirEntry entry;
-	int32 result = GetNextDirents(&entry, sizeof(entry), 1);
+	BPrivate::Storage::LongDirEntry longEntry;
+	struct dirent* entry = longEntry.dirent();
+	int32 result = GetNextDirents(entry, sizeof(longEntry), 1);
 	if (result < 0)
 		return result;
 	if (result == 0)
 		return B_ENTRY_NOT_FOUND;
 
-	ref->device = entry.d_pdev;
-	ref->directory = entry.d_pino;
-	return ref->set_name(entry.d_name);
+	ref->device = entry->d_pdev;
+	ref->directory = entry->d_pino;
+	return ref->set_name(entry->d_name);
 }
 
 

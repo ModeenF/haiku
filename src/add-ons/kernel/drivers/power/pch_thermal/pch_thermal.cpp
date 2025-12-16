@@ -94,29 +94,38 @@ pch_thermal_read(void* _cookie, off_t position, void *buf, size_t* num_bytes)
 		return B_IO_ERROR;
 
 	if (position == 0) {
-		size_t max_len = *num_bytes;
-		char *str = (char *)buf;
+		char buffer[1024];
+		size_t maxLength = sizeof(buffer);
+		size_t totalCopied = 0;
+		char *str = (char *)buffer;
 		TRACE("pch_thermal: read()\n");
 		pch_thermal_control(device, drvOpGetThermalType, &therm_info, 0);
 
-		snprintf(str, max_len, "  Critical Temperature: %" B_PRIu32 ".%"
+		int32 copied = snprintf(str, maxLength, "  Critical Temperature: %" B_PRIu32 ".%"
 			B_PRIu32 " C\n", (therm_info.critical_temp / 10),
 			(therm_info.critical_temp % 10));
 
-		max_len -= strlen(str);
-		str += strlen(str);
-		snprintf(str, max_len, "  Current Temperature: %" B_PRIu32 ".%"
+		maxLength -= copied;
+		str += copied;
+		totalCopied += copied;
+		copied = snprintf(str, maxLength, "  Current Temperature: %" B_PRIu32 ".%"
 			B_PRIu32 " C\n", (therm_info.current_temp / 10),
 			(therm_info.current_temp % 10));
 
 		if (therm_info.hot_temp > 0) {
-			max_len -= strlen(str);
-			str += strlen(str);
-			snprintf(str, max_len, "  Hot Temperature: %" B_PRIu32 ".%"
+			maxLength -= copied;
+			str += copied;
+			totalCopied += copied;
+			copied = snprintf(str, maxLength, "  Hot Temperature: %" B_PRIu32 ".%"
 				B_PRIu32 " C\n", (therm_info.hot_temp / 10),
 				(therm_info.hot_temp % 10));
 		}
-		*num_bytes = strlen((char *)buf);
+
+		totalCopied += copied;
+		totalCopied = min_c(*num_bytes, totalCopied + 1);
+		if (user_memcpy((char*)buf, buffer, totalCopied) != B_OK)
+			return B_BAD_ADDRESS;
+		*num_bytes = totalCopied;
 	} else {
 		*num_bytes = 0;
 	}
@@ -207,7 +216,7 @@ pch_thermal_support(device_node *parent)
 		return 0.0;
 
 	const uint16 devices[] = { 0x9c24, 0x8c24, 0x9ca4, 0x9d31, 0xa131, 0x9df9,
-		0xa379, 0x06f9, 0x02f9, 0 };
+		0xa379, 0x06f9, 0x02f9, 0xa1b1, 0x8d24, 0 };
 	for (const uint16* device = devices; *device != 0; device++) {
 		if (*device == deviceID)
 			return 0.6;
@@ -221,7 +230,7 @@ static status_t
 pch_thermal_register_device(device_node *node)
 {
 	device_attr attrs[] = {
-		{ B_DEVICE_PRETTY_NAME, B_STRING_TYPE, { string: "PCH Thermal" }},
+		{ B_DEVICE_PRETTY_NAME, B_STRING_TYPE, { .string = "PCH Thermal" }},
 		{ NULL }
 	};
 

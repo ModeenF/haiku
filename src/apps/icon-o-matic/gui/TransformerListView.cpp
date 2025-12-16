@@ -1,9 +1,10 @@
 /*
- * Copyright 2006-2009, Haiku, Inc. All rights reserved.
+ * Copyright 2006-2009, 2023, Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
  *		Stephan Aßmus <superstippi@gmx.de>
+ *		Zardshard
  */
 
 #include "TransformerListView.h"
@@ -24,6 +25,7 @@
 #include "AddTransformersCommand.h"
 #include "CommandStack.h"
 #include "MoveTransformersCommand.h"
+#include "ReferenceImage.h"
 #include "RemoveTransformersCommand.h"
 #include "Transformer.h"
 #include "TransformerFactory.h"
@@ -37,11 +39,11 @@
 
 using std::nothrow;
 
+
 class TransformerItem : public SimpleItem,
 						public Observer {
  public:
-					TransformerItem(Transformer* t,
-									TransformerListView* listView)
+					TransformerItem(Transformer* t, TransformerListView* listView)
 						: SimpleItem(t->Name()),
 						  transformer(NULL),
 						  fListView(listView)
@@ -95,14 +97,17 @@ class TransformerItem : public SimpleItem,
 	TransformerListView* fListView;
 };
 
+
 // #pragma mark -
+
 
 enum {
 	MSG_DRAG_TRANSFORMER			= 'drgt',
 	MSG_ADD_TRANSFORMER				= 'adtr',
+	MSG_REMOVE_TRANSFORMER			= 'retr',
 };
 
-// constructor
+
 TransformerListView::TransformerListView(BRect frame, const char* name,
 										 BMessage* message, BHandler* target)
 	: SimpleListView(frame, name,
@@ -115,17 +120,17 @@ TransformerListView::TransformerListView(BRect frame, const char* name,
 	SetTarget(target);
 }
 
-// destructor
+
 TransformerListView::~TransformerListView()
 {
 	_MakeEmpty();
 	delete fMessage;
 
 	if (fShape)
-		fShape->RemoveListener(this);
+		fShape->Transformers()->RemoveListener(this);
 }
 
-// Draw
+
 void
 TransformerListView::Draw(BRect updateRect)
 {
@@ -135,10 +140,10 @@ TransformerListView::Draw(BRect updateRect)
 		return;
 
 	// display helpful messages
-	const char* message1 = B_TRANSLATE_CONTEXT("Click on a shape above", 
-		"Empty transformers list - 1st line");
-	const char* message2 = B_TRANSLATE_CONTEXT("to attach transformers.",
-		"Empty transformers list - 2nd line");
+	const char* message1 = B_TRANSLATE_COMMENT("Click on a shape above",
+ 		"Empty transformers list - 1st line");
+	const char* message2 = B_TRANSLATE_COMMENT("to attach transformers.",
+ 		"Empty transformers list - 2nd line");
 
 	// Dark Themes
 	rgb_color lowColor = LowColor();
@@ -162,7 +167,7 @@ TransformerListView::Draw(BRect updateRect)
 	DrawString(message2, middle);
 }
 
-// SelectionChanged
+
 void
 TransformerListView::SelectionChanged()
 {
@@ -181,9 +186,11 @@ TransformerListView::SelectionChanged()
 			Invoke(&message);
 		}
 	}
+
+	_UpdateMenu();
 }
 
-// MessageReceived
+
 void
 TransformerListView::MessageReceived(BMessage* message)
 {
@@ -191,53 +198,111 @@ TransformerListView::MessageReceived(BMessage* message)
 		case MSG_ADD_TRANSFORMER: {
 			if (!fShape || !fCommandStack)
 				break;
-		
+
 			uint32 type;
 			if (message->FindInt32("type", (int32*)&type) < B_OK)
 				break;
-		
+
 			Transformer* transformer
-				= TransformerFactory::TransformerFor(type,
-													 fShape->VertexSource());
+				= TransformerFactory::TransformerFor(type, fShape->VertexSource(), fShape);
 			if (!transformer)
 				break;
-		
+
 			Transformer* transformers[1];
 			transformers[0] = transformer;
 			::Command* command = new (nothrow) AddTransformersCommand(
-				fShape, transformers, 1, fShape->CountTransformers());
-		
+				fShape->Transformers(), transformers, 1, fShape->Transformers()->CountItems());
+
 			if (!command)
 				delete transformer;
-		
+
 			fCommandStack->Perform(command);
 			break;
 		}
+		case MSG_REMOVE_TRANSFORMER: {
+			RemoveSelected();
+			break;
+		}
+
 		default:
 			SimpleListView::MessageReceived(message);
 			break;
 	}
 }
 
-// MakeDragMessage
-void
-TransformerListView::MakeDragMessage(BMessage* message) const
+
+status_t
+TransformerListView::ArchiveSelection(BMessage* into, bool deep) const
 {
-	SimpleListView::MakeDragMessage(message);
-	message->AddPointer("container", fShape);
-	int32 count = CountItems();
+	into->what = TransformerListView::kSelectionArchiveCode;
+
+	int32 count = CountSelectedItems();
 	for (int32 i = 0; i < count; i++) {
-		TransformerItem* item = dynamic_cast<TransformerItem*>(ItemAt(CurrentSelection(i)));
-		if (item) {
-			message->AddPointer("transformer", (void*)item->transformer);
+		TransformerItem* item = dynamic_cast<TransformerItem*>(
+			ItemAt(CurrentSelection(i)));
+		if (item != NULL) {
+			BMessage archive;
+			if (item->transformer->Archive(&archive, deep) == B_OK)
+				into->AddMessage("transformer", &archive);
 		} else
-			break;
+			return B_ERROR;
 	}
+
+	return B_OK;
 }
+
+
+bool
+TransformerListView::InstantiateSelection(const BMessage* archive, int32 dropIndex)
+{
+	if (archive->what != TransformerListView::kSelectionArchiveCode
+		|| fCommandStack == NULL || fShape == NULL)
+		return false;
+
+	// Drag may have come from another instance, like in another window.
+	// Reconstruct the Styles from the archive and add them at the drop
+	// index.
+	int index = 0;
+	BList transformers;
+	while (true) {
+		BMessage transformerArchive;
+		if (archive->FindMessage("transformer", index, &transformerArchive) != B_OK)
+			break;
+
+		Transformer* transformer = TransformerFactory::TransformerFor(
+			&transformerArchive, fShape->VertexSource(), fShape);
+		if (transformer == NULL)
+			break;
+
+		if (!transformers.AddItem(transformer)) {
+			delete transformer;
+			break;
+		}
+
+		index++;
+	}
+
+	int32 count = transformers.CountItems();
+	if (count == 0)
+		return false;
+
+	AddTransformersCommand* command = new(nothrow) AddTransformersCommand(
+		fShape->Transformers(), (Transformer**)transformers.Items(), count, dropIndex);
+	if (command == NULL) {
+		for (int32 i = 0; i < count; i++)
+			delete (Transformer*)transformers.ItemAtFast(i);
+		return false;
+	}
+
+	fCommandStack->Perform(command);
+
+	return true;
+}
+
 
 // #pragma mark -
 
-// MoveItems
+
 void
 TransformerListView::MoveItems(BList& items, int32 toIndex)
 {
@@ -256,8 +321,8 @@ TransformerListView::MoveItems(BList& items, int32 toIndex)
 	}
 
 	MoveTransformersCommand* command
-		= new (nothrow) MoveTransformersCommand(fShape,
-												transformers, count, toIndex);
+		= new (nothrow) MoveTransformersCommand(
+			fShape->Transformers(), transformers, count, toIndex);
 	if (!command) {
 		delete[] transformers;
 		return;
@@ -266,7 +331,7 @@ TransformerListView::MoveItems(BList& items, int32 toIndex)
 	fCommandStack->Perform(command);
 }
 
-// CopyItems
+
 void
 TransformerListView::CopyItems(BList& items, int32 toIndex)
 {
@@ -274,7 +339,7 @@ TransformerListView::CopyItems(BList& items, int32 toIndex)
 	// TODO: allow copying items
 }
 
-// RemoveItemList
+
 void
 TransformerListView::RemoveItemList(BList& items)
 {
@@ -287,12 +352,11 @@ TransformerListView::RemoveItemList(BList& items)
 		indices[i] = IndexOf((BListItem*)items.ItemAtFast(i));
 
 	RemoveTransformersCommand* command
-		= new (nothrow) RemoveTransformersCommand(fShape,
-												  indices, count);
+		= new (nothrow) RemoveTransformersCommand(fShape->Transformers(), indices, count);
 	fCommandStack->Perform(command);
 }
 
-// CloneItem
+
 BListItem*
 TransformerListView::CloneItem(int32 index) const
 {
@@ -303,7 +367,7 @@ TransformerListView::CloneItem(int32 index) const
 	return NULL;
 }
 
-// IndexOfSelectable
+
 int32
 TransformerListView::IndexOfSelectable(Selectable* selectable) const
 {
@@ -321,7 +385,7 @@ TransformerListView::IndexOfSelectable(Selectable* selectable) const
 	return -1;
 }
 
-// SelectableFor
+
 Selectable*
 TransformerListView::SelectableFor(BListItem* item) const
 {
@@ -333,9 +397,9 @@ TransformerListView::SelectableFor(BListItem* item) const
 
 // #pragma mark -
 
-// TransformerAdded
+
 void
-TransformerListView::TransformerAdded(Transformer* transformer, int32 index)
+TransformerListView::ItemAdded(Transformer* transformer, int32 index)
 {
 	// NOTE: we are in the thread that messed with the
 	// Shape, so no need to lock the document, when this is
@@ -349,9 +413,9 @@ TransformerListView::TransformerAdded(Transformer* transformer, int32 index)
 	UnlockLooper();
 }
 
-// TransformerRemoved
+
 void
-TransformerListView::TransformerRemoved(Transformer* transformer)
+TransformerListView::ItemRemoved(Transformer* transformer)
 {
 	// NOTE: we are in the thread that messed with the
 	// Shape, so no need to lock the document, when this is
@@ -365,16 +429,10 @@ TransformerListView::TransformerRemoved(Transformer* transformer)
 	UnlockLooper();
 }
 
-// StyleChanged
-void
-TransformerListView::StyleChanged(Style* oldStyle, Style* newStyle)
-{
-	// we don't care
-}
 
 // #pragma mark -
 
-// SetMenu
+
 void
 TransformerListView::SetMenu(BMenu* menu)
 {
@@ -386,27 +444,46 @@ TransformerListView::SetMenu(BMenu* menu)
 		return;
 
 	BMenu* addMenu = new BMenu(B_TRANSLATE("Add"));
-	int32 cookie = 0;
-	uint32 type;
-	BString name;
-	while (TransformerFactory::NextType(&cookie, &type, &name)) {
-		// TODO: Disable the "Transformation" and "Perspective" transformers
-		// since they are not very useful or even implemented at all.
-		if (name == B_TRANSLATE("Transformation") 
-			|| name == B_TRANSLATE("Perspective"))
-			continue;
-		// End of TODO.
-		BMessage* message = new BMessage(MSG_ADD_TRANSFORMER);
-		message->AddInt32("type", type);
-		addMenu->AddItem(new BMenuItem(name.String(), message));
-	}
+
+	// Keep translated strings that were brought in from another file
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "Transformation"
+	BMessage* message = new BMessage(MSG_ADD_TRANSFORMER);
+	message->AddInt32("type", CONTOUR_TRANSFORMER);
+	fContourItem = new BMenuItem(B_TRANSLATE("Contour"), message);
+
+	message = new BMessage(MSG_ADD_TRANSFORMER);
+	message->AddInt32("type", STROKE_TRANSFORMER);
+	fStrokeItem = new BMenuItem(B_TRANSLATE("Stroke"), message);
+
+	message = new BMessage(MSG_ADD_TRANSFORMER);
+	message->AddInt32("type", PERSPECTIVE_TRANSFORMER);
+	fPerspectiveItem = new BMenuItem(B_TRANSLATE("Perspective"), message);
+
+	// message = new BMessage(MSG_ADD_TRANSFORMER);
+	// message->AddInt32("type", AFFINE_TRANSFORMER);
+	// fTransformationItem = new BMenuItem(B_TRANSLATE("Transformation"), message);
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "Icon-O-Matic-TransformersList"
+
+	addMenu->AddItem(fContourItem);
+	addMenu->AddItem(fStrokeItem);
+	addMenu->AddItem(fPerspectiveItem);
+
 	addMenu->SetTargetForItems(this);
 	fMenu->AddItem(addMenu);
+
+	fMenu->AddSeparatorItem();
+
+	fRemoveItem = new BMenuItem(B_TRANSLATE("Remove"), new BMessage(MSG_REMOVE_TRANSFORMER));
+	fMenu->AddItem(fRemoveItem);
+
+	fMenu->SetTargetForItems(this);
 
 	_UpdateMenu();
 }
 
-// SetShape
+
 void
 TransformerListView::SetShape(Shape* shape)
 {
@@ -415,33 +492,34 @@ TransformerListView::SetShape(Shape* shape)
 
 	// detach from old container
 	if (fShape)
-		fShape->RemoveListener(this);
+		fShape->Transformers()->RemoveListener(this);
 
 	_MakeEmpty();
 
 	fShape = shape;
 
 	if (fShape) {
-		fShape->AddListener(this);
-	
-		int32 count = fShape->CountTransformers();
+		fShape->Transformers()->AddListener(this);
+
+		int32 count = fShape->Transformers()->CountItems();
 		for (int32 i = 0; i < count; i++)
-			_AddTransformer(fShape->TransformerAtFast(i), i);
+			_AddTransformer(fShape->Transformers()->ItemAtFast(i), i);
 	}
 
 	_UpdateMenu();
 }
 
-// SetCommandStack
+
 void
 TransformerListView::SetCommandStack(CommandStack* stack)
 {
 	fCommandStack = stack;
 }
 
+
 // #pragma mark -
 
-// _AddTransformer
+
 bool
 TransformerListView::_AddTransformer(Transformer* transformer, int32 index)
 {
@@ -450,7 +528,7 @@ TransformerListView::_AddTransformer(Transformer* transformer, int32 index)
 	return false;
 }
 
-// _RemoveTransformer
+
 bool
 TransformerListView::_RemoveTransformer(Transformer* transformer)
 {
@@ -462,7 +540,7 @@ TransformerListView::_RemoveTransformer(Transformer* transformer)
 	return false;
 }
 
-// _ItemForTransformer
+
 TransformerItem*
 TransformerListView::_ItemForTransformer(Transformer* transformer) const
 {
@@ -475,9 +553,16 @@ TransformerListView::_ItemForTransformer(Transformer* transformer) const
 	return NULL;
 }
 
-// _UpdateMenu
+
 void
 TransformerListView::_UpdateMenu()
 {
 	fMenu->SetEnabled(fShape != NULL);
+
+	bool isReferenceImage = dynamic_cast<ReferenceImage*>(fShape) != NULL;
+	fContourItem->SetEnabled(!isReferenceImage);
+	fStrokeItem->SetEnabled(!isReferenceImage);
+
+	bool hasSelection = CurrentSelection(0) >= 0;
+	fRemoveItem->SetEnabled(hasSelection);
 }

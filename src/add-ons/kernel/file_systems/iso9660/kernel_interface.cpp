@@ -287,7 +287,7 @@ fs_walk(fs_volume* _volume, fs_vnode* _base, const char* file, ino_t* _vnodeID)
 		iso9660_inode node;
 		int initResult;
 
-		TRACE(("fs_walk - read buffer from disk at LBN %Ld into buffer "
+		TRACE(("fs_walk - read buffer from disk at LBN %lld into buffer "
 			"%p.\n", block, blockData));
 
 		// Move to the next block if necessary
@@ -304,11 +304,11 @@ fs_walk(fs_volume* _volume, fs_vnode* _base, const char* file, ino_t* _vnodeID)
 			if (initResult == B_OK) {
 				if ((node.flags & ISO_IS_ASSOCIATED_FILE) == 0
 					&& !strcmp(node.name, file)) {
-					TRACE(("fs_walk - success, found vnode at block %Ld, pos "
-						"%Ld\n", block, blockBytesRead));
+					TRACE(("fs_walk - success, found vnode at block %lld, pos "
+						"%lld\n", block, blockBytesRead));
 
 					*_vnodeID = (block << 30) + (blockBytesRead & 0xffffffff);
-					TRACE(("fs_walk - New vnode id is %Ld\n", *_vnodeID));
+					TRACE(("fs_walk - New vnode id is %lld\n", *_vnodeID));
 
 					result = get_vnode(_volume, *_vnodeID, (void**)&newNode);
 					if (result == B_OK) {
@@ -328,13 +328,13 @@ fs_walk(fs_volume* _volume, fs_vnode* _base, const char* file, ino_t* _vnodeID)
 			blockBytesRead += bytesRead;
 
 			TRACE(("fs_walk - Adding %u bytes to blockBytes read (total "
-				"%Ld/%u).\n", (unsigned)bytesRead, blockBytesRead,
+				"%lld/%u).\n", (unsigned)bytesRead, blockBytesRead,
 				(unsigned)baseNode->dataLen[FS_DATA_FORMAT]));
 		}
 		totalRead += volume->logicalBlkSize[FS_DATA_FORMAT];
 		block++;
 
-		TRACE(("fs_walk - moving to next block %Ld, total read %u\n",
+		TRACE(("fs_walk - moving to next block %lld, total read %u\n",
 			block, (unsigned)totalRead));
 		block_cache_put(volume->fBlockCache, cachedBlock);
 	}
@@ -511,10 +511,15 @@ fs_read_stat(fs_volume* _volume, fs_vnode* _node, struct stat* st)
 static status_t
 fs_open(fs_volume* /*_volume*/, fs_vnode* _node, int openMode, void** /*cookie*/)
 {
+	iso9660_inode* node = (iso9660_inode*)_node->private_node;
+
 	// Do not allow any of the write-like open modes to get by
 	if ((openMode & O_RWMASK) == O_WRONLY || (openMode & O_RWMASK) == O_RDWR
 		|| (openMode & O_TRUNC) != 0 || (openMode & O_CREAT) != 0)
 		return EROFS;
+
+	if ((openMode & O_DIRECTORY) != 0 && (node->flags & ISO_IS_DIR) == 0)
+		return B_NOT_A_DIRECTORY;
 
 	return B_OK;
 }

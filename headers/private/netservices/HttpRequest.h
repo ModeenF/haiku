@@ -23,11 +23,10 @@ namespace BPrivate {
 };
 
 
-#ifndef LIBNETAPI_DEPRECATED
 namespace BPrivate {
 
 namespace Network {
-#endif
+
 
 class BHttpRequest : public BNetworkRequest {
 public:
@@ -41,6 +40,7 @@ public:
 			void				SetDiscardData(bool discard);
 			void				SetDisableListener(bool disable);
 			void				SetAutoReferrer(bool enable);
+			void				SetStopOnError(bool stop);
 			void				SetUserName(const BString& name);
 			void				SetPassword(const BString& password);
 			void				SetRangeStart(off_t position);
@@ -68,6 +68,7 @@ private:
 			friend class BUrlProtocolRoster;
 
 								BHttpRequest(const BUrl& url,
+									BDataIO* output,
 									bool ssl = false,
 									const char* protocolName = "HTTP",
 									BUrlProtocolListener* listener = NULL,
@@ -101,10 +102,6 @@ private:
 	// Utility methods
 			bool				_IsDefaultPort();
 
-	// Listener notification
-			void				_NotifyDataReceived(const char* data,
-									off_t pos, ssize_t length,
-									off_t bytesReceived, ssize_t bytesTotal);
 
 private:
 			bool				fSSL;
@@ -146,6 +143,7 @@ private:
 			bool				fOptDiscardData : 1;
 			bool				fOptDisableListener : 1;
 			bool				fOptAutoReferer : 1;
+			bool				fOptStopOnError : 1;
 };
 
 // Request method
@@ -243,10 +241,9 @@ enum http_status_code {
 // HTTP default User-Agent
 #define B_HTTP_PROTOCOL_USER_AGENT_FORMAT "ServicesKit (%s)"
 
-#ifndef LIBNETAPI_DEPRECATED
+
 } // namespace Network
 
 } // namespace BPrivate
-#endif
 
 #endif // _B_URL_PROTOCOL_HTTP_H_

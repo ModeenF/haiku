@@ -24,7 +24,7 @@
 
 #include <Referenceable.h>
 
-#include <boot/PathBlacklist.h>
+#include <boot/PathBlocklist.h>
 #include <boot/platform.h>
 
 #include "PackageSettingsItem.h"
@@ -74,8 +74,6 @@ struct PackageNode : DoublyLinkedListLinkImpl<PackageNode> {
 		fNodeID(0),
 		fMode(mode)
 	{
-		fModifiedTime.tv_sec = 0;
-		fModifiedTime.tv_nsec = 0;
 	}
 
 	virtual ~PackageNode()
@@ -112,16 +110,6 @@ struct PackageNode : DoublyLinkedListLinkImpl<PackageNode> {
 		return fMode;
 	}
 
-	void SetModifiedTime(const timespec& time)
-	{
-		fModifiedTime = time;
-	}
-
-	const timespec& ModifiedTime() const
-	{
-		return fModifiedTime;
-	}
-
 	virtual void RemoveEntry(const char* path)
 	{
 	}
@@ -132,7 +120,6 @@ protected:
 	char*				fName;
 	ino_t				fNodeID;
 	mode_t				fMode;
-	timespec			fModifiedTime;
 };
 
 
@@ -390,7 +377,7 @@ struct PackageLoaderContentHandler : BPackageContentHandler {
 	{
 		if (fErrorOccurred
 			|| (fLastSettingsEntry != NULL
-				&& fLastSettingsEntry->IsBlackListed())) {
+				&& fLastSettingsEntry->IsBlocked())) {
 			return B_OK;
 		}
 
@@ -411,7 +398,7 @@ struct PackageLoaderContentHandler : BPackageContentHandler {
 			if (settingsEntry != NULL) {
 				fLastSettingsEntry = settingsEntry;
 				fLastSettingsEntryEntry = entry;
-				if (fLastSettingsEntry->IsBlackListed())
+				if (fLastSettingsEntry->IsBlocked())
 					return B_OK;
 			}
 		}
@@ -457,8 +444,6 @@ struct PackageLoaderContentHandler : BPackageContentHandler {
 			delete node;
 			RETURN_ERROR(error);
 		}
-
-		node->SetModifiedTime(entry->ModifiedTime());
 
 		// add it to the parent directory
 		parentDir->AddChild(node);
@@ -885,14 +870,14 @@ packagefs_mount_file(int fd, ::Directory* systemDirectory,
 
 
 void
-packagefs_apply_path_blacklist(::Directory* systemDirectory,
-	const PathBlacklist& pathBlacklist)
+packagefs_apply_path_blocklist(::Directory* systemDirectory,
+	const PathBlocklist& pathBlocklist)
 {
 	PackageFS::Directory* directory
 		= static_cast<PackageFS::Directory*>(systemDirectory);
 
-	for (PathBlacklist::Iterator it = pathBlacklist.GetIterator();
-		BlacklistedPath* path = it.Next();) {
+	for (PathBlocklist::Iterator it = pathBlocklist.GetIterator();
+		BlockedPath* path = it.Next();) {
 		directory->RemoveEntry(path->Path());
 	}
 }

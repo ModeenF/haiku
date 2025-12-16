@@ -32,14 +32,15 @@ class SVGExporter : public Exporter {
 	// Exporter
 	virtual	status_t			Export(const Icon* icon, BPositionIO* stream);
 
-	virtual	const char*			MIMEType();
-	virtual	const char*			Extension();
+	virtual	const char*			MIMEType() { return "image/svg+xml"; }
+	virtual	const char*			Extension() { return "svg"; }
 
 	// SVGExporter
 			void				SetOriginalEntry(const entry_ref* ref);
 
  private:
 			bool				_DisplayWarning() const;
+			void				_DisplayUnsupportedGradientWarning() const;
 
 			status_t			_ExportShape(const Shape* shape,
 											 BPositionIO* stream);
@@ -52,6 +53,7 @@ class SVGExporter : public Exporter {
 										 char* string,
 										 BPositionIO* stream);
 
+			mutable bool		fShownUnsupportedGradientWarning;
  			int32				fGradientCount;
 			entry_ref*			fOriginalEntry;
 };

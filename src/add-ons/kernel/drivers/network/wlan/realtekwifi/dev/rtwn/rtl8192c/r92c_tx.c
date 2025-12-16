@@ -19,8 +19,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_wlan.h"
 
 #include <sys/param.h>
@@ -53,7 +51,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/rtwn/rtl8192c/r92c.h>
 #include <dev/rtwn/rtl8192c/r92c_var.h>
 #include <dev/rtwn/rtl8192c/r92c_tx_desc.h>
-
 
 static int
 r92c_tx_get_sco(struct rtwn_softc *sc, struct ieee80211_channel *c)
@@ -103,7 +100,7 @@ r92c_tx_protection(struct rtwn_softc *sc, struct r92c_tx_desc *txd,
 			rate = rtwn_ctl_mcsrate(ic->ic_rt, ridx);
 		else
 			rate = ieee80211_ctl_rate(ic->ic_rt, ridx2rate[ridx]);
-		ridx = rate2ridx(rate);
+		ridx = rate2ridx(IEEE80211_RV(rate));
 
 		txd->txdw4 |= htole32(SM(R92C_TXDW4_RTSRATE, ridx));
 		/* RTS rate fallback limit (max). */
@@ -174,16 +171,21 @@ static void
 r92c_tx_set_sgi(struct rtwn_softc *sc, void *buf, struct ieee80211_node *ni)
 {
 	struct r92c_tx_desc *txd = (struct r92c_tx_desc *)buf;
-	struct ieee80211vap *vap = ni->ni_vap;
 
-	if ((vap->iv_flags_ht & IEEE80211_FHT_SHORTGI20) &&	/* HT20 */
-	    (ni->ni_htcap & IEEE80211_HTCAP_SHORTGI20))
-		txd->txdw5 |= htole32(R92C_TXDW5_SGI);
-	else if (ni->ni_chan != IEEE80211_CHAN_ANYC &&		/* HT40 */
-	    IEEE80211_IS_CHAN_HT40(ni->ni_chan) &&
-	    (ni->ni_htcap & IEEE80211_HTCAP_SHORTGI40) &&
-	    (vap->iv_flags_ht & IEEE80211_FHT_SHORTGI40))
-		txd->txdw5 |= htole32(R92C_TXDW5_SGI);
+	/*
+	 * Only enable short-GI if we're transmitting in that
+	 * width to that node.
+	 *
+	 * Specifically, do not enable shortgi for 20MHz if
+	 * we're attempting to transmit at 40MHz.
+	 */
+	if (ieee80211_ht_check_tx_ht40(ni)) {
+		if (ieee80211_ht_check_tx_shortgi_40(ni))
+			txd->txdw5 |= htole32(R92C_TXDW5_SGI);
+	} else if (ieee80211_ht_check_tx_ht(ni)) {
+		if (ieee80211_ht_check_tx_shortgi_20(ni))
+			txd->txdw5 |= htole32(R92C_TXDW5_SGI);
+	}
 }
 
 void
@@ -211,6 +213,34 @@ r92c_tx_setup_macid(void *buf, int id)
 	struct r92c_tx_desc *txd = (struct r92c_tx_desc *)buf;
 
 	txd->txdw1 |= htole32(SM(R92C_TXDW1_MACID, id));
+
+	/* XXX does not belong here */
+	/* XXX temporary (I hope) */
+	/* Force CCK1 for RTS / CTS frames (driver bug) */
+	txd->txdw4 &= ~htole32(SM(R92C_TXDW4_RTSRATE, R92C_TXDW4_RTSRATE_M));
+	txd->txdw4 &= ~htole32(R92C_TXDW4_RTS_SHORT);
+}
+
+static int
+r92c_calculate_tx_agg_window(struct rtwn_softc *sc,
+    const struct ieee80211_node *ni, int tid)
+{
+	const struct ieee80211_tx_ampdu *tap;
+	int wnd;
+
+	tap = &ni->ni_tx_ampdu[tid];
+
+	/*
+	 * BAW is (MAX_AGG * 2) + 1, hence the /2 here.
+	 * Ensure we don't send 0 or more than 64.
+	 */
+	wnd = tap->txa_wnd / 2;
+	if (wnd == 0)
+		wnd = 1;
+	else if (wnd > 0x1f)
+		wnd = 0x1f;
+
+	return (wnd);
 }
 
 void
@@ -250,7 +280,6 @@ r92c_fill_tx_desc(struct rtwn_softc *sc, struct ieee80211_node *ni,
 		txd->flags0 |= R92C_FLAGS0_BMCAST;
 
 	if (!ismcast) {
-		struct rtwn_node *un = RTWN_NODE(ni);
 		/* Unicast frame, check if an ACK is expected. */
 		if (!qos || (qos & IEEE80211_QOS_ACKPOLICY) !=
 		    IEEE80211_QOS_ACKPOLICY_NOACK) {
@@ -259,6 +288,7 @@ r92c_fill_tx_desc(struct rtwn_softc *sc, struct ieee80211_node *ni,
 			    maxretry));
 		}
 
+		struct rtwn_node *un = RTWN_NODE(ni);
 		macid = un->id;
 
 		if (type == IEEE80211_FC0_TYPE_DATA) {
@@ -268,9 +298,9 @@ r92c_fill_tx_desc(struct rtwn_softc *sc, struct ieee80211_node *ni,
 			    (m->m_flags & M_AMPDU_MPDU) != 0);
 			if (m->m_flags & M_AMPDU_MPDU) {
 				txd->txdw2 |= htole32(SM(R92C_TXDW2_AMPDU_DEN,
-				    vap->iv_ampdu_density));
+				    ieee80211_ht_get_node_ampdu_density(ni)));
 				txd->txdw6 |= htole32(SM(R92C_TXDW6_MAX_AGG,
-				    0x1f));	/* XXX */
+				    r92c_calculate_tx_agg_window(sc, ni, tid)));
 			}
 			if (sc->sc_ratectl == RTWN_RATECTL_NET80211) {
 				txd->txdw2 |= htole32(R92C_TXDW2_CCX_RPT);
@@ -330,7 +360,7 @@ r92c_fill_tx_desc(struct rtwn_softc *sc, struct ieee80211_node *ni,
 		uint16_t seqno;
 
 		if (m->m_flags & M_AMPDU_MPDU) {
-			seqno = ni->ni_txseqs[tid];
+			seqno = ni->ni_txseqs[tid] % IEEE80211_SEQ_RANGE;
 			ni->ni_txseqs[tid]++;
 		} else
 			seqno = M_SEQNO_GET(m) % IEEE80211_SEQ_RANGE;

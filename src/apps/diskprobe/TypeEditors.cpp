@@ -60,7 +60,7 @@ class StringEditor : public TypeEditorView {
 
 class MimeTypeEditor : public TypeEditorView {
 	public:
-		MimeTypeEditor(BRect rect, DataEditor& editor);
+		MimeTypeEditor(DataEditor& editor);
 
 		virtual void AttachedToWindow();
 		virtual void DetachedFromWindow();
@@ -79,7 +79,7 @@ class MimeTypeEditor : public TypeEditorView {
 
 class NumberEditor : public TypeEditorView {
 	public:
-		NumberEditor(BRect rect, DataEditor& editor);
+		NumberEditor(DataEditor& editor);
 
 		virtual void AttachedToWindow();
 		virtual void DetachedFromWindow();
@@ -101,7 +101,7 @@ class NumberEditor : public TypeEditorView {
 
 class BooleanEditor : public TypeEditorView {
 	public:
-		BooleanEditor(BRect rect, DataEditor& editor);
+		BooleanEditor(DataEditor& editor);
 
 		virtual void AttachedToWindow();
 		virtual void DetachedFromWindow();
@@ -139,7 +139,7 @@ class ImageView : public TypeEditorView {
 
 class MessageView : public TypeEditorView {
 	public:
-		MessageView(BRect rect, DataEditor& editor);
+		MessageView(DataEditor& editor);
 		virtual ~MessageView();
 
 		virtual void AttachedToWindow();
@@ -157,14 +157,6 @@ class MessageView : public TypeEditorView {
 
 
 //	#pragma mark - TypeEditorView
-
-
-TypeEditorView::TypeEditorView(BRect rect, const char *name,
-		uint32 resizingMode, uint32 flags, DataEditor& editor)
-	: BView(rect, name, resizingMode, flags),
-	fEditor(editor)
-{
-}
 
 
 TypeEditorView::TypeEditorView(const char *name, uint32 flags,
@@ -206,18 +198,17 @@ StringEditor::StringEditor(DataEditor& editor)
 	: TypeEditorView(B_TRANSLATE("String editor"), 0, editor)
 {
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-	SetLayout(new BGroupLayout(B_VERTICAL));
 
 	BStringView *stringView = new BStringView(B_EMPTY_STRING,
 		B_TRANSLATE("Contents:"));
-	stringView->ResizeToPreferred();
-	AddChild(stringView);
 
 	fTextView = new BTextView(B_EMPTY_STRING, B_WILL_DRAW);
+	BScrollView* scrollView = new BScrollView("scroller", fTextView, 0, true, true);
 
-	BScrollView* scrollView = new BScrollView("scroller", fTextView,
-		B_WILL_DRAW, true, true);
-	AddChild(scrollView);
+	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
+		.SetInsets(0, B_USE_WINDOW_INSETS)
+		.Add(stringView)
+		.Add(scrollView);
 }
 
 
@@ -280,22 +271,18 @@ StringEditor::MessageReceived(BMessage *message)
 //	#pragma mark - MimeTypeEditor
 
 
-MimeTypeEditor::MimeTypeEditor(BRect rect, DataEditor& editor)
-	: TypeEditorView(rect, B_TRANSLATE("MIME type editor"), B_FOLLOW_LEFT_RIGHT, 0, editor)
+MimeTypeEditor::MimeTypeEditor(DataEditor& editor)
+	: TypeEditorView(B_TRANSLATE("MIME type editor"), 0, editor)
 {
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+	SetHighUIColor(B_PANEL_TEXT_COLOR);
 
-	fTextControl = new BTextControl(rect.InsetByCopy(5, 5), B_EMPTY_STRING,
-		B_TRANSLATE("MIME type:"), NULL, new BMessage(kMsgValueChanged), B_FOLLOW_ALL);
-	fTextControl->SetDivider(StringWidth(fTextControl->Label()) + 8);
+	fTextControl = new BTextControl(B_EMPTY_STRING, B_TRANSLATE("MIME type:"), NULL,
+		new BMessage(kMsgValueChanged));
 
-	float width, height;
-	fTextControl->GetPreferredSize(&width, &height);
-	fTextControl->ResizeTo(rect.Width() - 10, height);
-
-	ResizeTo(rect.Width(), height + 10);
-
-	AddChild(fTextControl);
+	BLayoutBuilder::Group<>(this, B_VERTICAL)
+		.SetInsets(0, B_USE_WINDOW_INSETS)
+		.Add(fTextControl);
 }
 
 
@@ -371,18 +358,19 @@ MimeTypeEditor::MessageReceived(BMessage *message)
 //	#pragma mark - NumberEditor
 
 
-NumberEditor::NumberEditor(BRect rect, DataEditor &editor)
-	: TypeEditorView(rect, B_TRANSLATE("Number editor"), B_FOLLOW_LEFT_RIGHT, 0, editor)
+NumberEditor::NumberEditor(DataEditor &editor)
+	: TypeEditorView(B_TRANSLATE("Number editor"), 0, editor)
 {
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+	SetHighUIColor(B_PANEL_TEXT_COLOR);
 
-	fTextControl = new BTextControl(rect.InsetByCopy(5, 5), B_EMPTY_STRING,
-		_TypeLabel(), NULL, new BMessage(kMsgValueChanged), B_FOLLOW_ALL);
-	fTextControl->SetDivider(StringWidth(fTextControl->Label()) + 8);
+	fTextControl = new BTextControl(B_EMPTY_STRING, _TypeLabel(), NULL,
+		new BMessage(kMsgValueChanged));
 	fTextControl->SetAlignment(B_ALIGN_RIGHT, B_ALIGN_RIGHT);
-	ResizeTo(rect.Width(), 30);
 
-	AddChild(fTextControl);
+	BLayoutBuilder::Group<>(this, B_VERTICAL)
+		.SetInsets(0, B_USE_WINDOW_INSETS)
+		.Add(fTextControl);
 }
 
 
@@ -690,7 +678,7 @@ NumberEditor::_Format(char *buffer)
 			return B_OK;
 		case B_INT64_TYPE:
 		case B_OFF_T_TYPE:
-			strcpy(buffer, "%Ld");
+			strcpy(buffer, "%lld");
 			return B_OK;
 		case B_UINT64_TYPE:
 			strcpy(buffer, "%Lu");
@@ -747,10 +735,11 @@ NumberEditor::MessageReceived(BMessage *message)
 //	#pragma mark - BooleanEditor
 
 
-BooleanEditor::BooleanEditor(BRect rect, DataEditor &editor)
-	: TypeEditorView(rect, B_TRANSLATE("Boolean editor"), B_FOLLOW_NONE, 0, editor)
+BooleanEditor::BooleanEditor(DataEditor &editor)
+	: TypeEditorView(B_TRANSLATE("Boolean editor"), 0, editor)
 {
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+	SetHighUIColor(B_PANEL_TEXT_COLOR);
 
 	BPopUpMenu *menu = new BPopUpMenu("bool");
 	BMessage *message;
@@ -760,16 +749,13 @@ BooleanEditor::BooleanEditor(BRect rect, DataEditor &editor)
 		message = new BMessage(kMsgValueChanged)));
 	message->AddInt8("value", 1);
 
-	BMenuField *menuField = new BMenuField(rect.InsetByCopy(5, 5),
-		B_EMPTY_STRING, B_TRANSLATE("Boolean value:"), menu, B_FOLLOW_LEFT_RIGHT);
-	menuField->SetDivider(StringWidth(menuField->Label()) + 8);
-	menuField->ResizeToPreferred();
-	ResizeTo(menuField->Bounds().Width() + 10,
-		menuField->Bounds().Height() + 10);
+	BMenuField *menuField = new BMenuField(B_EMPTY_STRING, B_TRANSLATE("Boolean value:"), menu);
 
 	_UpdateMenuField();
 
-	AddChild(menuField);
+	BLayoutBuilder::Group<>(this, B_VERTICAL)
+		.SetInsets(0, B_USE_WINDOW_INSETS)
+		.Add(menuField);
 }
 
 
@@ -853,11 +839,10 @@ ImageView::ImageView(DataEditor &editor)
 {
 	if (editor.Type() == B_MINI_ICON_TYPE
 		|| editor.Type() == B_LARGE_ICON_TYPE
-#ifdef HAIKU_TARGET_PLATFORM_HAIKU
-		|| editor.Type() == B_VECTOR_ICON_TYPE
-#endif
-		)
+		|| editor.Type() == B_VECTOR_ICON_TYPE) {
 		SetName(B_TRANSLATE("Icon view"));
+	}
+
 
 	fDescriptionView = new BStringView("",
 		B_TRANSLATE_COMMENT("Could not read image", "Image means "
@@ -903,10 +888,7 @@ ImageView::~ImageView()
 void
 ImageView::AttachedToWindow()
 {
-	if (Parent() != NULL)
-		SetViewColor(Parent()->ViewColor());
-	else
-		SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 
 	fEditor.StartWatching(this);
 	if (fScaleSlider != NULL)
@@ -946,7 +928,8 @@ ImageView::Draw(BRect updateRect)
 {
 	if (fBitmap != NULL) {
 		SetDrawingMode(B_OP_ALPHA);
-		DrawBitmap(fBitmap, BPoint((Bounds().Width() - fBitmap->Bounds().Width()) / 2, 0));
+		DrawBitmap(fBitmap, BPoint((Bounds().Width() - fBitmap->Bounds().Width()) / 2,
+			(Bounds().Height() - fBitmap->Bounds().Height() - 60) / 2));
 		SetDrawingMode(B_OP_COPY);
 	}
 }
@@ -979,7 +962,6 @@ ImageView::_UpdateImage()
 		fEditor.SetViewSize(viewSize);
 		return;
 	}
-#ifdef HAIKU_TARGET_PLATFORM_HAIKU
 	if (fBitmap != NULL && fEditor.Type() == B_VECTOR_ICON_TYPE
 		&& fScaleSlider->Value() * 8 - 1 == fBitmap->Bounds().Width()) {
 		if (BIconUtils::GetVectorIcon((const uint8 *)data,
@@ -988,7 +970,6 @@ ImageView::_UpdateImage()
 			return;
 		}
 	}
-#endif
 
 	delete fBitmap;
 	fBitmap = NULL;
@@ -1004,7 +985,6 @@ ImageView::_UpdateImage()
 			if (fBitmap->InitCheck() == B_OK)
 				fBitmap->SetBits(data, fEditor.FileSize(), 0, B_CMAP8);
 			break;
-#ifdef HAIKU_TARGET_PLATFORM_HAIKU
 		case B_VECTOR_ICON_TYPE:
 			fBitmap = new BBitmap(BRect(0, 0, fScaleSlider->Value() * 8 - 1,
 				fScaleSlider->Value() * 8 - 1), B_RGB32);
@@ -1015,7 +995,6 @@ ImageView::_UpdateImage()
 				fBitmap = NULL;
 			}
 			break;
-#endif
 		case B_PNG_FORMAT:
 		{
 			BMemoryIO stream(data, fEditor.FileSize());
@@ -1047,9 +1026,7 @@ ImageView::_UpdateImage()
 		switch (fEditor.Type()) {
 			case B_MINI_ICON_TYPE:
 			case B_LARGE_ICON_TYPE:
-#ifdef HAIKU_TARGET_PLATFORM_HAIKU
 			case B_VECTOR_ICON_TYPE:
-#endif
 				type = B_TRANSLATE("Icon");
 				break;
 			case B_PNG_FORMAT:
@@ -1090,7 +1067,8 @@ ImageView::_UpdateImage()
 				colorSpace = B_TRANSLATE("Unknown format");
 				break;
 		}
-		snprintf(buffer, sizeof(buffer), "%s, %g x %g, %s", type,
+		snprintf(buffer, sizeof(buffer), B_TRANSLATE_COMMENT("%s, %g × %g, %s",
+			"The '×' is the Unicode multiplication sign U+00D7"), type,
 			fBitmap->Bounds().Width() + 1, fBitmap->Bounds().Height() + 1,
 			colorSpace);
 		fDescriptionView->SetText(buffer);
@@ -1116,24 +1094,22 @@ ImageView::_UpdateImage()
 //	#pragma mark - MessageView
 
 
-MessageView::MessageView(BRect rect, DataEditor &editor)
-	: TypeEditorView(rect, B_TRANSLATE("Message View"), B_FOLLOW_ALL, 0, editor)
+MessageView::MessageView(DataEditor &editor)
+	: TypeEditorView(B_TRANSLATE("Message View"), 0, editor)
 {
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+	SetHighUIColor(B_PANEL_TEXT_COLOR);
 
-	rect = Bounds().InsetByCopy(10, 10);
-	rect.right -= B_V_SCROLL_BAR_WIDTH;
-	rect.bottom -= B_H_SCROLL_BAR_HEIGHT;
-
-	fTextView = new BTextView(rect, B_EMPTY_STRING,
-		rect.OffsetToCopy(B_ORIGIN).InsetByCopy(5, 5),
-		B_FOLLOW_ALL, B_WILL_DRAW);
+	fTextView = new BTextView(B_EMPTY_STRING, B_WILL_DRAW);
 	fTextView->SetViewUIColor(ViewUIColor());
 	fTextView->SetLowUIColor(ViewUIColor());
 
 	BScrollView *scrollView = new BScrollView("scroller", fTextView,
 		B_FOLLOW_ALL, B_WILL_DRAW, true, true);
-	AddChild(scrollView);
+
+	BLayoutBuilder::Group<>(this, B_VERTICAL)
+		.SetInsets(0, B_USE_WINDOW_INSETS)
+		.Add(scrollView);
 }
 
 
@@ -1177,9 +1153,6 @@ MessageView::SetTo(BMessage& message)
 
 	type_code type;
 	int32 count;
-#ifdef HAIKU_TARGET_PLATFORM_DANO
-	const
-#endif
 	char* name;
 	for (int32 i = 0; message.GetInfo(B_ANY_TYPE, i, &name, &type, &count)
 			== B_OK; i++) {
@@ -1297,15 +1270,15 @@ MessageView::MessageReceived(BMessage* message)
 
 
 TypeEditorView*
-GetTypeEditorFor(BRect rect, DataEditor& editor)
+GetTypeEditorFor(DataEditor& editor)
 {
 	switch (editor.Type()) {
 		case B_STRING_TYPE:
 			return new StringEditor(editor);
 		case B_MIME_STRING_TYPE:
-			return new MimeTypeEditor(rect, editor);
+			return new MimeTypeEditor(editor);
 		case B_BOOL_TYPE:
-			return new BooleanEditor(rect, editor);
+			return new BooleanEditor(editor);
 		case B_INT8_TYPE:
 		case B_UINT8_TYPE:
 		case B_INT16_TYPE:
@@ -1320,16 +1293,14 @@ GetTypeEditorFor(BRect rect, DataEditor& editor)
 		case B_SIZE_T_TYPE:
 		case B_OFF_T_TYPE:
 		case B_POINTER_TYPE:
-			return new NumberEditor(rect, editor);
+			return new NumberEditor(editor);
 		case B_MESSAGE_TYPE:
 			// TODO: check for archived bitmaps!!!
-			return new MessageView(rect, editor);
+			return new MessageView(editor);
 		case B_MINI_ICON_TYPE:
 		case B_LARGE_ICON_TYPE:
 		case B_PNG_FORMAT:
-#ifdef HAIKU_TARGET_PLATFORM_HAIKU
 		case B_VECTOR_ICON_TYPE:
-#endif
 			return new ImageView(editor);
 	}
 
@@ -1357,7 +1328,7 @@ GetNthTypeEditor(int32 index, const char** _name)
 
 
 TypeEditorView*
-GetTypeEditorAt(int32 index, BRect rect, DataEditor& editor)
+GetTypeEditorAt(int32 index, DataEditor& editor)
 {
 	TypeEditorView* view = NULL;
 
@@ -1366,13 +1337,13 @@ GetTypeEditorAt(int32 index, BRect rect, DataEditor& editor)
 			view = new StringEditor(editor);
 			break;
 		case 1:
-			view = new NumberEditor(rect, editor);
+			view = new NumberEditor(editor);
 			break;
 		case 2:
-			view = new BooleanEditor(rect, editor);
+			view = new BooleanEditor(editor);
 			break;
 		case 3:
-			view = new MessageView(rect, editor);
+			view = new MessageView(editor);
 			break;
 		case 4:
 			view = new ImageView(editor);

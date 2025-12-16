@@ -19,6 +19,7 @@
 #include <thread.h>
 #include <thread_types.h>
 #include <util/AutoLock.h>
+#include <util/ThreadAutoLock.h>
 #include <vfs.h>
 
 #include <AutoDeleter.h>
@@ -161,15 +162,20 @@ common_setreuid(uid_t ruid, uid_t euid, bool setAllIfPrivileged, bool kernel)
 }
 
 
-ssize_t
+static ssize_t
 common_getgroups(int groupCount, gid_t* groupList, bool kernel)
 {
 	Team* team = thread_get_current_thread()->team;
 
 	TeamLocker teamLocker(team);
 
-	const gid_t* groups = team->supplementary_groups;
-	int actualCount = team->supplementary_group_count;
+	const gid_t* groups = NULL;
+	int actualCount = 0;
+
+	if (team->supplementary_groups != NULL) {
+		groups = team->supplementary_groups->groups;
+		actualCount = team->supplementary_groups->count;
+	}
 
 	// follow the specification and return always at least one group
 	if (actualCount == 0) {
@@ -206,35 +212,34 @@ common_setgroups(int groupCount, const gid_t* groupList, bool kernel)
 	if (groupCount < 0 || groupCount > NGROUPS_MAX)
 		return B_BAD_VALUE;
 
-	gid_t* newGroups = NULL;
+	BKernel::GroupsArray* newGroups = NULL;
 	if (groupCount > 0) {
-		newGroups = (gid_t*)malloc_referenced(sizeof(gid_t) * groupCount);
+		newGroups = (BKernel::GroupsArray*)malloc(sizeof(BKernel::GroupsArray)
+			+ (sizeof(gid_t) * groupCount));
 		if (newGroups == NULL)
 			return B_NO_MEMORY;
+		new(newGroups) BKernel::GroupsArray;
 
 		if (kernel) {
-			memcpy(newGroups, groupList, sizeof(gid_t) * groupCount);
+			memcpy(newGroups->groups, groupList, sizeof(gid_t) * groupCount);
 		} else {
 			if (!IS_USER_ADDRESS(groupList)
-				|| user_memcpy(newGroups, groupList,
-					sizeof(gid_t) * groupCount) != B_OK) {
-				malloc_referenced_release(newGroups);
+				|| user_memcpy(newGroups->groups, groupList, sizeof(gid_t) * groupCount) != B_OK) {
+				free(newGroups);
 				return B_BAD_ADDRESS;
 			}
 		}
+		newGroups->count = groupCount;
 	}
 
 	Team* team = thread_get_current_thread()->team;
-
 	TeamLocker teamLocker(team);
 
-	gid_t* toFree = team->supplementary_groups;
-	team->supplementary_groups = newGroups;
-	team->supplementary_group_count = groupCount;
+	BReference<BKernel::GroupsArray> previous = team->supplementary_groups;
+		// so it will not be (potentially) destroyed until after we unlock
+	team->supplementary_groups.SetTo(newGroups, true);
 
 	teamLocker.Unlock();
-
-	malloc_referenced_release(toFree);
 
 	return B_OK;
 }
@@ -255,10 +260,7 @@ inherit_parent_user_and_group(Team* team, Team* parent)
 	team->saved_set_gid = parent->saved_set_gid;
 	team->real_gid = parent->real_gid;
 	team->effective_gid = parent->effective_gid;
-
-	malloc_referenced_acquire(parent->supplementary_groups);
 	team->supplementary_groups = parent->supplementary_groups;
-	team->supplementary_group_count = parent->supplementary_group_count;
 }
 
 
@@ -283,6 +285,26 @@ update_set_id_user_and_group(Team* team, const char* file)
 	}
 
 	return B_OK;
+}
+
+
+bool
+is_in_group(Team* team, gid_t gid)
+{
+	TeamLocker teamLocker(team);
+
+	if (team->effective_gid == gid)
+		return true;
+
+	if (team->supplementary_groups == NULL)
+		return false;
+
+	for (int i = 0; i < team->supplementary_groups->count; i++) {
+		if (gid == team->supplementary_groups->groups[i])
+			return true;
+	}
+
+	return false;
 }
 
 

@@ -11,6 +11,8 @@
 #include <string.h>
 #include <slab/Slab.h>
 
+#include <net_buffer.h>
+
 #include <compat/sys/malloc.h>
 #include <compat/sys/mbuf.h>
 #include <compat/sys/kernel.h>
@@ -171,6 +173,8 @@ struct mbuf *
 m_get2(int size, int how, short type, int flags)
 {
 	if (size <= MHLEN || (size <= MLEN && (flags & M_PKTHDR) == 0)) {
+		return _m_get(how, type, flags);
+	} else if (size <= MCLBYTES) {
 		size = MCLBYTES;
 	} else if (size <= MJUMPAGESIZE) {
 		size = MJUMPAGESIZE;
@@ -309,19 +313,22 @@ m_free(struct mbuf* memoryBuffer)
 status_t
 init_mbufs()
 {
-	sMBufCache = create_object_cache("mbufs", MSIZE, 8, NULL, NULL, NULL);
+	status_t status = get_module(NET_BUFFER_MODULE_NAME, (module_info **)&gBufferModule);
+	if (status != B_OK)
+		goto clean;
+
+	sMBufCache = create_object_cache("mbufs", MSIZE, 0);
 	if (sMBufCache == NULL)
 		goto clean;
-	sChunkCache = create_object_cache("mbuf chunks", MCLBYTES, 0, NULL, NULL,
-		NULL);
+	sChunkCache = create_object_cache("mbuf chunks", MCLBYTES, 0);
 	if (sChunkCache == NULL)
 		goto clean;
-	sJumbo9ChunkCache = create_object_cache("mbuf jumbo9 chunks", MJUM9BYTES, 0,
-		NULL, NULL, NULL);
+	sJumbo9ChunkCache = create_object_cache("mbuf jumbo9 chunks", MJUM9BYTES,
+		CACHE_NO_DEPOT);
 	if (sJumbo9ChunkCache == NULL)
 		goto clean;
-	sJumboPageSizeCache = create_object_cache("mbuf jumbo page size chunks",
-		MJUMPAGESIZE, 0, NULL, NULL, NULL);
+	sJumboPageSizeCache = create_object_cache("mbuf page chunks", MJUMPAGESIZE,
+		CACHE_NO_DEPOT);
 	if (sJumboPageSizeCache == NULL)
 		goto clean;
 	return B_OK;
@@ -333,6 +340,7 @@ clean:
 		delete_object_cache(sChunkCache);
 	if (sMBufCache != NULL)
 		delete_object_cache(sMBufCache);
+	put_module(NET_BUFFER_MODULE_NAME);
 	return B_NO_MEMORY;
 }
 

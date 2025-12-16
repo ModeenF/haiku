@@ -7,17 +7,14 @@
  *		Adrien Destugues, pulkomandy@pulkomandy.tk
  */
 
-#include <iostream>
 #include <cstdio>
 
 #include <UrlRequest.h>
 #include <UrlProtocolListener.h>
 
 using namespace std;
-
-#ifndef LIBNETAPI_DEPRECATED
 using namespace BPrivate::Network;
-#endif
+
 
 void
 BUrlProtocolListener::ConnectionOpened(BUrlRequest*)
@@ -45,31 +42,18 @@ BUrlProtocolListener::ResponseStarted(BUrlRequest*)
 }
 
 
+
 void
-BUrlProtocolListener::HeadersReceived(BUrlRequest*, const BUrlResult& result)
+BUrlProtocolListener::HeadersReceived(BUrlRequest*)
 {
 }
 
 
 void
-BUrlProtocolListener::DataReceived(BUrlRequest*, const char*, off_t, ssize_t)
+BUrlProtocolListener::BytesWritten(BUrlRequest*, size_t)
 {
 }
 
-
-#ifdef LIBNETAPI_DEPRECATED
-void
-BUrlProtocolListener::DownloadProgress(BUrlRequest*, ssize_t, ssize_t)
-{
-}
-
-
-void
-BUrlProtocolListener::UploadProgress(BUrlRequest*, ssize_t, ssize_t)
-{
-}
-
-#else
 
 void
 BUrlProtocolListener::DownloadProgress(BUrlRequest*, off_t, off_t)
@@ -81,7 +65,6 @@ void
 BUrlProtocolListener::UploadProgress(BUrlRequest*, off_t, off_t)
 {
 }
-#endif // LIBNETAPI_DEPRECATED
 
 
 void
@@ -97,24 +80,24 @@ BUrlProtocolListener::DebugMessage(BUrlRequest* caller,
 #ifdef DEBUG
 	switch (type) {
 		case B_URL_PROTOCOL_DEBUG_TEXT:
-			cout << "   ";
+			fprintf(stderr, "   ");
 			break;
-			
+
 		case B_URL_PROTOCOL_DEBUG_ERROR:
-			cout << "!!!";
+			fprintf(stderr, "!!!");
 			break;
-			
+
 		case B_URL_PROTOCOL_DEBUG_TRANSFER_IN:
 		case B_URL_PROTOCOL_DEBUG_HEADER_IN:
-			cout << "<--";
+			fprintf(stderr, "<--");
 			break;
-			
+
 		case B_URL_PROTOCOL_DEBUG_TRANSFER_OUT:
 		case B_URL_PROTOCOL_DEBUG_HEADER_OUT:
-			cout << "-->";
+			fprintf(stderr, "-->");
 			break;
 	}
-	
-	cout << " " << caller->Protocol() << ": " << text << endl;
+
+	fprintf(stderr, " %s: %s\n", caller->Protocol().String(), text);
 #endif
 }

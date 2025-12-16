@@ -82,8 +82,6 @@
 // available.
 #define DEBUG_SPINLOCKS					KDEBUG_LEVEL_2
 
-#define DEBUG_SPINLOCK_LATENCIES		0
-
 
 // VM
 
@@ -93,7 +91,9 @@
 
 // Enables the vm_page::access_count field, which is used to detect invalid
 // concurrent access to the page.
+#ifndef __riscv
 #define DEBUG_PAGE_ACCESS				KDEBUG_LEVEL_2
+#endif
 
 // Enables a global list of all vm_cache structures.
 #define DEBUG_CACHE_LIST				KDEBUG_LEVEL_2
@@ -136,6 +136,7 @@
 // Enables the (boot) system profiler for use with "profile -r"
 #define SYSTEM_PROFILER					0
 #define SYSTEM_PROFILE_SIZE				40 * 1024 * 1024
+#define SYSTEM_PROFILE_SCHEDULING		0
 #define SYSTEM_PROFILE_STACK_DEPTH		10
 #define SYSTEM_PROFILE_INTERVAL			10000
 

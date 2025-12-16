@@ -16,11 +16,8 @@
 #include <vm/VMAddressSpace.h>
 
 
-#define AREA_HASH_TABLE_SIZE 1024
-
-
-rw_lock VMAreaHash::sLock = RW_LOCK_INITIALIZER("area hash");
-VMAreaHashTable VMAreaHash::sTable;
+rw_lock VMAreas::sLock = RW_LOCK_INITIALIZER("areas tree");
+VMAreasTree VMAreas::sTree;
 static area_id sNextAreaID = 1;
 
 
@@ -29,17 +26,14 @@ static area_id sNextAreaID = 1;
 VMArea::VMArea(VMAddressSpace* addressSpace, uint32 wiring, uint32 protection)
 	:
 	protection(protection),
+	protection_max(0),
 	wiring(wiring),
 	memory_type(0),
 	cache(NULL),
-	no_cache_change(0),
 	cache_offset(0),
 	cache_type(0),
 	page_protections(NULL),
-	address_space(addressSpace),
-	cache_next(NULL),
-	cache_prev(NULL),
-	hash_next(NULL)
+	address_space(addressSpace)
 {
 	new (&mappings) VMAreaMappings;
 }
@@ -47,11 +41,8 @@ VMArea::VMArea(VMAddressSpace* addressSpace, uint32 wiring, uint32 protection)
 
 VMArea::~VMArea()
 {
-	const uint32 flags = HEAP_DONT_WAIT_FOR_MEMORY
-		| HEAP_DONT_LOCK_KERNEL_SPACE;
-		// TODO: This might be stricter than necessary.
-
-	free_etc(page_protections, flags);
+	free_etc(page_protections, address_space == VMAddressSpace::Kernel()
+		? HEAP_DONT_WAIT_FOR_MEMORY | HEAP_DONT_LOCK_KERNEL_SPACE : 0);
 }
 
 
@@ -73,7 +64,7 @@ VMArea::Init(const char* name, uint32 allocationFlags)
 bool
 VMArea::IsWired(addr_t base, size_t size) const
 {
-	for (VMAreaWiredRangeList::Iterator it = fWiredRanges.GetIterator();
+	for (VMAreaWiredRangeList::ConstIterator it = fWiredRanges.GetIterator();
 			VMAreaWiredRange* range = it.Next();) {
 		if (range->IntersectsWith(base, size))
 			return true;
@@ -129,7 +120,7 @@ VMArea::Unwire(VMAreaWiredRange* range)
 VMAreaWiredRange*
 VMArea::Unwire(addr_t base, size_t size, bool writable)
 {
-	for (VMAreaWiredRangeList::Iterator it = fWiredRanges.GetIterator();
+	for (VMAreaWiredRangeList::ConstIterator it = fWiredRanges.GetIterator();
 			VMAreaWiredRange* range = it.Next();) {
 		if (range->implicit && range->base == base && range->size == size
 				&& range->writable == writable) {
@@ -183,7 +174,7 @@ bool
 VMArea::AddWaiterIfWired(VMAreaUnwiredWaiter* waiter, addr_t base, size_t size,
 	uint32 flags)
 {
-	for (VMAreaWiredRangeList::Iterator it = fWiredRanges.GetIterator();
+	for (VMAreaWiredRangeList::ConstIterator it = fWiredRanges.GetIterator();
 			VMAreaWiredRange* range = it.Next();) {
 		if ((flags & IGNORE_WRITE_WIRED_RANGES) != 0 && range->writable)
 			continue;
@@ -205,18 +196,19 @@ VMArea::AddWaiterIfWired(VMAreaUnwiredWaiter* waiter, addr_t base, size_t size,
 }
 
 
-// #pragma mark - VMAreaHash
+// #pragma mark - VMAreas
 
 
 /*static*/ status_t
-VMAreaHash::Init()
+VMAreas::Init()
 {
-	return sTable.Init(AREA_HASH_TABLE_SIZE);
+	new(&sTree) VMAreasTree;
+	return B_OK;
 }
 
 
 /*static*/ VMArea*
-VMAreaHash::Lookup(area_id id)
+VMAreas::Lookup(area_id id)
 {
 	ReadLock();
 	VMArea* area = LookupLocked(id);
@@ -226,7 +218,7 @@ VMAreaHash::Lookup(area_id id)
 
 
 /*static*/ area_id
-VMAreaHash::Find(const char* name)
+VMAreas::Find(const char* name)
 {
 	ReadLock();
 
@@ -235,7 +227,7 @@ VMAreaHash::Find(const char* name)
 	// TODO: Iterating through the whole table can be very slow and the whole
 	// time we're holding the lock! Use a second hash table!
 
-	for (VMAreaHashTable::Iterator it = sTable.GetIterator();
+	for (VMAreasTree::Iterator it = sTree.GetIterator();
 			VMArea* area = it.Next();) {
 		if (strcmp(area->name, name) == 0) {
 			id = area->id;
@@ -249,19 +241,20 @@ VMAreaHash::Find(const char* name)
 }
 
 
-/*static*/ void
-VMAreaHash::Insert(VMArea* area)
+/*static*/ status_t
+VMAreas::Insert(VMArea* area)
 {
 	WriteLock();
-	sTable.InsertUnchecked(area);
+	status_t status = sTree.Insert(area);
 	WriteUnlock();
+	return status;
 }
 
 
 /*static*/ void
-VMAreaHash::Remove(VMArea* area)
+VMAreas::Remove(VMArea* area)
 {
 	WriteLock();
-	sTable.RemoveUnchecked(area);
+	sTree.Remove(area);
 	WriteUnlock();
 }

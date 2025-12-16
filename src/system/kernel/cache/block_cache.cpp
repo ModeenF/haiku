@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/uio.h>
 
 #include <KernelExport.h>
 #include <fs_cache.h>
@@ -22,8 +23,12 @@
 #include <util/kernel_cpp.h>
 #include <util/DoublyLinkedList.h>
 #include <util/AutoLock.h>
+#include <StackOrHeapArray.h>
 #include <vm/vm_page.h>
 
+#ifndef BUILDING_USERLAND_FS_SERVER
+#include "IORequest.h"
+#endif // !BUILDING_USERLAND_FS_SERVER
 #include "kernel_debug_config.h"
 
 
@@ -118,6 +123,7 @@ typedef DoublyLinkedList<cached_block,
 	DoublyLinkedListMemberGetLink<cached_block,
 		&cached_block::link> > block_list;
 
+
 struct cache_notification : DoublyLinkedListLinkImpl<cache_notification> {
 	static inline void* operator new(size_t size);
 	static inline void operator delete(void* block);
@@ -132,8 +138,6 @@ struct cache_notification : DoublyLinkedListLinkImpl<cache_notification> {
 
 typedef DoublyLinkedList<cache_notification> NotificationList;
 
-static object_cache* sCacheNotificationCache;
-
 struct cache_listener;
 typedef DoublyLinkedListLink<cache_listener> listener_link;
 
@@ -144,6 +148,8 @@ struct cache_listener : cache_notification {
 typedef DoublyLinkedList<cache_listener,
 	DoublyLinkedListMemberGetLink<cache_listener,
 		&cache_listener::link> > ListenerList;
+
+static object_cache* sCacheNotificationCache;
 
 void*
 cache_notification::operator new(size_t size)
@@ -210,16 +216,17 @@ typedef BOpenHashTable<TransactionHash> TransactionTable;
 
 
 struct block_cache : DoublyLinkedListLinkImpl<block_cache> {
-	BlockTable*		hash;
-	mutex			lock;
-	int				fd;
+	rw_lock			lock;
+	BlockTable		hash;
+	const int		fd;
 	off_t			max_blocks;
-	size_t			block_size;
+	const size_t	block_size;
 	int32			next_transaction_id;
 	cache_transaction* last_transaction;
-	TransactionTable* transaction_hash;
+	TransactionTable transaction_hash;
 
 	object_cache*	buffer_cache;
+	spinlock		unused_blocks_lock;
 	block_list		unused_blocks;
 	uint32			unused_block_count;
 
@@ -235,7 +242,7 @@ struct block_cache : DoublyLinkedListLinkImpl<block_cache> {
 	bigtime_t		last_block_write_duration;
 
 	uint32			num_dirty_blocks;
-	bool			read_only;
+	const bool		read_only;
 
 	NotificationList pending_notifications;
 	ConditionVariable condition_variable;
@@ -302,7 +309,7 @@ public:
 
 private:
 			void*				_Data(cached_block* block) const;
-			status_t			_WriteBlock(cached_block* block);
+			status_t			_WriteBlocks(cached_block** blocks, uint32 count);
 			void				_BlockDone(cached_block* block,
 									cache_transaction* transaction);
 			void				_UnmarkWriting(cached_block* block);
@@ -325,11 +332,42 @@ private:
 };
 
 
+#ifndef BUILDING_USERLAND_FS_SERVER
+class BlockPrefetcher {
+public:
+								BlockPrefetcher(block_cache* cache, off_t fBlockNumber,
+									size_t numBlocks);
+								~BlockPrefetcher();
+
+			status_t			Allocate();
+			status_t			ReadAsync(WriteLocker& cacheLocker);
+
+			size_t				NumAllocated() { return fNumAllocated; }
+
+private:
+	static	void			_IOFinishedCallback(void* cookie, io_request* request,
+									status_t status, bool partialTransfer,
+									generic_size_t bytesTransferred);
+			void			_IOFinished(status_t status, generic_size_t bytesTransferred);
+
+			void				_RemoveAllocated(size_t unbusyCount, size_t removeCount);
+
+private:
+			block_cache* 		fCache;
+			off_t				fBlockNumber;
+			size_t				fNumRequested;
+			size_t				fNumAllocated;
+			cached_block** 		fBlocks;
+			generic_io_vec* 	fDestVecs;
+};
+#endif // !BUILDING_USERLAND_FS_SERVER
+
+
 class TransactionLocking {
 public:
 	inline bool Lock(block_cache* cache)
 	{
-		mutex_lock(&cache->lock);
+		rw_lock_write_lock(&cache->lock);
 
 		while (cache->busy_writing_count != 0) {
 			// wait for all blocks to be written
@@ -337,11 +375,11 @@ public:
 			cache->busy_writing_condition.Add(&entry);
 			cache->busy_writing_waiters = true;
 
-			mutex_unlock(&cache->lock);
+			rw_lock_write_unlock(&cache->lock);
 
 			entry.Wait();
 
-			mutex_lock(&cache->lock);
+			rw_lock_write_lock(&cache->lock);
 		}
 
 		return true;
@@ -349,7 +387,7 @@ public:
 
 	inline void Unlock(block_cache* cache)
 	{
-		mutex_unlock(&cache->lock);
+		rw_lock_write_unlock(&cache->lock);
 	}
 };
 
@@ -775,6 +813,10 @@ static DoublyLinkedListLink<block_cache> sMarkCache;
 static object_cache* sBlockCache;
 
 
+static void mark_block_busy_reading(block_cache* cache, cached_block* block);
+static void mark_block_unbusy_reading(block_cache* cache, cached_block* block);
+
+
 //	#pragma mark - notifications/listener
 
 
@@ -1034,7 +1076,7 @@ delete_transaction(block_cache* cache, cache_transaction* transaction)
 static cache_transaction*
 lookup_transaction(block_cache* cache, int32 id)
 {
-	return cache->transaction_hash->Lookup(id);
+	return cache->transaction_hash.Lookup(id);
 }
 
 
@@ -1203,33 +1245,42 @@ BlockWriter::Write(cache_transaction* transaction, bool canUnlock)
 		return B_OK;
 
 	if (canUnlock)
-		mutex_unlock(&fCache->lock);
+		rw_lock_write_unlock(&fCache->lock);
 
-	// Sort blocks in their on-disk order
-	// TODO: ideally, this should be handled by the I/O scheduler
-
+	// Sort blocks in their on-disk order, so we can merge consecutive writes.
 	qsort(fBlocks, fCount, sizeof(void*), &_CompareBlocks);
 	fDeletedTransaction = false;
 
 	bigtime_t start = system_time();
 
 	for (uint32 i = 0; i < fCount; i++) {
-		status_t status = _WriteBlock(fBlocks[i]);
+		uint32 blocks = 1;
+		for (; (i + blocks) < fCount && blocks < IOV_MAX; blocks++) {
+			const uint32 j = i + blocks;
+			if (fBlocks[j]->block_number != (fBlocks[j - 1]->block_number + 1))
+				break;
+		}
+
+		status_t status = _WriteBlocks(fBlocks + i, blocks);
 		if (status != B_OK) {
 			// propagate to global error handling
 			if (fStatus == B_OK)
 				fStatus = status;
 
-			_UnmarkWriting(fBlocks[i]);
-			fBlocks[i] = NULL;
-				// This block will not be marked clean
+			for (uint32 j = i; j < (i + blocks); j++) {
+				_UnmarkWriting(fBlocks[j]);
+				fBlocks[j] = NULL;
+					// This block will not be marked clean
+			}
 		}
+
+		i += (blocks - 1);
 	}
 
 	bigtime_t finish = system_time();
 
 	if (canUnlock)
-		mutex_lock(&fCache->lock);
+		rw_lock_write_lock(&fCache->lock);
 
 	if (fStatus == B_OK && fCount >= 8) {
 		fCache->last_block_write = finish;
@@ -1271,26 +1322,35 @@ BlockWriter::_Data(cached_block* block) const
 
 
 status_t
-BlockWriter::_WriteBlock(cached_block* block)
+BlockWriter::_WriteBlocks(cached_block** blocks, uint32 count)
 {
-	ASSERT(block->busy_writing);
+	const size_t blockSize = fCache->block_size;
 
-	TRACE(("BlockWriter::_WriteBlock(block %" B_PRIdOFF ")\n", block->block_number));
-	TB(Write(fCache, block));
-	TB2(BlockData(fCache, block, "before write"));
+	BStackOrHeapArray<iovec, 8> vecs(count);
+	for (uint32 i = 0; i < count; i++) {
+		cached_block* block = blocks[i];
+		ASSERT(block->busy_writing);
+		ASSERT(i == 0 || block->block_number == (blocks[i - 1]->block_number + 1));
 
-	size_t blockSize = fCache->block_size;
+		TRACE(("BlockWriter::_WriteBlocks(block %" B_PRIdOFF ", count %" B_PRIu32 ")\n",
+			block->block_number, count));
+		TB(Write(fCache, block));
+		TB2(BlockData(fCache, block, "before write"));
 
-	ssize_t written = write_pos(fCache->fd,
-		block->block_number * blockSize, _Data(block), blockSize);
+		vecs[i].iov_base = _Data(block);
+		vecs[i].iov_len = blockSize;
+	}
 
-	if (written != (ssize_t)blockSize) {
+	ssize_t written = writev_pos(fCache->fd,
+		blocks[0]->block_number * blockSize, vecs, count);
+
+	if (written != (ssize_t)(blockSize * count)) {
 		TB(Error(fCache, block->block_number, "write failed", written));
-		TRACE_ALWAYS("could not write back block %" B_PRIdOFF " (%s)\n",
-			block->block_number, strerror(errno));
-		if (written < 0)
-			return errno;
-
+		status_t error = errno;
+		TRACE_ALWAYS("could not write back %" B_PRIu32 " blocks (start block %" B_PRIdOFF
+			"): %s\n", count, blocks[0]->block_number, strerror(error));
+		if (written < 0 && error != 0)
+			return error;
 		return B_IO_ERROR;
 	}
 
@@ -1340,9 +1400,9 @@ BlockWriter::_BlockDone(cached_block* block,
 				// use RemoveUnchecked so the iterator is still valid. A regular
 				// Remove can trigger a resize of the hash table which would
 				// result in the linked items in the table changing order.
-				fCache->transaction_hash->RemoveUnchecked(transaction);
+				fCache->transaction_hash.RemoveUnchecked(transaction);
 			} else
-				fCache->transaction_hash->Remove(previous);
+				fCache->transaction_hash.Remove(previous);
 
 			delete_transaction(fCache, previous);
 			fDeletedTransaction = true;
@@ -1391,19 +1451,200 @@ BlockWriter::_CompareBlocks(const void* _blockA, const void* _blockB)
 }
 
 
+#ifndef BUILDING_USERLAND_FS_SERVER
+//	#pragma mark - BlockPrefetcher
+
+
+BlockPrefetcher::BlockPrefetcher(block_cache* cache, off_t blockNumber, size_t numBlocks)
+	:
+	fCache(cache),
+	fBlockNumber(blockNumber),
+	fNumRequested(numBlocks),
+	fNumAllocated(0)
+{
+	fBlocks = new cached_block*[numBlocks];
+	fDestVecs = new generic_io_vec[numBlocks];
+}
+
+
+BlockPrefetcher::~BlockPrefetcher()
+{
+	delete[] fBlocks;
+	delete[] fDestVecs;
+}
+
+
+/*!	Allocates cached_block objects in preparation for prefetching.
+	@return If an error is returned, then no blocks have been allocated.
+	@post Blocks have been constructed (including allocating the current_data member)
+	but current_data is uninitialized.
+*/
+status_t
+BlockPrefetcher::Allocate()
+{
+	TRACE(("BlockPrefetcher::Allocate: looking up %" B_PRIuSIZE " blocks, starting with %"
+		B_PRIdOFF "\n", fNumBlocks, fBlockNumber));
+
+	ASSERT_LOCKED_MUTEX(&fCache->lock);
+
+	size_t finalNumBlocks = fNumRequested;
+
+	// determine whether any requested blocks are already cached
+	for (size_t i = 0; i < fNumRequested; ++i) {
+		off_t blockNumIter = fBlockNumber + i;
+		if (blockNumIter < 0 || blockNumIter >= fCache->max_blocks) {
+			panic("BlockPrefetcher::Allocate: invalid block number %" B_PRIdOFF " (max %"
+				B_PRIdOFF ")", blockNumIter, fCache->max_blocks - 1);
+			return B_BAD_VALUE;
+		}
+		cached_block* block = fCache->hash.Lookup(blockNumIter);
+		if (block != NULL) {
+			// truncate the request
+			TRACE(("BlockPrefetcher::Allocate: found an existing block (%" B_PRIdOFF ")\n",
+				blockNumIter));
+			fBlocks[i] = NULL;
+			finalNumBlocks = i;
+			break;
+		}
+	}
+
+	// allocate the blocks
+	for (size_t i = 0; i < finalNumBlocks; ++i) {
+		cached_block* block = fCache->NewBlock(fBlockNumber + i);
+		if (block == NULL) {
+			_RemoveAllocated(0, i);
+			return B_NO_MEMORY;
+		}
+		fCache->hash.Insert(block);
+
+		block->unused = true;
+		fCache->unused_blocks.Add(block);
+		fCache->unused_block_count++;
+
+		fBlocks[i] = block;
+	}
+
+	fNumAllocated = finalNumBlocks;
+
+	return B_OK;
+}
+
+
+/*!	Schedules reads from disk to cache.
+	\post The calling object will eventually be deleted by IOFinishedCallback.
+*/
+status_t
+BlockPrefetcher::ReadAsync(WriteLocker& cacheLocker)
+{
+	TRACE(("BlockPrefetcher::Read: reading %" B_PRIuSIZE " blocks\n", fNumAllocated));
+
+	size_t blockSize = fCache->block_size;
+	generic_io_vec* vecs = fDestVecs;
+	for (size_t i = 0; i < fNumAllocated; ++i) {
+		vecs[i].base = reinterpret_cast<generic_addr_t>(fBlocks[i]->current_data);
+		vecs[i].length = blockSize;
+		mark_block_busy_reading(fCache, fBlocks[i]);
+	}
+
+	IORequest* request = new IORequest;
+	status_t status = request->Init(fBlockNumber * blockSize, vecs, fNumAllocated,
+		fNumAllocated * blockSize, false, B_DELETE_IO_REQUEST);
+	if (status != B_OK) {
+		TB(Error(fCache, fBlockNumber, "IORequest::Init starting here failed", status));
+		TRACE_ALWAYS("BlockPrefetcher::Read: failed to initialize IO request for %" B_PRIuSIZE
+			" blocks starting with %" B_PRIdOFF ": %s\n",
+			fNumAllocated, fBlockNumber, strerror(status));
+
+		_RemoveAllocated(fNumAllocated, fNumAllocated);
+		delete request;
+		return status;
+	}
+
+	request->SetFinishedCallback(_IOFinishedCallback, this);
+
+	// do_fd_io() may invoke callbacks directly, so we need to have unlocked the cache.
+	cacheLocker.Unlock();
+
+	return do_fd_io(fCache->fd, request);
+}
+
+
+/*static*/ void
+BlockPrefetcher::_IOFinishedCallback(void* cookie, io_request* request, status_t status,
+	bool partialTransfer, generic_size_t bytesTransferred)
+{
+	TRACE(("BlockPrefetcher::_IOFinishedCallback: status %s, partial %d\n",
+		strerror(status), partialTransfer));
+	((BlockPrefetcher*)cookie)->_IOFinished(status, bytesTransferred);
+}
+
+
+void
+BlockPrefetcher::_IOFinished(status_t status, generic_size_t bytesTransferred)
+{
+	WriteLocker locker(&fCache->lock);
+
+	if (bytesTransferred < (fNumAllocated * fCache->block_size)) {
+		_RemoveAllocated(fNumAllocated, fNumAllocated);
+
+		TB(Error(cache, fBlockNumber, "prefetch starting here failed", status));
+		TRACE_ALWAYS("BlockPrefetcher::_IOFinished: transferred only %" B_PRIuGENADDR
+			" bytes in attempt to read %" B_PRIuSIZE " blocks (start block %" B_PRIdOFF "): %s\n",
+			bytesTransferred, fNumAllocated, fBlockNumber, strerror(status));
+	} else {
+		for (size_t i = 0; i < fNumAllocated; i++) {
+			TB(Read(cache, fBlockNumber + i));
+			mark_block_unbusy_reading(fCache, fBlocks[i]);
+			fBlocks[i]->last_accessed = system_time() / 1000000L;
+		}
+	}
+
+	delete this;
+}
+
+
+/*!	Cleans up blocks that were allocated for prefetching when an in-progress prefetch
+	is cancelled.
+*/
+void
+BlockPrefetcher::_RemoveAllocated(size_t unbusyCount, size_t removeCount)
+{
+	TRACE(("BlockPrefetcher::_RemoveAllocated:  unbusy %" B_PRIuSIZE " and remove %" B_PRIuSIZE
+		" starting with %" B_PRIdOFF "\n", unbusyCount, removeCount, (*fBlocks)->block_number));
+
+	ASSERT_LOCKED_MUTEX(&fCache->lock);
+
+	for (size_t i = 0; i < unbusyCount; ++i)
+		mark_block_unbusy_reading(fCache, fBlocks[i]);
+
+	for (size_t i = 0; i < removeCount; ++i) {
+		ASSERT(fBlocks[i]->is_dirty == false && fBlocks[i]->unused == true);
+
+		fCache->unused_blocks.Remove(fBlocks[i]);
+		fCache->unused_block_count--;
+
+		fCache->RemoveBlock(fBlocks[i]);
+		fBlocks[i] = NULL;
+	}
+
+	fNumAllocated = 0;
+
+	return;
+}
+#endif // !BUILDING_USERLAND_FS_SERVER
+
+
 //	#pragma mark - block_cache
 
 
 block_cache::block_cache(int _fd, off_t numBlocks, size_t blockSize,
 		bool readOnly)
 	:
-	hash(NULL),
 	fd(_fd),
 	max_blocks(numBlocks),
 	block_size(blockSize),
 	next_transaction_id(1),
 	last_transaction(NULL),
-	transaction_hash(NULL),
 	buffer_cache(NULL),
 	unused_block_count(0),
 	busy_reading_count(0),
@@ -1423,34 +1664,31 @@ block_cache::~block_cache()
 {
 	unregister_low_resource_handler(&_LowMemoryHandler, this);
 
-	delete transaction_hash;
-	delete hash;
-
 	delete_object_cache(buffer_cache);
 
-	mutex_destroy(&lock);
+	rw_lock_destroy(&lock);
 }
 
 
 status_t
 block_cache::Init()
 {
+	rw_lock_init(&lock, "block cache");
+	B_INITIALIZE_SPINLOCK(&unused_blocks_lock);
+
 	busy_reading_condition.Init(this, "cache block busy_reading");
 	busy_writing_condition.Init(this, "cache block busy writing");
 	condition_variable.Init(this, "cache transaction sync");
-	mutex_init(&lock, "block cache");
 
-	buffer_cache = create_object_cache_etc("block cache buffers", block_size,
-		8, 0, 0, 0, CACHE_LARGE_SLAB, NULL, NULL, NULL, NULL);
+	buffer_cache = create_object_cache("block cache buffers", block_size,
+		CACHE_NO_DEPOT | CACHE_LARGE_SLAB);
 	if (buffer_cache == NULL)
 		return B_NO_MEMORY;
 
-	hash = new BlockTable();
-	if (hash == NULL || hash->Init(1024) != B_OK)
+	if (hash.Init(1024) != B_OK)
 		return B_NO_MEMORY;
 
-	transaction_hash = new(std::nothrow) TransactionTable();
-	if (transaction_hash == NULL || transaction_hash->Init(16) != B_OK)
+	if (transaction_hash.Init(16) != B_OK)
 		return B_NO_MEMORY;
 
 	return register_low_resource_handler(&_LowMemoryHandler, this,
@@ -1606,7 +1844,7 @@ block_cache::RemoveUnusedBlocks(int32 count, int32 minSecondsOld)
 void
 block_cache::RemoveBlock(cached_block* block)
 {
-	hash->Remove(block);
+	hash.Remove(block);
 	FreeBlock(block);
 }
 
@@ -1663,7 +1901,7 @@ block_cache::_LowMemoryHandler(void* data, uint32 resources, int32 level)
 			break;
 	}
 
-	MutexLocker locker(&cache->lock);
+	WriteLocker locker(&cache->lock);
 
 	if (!locker.IsLocked()) {
 		// If our block_cache were deleted, it could be that we had
@@ -1691,6 +1929,7 @@ block_cache::_GetUnusedBlock()
 	for (block_list::Iterator iterator = unused_blocks.GetIterator();
 			cached_block* block = iterator.Next();) {
 		TB(Flush(this, block, true));
+
 		// this can only happen if no transactions are used
 		if (block->is_dirty && !block->busy_writing && !block->discard)
 			BlockWriter::WriteBlock(this, block);
@@ -1698,7 +1937,7 @@ block_cache::_GetUnusedBlock()
 		// remove block from lists
 		iterator.Remove();
 		unused_block_count--;
-		hash->Remove(block);
+		hash.Remove(block);
 
 		ASSERT(block->original_data == NULL && block->parent_data == NULL);
 		block->unused = false;
@@ -1737,7 +1976,7 @@ mark_block_unbusy_reading(block_cache* cache, cached_block* block)
 	cache->busy_reading_count--;
 
 	if ((cache->busy_reading_waiters && cache->busy_reading_count == 0)
-		|| block->busy_reading_waiters) {
+			|| block->busy_reading_waiters) {
 		cache->busy_reading_waiters = false;
 		block->busy_reading_waiters = false;
 		cache->busy_reading_condition.NotifyAll();
@@ -1756,11 +1995,9 @@ wait_for_busy_reading_block(block_cache* cache, cached_block* block)
 		cache->busy_reading_condition.Add(&entry);
 		block->busy_reading_waiters = true;
 
-		mutex_unlock(&cache->lock);
-
+		rw_lock_write_unlock(&cache->lock);
 		entry.Wait();
-
-		mutex_lock(&cache->lock);
+		rw_lock_write_lock(&cache->lock);
 	}
 }
 
@@ -1776,11 +2013,9 @@ wait_for_busy_reading_blocks(block_cache* cache)
 		cache->busy_reading_condition.Add(&entry);
 		cache->busy_reading_waiters = true;
 
-		mutex_unlock(&cache->lock);
-
+		rw_lock_write_unlock(&cache->lock);
 		entry.Wait();
-
-		mutex_lock(&cache->lock);
+		rw_lock_write_lock(&cache->lock);
 	}
 }
 
@@ -1796,11 +2031,9 @@ wait_for_busy_writing_block(block_cache* cache, cached_block* block)
 		cache->busy_writing_condition.Add(&entry);
 		block->busy_writing_waiters = true;
 
-		mutex_unlock(&cache->lock);
-
+		rw_lock_write_unlock(&cache->lock);
 		entry.Wait();
-
-		mutex_lock(&cache->lock);
+		rw_lock_write_lock(&cache->lock);
 	}
 }
 
@@ -1816,11 +2049,9 @@ wait_for_busy_writing_blocks(block_cache* cache)
 		cache->busy_writing_condition.Add(&entry);
 		cache->busy_writing_waiters = true;
 
-		mutex_unlock(&cache->lock);
-
+		rw_lock_write_unlock(&cache->lock);
 		entry.Wait();
-
-		mutex_lock(&cache->lock);
+		rw_lock_write_lock(&cache->lock);
 	}
 }
 
@@ -1831,11 +2062,16 @@ wait_for_busy_writing_blocks(block_cache* cache)
 	but not necessarily the \a block it just released.
 */
 static void
-put_cached_block(block_cache* cache, cached_block* block)
+put_cached_block(block_cache* cache, cached_block* block, WriteLocker* writeLocker = NULL)
 {
 #if BLOCK_CACHE_DEBUG_CHANGED
-	if (!block->is_dirty && block->compare != NULL
-		&& memcmp(block->current_data, block->compare, cache->block_size)) {
+	if (block->compare != NULL
+			&& memcmp(block->current_data, block->compare, cache->block_size) != 0) {
+		if (writeLocker != NULL && !writeLocker->IsLocked()) {
+			rw_lock_read_unlock(&cache->lock);
+			writeLocker->Lock();
+		}
+
 		TRACE_ALWAYS("new block:\n");
 		dump_block((const char*)block->current_data, 256, "  ");
 		TRACE_ALWAYS("unchanged block:\n");
@@ -1849,13 +2085,36 @@ put_cached_block(block_cache* cache, cached_block* block)
 #endif
 	TB(Put(cache, block));
 
+	if (writeLocker != NULL && !writeLocker->IsLocked()) {
+#ifdef _KERNEL_MODE
+		// We must hold a read-lock only. Try the quick way out.
+		if (!block->discard && !block->is_writing
+				&& block->transaction == NULL
+				&& block->previous_transaction == NULL) {
+			if (atomic_add(&block->ref_count, -1) == 1) {
+				InterruptsSpinLocker unusedLocker(cache->unused_blocks_lock);
+				if (atomic_get(&block->ref_count) == 0 && !block->unused) {
+					cache->unused_blocks.Add(block);
+					cache->unused_block_count++;
+					block->unused = true;
+				}
+			}
+			return;
+		}
+#endif
+
+		rw_lock_read_unlock(&cache->lock);
+		writeLocker->Lock();
+	}
+
 	if (block->ref_count < 1) {
 		panic("Invalid ref_count for block %p, cache %p\n", block, cache);
 		return;
 	}
 
 	if (--block->ref_count == 0
-		&& block->transaction == NULL && block->previous_transaction == NULL) {
+			&& block->transaction == NULL
+			&& block->previous_transaction == NULL) {
 		// This block is not used anymore, and not part of any transaction
 		block->is_writing = false;
 
@@ -1875,17 +2134,17 @@ put_cached_block(block_cache* cache, cached_block* block)
 
 
 static void
-put_cached_block(block_cache* cache, off_t blockNumber)
+put_cached_block(block_cache* cache, off_t blockNumber, WriteLocker* writeLocker = NULL)
 {
 	if (blockNumber < 0 || blockNumber >= cache->max_blocks) {
 		panic("put_cached_block: invalid block number %" B_PRIdOFF " (max %" B_PRIdOFF ")",
 			blockNumber, cache->max_blocks - 1);
 	}
 
-	cached_block* block = cache->hash->Lookup(blockNumber);
-	if (block != NULL)
-		put_cached_block(cache, block);
-	else {
+	cached_block* block = cache->hash.Lookup(blockNumber);
+	if (block != NULL) {
+		put_cached_block(cache, block, writeLocker);
+	} else {
 		TB(Error(cache, blockNumber, "put unknown"));
 	}
 }
@@ -1915,7 +2174,7 @@ get_cached_block(block_cache* cache, off_t blockNumber, bool* _allocated,
 	}
 
 retry:
-	cached_block* block = cache->hash->Lookup(blockNumber);
+	cached_block* block = cache->hash.Lookup(blockNumber);
 	*_allocated = false;
 
 	if (block == NULL) {
@@ -1924,11 +2183,14 @@ retry:
 		if (block == NULL)
 			return B_NO_MEMORY;
 
-		cache->hash->Insert(block);
+		cache->hash.Insert(block);
 		*_allocated = true;
 	} else if (block->busy_reading) {
 		// The block is currently busy_reading - wait and try again later
 		wait_for_busy_reading_block(cache, block);
+
+		// The block may have been deleted or replaced in the meantime,
+		// so we must look it up in the hash again after waiting.
 		goto retry;
 	}
 
@@ -1944,19 +2206,22 @@ retry:
 		int32 blockSize = cache->block_size;
 
 		mark_block_busy_reading(cache, block);
-		mutex_unlock(&cache->lock);
+		rw_lock_write_unlock(&cache->lock);
 
 		ssize_t bytesRead = read_pos(cache->fd, blockNumber * blockSize,
 			block->current_data, blockSize);
 
-		mutex_lock(&cache->lock);
+		rw_lock_write_lock(&cache->lock);
 		if (bytesRead < blockSize) {
 			cache->RemoveBlock(block);
 			TB(Error(cache, blockNumber, "read failed", bytesRead));
 
+			status_t error = errno;
 			TRACE_ALWAYS("could not read block %" B_PRIdOFF ": bytesRead: %zd,"
-				" error: %s\n", blockNumber, bytesRead, strerror(errno));
-			return errno;
+				" error: %s\n", blockNumber, bytesRead, strerror(error));
+			if (error == B_OK)
+				return B_IO_ERROR;
+			return error;
 		}
 		TB(Read(cache, block));
 
@@ -1979,8 +2244,8 @@ retry:
 	sure that the previous block contents are preserved in that case.
 */
 static status_t
-get_writable_cached_block(block_cache* cache, off_t blockNumber, off_t base,
-	off_t length, int32 transactionID, bool cleared, void** _block)
+get_writable_cached_block(block_cache* cache, off_t blockNumber,
+	int32 transactionID, bool cleared, void** _block)
 {
 	TRACE(("get_writable_cached_block(blockNumber = %" B_PRIdOFF ", transaction = %" B_PRId32 ")\n",
 		blockNumber, transactionID));
@@ -2007,11 +2272,11 @@ get_writable_cached_block(block_cache* cache, off_t blockNumber, off_t base,
 	if (transactionID == -1) {
 		if (cleared) {
 			mark_block_busy_reading(cache, block);
-			mutex_unlock(&cache->lock);
+			rw_lock_write_unlock(&cache->lock);
 
 			memset(block->current_data, 0, cache->block_size);
 
-			mutex_lock(&cache->lock);
+			rw_lock_write_lock(&cache->lock);
 			mark_block_unbusy_reading(cache, block);
 		}
 
@@ -2021,6 +2286,13 @@ get_writable_cached_block(block_cache* cache, off_t blockNumber, off_t base,
 			cache->num_dirty_blocks++;
 			block->is_dirty = true;
 				// mark the block as dirty
+
+#if BLOCK_CACHE_DEBUG_CHANGED
+			if (block->compare != NULL) {
+				cache->Free(block->compare);
+				block->compare = NULL;
+			}
+#endif
 		}
 
 		TB(Get(cache, block));
@@ -2077,11 +2349,11 @@ get_writable_cached_block(block_cache* cache, off_t blockNumber, off_t base,
 		}
 
 		mark_block_busy_reading(cache, block);
-		mutex_unlock(&cache->lock);
+		rw_lock_write_unlock(&cache->lock);
 
 		memcpy(block->original_data, block->current_data, cache->block_size);
 
-		mutex_lock(&cache->lock);
+		rw_lock_write_lock(&cache->lock);
 		mark_block_unbusy_reading(cache, block);
 	}
 	if (block->parent_data == block->current_data) {
@@ -2097,11 +2369,11 @@ get_writable_cached_block(block_cache* cache, off_t blockNumber, off_t base,
 		}
 
 		mark_block_busy_reading(cache, block);
-		mutex_unlock(&cache->lock);
+		rw_lock_write_unlock(&cache->lock);
 
 		memcpy(block->parent_data, block->current_data, cache->block_size);
 
-		mutex_lock(&cache->lock);
+		rw_lock_write_lock(&cache->lock);
 		mark_block_unbusy_reading(cache, block);
 
 		transaction->sub_num_blocks++;
@@ -2111,15 +2383,22 @@ get_writable_cached_block(block_cache* cache, off_t blockNumber, off_t base,
 
 	if (cleared) {
 		mark_block_busy_reading(cache, block);
-		mutex_unlock(&cache->lock);
+		rw_lock_write_unlock(&cache->lock);
 
 		memset(block->current_data, 0, cache->block_size);
 
-		mutex_lock(&cache->lock);
+		rw_lock_write_lock(&cache->lock);
 		mark_block_unbusy_reading(cache, block);
 	}
 
 	block->is_dirty = true;
+
+#if BLOCK_CACHE_DEBUG_CHANGED
+	if (block->compare != NULL) {
+		cache->Free(block->compare);
+		block->compare = NULL;
+	}
+#endif
 	TB(Get(cache, block));
 	TB2(BlockData(cache, block, "get writable"));
 
@@ -2243,7 +2522,7 @@ dump_cache(int argc, char** argv)
 	off_t blockNumber = -1;
 	if (i + 1 < argc) {
 		blockNumber = parse_expression(argv[i + 1]);
-		cached_block* block = cache->hash->Lookup(blockNumber);
+		cached_block* block = cache->hash.Lookup(blockNumber);
 		if (block != NULL)
 			dump_block_long(block);
 		else
@@ -2281,7 +2560,7 @@ dump_cache(int argc, char** argv)
 		kprintf(" transactions:\n");
 		kprintf("address       id state  blocks  main   sub\n");
 
-		TransactionTable::Iterator iterator(cache->transaction_hash);
+		TransactionTable::Iterator iterator(&cache->transaction_hash);
 
 		while (iterator.HasNext()) {
 			cache_transaction* transaction = iterator.Next();
@@ -2303,7 +2582,7 @@ dump_cache(int argc, char** argv)
 	uint32 count = 0;
 	uint32 dirty = 0;
 	uint32 discarded = 0;
-	BlockTable::Iterator iterator(cache->hash);
+	BlockTable::Iterator iterator(&cache->hash);
 	while (iterator.HasNext()) {
 		cached_block* block = iterator.Next();
 		if (showBlocks)
@@ -2540,7 +2819,7 @@ get_next_locked_block_cache(block_cache* last)
 
 	block_cache* cache;
 	if (last != NULL) {
-		mutex_unlock(&last->lock);
+		rw_lock_write_unlock(&last->lock);
 
 		cache = sCaches.GetNext((block_cache*)&sMarkCache);
 		sCaches.Remove((block_cache*)&sMarkCache);
@@ -2548,8 +2827,8 @@ get_next_locked_block_cache(block_cache* last)
 		cache = sCaches.Head();
 
 	if (cache != NULL) {
-		mutex_lock(&cache->lock);
-		sCaches.Insert(sCaches.GetNext(cache), (block_cache*)&sMarkCache);
+		rw_lock_write_lock(&cache->lock);
+		sCaches.InsertBefore(sCaches.GetNext(cache), (block_cache*)&sMarkCache);
 	}
 
 	return cache;
@@ -2611,7 +2890,7 @@ block_notifier_and_writer(void* /*data*/)
 			if (cache->num_dirty_blocks) {
 				// This cache is not using transactions, we'll scan the blocks
 				// directly
-				BlockTable::Iterator iterator(cache->hash);
+				BlockTable::Iterator iterator(&cache->hash);
 
 				while (iterator.HasNext()) {
 					cached_block* block = iterator.Next();
@@ -2621,7 +2900,7 @@ block_notifier_and_writer(void* /*data*/)
 					}
 				}
 			} else {
-				TransactionTable::Iterator iterator(cache->transaction_hash);
+				TransactionTable::Iterator iterator(&cache->transaction_hash);
 
 				while (iterator.HasNext()) {
 					cache_transaction* transaction = iterator.Next();
@@ -2732,13 +3011,13 @@ wait_for_notifications(block_cache* cache)
 status_t
 block_cache_init(void)
 {
-	sBlockCache = create_object_cache_etc("cached blocks", sizeof(cached_block),
-		8, 0, 0, 0, CACHE_LARGE_SLAB, NULL, NULL, NULL, NULL);
+	sBlockCache = create_object_cache("cached blocks", sizeof(cached_block),
+		CACHE_LARGE_SLAB);
 	if (sBlockCache == NULL)
 		return B_NO_MEMORY;
 
 	sCacheNotificationCache = create_object_cache("cache notifications",
-		sizeof(cache_listener), 8, NULL, NULL, NULL);
+		sizeof(cache_listener), 0);
 	if (sCacheNotificationCache == NULL)
 		return B_NO_MEMORY;
 
@@ -2819,7 +3098,7 @@ cache_start_transaction(void* _cache)
 	TRACE(("cache_start_transaction(): id %" B_PRId32 " started\n", transaction->id));
 	T(Action("start", cache, transaction));
 
-	cache->transaction_hash->Insert(transaction);
+	cache->transaction_hash.Insert(transaction);
 
 	return transaction->id;
 }
@@ -2838,7 +3117,7 @@ cache_sync_transaction(void* _cache, int32 id)
 		hadBusy = false;
 
 		BlockWriter writer(cache);
-		TransactionTable::Iterator iterator(cache->transaction_hash);
+		TransactionTable::Iterator iterator(&cache->transaction_hash);
 
 		while (iterator.HasNext()) {
 			// close all earlier transactions which haven't been closed yet
@@ -2984,7 +3263,7 @@ cache_abort_transaction(void* _cache, int32 id)
 			block->is_dirty = false;
 	}
 
-	cache->transaction_hash->Remove(transaction);
+	cache->transaction_hash.Remove(transaction);
 	delete_transaction(cache, transaction);
 	return B_OK;
 }
@@ -3059,11 +3338,11 @@ cache_detach_sub_transaction(void* _cache, int32 id,
 				// The block has only been changed in the parent
 				block->original_data = NULL;
 			}
+			block->parent_data = NULL;
 
 			// move the block to the previous transaction list
 			transaction->blocks.Add(block);
 			block->previous_transaction = transaction;
-			block->parent_data = NULL;
 		}
 
 		if (block->original_data != NULL) {
@@ -3091,7 +3370,7 @@ cache_detach_sub_transaction(void* _cache, int32 id,
 	transaction->num_blocks = transaction->main_num_blocks;
 	transaction->sub_num_blocks = 0;
 
-	cache->transaction_hash->Insert(newTransaction);
+	cache->transaction_hash.Insert(newTransaction);
 	cache->last_transaction = newTransaction;
 
 	return newTransaction->id;
@@ -3221,6 +3500,8 @@ cache_start_sub_transaction(void* _cache, int32 id)
 			if (block->original_data != NULL) {
 				memcpy(block->current_data, block->original_data,
 					cache->block_size);
+
+				cache->Free(block->original_data);
 				block->original_data = NULL;
 			}
 			continue;
@@ -3392,7 +3673,7 @@ cache_has_block_in_transaction(void* _cache, int32 id, off_t blockNumber)
 	block_cache* cache = (block_cache*)_cache;
 	TransactionLocker locker(cache);
 
-	cached_block* block = cache->hash->Lookup(blockNumber);
+	cached_block* block = cache->hash.Lookup(blockNumber);
 
 	return (block != NULL && block->transaction != NULL
 		&& block->transaction->id == id);
@@ -3414,7 +3695,7 @@ block_cache_delete(void* _cache, bool allowWrites)
 	sCaches.Remove(cache);
 	mutex_unlock(&sCachesLock);
 
-	mutex_lock(&cache->lock);
+	rw_lock_write_lock(&cache->lock);
 
 	// wait for all blocks to become unbusy
 	wait_for_busy_reading_blocks(cache);
@@ -3422,7 +3703,7 @@ block_cache_delete(void* _cache, bool allowWrites)
 
 	// free all blocks
 
-	cached_block* block = cache->hash->Clear(true);
+	cached_block* block = cache->hash.Clear(true);
 	while (block != NULL) {
 		cached_block* next = block->next;
 		cache->FreeBlock(block);
@@ -3431,7 +3712,7 @@ block_cache_delete(void* _cache, bool allowWrites)
 
 	// free all transactions (they will all be aborted)
 
-	cache_transaction* transaction = cache->transaction_hash->Clear(true);
+	cache_transaction* transaction = cache->transaction_hash.Clear(true);
 	while (transaction != NULL) {
 		cache_transaction* next = transaction->next;
 		delete transaction;
@@ -3470,10 +3751,10 @@ block_cache_sync(void* _cache)
 	// We will sync all dirty blocks to disk that have a completed
 	// transaction or no transaction only
 
-	MutexLocker locker(&cache->lock);
+	WriteLocker locker(&cache->lock);
 
 	BlockWriter writer(cache);
-	BlockTable::Iterator iterator(cache->hash);
+	BlockTable::Iterator iterator(&cache->hash);
 
 	while (iterator.HasNext()) {
 		cached_block* block = iterator.Next();
@@ -3507,11 +3788,11 @@ block_cache_sync_etc(void* _cache, off_t blockNumber, size_t numBlocks)
 		return B_BAD_VALUE;
 	}
 
-	MutexLocker locker(&cache->lock);
+	WriteLocker locker(&cache->lock);
 	BlockWriter writer(cache);
 
 	for (; numBlocks > 0; numBlocks--, blockNumber++) {
-		cached_block* block = cache->hash->Lookup(blockNumber);
+		cached_block* block = cache->hash.Lookup(blockNumber);
 		if (block == NULL)
 			continue;
 
@@ -3545,7 +3826,7 @@ block_cache_discard(void* _cache, off_t blockNumber, size_t numBlocks)
 	BlockWriter writer(cache);
 
 	for (size_t i = 0; i < numBlocks; i++, blockNumber++) {
-		cached_block* block = cache->hash->Lookup(blockNumber);
+		cached_block* block = cache->hash.Lookup(blockNumber);
 		if (block != NULL && block->previous_transaction != NULL)
 			writer.Add(block);
 	}
@@ -3557,7 +3838,7 @@ block_cache_discard(void* _cache, off_t blockNumber, size_t numBlocks)
 		// reset blockNumber to its original value
 
 	for (size_t i = 0; i < numBlocks; i++, blockNumber++) {
-		cached_block* block = cache->hash->Lookup(blockNumber);
+		cached_block* block = cache->hash.Lookup(blockNumber);
 		if (block == NULL)
 			continue;
 
@@ -3585,7 +3866,7 @@ status_t
 block_cache_make_writable(void* _cache, off_t blockNumber, int32 transaction)
 {
 	block_cache* cache = (block_cache*)_cache;
-	MutexLocker locker(&cache->lock);
+	WriteLocker locker(&cache->lock);
 
 	if (cache->read_only) {
 		panic("tried to make block writable on a read-only cache!");
@@ -3595,7 +3876,7 @@ block_cache_make_writable(void* _cache, off_t blockNumber, int32 transaction)
 	// TODO: this can be done better!
 	void* block;
 	status_t status = get_writable_cached_block(cache, blockNumber,
-		blockNumber, 1, transaction, false, &block);
+		transaction, false, &block);
 	if (status == B_OK) {
 		put_cached_block((block_cache*)_cache, blockNumber);
 		return B_OK;
@@ -3606,18 +3887,18 @@ block_cache_make_writable(void* _cache, off_t blockNumber, int32 transaction)
 
 
 status_t
-block_cache_get_writable_etc(void* _cache, off_t blockNumber, off_t base,
-	off_t length, int32 transaction, void** _block)
+block_cache_get_writable_etc(void* _cache, off_t blockNumber,
+	int32 transaction, void** _block)
 {
 	block_cache* cache = (block_cache*)_cache;
-	MutexLocker locker(&cache->lock);
+	WriteLocker locker(&cache->lock);
 
 	TRACE(("block_cache_get_writable_etc(block = %" B_PRIdOFF ", transaction = %" B_PRId32 ")\n",
 		blockNumber, transaction));
 	if (cache->read_only)
 		panic("tried to get writable block on a read-only cache!");
 
-	return get_writable_cached_block(cache, blockNumber, base, length,
+	return get_writable_cached_block(cache, blockNumber,
 		transaction, false, _block);
 }
 
@@ -3627,7 +3908,7 @@ block_cache_get_writable(void* _cache, off_t blockNumber, int32 transaction)
 {
 	void* block;
 	if (block_cache_get_writable_etc(_cache, blockNumber,
-			blockNumber, 1, transaction, &block) == B_OK)
+			transaction, &block) == B_OK)
 		return block;
 
 	return NULL;
@@ -3638,7 +3919,7 @@ void*
 block_cache_get_empty(void* _cache, off_t blockNumber, int32 transaction)
 {
 	block_cache* cache = (block_cache*)_cache;
-	MutexLocker locker(&cache->lock);
+	WriteLocker locker(&cache->lock);
 
 	TRACE(("block_cache_get_empty(block = %" B_PRIdOFF ", transaction = %" B_PRId32 ")\n",
 		blockNumber, transaction));
@@ -3647,7 +3928,7 @@ block_cache_get_empty(void* _cache, off_t blockNumber, int32 transaction)
 
 	void* block;
 	if (get_writable_cached_block((block_cache*)_cache, blockNumber,
-			blockNumber, 1, transaction, true, &block) == B_OK)
+			transaction, true, &block) == B_OK)
 		return block;
 
 	return NULL;
@@ -3655,24 +3936,53 @@ block_cache_get_empty(void* _cache, off_t blockNumber, int32 transaction)
 
 
 status_t
-block_cache_get_etc(void* _cache, off_t blockNumber, off_t base, off_t length,
-	const void** _block)
+block_cache_get_etc(void* _cache, off_t blockNumber, const void** _block)
 {
 	block_cache* cache = (block_cache*)_cache;
-	MutexLocker locker(&cache->lock);
-	bool allocated;
 
+	WriteLocker writeLocker(&cache->lock, false, false);
+
+#ifndef _KERNEL_MODE
 	cached_block* block;
-	status_t status = get_cached_block(cache, blockNumber, &allocated, true,
-		&block);
-	if (status != B_OK)
-		return status;
+	{
+#else
+	rw_lock_read_lock(&cache->lock);
+	cached_block* block = cache->hash.Lookup(blockNumber);
+	if (block != NULL && !block->busy_reading) {
+		// Block exists and is read in: quick way out.
+		if (atomic_add(&block->ref_count, 1) == 0) {
+			InterruptsSpinLocker unusedLocker(cache->unused_blocks_lock);
+			if (block->unused) {
+				cache->unused_blocks.Remove(block);
+				cache->unused_block_count--;
+				block->unused = false;
+			}
+		}
+		atomic_set(&block->last_accessed, system_time() / 1000000L);
+		rw_lock_read_unlock(&cache->lock);
+	} else {
+		rw_lock_read_unlock(&cache->lock);
+#endif
+		writeLocker.Lock();
+
+		bool allocated;
+		status_t status = get_cached_block(cache, blockNumber, &allocated, true,
+			&block);
+		if (status != B_OK)
+			return status;
+	}
 
 #if BLOCK_CACHE_DEBUG_CHANGED
-	if (block->compare == NULL)
-		block->compare = cache->Allocate();
-	if (block->compare != NULL)
-		memcpy(block->compare, block->current_data, cache->block_size);
+	if (block->compare == NULL) {
+		if (!writeLocker.IsLocked())
+			writeLocker.Lock();
+
+		if (block->compare == NULL && !block->is_dirty) {
+			block->compare = cache->Allocate();
+			if (block->compare != NULL)
+				memcpy(block->compare, block->current_data, cache->block_size);
+		}
+	}
 #endif
 	TB(Get(cache, block));
 
@@ -3685,8 +3995,7 @@ const void*
 block_cache_get(void* _cache, off_t blockNumber)
 {
 	const void* block;
-	if (block_cache_get_etc(_cache, blockNumber, blockNumber, 1, &block)
-			== B_OK)
+	if (block_cache_get_etc(_cache, blockNumber, &block) == B_OK)
 		return block;
 
 	return NULL;
@@ -3705,9 +4014,9 @@ block_cache_set_dirty(void* _cache, off_t blockNumber, bool dirty,
 	int32 transaction)
 {
 	block_cache* cache = (block_cache*)_cache;
-	MutexLocker locker(&cache->lock);
+	WriteLocker locker(&cache->lock);
 
-	cached_block* block = cache->hash->Lookup(blockNumber);
+	cached_block* block = cache->hash.Lookup(blockNumber);
 	if (block == NULL)
 		return B_BAD_VALUE;
 	if (block->is_dirty == dirty) {
@@ -3727,8 +4036,56 @@ void
 block_cache_put(void* _cache, off_t blockNumber)
 {
 	block_cache* cache = (block_cache*)_cache;
-	MutexLocker locker(&cache->lock);
+	WriteLocker locker(&cache->lock, false, false);
+	rw_lock_read_lock(&cache->lock);
 
-	put_cached_block(cache, blockNumber);
+	put_cached_block(cache, blockNumber, &locker);
+
+	if (!locker.IsLocked())
+		rw_lock_read_unlock(&cache->lock);
 }
 
+
+/*! Allocates blocks and schedules them to be read from disk, but does not get references to the
+	blocks.
+	@param blockNumber The index of the first requested block.
+	@param _numBlocks As input, the number of blocks requested. As output, the number of
+	blocks actually scheduled.  Prefetching will stop short if the requested range includes a
+	block that is already cached.
+*/
+status_t
+block_cache_prefetch(void* _cache, off_t blockNumber, size_t* _numBlocks)
+{
+#ifndef BUILDING_USERLAND_FS_SERVER
+	TRACE(("block_cache_prefetch: fetching %" B_PRIuSIZE " blocks starting with %" B_PRIdOFF "\n",
+		*_numBlocks, blockNumber));
+
+	block_cache* cache = reinterpret_cast<block_cache*>(_cache);
+	WriteLocker locker(&cache->lock);
+
+	size_t numBlocks = *_numBlocks;
+	*_numBlocks = 0;
+
+	BlockPrefetcher* blockPrefetcher = new BlockPrefetcher(cache, blockNumber, numBlocks);
+
+	status_t status = blockPrefetcher->Allocate();
+	if (status != B_OK || blockPrefetcher->NumAllocated() == 0) {
+		TRACE(("block_cache_prefetch returning early (%s): allocated %" B_PRIuSIZE "\n",
+			strerror(status), blockPrefetcher->NumAllocated()));
+		delete blockPrefetcher;
+		return status;
+	}
+
+	numBlocks = blockPrefetcher->NumAllocated();
+
+	status = blockPrefetcher->ReadAsync(locker);
+
+	if (status == B_OK)
+		*_numBlocks = numBlocks;
+
+	return status;
+#else // BUILDING_USERLAND_FS_SERVER
+	*_numBlocks = 0;
+	return B_UNSUPPORTED;
+#endif // !BUILDING_USERLAND_FS_SERVER
+}

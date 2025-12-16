@@ -19,8 +19,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include "opt_wlan.h"
 
 #include <sys/param.h>
@@ -55,7 +53,6 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/rtwn/rtl8192c/pci/r92ce.h>
 #include <dev/rtwn/rtl8192c/pci/r92ce_tx_desc.h>
-
 
 void
 r92ce_setup_tx_desc(struct rtwn_pci_softc *pc, void *desc,

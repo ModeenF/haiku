@@ -388,6 +388,7 @@ void
 BScrollBar::Draw(BRect updateRect)
 {
 	rgb_color base = ui_color(B_PANEL_BACKGROUND_COLOR);
+	rgb_color text = ui_color(B_PANEL_TEXT_COLOR);
 
 	uint32 flags = 0;
 	bool scrollingEnabled = fMin < fMax
@@ -419,7 +420,7 @@ BScrollBar::Draw(BRect updateRect)
 			rect.left + rect.Height(), rect.bottom);
 
 		be_control_look->DrawScrollBarButton(this, buttonFrame, updateRect,
-			base, flags | (fPrivateData->fButtonDown == ARROW1
+			base, text, flags | (fPrivateData->fButtonDown == ARROW1
 				? BControlLook::B_ACTIVATED : 0),
 			BControlLook::B_LEFT_ARROW, fOrientation,
 			fPrivateData->fButtonDown == ARROW1);
@@ -427,7 +428,7 @@ BScrollBar::Draw(BRect updateRect)
 		if (doubleArrows) {
 			buttonFrame.OffsetBy(rect.Height() + 1, 0.0f);
 			be_control_look->DrawScrollBarButton(this, buttonFrame, updateRect,
-				base, flags | (fPrivateData->fButtonDown == ARROW2
+				base, text, flags | (fPrivateData->fButtonDown == ARROW2
 					? BControlLook::B_ACTIVATED : 0),
 				BControlLook::B_RIGHT_ARROW, fOrientation,
 				fPrivateData->fButtonDown == ARROW2);
@@ -435,7 +436,7 @@ BScrollBar::Draw(BRect updateRect)
 			buttonFrame.OffsetTo(rect.right - ((rect.Height() * 2) + 1),
 				rect.top);
 			be_control_look->DrawScrollBarButton(this, buttonFrame, updateRect,
-				base, flags | (fPrivateData->fButtonDown == ARROW3
+				base, text, flags | (fPrivateData->fButtonDown == ARROW3
 					? BControlLook::B_ACTIVATED : 0),
 				BControlLook::B_LEFT_ARROW, fOrientation,
 				fPrivateData->fButtonDown == ARROW3);
@@ -449,7 +450,7 @@ BScrollBar::Draw(BRect updateRect)
 
 		buttonFrame.OffsetTo(rect.right - rect.Height(), rect.top);
 		be_control_look->DrawScrollBarButton(this, buttonFrame, updateRect,
-			base, flags | (fPrivateData->fButtonDown == ARROW4
+			base, text, flags | (fPrivateData->fButtonDown == ARROW4
 				? BControlLook::B_ACTIVATED : 0),
 			BControlLook::B_RIGHT_ARROW, fOrientation,
 			fPrivateData->fButtonDown == ARROW4);
@@ -458,7 +459,7 @@ BScrollBar::Draw(BRect updateRect)
 			rect.top + rect.Width());
 
 		be_control_look->DrawScrollBarButton(this, buttonFrame, updateRect,
-			base, flags | (fPrivateData->fButtonDown == ARROW1
+			base, text, flags | (fPrivateData->fButtonDown == ARROW1
 				? BControlLook::B_ACTIVATED : 0),
 			BControlLook::B_UP_ARROW, fOrientation,
 			fPrivateData->fButtonDown == ARROW1);
@@ -466,7 +467,7 @@ BScrollBar::Draw(BRect updateRect)
 		if (doubleArrows) {
 			buttonFrame.OffsetBy(0, rect.Width() + 1);
 			be_control_look->DrawScrollBarButton(this, buttonFrame,
-				updateRect, base, flags | (fPrivateData->fButtonDown == ARROW2
+				updateRect, base, text, flags | (fPrivateData->fButtonDown == ARROW2
 					? BControlLook::B_ACTIVATED : 0),
 				BControlLook::B_DOWN_ARROW, fOrientation,
 				fPrivateData->fButtonDown == ARROW2);
@@ -474,7 +475,7 @@ BScrollBar::Draw(BRect updateRect)
 			buttonFrame.OffsetTo(rect.left, rect.bottom
 				- ((rect.Width() * 2) + 1));
 			be_control_look->DrawScrollBarButton(this, buttonFrame,
-				updateRect, base, flags | (fPrivateData->fButtonDown == ARROW3
+				updateRect, base, text, flags | (fPrivateData->fButtonDown == ARROW3
 					? BControlLook::B_ACTIVATED : 0),
 				BControlLook::B_UP_ARROW, fOrientation,
 				fPrivateData->fButtonDown == ARROW3);
@@ -488,7 +489,7 @@ BScrollBar::Draw(BRect updateRect)
 
 		buttonFrame.OffsetTo(rect.left, rect.bottom - rect.Width());
 		be_control_look->DrawScrollBarButton(this, buttonFrame, updateRect,
-			base, flags | (fPrivateData->fButtonDown == ARROW4
+			base, text, flags | (fPrivateData->fButtonDown == ARROW4
 				? BControlLook::B_ACTIVATED : 0),
 			BControlLook::B_DOWN_ARROW, fOrientation,
 			fPrivateData->fButtonDown == ARROW4);
@@ -845,10 +846,8 @@ BScrollBar::SetRange(float min, float max)
 
 	if (fValue < fMin || fValue > fMax)
 		SetValue(fValue);
-	else {
+	else
 		_UpdateThumbFrame();
-		Invalidate();
-	}
 }
 
 
@@ -995,10 +994,9 @@ BScrollBar::SetBorderHighlighted(bool highlight)
 void
 BScrollBar::GetPreferredSize(float* _width, float* _height)
 {
-	const float scale = std::max(be_plain_font->Size() / 12.0f, 1.0f);
 	if (fOrientation == B_VERTICAL) {
 		if (_width)
-			*_width = B_V_SCROLL_BAR_WIDTH * scale;
+			*_width = be_control_look->GetScrollBarWidth(B_VERTICAL);
 
 		if (_height)
 			*_height = _MinSize().Height();
@@ -1007,7 +1005,7 @@ BScrollBar::GetPreferredSize(float* _width, float* _height)
 			*_width = _MinSize().Width();
 
 		if (_height)
-			*_height = B_H_SCROLL_BAR_HEIGHT * scale;
+			*_height = be_control_look->GetScrollBarWidth(B_HORIZONTAL);
 	}
 }
 
@@ -1255,7 +1253,7 @@ BScrollBar::_UpdateThumbFrame()
 		fPrivateData->fThumbFrame.OffsetBy(offset, 0.0);
 	}
 
-	if (Window() != NULL) {
+	if (Window() != NULL && fPrivateData->fThumbFrame != oldFrame) {
 		BRect invalid = oldFrame.IsValid()
 			? oldFrame | fPrivateData->fThumbFrame
 			: fPrivateData->fThumbFrame;

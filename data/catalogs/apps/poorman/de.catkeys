@@ -1,4 +1,4 @@
-1	german	x-vnd.Haiku-PoorMan	1941909940
+1	german	x-vnd.Haiku-PoorMan	1829050509
 Select web folder	PoorMan		Web-Ordner auswählen
 Console logging	PoorMan		In Konsole loggen
 Create Log File	PoorMan		Logdatei erstellen
@@ -11,10 +11,10 @@ Web folder:	PoorMan		Web-Ordner:
 Please choose the folder to publish on the web.\n\nYou can have PoorMan create a default \"public_html\" in your home folder.\nOr you select one of your own folders instead.	PoorMan		Bitte den Ordner auswählen, der im Web veröffentlicht werden soll.\n\nDer Webserver kann den standardmäßigen \"public_html\" Ordner im home-Ordner erstellen oder einen frei zu wählenden Ordner benutzen.
 Log To Console	PoorMan		In Konsole loggen
 File Name	PoorMan		Dateiname
-Starting up... 	PoorMan		Starte...
+Starting up... 	PoorMan		Starte …
 Select	PoorMan		Auswählen
 Logging view	PoorMan		Log-Ansicht
-Save console as…	PoorMan		Konsole speichern als…
+Save console as…	PoorMan		Konsole speichern als …
 Edit	PoorMan		Bearbeiten
 Cancel	PoorMan		Abbrechen
 Directory: 	PoorMan		Ordner:
@@ -34,7 +34,7 @@ Create public_html	PoorMan		public_html erzeugen
 Clear hit counter	PoorMan		Zugriffszähler löschen
 Status: Stopped	PoorMan		Status: Angehalten
 File	PoorMan		Datei
-Settings…	PoorMan		Einstellungen…
+Settings…	PoorMan		Einstellungen …
 Log To File	PoorMan		In Datei loggen
 Connections	PoorMan		Verbindungen
 Controls	PoorMan		Aktionen
@@ -42,6 +42,7 @@ Log to console	PoorMan		In Konsole loggen
 Advanced	PoorMan		Erweitert
 Copy	PoorMan		Kopieren
 Logging	PoorMan		Log
+PoorMan	System name		Webserver
 Clear console log	PoorMan		Konsolenlog löschen
 Run server	PoorMan		Server starten
 Create	PoorMan		Erstelle
@@ -57,7 +58,7 @@ Status: Running	PoorMan		Status: Läuft
 Directory: (none)	PoorMan		Ordner: (keiner)
 A default web folder has been created at \"/boot/home/public_html.\"\nMake sure there is a HTML file named \"index.html\" in that folder.	PoorMan		Der Standard Web-Ordner \"/boot/home/public_html\" wurde erstellt.\nDarin muss sich eine HTML-Datei mit dem Namen \"index.html\" befinden.
 Dir Created	PoorMan		Ordner erstellt
-Save console selections as…	PoorMan		Auswahl der Konsole speichern als…
+Save console selections as…	PoorMan		Auswahl der Konsole speichern als …
 Quit	PoorMan		Beenden
 Save log console	PoorMan		Logkonsole speichern
 Start page:	PoorMan		Startseite:

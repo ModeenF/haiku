@@ -1,7 +1,6 @@
-1	french	x-vnd.Haiku-Network	543099905
+1	french	x-vnd.Haiku-Network	3807978621
 Ethernet device	InterfaceListItem		Périphérique Ethernet
 Link speed:	IntefaceView		Vitesse du lien :
-disconnected	IntefaceView		déconnecté
 WPA	WPA protected network		WPA
 Network:	IntefaceView		Réseau :
 Received:	IntefaceView		Reçu :
@@ -46,7 +45,7 @@ Choose automatically	IntefaceView		Choisir automatiquement
 Status:	IntefaceView		État :
 Disable	IntefaceView		Désactiver
 Manage…	NetworkWindow		Gérer…
-open	Open network		ouvrir
+open	Open network		ouvert
 Network	System name		Réseau
 Your gateway to the internet	IntefaceAddressView		Votre passerelle vers l’internet
 Enable	ServiceView		Activer

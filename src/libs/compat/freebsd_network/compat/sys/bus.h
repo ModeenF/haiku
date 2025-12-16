@@ -1,6 +1,5 @@
 /*
- * Copyright 2009, Colin Günther. All Rights Reserved.
- * Copyright 2007, Hugo Santos. All Rights Reserved.
+ * Copyright 2022, Haiku, Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  */
 #ifndef _FBSD_COMPAT_SYS_BUS_H_
@@ -10,31 +9,10 @@
 #include <sys/haiku-module.h>
 
 #include <sys/_bus_dma.h>
+#include <sys/_bus_macros.h>
 
 #include <sys/queue.h>
 
-
-// TODO per platform, these are 32-bit
-
-// oh you glorious world of macros
-#define bus_read_1(r, o) \
-	bus_space_read_1((r)->r_bustag, (r)->r_bushandle, (o))
-#define bus_read_2(r, o) \
-	bus_space_read_2((r)->r_bustag, (r)->r_bushandle, (o))
-#define bus_read_4(r, o) \
-	bus_space_read_4((r)->r_bustag, (r)->r_bushandle, (o))
-#define bus_write_1(r, o, v) \
-	bus_space_write_1((r)->r_bustag, (r)->r_bushandle, (o), (v))
-#define bus_write_2(r, o, v) \
-	bus_space_write_2((r)->r_bustag, (r)->r_bushandle, (o), (v))
-#define bus_write_4(r, o, v) \
-	bus_space_write_4((r)->r_bustag, (r)->r_bushandle, (o), (v))
-
-#define bus_barrier(r, o, l, f) \
-	bus_space_barrier((r)->r_bustag, (r)->r_bushandle, (o), (l), (f))
-
-#define bus_read_region_1(r, o, d, c) \
-	bus_space_read_region_1((r)->r_bustag, (r)->r_bushandle, (o), (d), (c))
 
 #define	FILTER_STRAY			B_UNHANDLED_INTERRUPT
 #define	FILTER_HANDLED			B_HANDLED_INTERRUPT
@@ -137,8 +115,6 @@ void device_set_ivars(device_t dev, void *);
 void *device_get_ivars(device_t dev);
 
 device_t device_add_child(device_t dev, const char* name, int unit);
-device_t device_add_child_driver(device_t dev, const char* name, driver_t* driver,
-	int unit);
 int device_delete_child(device_t dev, device_t child);
 int device_is_attached(device_t dev);
 int device_attach(device_t dev);

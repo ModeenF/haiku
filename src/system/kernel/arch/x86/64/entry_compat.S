@@ -81,8 +81,6 @@
 	LOCK_THREAD_TIME()											\
 																\
 	call	system_time;										\
-																\
-	/* Preserve system_time for post syscall debug */			\
 	movq	%rax, %r13;											\
 																\
 	/* thread->user_time += now - thread->last_time; */			\
@@ -152,7 +150,6 @@ FUNCTION_END(x86_64_syscall32_entry)
 //	ecx - user esp
 FUNCTION(x86_64_sysenter32_entry):
 	swapgs
-	lfence
 
 	// Set up an iframe on the stack (ECX = saved ESP).
 	push	$USER_DATA_SELECTOR			// ss
@@ -315,7 +312,6 @@ FUNCTION(x86_64_sysenter32_entry):
 
 	// Restore previous GS base and return.
 	swapgs
-	lfence
 	sti
 	sysexit
 
@@ -366,7 +362,6 @@ FUNCTION(x86_64_sysenter32_entry):
 	movq	%r14, %rdi				// syscall number
 	movq	%rsp, %rsi
 	movq	IFRAME_ax(%rbp), %rdx	// return value
-	movq	%r13, %rcx				// start time, preserved earlier
 	call	user_debug_post_syscall
 	addq	$48, %rsp
 1:

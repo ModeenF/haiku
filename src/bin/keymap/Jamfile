@@ -2,7 +2,9 @@ SubDir HAIKU_TOP src bin keymap ;
 
 UsePrivateHeaders shared storage ;
 
-BinCommand keymap :
+SubDirSysHdrs $(HAIKU_TOP) headers compatibility bsd ;
+
+Application keymap :
 	main.cpp
 	Keymap.cpp
 	: be shared [ TargetLibsupc++ ]

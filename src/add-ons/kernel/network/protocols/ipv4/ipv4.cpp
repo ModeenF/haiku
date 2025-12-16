@@ -188,6 +188,7 @@ struct ipv4_protocol : net_protocol {
 // protocol flags
 #define IP_FLAG_HEADER_INCLUDED		0x01
 #define IP_FLAG_RECEIVE_DEST_ADDR	0x02
+#define IP_FLAG_DONT_FRAGMENT		0x04
 
 
 static const int kDefaultTTL = 254;
@@ -331,11 +332,11 @@ FragmentPacket::AddFragment(uint16 start, uint16 end, net_buffer* buffer,
 		status_t status = gBufferModule->merge(buffer, previous, false);
 		TRACE("    merge previous: %s", strerror(status));
 		if (status != B_OK) {
-			fFragments.Insert(next, previous);
+			fFragments.InsertBefore(next, previous);
 			return status;
 		}
 
-		fFragments.Insert(next, buffer);
+		fFragments.InsertBefore(next, buffer);
 
 		// cut down existing hole
 		fBytesLeft -= end - start;
@@ -359,11 +360,11 @@ FragmentPacket::AddFragment(uint16 start, uint16 end, net_buffer* buffer,
 		TRACE("    merge next: %s", strerror(status));
 		if (status != B_OK) {
 			// Insert "next" at its previous position
-			fFragments.Insert(afterNext, next);
+			fFragments.InsertBefore(afterNext, next);
 			return status;
 		}
 
-		fFragments.Insert(afterNext, buffer);
+		fFragments.InsertBefore(afterNext, buffer);
 
 		// cut down existing hole
 		fBytesLeft -= end - start;
@@ -384,7 +385,7 @@ FragmentPacket::AddFragment(uint16 start, uint16 end, net_buffer* buffer,
 
 	buffer->fragment.start = start;
 	buffer->fragment.end = end;
-	fFragments.Insert(next, buffer);
+	fFragments.InsertBefore(next, buffer);
 
 	// update length of the hole, if any
 	fBytesLeft -= end - start;
@@ -757,7 +758,7 @@ raw_receive_data(net_buffer* buffer)
 
 	TRACE("RawReceiveData(%i)", buffer->protocol);
 
-	if ((buffer->flags & MSG_MCAST) != 0) {
+	if ((buffer->msg_flags & MSG_MCAST) != 0) {
 		// we need to call deliver_multicast here separately as
 		// buffer still has the IP header, and it won't in the
 		// next call. This isn't very optimized but works for now.
@@ -1150,9 +1151,21 @@ ipv4_free(net_protocol* protocol)
 
 
 status_t
-ipv4_connect(net_protocol* protocol, const struct sockaddr* address)
+ipv4_connect(net_protocol* _protocol, const struct sockaddr* address)
 {
-	return B_ERROR;
+	ipv4_protocol* protocol = (ipv4_protocol*)_protocol;
+	RawSocket* raw = protocol->raw;
+	if (raw == NULL)
+		return B_ERROR;
+	if (address->sa_len != sizeof(struct sockaddr_in))
+		return B_BAD_VALUE;
+	if (address->sa_family != AF_INET)
+		return EAFNOSUPPORT;
+
+	memcpy(&protocol->socket->peer, address, sizeof(struct sockaddr_in));
+	sSocketModule->set_connected(protocol->socket);
+
+	return B_OK;
 }
 
 
@@ -1190,6 +1203,10 @@ ipv4_getsockopt(net_protocol* _protocol, int level, int option, void* value,
 		if (option == IP_RECVDSTADDR) {
 			return get_int_option(value, *_length,
 				(protocol->flags & IP_FLAG_RECEIVE_DEST_ADDR) != 0);
+		}
+		if (option == IP_DONTFRAG) {
+			return get_int_option(value, *_length,
+				(protocol->flags & IP_FLAG_DONT_FRAGMENT) != 0);
 		}
 		if (option == IP_TTL)
 			return get_int_option(value, *_length, protocol->time_to_live);
@@ -1287,6 +1304,21 @@ ipv4_setsockopt(net_protocol* _protocol, int level, int option,
 				protocol->flags |= IP_FLAG_RECEIVE_DEST_ADDR;
 			else
 				protocol->flags &= ~IP_FLAG_RECEIVE_DEST_ADDR;
+
+			return B_OK;
+		}
+		if (option == IP_DONTFRAG) {
+			int headerIncluded;
+			if (length != sizeof(int))
+				return B_BAD_VALUE;
+			if (user_memcpy(&headerIncluded, value, sizeof(headerIncluded))
+					!= B_OK)
+				return B_BAD_ADDRESS;
+
+			if (headerIncluded)
+				protocol->flags |= IP_FLAG_DONT_FRAGMENT;
+			else
+				protocol->flags &= ~IP_FLAG_DONT_FRAGMENT;
 
 			return B_OK;
 		}
@@ -1431,7 +1463,7 @@ ipv4_bind(net_protocol* protocol, const struct sockaddr* address)
 		return B_OK;
 	}
 
-	return B_ERROR;
+	return EADDRNOTAVAIL;
 		// address is unknown on this host
 }
 
@@ -1481,7 +1513,7 @@ ipv4_send_routed_data(net_protocol* _protocol, struct net_route* route,
 	if (protocol != NULL)
 		headerIncluded = (protocol->flags & IP_FLAG_HEADER_INCLUDED) != 0;
 
-	buffer->flags &= ~(MSG_BCAST | MSG_MCAST);
+	buffer->msg_flags &= ~(MSG_BCAST | MSG_MCAST);
 
 	if (destination.sin_addr.s_addr == INADDR_ANY)
 		return EDESTADDRREQ;
@@ -1492,9 +1524,9 @@ ipv4_send_routed_data(net_protocol* _protocol, struct net_route* route,
 					== broadcastAddress->sin_addr.s_addr))) {
 		if (protocol && !(protocol->socket->options & SO_BROADCAST))
 			return B_BAD_VALUE;
-		buffer->flags |= MSG_BCAST;
+		buffer->msg_flags |= MSG_BCAST;
 	} else if (IN_MULTICAST(ntohl(destination.sin_addr.s_addr)))
-		buffer->flags |= MSG_MCAST;
+		buffer->msg_flags |= MSG_MCAST;
 
 	// Add IP header (if needed)
 
@@ -1509,11 +1541,13 @@ ipv4_send_routed_data(net_protocol* _protocol, struct net_route* route,
 		header->total_length = htons(buffer->size);
 		header->id = htons(atomic_add(&sPacketID, 1));
 		header->fragment_offset = 0;
-		if (protocol) {
-			header->time_to_live = (buffer->flags & MSG_MCAST) != 0
+		if (protocol != NULL) {
+			if ((protocol->flags & IP_FLAG_DONT_FRAGMENT) != 0)
+				header->fragment_offset |= htons(IP_DONT_FRAGMENT);
+			header->time_to_live = (buffer->msg_flags & MSG_MCAST) != 0
 				? protocol->multicast_time_to_live : protocol->time_to_live;
 		} else {
-			header->time_to_live = (buffer->flags & MSG_MCAST) != 0
+			header->time_to_live = (buffer->msg_flags & MSG_MCAST) != 0
 				? kDefaultMulticastTTL : kDefaultTTL;
 		}
 		header->protocol = protocol
@@ -1534,8 +1568,9 @@ ipv4_send_routed_data(net_protocol* _protocol, struct net_route* route,
 			header->source = source.sin_addr.s_addr;
 			header->checksum = 0;
 			header.Sync();
-		} else
+		} else if (header->checksum != 0) {
 			checksumNeeded = false;
+		}
 
 		TRACE("  Header was already supplied:");
 		TRACE_ONLY(dump_ipv4_header(*header));
@@ -1547,13 +1582,17 @@ ipv4_send_routed_data(net_protocol* _protocol, struct net_route* route,
 	if (checksumNeeded) {
 		*IPChecksumField(buffer) = gBufferModule->checksum(buffer, 0,
 			sizeof(ipv4_header), true);
+		buffer->buffer_flags |= NET_BUFFER_L3_CHECKSUM_VALID;
 	}
 
-	if ((buffer->flags & MSG_MCAST) != 0
-		&& protocol->multicast_loopback) {
+	if ((buffer->msg_flags & MSG_MCAST) != 0
+		&& (protocol != NULL && protocol->multicast_loopback)) {
 		// copy an IP multicast packet to the input queue of the loopback
 		// interface
 		net_buffer *loopbackBuffer = gBufferModule->duplicate(buffer);
+		if (loopbackBuffer == NULL)
+			return B_NO_MEMORY;
+		status_t status = B_ERROR;
 
 		// get the IPv4 loopback address
 		struct sockaddr loopbackAddress;
@@ -1568,8 +1607,11 @@ ipv4_send_routed_data(net_protocol* _protocol, struct net_route* route,
 			sDatalinkModule->put_interface_address(
 				loopbackBuffer->interface_address);
 			loopbackBuffer->interface_address = address;
-			ipv4_receive_data(loopbackBuffer);
+			status = ipv4_receive_data(loopbackBuffer);
 		}
+
+		if (status != B_OK)
+			gBufferModule->free(loopbackBuffer);
 	}
 
 	TRACE_SK(protocol, "  SendRoutedData(): header chksum: %" B_PRIu32
@@ -1580,8 +1622,11 @@ ipv4_send_routed_data(net_protocol* _protocol, struct net_route* route,
 	TRACE_SK(protocol, "  SendRoutedData(): destination: %08x",
 		ntohl(destination.sin_addr.s_addr));
 
-	uint32 mtu = route->mtu ? route->mtu : interface->mtu;
+	uint32 mtu = route->mtu ? route->mtu : interface->device->mtu;
 	if (buffer->size > mtu) {
+		if (protocol != NULL && (protocol->flags & IP_FLAG_DONT_FRAGMENT) != 0)
+			return EMSGSIZE;
+
 		// we need to fragment the packet
 		return send_fragments(protocol, route, buffer, mtu);
 	}
@@ -1689,9 +1734,13 @@ ipv4_get_mtu(net_protocol* protocol, const struct sockaddr* address)
 	if (route->mtu != 0)
 		mtu = route->mtu;
 	else
-		mtu = route->interface_address->interface->mtu;
+		mtu = route->interface_address->interface->device->mtu;
 
 	sDatalinkModule->put_route(sDomain, route);
+
+	if (mtu > 0xffff)
+		mtu = 0xffff;
+
 	return mtu - sizeof(ipv4_header);
 }
 
@@ -1701,6 +1750,8 @@ ipv4_receive_data(net_buffer* buffer)
 {
 	TRACE("ipv4_receive_data(%p [%" B_PRIu32 " bytes])", buffer, buffer->size);
 
+	uint16 headerLength = 0;
+	{
 	NetBufferHeaderReader<ipv4_header> bufferHeader(buffer);
 	if (bufferHeader.Status() != B_OK)
 		return bufferHeader.Status();
@@ -1712,33 +1763,34 @@ ipv4_receive_data(net_buffer* buffer)
 		return B_BAD_TYPE;
 
 	uint16 packetLength = header.TotalLength();
-	uint16 headerLength = header.HeaderLength();
+	headerLength = header.HeaderLength();
 	if (packetLength > buffer->size
 		|| headerLength < sizeof(ipv4_header))
 		return B_BAD_DATA;
 
-	// TODO: would be nice to have a direct checksum function somewhere
-	if (gBufferModule->checksum(buffer, 0, headerLength, true) != 0)
-		return B_BAD_DATA;
+	if ((buffer->buffer_flags & NET_BUFFER_L3_CHECKSUM_VALID) == 0) {
+		if (gBufferModule->checksum(buffer, 0, headerLength, true) != 0)
+			return B_BAD_DATA;
+	}
 
 	// lower layers notion of broadcast or multicast have no relevance to us
 	// other than deciding whether to send an ICMP error
-	bool wasMulticast = (buffer->flags & (MSG_BCAST | MSG_MCAST)) != 0;
+	bool wasMulticast = (buffer->msg_flags & (MSG_BCAST | MSG_MCAST)) != 0;
 	bool notForUs = false;
-	buffer->flags &= ~(MSG_BCAST | MSG_MCAST);
+	buffer->msg_flags &= ~(MSG_BCAST | MSG_MCAST);
 
 	sockaddr_in destination;
 	fill_sockaddr_in(&destination, header.destination);
 
 	if (header.destination == INADDR_BROADCAST) {
-		buffer->flags |= MSG_BCAST;
+		buffer->msg_flags |= MSG_BCAST;
 
 		// Find first interface with a matching family
 		if (!sDatalinkModule->is_local_link_address(sDomain, true,
 				buffer->destination, &buffer->interface_address))
 			notForUs = !wasMulticast;
 	} else if (IN_MULTICAST(ntohl(header.destination))) {
-		buffer->flags |= MSG_MCAST;
+		buffer->msg_flags |= MSG_MCAST;
 	} else {
 		uint32 matchedAddressType = 0;
 
@@ -1750,12 +1802,12 @@ ipv4_receive_data(net_buffer* buffer)
 			// if the buffer was a link layer multicast, regard it as a
 			// broadcast, and let the upper levels decide what to do with it
 			if (wasMulticast)
-				buffer->flags |= MSG_BCAST;
+				buffer->msg_flags |= MSG_BCAST;
 			else
 				notForUs = true;
 		} else {
 			// copy over special address types (MSG_BCAST or MSG_MCAST):
-			buffer->flags |= matchedAddressType;
+			buffer->msg_flags |= matchedAddressType;
 		}
 	}
 
@@ -1804,13 +1856,13 @@ ipv4_receive_data(net_buffer* buffer)
 	// Since the buffer might have been changed (reassembled fragment)
 	// we must no longer access bufferHeader or header anymore after
 	// this point
+	}
 
 	bool rawDelivered = raw_receive_data(buffer);
 
 	// Preserve the ipv4 header for ICMP processing
 	gBufferModule->store_header(buffer);
-
-	bufferHeader.Remove(headerLength);
+	gBufferModule->remove_header(buffer, headerLength);
 		// the header is of variable size and may include IP options
 		// (TODO: that we ignore for now)
 
@@ -1824,7 +1876,7 @@ ipv4_receive_data(net_buffer* buffer)
 		return EAFNOSUPPORT;
 	}
 
-	if ((buffer->flags & MSG_MCAST) != 0) {
+	if ((buffer->msg_flags & MSG_MCAST) != 0) {
 		// Unfortunately historical reasons dictate that the IP multicast
 		// model be a little different from the unicast one. We deliver
 		// this frame directly to all sockets registered with interest
@@ -1851,7 +1903,7 @@ ipv4_deliver_data(net_protocol* _protocol, net_buffer* buffer)
 
 
 status_t
-ipv4_error_received(net_error error, net_buffer* buffer)
+ipv4_error_received(net_error error, net_error_data* errorData, net_buffer* buffer)
 {
 	TRACE("  ipv4_error_received(error %d, buffer %p [%" B_PRIu32 " bytes])",
 		(int)error, buffer, buffer->size);
@@ -1874,16 +1926,16 @@ ipv4_error_received(net_error error, net_buffer* buffer)
 
 	// lower layers notion of broadcast or multicast have no relevance to us
 	// TODO: they actually have when deciding whether to send an ICMP error
-	buffer->flags &= ~(MSG_BCAST | MSG_MCAST);
+	buffer->msg_flags &= ~(MSG_BCAST | MSG_MCAST);
 
 	fill_sockaddr_in((struct sockaddr_in*)buffer->source, header.source);
 	fill_sockaddr_in((struct sockaddr_in*)buffer->destination,
 		header.destination);
 
 	if (header.destination == INADDR_BROADCAST)
-		buffer->flags |= MSG_BCAST;
+		buffer->msg_flags |= MSG_BCAST;
 	else if (IN_MULTICAST(ntohl(header.destination)))
-		buffer->flags |= MSG_MCAST;
+		buffer->msg_flags |= MSG_MCAST;
 
 	// test if the packet is really from us
 	if (!sDatalinkModule->is_local_address(sDomain, buffer->source, NULL,
@@ -1891,6 +1943,13 @@ ipv4_error_received(net_error error, net_buffer* buffer)
 		TRACE("  ipv4_error_received(): packet was not for us %x -> %x",
 			ntohl(header.source), ntohl(header.destination));
 		return B_ERROR;
+	}
+
+	if (error == B_NET_ERROR_MESSAGE_SIZE) {
+		if (errorData != NULL)
+			errorData->mtu -= sizeof(ipv4_header);
+	} else if (error == B_NET_ERROR_REDIRECT_HOST) {
+		// TODO: Update the routing table!
 	}
 
 	buffer->protocol = header.protocol;
@@ -1902,7 +1961,7 @@ ipv4_error_received(net_error error, net_buffer* buffer)
 		return B_ERROR;
 
 	// propagate error
-	return protocol->error_received(error, buffer);
+	return protocol->error_received(error, errorData, buffer);
 }
 
 

@@ -87,12 +87,12 @@ status_t
 VMKernelAddressSpace::InitObject()
 {
 	fAreaObjectCache = create_object_cache("kernel areas",
-		sizeof(VMKernelArea), 0, NULL, NULL, NULL);
+		sizeof(VMKernelArea), 0);
 	if (fAreaObjectCache == NULL)
 		return B_NO_MEMORY;
 
 	fRangesObjectCache = create_object_cache("kernel address ranges",
-		sizeof(Range), 0, NULL, NULL, NULL);
+		sizeof(Range), 0);
 	if (fRangesObjectCache == NULL)
 		return B_NO_MEMORY;
 
@@ -177,7 +177,7 @@ VMKernelAddressSpace::FindClosestArea(addr_t address, bool less) const
 {
 	Range* range = fRangeTree.FindClosest(address, less);
 	while (range != NULL && range->type != Range::RANGE_AREA)
-		range = fRangeTree.Next(range);
+		range = less ? fRangeTree.Previous(range) : fRangeTree.Next(range);
 
 	return range != NULL ? range->area : NULL;
 }
@@ -196,6 +196,7 @@ VMKernelAddressSpace::InsertArea(VMArea* _area, size_t size,
 	TRACE("VMKernelAddressSpace::InsertArea(%p, %" B_PRIu32 ", %#" B_PRIxSIZE
 		", %p \"%s\")\n", addressRestrictions->address,
 		addressRestrictions->address_specification, size, _area, _area->name);
+	ASSERT_WRITE_LOCKED_RW_LOCK(&fLock);
 
 	VMKernelArea* area = static_cast<VMKernelArea*>(_area);
 
@@ -227,6 +228,7 @@ void
 VMKernelAddressSpace::RemoveArea(VMArea* _area, uint32 allocationFlags)
 {
 	TRACE("VMKernelAddressSpace::RemoveArea(%p)\n", _area);
+	ASSERT_WRITE_LOCKED_RW_LOCK(&fLock);
 
 	VMKernelArea* area = static_cast<VMKernelArea*>(_area);
 
@@ -545,7 +547,7 @@ VMKernelAddressSpace::_InsertRange(Range* range)
 
 	// insert at the correct position in the range list
 	Range* insertBeforeRange = fRangeTree.FindClosest(range->base, true);
-	fRangeList.Insert(
+	fRangeList.InsertBefore(
 		insertBeforeRange != NULL
 			? fRangeList.GetNext(insertBeforeRange) : fRangeList.Head(),
 		range);

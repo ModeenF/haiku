@@ -1,12 +1,12 @@
 /*
- * Copyright 2018, Andrew Lindesay <apl@lindesay.co.nz>.
+ * Copyright 2018-2025, Andrew Lindesay <apl@lindesay.co.nz>.
  * All rights reserved. Distributed under the terms of the MIT License.
  */
-
-
 #ifndef LOCAL_PKG_DATA_LOAD_PROCESS__H
 #define LOCAL_PKG_DATA_LOAD_PROCESS__H
 
+
+#include <map>
 
 #include "AbstractProcess.h"
 
@@ -31,9 +31,7 @@ class PkgDataLoadState;
 
 class LocalPkgDataLoadProcess : public AbstractProcess {
 public:
-								LocalPkgDataLoadProcess(
-									PackageInfoListener* packageInfoListener,
-									Model *model, bool force = false);
+								LocalPkgDataLoadProcess(Model *model, bool force = false);
 	virtual						~LocalPkgDataLoadProcess();
 
 			const char*			Name() const;
@@ -43,13 +41,11 @@ protected:
 	virtual status_t			RunInternal();
 
 private:
-			void				_NotifyError(const BString& messageText) const;
+	static	void				_NotifyError(const BString& messageText);
 
 private:
 			Model*				fModel;
 			bool				fForce;
-			PackageInfoListener*
-								fPackageInfoListener;
 };
 
 #endif // LOCAL_PKG_DATA_LOAD_PROCESS__H

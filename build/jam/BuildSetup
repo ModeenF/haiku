@@ -12,7 +12,7 @@
 
 # The Haiku (base) version. For development builds the revision will be
 # attached.
-HAIKU_VERSION = r1~beta2 ;
+HAIKU_VERSION = r1~beta5 ;
 
 
 #pragma mark - container settings
@@ -114,7 +114,12 @@ for architecture in $(HAIKU_PACKAGING_ARCHS) {
 }
 
 if $(HAIKU_PACKAGING_ARCH) {
-	KernelArchitectureSetup $(HAIKU_PACKAGING_ARCH) ;
+	local kernelArch = $(HAIKU_PACKAGING_ARCH) ;
+	# Always use the non-legacy GCC for the kernel.
+	if $(kernelArch) = x86_gcc2 {
+		kernelArch = x86 ;
+	}
+	KernelArchitectureSetup $(kernelArch) ;
 }
 
 # define primary packaging architecture macro
@@ -207,6 +212,11 @@ HOST_LINKFLAGS		?= $(HOST_GCC_BASE_FLAGS) $(LINKFLAGS) ;
 HOST_DEFINES		?= $(DEFINES) ;
 HOST_HDRS			?= $(HDRS) ;
 
+# we shouldn't build anything for the kernel under HOST
+HOST_KERNEL_ARCH = host ;
+HOST_KERNEL_CCFLAGS = host ;
+HOST_KERNEL_C++FLAGS = host ;
+
 
 # split up HOST_AR into the command name and flags
 HOST_AR				= [ Match "([^ ]*) *(.*)" : $(HOST_AR[1]) ]
@@ -217,7 +227,7 @@ HOST_UNARFLAGS		?= x ;
 
 # check the host platform compatibility
 SetPlatformCompatibilityFlagVariables HOST_PLATFORM : HOST : host
-	: linux openbsd freebsd darwin msys ;
+	: linux openbsd freebsd darwin ;
 HOST_PLATFORM_(host)_COMPATIBLE = 1 ;
 
 if $(HOST_PLATFORM) = linux || $(HOST_PLATFORM) = freebsd
@@ -229,21 +239,22 @@ if $(HOST_PLATFORM) = linux || $(HOST_PLATFORM) = freebsd
 }
 
 HOST_CPU ?= $(OSPLAT:L) ;
-
-# Jam doesn't know x86_64, so override HOST_CPU, if 64 bit.
+# Jam doesn't know 32 vs 64 bit, so fill in the gaps based on our
+# host platform 64-bit knowledge.
 if $(HOST_CPU) = x86 && $(HOST_PLATFORM_IS_64_BIT) {
 	HOST_CPU = x86_64 ;
 }
-
+if $(HOST_CPU) = arm && $(HOST_PLATFORM_IS_64_BIT) {
+	HOST_CPU = arm64 ;
+}
+if $(HOST_CPU) = riscv && $(HOST_PLATFORM_IS_64_BIT) {
+	HOST_CPU = riscv64 ;
+}
 HOST_ARCH ?= $(HOST_CPU) ;
 HOST_ARCHS = $(HOST_ARCH) ;
-HOST_KERNEL_ARCH = host ;
 
 # set packaging architecture
 HOST_PACKAGING_ARCH		?= $(HOST_CPU) ;
-if $(HOST_PACKAGING_ARCH) = x86 && $(HOST_CC_IS_LEGACY_GCC) = 1 {
-	HOST_PACKAGING_ARCH = x86_gcc2 ;
-}
 HOST_PACKAGING_ARCHS = $(HOST_PACKAGING_ARCH) ;
 
 # directories
@@ -266,6 +277,11 @@ SetIncludePropertiesVariables HOST ;
 # assembler flags
 HOST_ASFLAGS = ;
 
+# linker flags
+if $(HOST_PLATFORM) != darwin {
+	HOST_LINKFLAGS += -Wl,--no-as-needed ;
+}
+
 # C/C++ flags
 HOST_CCFLAGS += -Wno-multichar ;
 HOST_C++FLAGS += -Wno-multichar ;
@@ -273,50 +289,13 @@ HOST_C++FLAGS += -Wno-multichar ;
 HOST_PIC_CCFLAGS += -fPIC ;
 HOST_PIC_C++FLAGS += -fPIC ;
 
-if $(HOST_CC_IS_LEGACY_GCC) != 1 {
-	HOST_GCC_BASE_FLAGS += -fno-strict-aliasing -fno-delete-null-pointer-checks ;
-}
-
-HOST_KERNEL_CCFLAGS += $(HOST_GCC_BASE_FLAGS) -finline -fno-builtin
-	-D_KERNEL_MODE ;
-HOST_KERNEL_C++FLAGS += $(HOST_GCC_BASE_FLAGS) -finline -fno-builtin
-	-fno-exceptions -D_KERNEL_MODE ;
-HOST_KERNEL_DEFINES += _KERNEL_MODE ;
-
-HOST_KERNEL_PIC_CCFLAGS = -fno-pic ;
-HOST_KERNEL_PIC_LINKFLAGS = ;
-if $(HOST_ARCH) = ppc {
-	# Build a position independent PPC kernel. We need to be able to relocate
-	# the kernel, since the virtual address space layout at boot time is not
-	# fixed.
-	HOST_KERNEL_PIC_CCFLAGS = -fPIE ;
-	HOST_KERNEL_PIC_LINKFLAGS = -shared -fPIE ;
-}
-if $(HOST_ARCH) = m68k {
-	# Build a position independent M68K kernel. We need to be able to relocate
-	# the kernel, since the virtual address space layout at boot time is not
-	# fixed.
-	HOST_KERNEL_PIC_CCFLAGS = $(HAIKU_KERNEL_PIC_CCFLAGS) ;
-	HOST_KERNEL_PIC_LINKFLAGS = $(HAIKU_KERNEL_PIC_LINKFLAGS) ;
-}
-
-if $(HOST_PLATFORM) != darwin {
-	# fix for new changes to DSO linking policies
-	HOST_LINKFLAGS += -Xlinker --no-as-needed ;
-	if $(HOST_CC_IS_LEGACY_GCC) != 1 {
-		HOST_LINKFLAGS += -Wl,--copy-dt-needed-entries ;
-	}
-}
-
+HOST_GCC_BASE_FLAGS += -fno-strict-aliasing -fno-delete-null-pointer-checks ;
 
 # warning flags
 HOST_WARNING_CCFLAGS = -Wall -Wno-trigraphs -Wmissing-prototypes -Wpointer-arith
 	-Wcast-align -Wsign-compare ;
 HOST_WARNING_C++FLAGS = -Wall -Wno-trigraphs -Wno-ctor-dtor-privacy
 	-Woverloaded-virtual -Wpointer-arith -Wcast-align -Wsign-compare ;
-
-HOST_KERNEL_WARNING_CCFLAGS = -Wall -Wno-trigraphs -Wmissing-prototypes ;
-HOST_KERNEL_WARNING_C++FLAGS = -Wall -Wno-trigraphs ;
 
 HOST_WERROR_FLAGS = ;
 
@@ -335,16 +314,11 @@ switch $(HOST_PLATFORM) {
 HOST_DEBUG_0_CCFLAGS = [ FDefines NDEBUG=$(NDEBUG) ] ;
 HOST_DEBUG_0_C++FLAGS = [ FDefines NDEBUG=$(NDEBUG) ] ;
 
-HOST_KERNEL_DEBUG_0_CCFLAGS = [ FDefines NDEBUG=$(NDEBUG) ] ;
-HOST_KERNEL_DEBUG_0_C++FLAGS = [ FDefines NDEBUG=$(NDEBUG) ] ;
-
 local level ;
 for level in $(HAIKU_DEBUG_LEVELS[2-]) {
 	local flags = $(hostDebugFlags) [ FDefines DEBUG=$(level) ] ;
 	HOST_DEBUG_$(level)_CCFLAGS			= $(flags) ;
 	HOST_DEBUG_$(level)_C++FLAGS		= $(flags) ;
-	HOST_KERNEL_DEBUG_$(level)_CCFLAGS	= $(flags) ;
-	HOST_KERNEL_DEBUG_$(level)_C++FLAGS	= $(flags) ;
 }
 
 # ld flags
@@ -377,15 +351,16 @@ HOST_LIBROOT = libroot_build_function_remapper.a libroot_build.so ;
 HOST_STATIC_LIBROOT = libroot_build_function_remapper.a libroot_build.a ;
 HOST_LIBBE = libbe_build.so ;
 
+# adding rpath allows directly invoking host tools without specifying
+# a library search path
+if $(HOST_PLATFORM) != darwin {
+	HOST_LINKFLAGS += -Wl,-rpath,$(HOST_BUILD_COMPATIBILITY_LIB_DIR) ;
+}
+
 if $(HOST_PLATFORM_HAIKU_COMPATIBLE) {
 	# the C++ standard and support libraries
-	if $(HOST_CC_IS_LEGACY_GCC) = 1 {
-		HOST_LIBSTDC++ = stdc++.r4 ;
-		HOST_LIBSUPC++ = ;
-	} else {
-		HOST_LIBSTDC++ = stdc++ ;
-		HOST_LIBSUPC++ = supc++ ;
-	}
+	HOST_LIBSTDC++ = stdc++ ;
+	HOST_LIBSUPC++ = supc++ ;
 
 	HOST_ADD_BUILD_COMPATIBILITY_LIB_DIR
 		= "LIBRARY_PATH=\"$LIBRARY_PATH:$(HOST_BUILD_COMPATIBILITY_LIB_DIR)\"" ;
@@ -401,10 +376,7 @@ if $(HOST_PLATFORM_HAIKU_COMPATIBLE) {
 } else {
 	HOST_LINKFLAGS += -lm -ldl ;
 	HOST_LIBSTDC++ = stdc++ ;
-	if $(HOST_PLATFORM) = msys {
-		HOST_ADD_BUILD_COMPATIBILITY_LIB_DIR
-			= "PATH=$PATH:$(HOST_BUILD_COMPATIBILITY_LIB_DIR)" ;
-	} else if $(HOST_PLATFORM) = darwin {
+	if $(HOST_PLATFORM) = darwin {
 		HOST_ADD_BUILD_COMPATIBILITY_LIB_DIR
 			= "DYLD_LIBRARY_PATH=\"$DYLD_LIBRARY_PATH:$(HOST_BUILD_COMPATIBILITY_LIB_DIR)\"" ;
 	} else {
@@ -415,11 +387,7 @@ if $(HOST_PLATFORM_HAIKU_COMPATIBLE) {
 	HOST_PTHREAD_LINKFLAGS = -pthread ;
 
 	# the C++ support library
-	if $(HOST_CC_IS_LEGACY_GCC) = 1 {
-		HOST_LIBSUPC++ = ;
-	} else {
-		HOST_LIBSUPC++ = supc++ ;
-	}
+	HOST_LIBSUPC++ = supc++ ;
 
 	if $(HOST_PLATFORM) = darwin {
 		# part of the C++ runtime lives in libstdc++ on Darwin
@@ -504,15 +472,20 @@ if $(HOST_PLATFORM) = freebsd {
 if $(HOST_PLATFORM) = darwin {
 	HOST_HDRS += [ FDirName $(HAIKU_TOP) src build libgnuregex ] ;
 
-	# Mac OS X users may be using macports libraries, in which case the headers
+	# macOS users may be using macports libraries, in which case the headers
 	# and the libs are located in /opt/local/.
 	HOST_HDRS += /opt/local/include ;
 	HOST_LINKFLAGS += -L/opt/local/lib ;
 
-	# Mac OS X users may be using homebrew libraries, in which case the headers
-	# and the libs are locted in the /usr/local/.
+	# macOS users may be using homebrew libraries, in which case the headers
+	# and the libs are located in /usr/local/.
 	HOST_HDRS += /usr/local/include ;
 	HOST_LINKFLAGS += -L/usr/local/lib ;
+
+	# macOS users on Apple Silicon will usually have homebrew installed
+	# in /opt/homebrew instead of /usr/local.
+	HOST_HDRS += /opt/homebrew/include ;
+	HOST_LINKFLAGS += -L/opt/homebrew/lib ;
 }
 
 HOST_BE_API_HEADERS =
@@ -547,8 +520,10 @@ SetPlatformCompatibilityFlagVariables TARGET_PLATFORM : TARGET : target ;
 # Haiku architecture is undefined on host-only builds
 # set here to host arch to prevent recusive loops.
 if $(HAIKU_HOST_BUILD_ONLY) = 1 {
+	Echo "Host tools build for $(HOST_ARCH)" ;
 	HAIKU_ARCH = $(HOST_ARCH) ;
 	HAIKU_KERNEL_ARCH = $(HOST_ARCH) ;
+	HAIKU_KERNEL_ARCH_DIR = $(HAIKU_KERNEL_ARCH) ;
 }
 
 # Set TARGET_* variables either from HAIKU_* or HOST_* depending on the
@@ -559,10 +534,11 @@ if $(HAIKU_HOST_BUILD_ONLY) = 1 {
 # for all architectures (e.g. TARGET_DEFINES).
 
 local buildVars =
-	ARCH ARCHS KERNEL_ARCH PACKAGING_ARCH PACKAGING_ARCHS
+	ARCH ARCHS KERNEL_ARCH KERNEL_ARCH_DIR PACKAGING_ARCH PACKAGING_ARCHS
 
 	DEFINES
 	KERNEL_DEFINES
+	BOOT_DEFINES
 
 	KERNEL_CCFLAGS KERNEL_C++FLAGS
 	KERNEL_PIC_CCFLAGS KERNEL_PIC_LINKFLAGS KERNEL_ADDON_LINKFLAGS
@@ -616,6 +592,8 @@ for var in $(archDependentBuildVars)_$(TARGET_PACKAGING_ARCHS) {
 
 TARGET_BOOT_LIBGCC		= $(HAIKU_BOOT_LIBGCC_$(TARGET_PACKAGING_ARCH)) ;
 TARGET_BOOT_LIBSUPC++	= $(HAIKU_BOOT_LIBSUPC++_$(TARGET_PACKAGING_ARCH)) ;
+TARGET_BOOT_32_LIBGCC		= $(HAIKU_BOOT_32_LIBGCC_$(TARGET_PACKAGING_ARCH)) ;
+TARGET_BOOT_32_LIBSUPC++	= $(HAIKU_BOOT_32_LIBSUPC++_$(TARGET_PACKAGING_ARCH)) ;
 
 TARGET_KERNEL_PLATFORM	?= $(HAIKU_KERNEL_PLATFORM) ;
 
@@ -638,7 +616,6 @@ switch $(HOST_PLATFORM) {
 	case linux		: HOST_DEFINES	+= HAIKU_HOST_PLATFORM_LINUX ;
 	case freebsd	: HOST_DEFINES	+= HAIKU_HOST_PLATFORM_FREEBSD ;
 	case darwin		: HOST_DEFINES	+= HAIKU_HOST_PLATFORM_DARWIN ;
-	case msys		: HOST_DEFINES	+= HAIKU_HOST_PLATFORM_MSYS ;
 }
 
 # define host platform 64 bit macro
@@ -813,18 +790,12 @@ for architecture in $(TARGET_PACKAGING_ARCHS) {
 
 
 # The following directories cannot currently be compiled with DEBUG=1
-SetConfigVar DEBUG : HAIKU_TOP src add-ons disk_systems bfs : 0 : local ;
-SetConfigVar DEBUG : HAIKU_TOP src add-ons kernel drivers audio hda : 0 : local ;
-SetConfigVar DEBUG : HAIKU_TOP src add-ons kernel drivers audio ac97 auich : 0 : local ; # fails with gcc4 only
-SetConfigVar DEBUG : HAIKU_TOP src add-ons kernel drivers audio ac97 auvia : 0 : local ; # fails with gcc4 only
 SetConfigVar DEBUG : HAIKU_TOP src add-ons kernel drivers audio ac97 sis7018 : 0 : local ;
 SetConfigVar DEBUG : HAIKU_TOP src add-ons kernel file_systems btrfs : 0 : local ;
 SetConfigVar DEBUG : HAIKU_TOP src add-ons kernel file_systems ntfs libntfs : 0 : local ;
-SetConfigVar DEBUG : HAIKU_TOP src add-ons kernel file_systems udf : 0 : local ;
 SetConfigVar DEBUG : HAIKU_TOP src add-ons kernel file_systems userlandfs server : 0 : local ; # fails with gcc2 only
 SetConfigVar DEBUG : HAIKU_TOP src add-ons kernel file_systems userlandfs server haiku : 0 : local ; # fails with gcc2 only
 SetConfigVar DEBUG : HAIKU_TOP src add-ons media media-add-ons dvb : 0 : local ;
 SetConfigVar DEBUG : HAIKU_TOP src add-ons print drivers gutenprint : 0 : local ;
 SetConfigVar DEBUG : HAIKU_TOP src servers input : 0 : local ;
-SetConfigVar DEBUG : HAIKU_TOP src servers media_addon : 0 : local ;
 SetConfigVar DEBUG : HAIKU_TOP src system boot loader file_systems bfs : 0 : local ;

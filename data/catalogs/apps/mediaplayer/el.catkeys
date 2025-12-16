@@ -1,4 +1,4 @@
-1	greek, modern (1453-)	x-vnd.Haiku-MediaPlayer	3495947958
+1	greek, modern (1453-)	x-vnd.Haiku-MediaPlayer	1512839444
 Remove Entry into Trash	MediaPlayer-RemovePLItemsCmd		Μετακίνηση Αρχείου στον Κάδο Απορριμάτων
 Close	MediaPlayer-PlaylistWindow		Κλείσιμο
 Volume of background clips	MediaPlayer-SettingsWindow		Ένταση κλιπ παρασκηνίου
@@ -16,7 +16,6 @@ DrawBitmap	MediaPlayer-InfoWin		DrawBitmap
 File info	MediaPlayer-InfoWin		Πληροφορίες αρχείου
 raw audio	MediaPlayer-InfoWin		ανεπεξέργαστος ήχος
 Select all	MediaPlayer-PlaylistWindow		Επιλογή όλων
-New player…	MediaPlayer-Main		Νέος παίκτης…
 Move Entries	MediaPlayer-MovePLItemsCmd		Μετακίνηση Αρχείων
 OK	MediaPlayer-Main		Εντάξει
 Remove	MediaPlayer-PlaylistWindow		Αφαίρεση
@@ -25,7 +24,6 @@ Resume:	MediaPlayer-SettingsWindow		Συνέχιση:
 Duration	MediaPlayer-InfoWin		Διάρκεια
 Import Entries	MediaPlayer-ImportPLItemsCmd		Εισαγωγή
 Open network stream	MediaPlayer-Main		Άνοιγμα ροής δικτύου
-Move file to Trash	MediaPlayer-PlaylistWindow		Μετακίνηση αρχείου στον Κάδο Απορριμάτων
 Open file…	MediaPlayer-Main		Άνοιγμα αρχείου…
 Scale controls in full screen mode	MediaPlayer-SettingsWindow		Να μεταβάλλεται το μέγεθος των κουμπιών ελέγχου σε λειτουργία πλήρης οθόνης 
 View options	MediaPlayer-SettingsWindow		Προβολή ρυθμίσεων
@@ -35,6 +33,8 @@ Full volume	MediaPlayer-SettingsWindow		Μέγιστη ένταση
 Start media server	MediaPlayer-Main		Εκκίνηση διακομιστή πολυμέσων
 It appears the media server is not running.\nWould you like to start it ?	MediaPlayer-Main		Φαίνεται ότι ο διακομιστής πολυμέσων δεν εκτελείται.\nΘέλετε να τον ξεκινήσετε;
 Location	MediaPlayer-InfoWin		Τοποθεσία
+%lu × %lu	MediaPlayer-InfoWin	The '×' is the Unicode multiplication sign U+00D7	%lu × %lu
+Opening '%s'.	MediaPlayer-Main		Άνοιγμα του '%s'.
 Medium	MediaPlayer-SettingsWindow		Μέτριο
 Play mode	MediaPlayer-SettingsWindow		Λειτουργία αναπαραγωγής
 Playlist	MediaPlayer-PlaylistWindow		Λίστα Αναπαραγωγής
@@ -72,6 +72,7 @@ Audio	MediaPlayer-Main		Ήχος
 Quit	MediaPlayer-Main		Έξοδος
 Redo	MediaPlayer-PlaylistWindow		Επαναφορά
 Move Entry	MediaPlayer-MovePLItemsCmd		Μετακίνηση Αρχείων
+Reset rating	MediaPlayer-Main		Επαναφορά βαθμολογίας
 <unknown>	PlaylistItem-author		<άγνωστο>
 Cancel	MediaPlayer-SettingsWindow		Άκυρο
 Large	MediaPlayer-SettingsWindow		Μεγάλο
@@ -103,6 +104,7 @@ Rating	MediaPlayer-Main		Βαθμολογία
 Internal error (out of memory). Saving the playlist failed.	MediaPlayer-PlaylistWindow		Εσωτερικό σφάλμα (δεν υπάρχει διαθέσιμη μνήμη). Η αποθήκευση της λίστας αναπαραγωγής απέτυχε.
 Video	MediaPlayer-Main		Βίντεο
 There is no decoder installed to handle the file format, or the decoder has trouble with the specific version of the format.	MediaPlayer-Main		Δεν υπάρχει εγκατεστημένος αποκωδικοποιητής που μπορεί να επεξεργαστεί το μορφότυπο του αρχείου ή ο αποκωδικοποιητής αντιμετωπίζει προβλήματα με την συγκεκριμένη έκδοση του μορφότυπου.
+Lock Peaks	MediaPlayer-PeakView		Κλείδωμα κορυφών
 none	Audio track menu		κανένα
 Open network stream	MediaPlayer-NetworkStream		Άνοιγμα ροής δικτύου
 Automatically start playing	MediaPlayer-SettingsWindow		Αυτόματη αναπαραγωγή

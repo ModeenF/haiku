@@ -1979,7 +1979,7 @@ ClientConnection::VisitReadAttrDirRequest(ReadAttrDirRequest* request)
 	managerLocker.Unlock();
 
 	// read the attribute directory
-	uint8 buffer[sizeof(struct dirent) + B_FILE_NAME_LENGTH];
+	uint8 buffer[offsetof(struct dirent, d_name) + B_FILE_NAME_LENGTH];
 	struct dirent* dirEntry = (struct dirent*)buffer;
 	int32 countRead = 0;
 	bool done = true;
@@ -2410,6 +2410,7 @@ ClientConnection::VisitReadQueryRequest(ReadQueryRequest* request)
 	int32* volumeIDs = new(std::nothrow) int32[volumeCount];
 	if (!volumeIDs)
 		result = B_NO_MEMORY;
+
 	ArrayDeleter<int32> volumeIDsDeleter(volumeIDs);
 
 	// get the query handle
@@ -2430,7 +2431,7 @@ ClientConnection::VisitReadQueryRequest(ReadQueryRequest* request)
 	ReadQueryReply reply;
 	int32 countRead = 0;
 	while (result == B_OK) {
-		uint8 buffer[sizeof(struct dirent) + B_FILE_NAME_LENGTH];
+		uint8 buffer[offsetof(struct dirent, d_name) + B_FILE_NAME_LENGTH];
 		struct dirent* dirEntry = (struct dirent*)buffer;
 
 		result = queryHandle->ReadDir(dirEntry, 1, &countRead);
@@ -2585,11 +2586,11 @@ ClientConnection::ProcessQueryEvent(NodeMonitoringEvent* event)
 
 	// create an array for the IDs of the client volumes a found entry may
 	// reside on
-	status_t result = B_OK;
 	int32 volumeCount = fVolumes->Size();
 	int32* volumeIDs = new(std::nothrow) int32[volumeCount];
 	if (!volumeIDs)
-		result = B_NO_MEMORY;
+		return;
+
 	ArrayDeleter<int32> volumeIDsDeleter(volumeIDs);
 
 	HasQueryPermissionClientVolumeFilter filter;

@@ -1,4 +1,4 @@
-1	catalan; valencian	x-vnd.Haiku-CharacterMap	2410613018
+1	catalan; valencian	x-vnd.Haiku-CharacterMap	917523322
 Tirhuta	UnicodeBlocks		Tirhuta
 Miscellaneous mathematical symbols B	UnicodeBlocks		Símbols matemàtics diversos - B
 Latin extended E	UnicodeBlocks		Llatí ampliat E
@@ -60,6 +60,7 @@ CJK unified ideographs extension C	UnicodeBlocks		Extensió d'ideògrafs unifica
 Ancient Greek musical notation	UnicodeBlocks		Notació musical grega antiga
 Thai	UnicodeBlocks		Tai
 Ethiopic supplement	UnicodeBlocks		Suplement etíop
+Only show blocks contained in font	CharacterWindow		Mostra només els blocs continguts a la lletra.
 Chess symbols	UnicodeBlocks		Símbols d’escacs
 Yijing hexagram symbols	UnicodeBlocks		Símbols d'hexagrames Yijing
 Ottoman Siyaq numbers	UnicodeBlocks		Nombres de Siyaq otomans
@@ -117,7 +118,7 @@ Phonetic extensions	UnicodeBlocks		Extensions fonètiques
 Indic Siyaq numbers	UnicodeBlocks		Números Siyaq índics
 Batak	UnicodeBlocks		Batak
 Code	CharacterWindow		Codi
-Block elements	UnicodeBlocks		Bloqueig d'elements
+Block elements	UnicodeBlocks		Blocatge d'elements
 Ethiopic extended A	UnicodeBlocks		Etiòpic ampliat A
 Mahjong tiles	UnicodeBlocks		Fitxes del Mahjong
 Carian	UnicodeBlocks		Caria
@@ -153,7 +154,7 @@ Number forms	UnicodeBlocks		Formes de números
 Avestan	UnicodeBlocks		Avestan
 Latin extended A	UnicodeBlocks		Llatí ampliat A
 Zanabazar Square	UnicodeBlocks		Zanabazar quadrat
-Sundanese	UnicodeBlocks		Sudanès
+Sundanese	UnicodeBlocks		Sundanès
 Geometric shapes	UnicodeBlocks		Formes geomètriques
 Clear	CharacterWindow		Neteja
 Symbols and pictographs extended A	UnicodeBlocks		Símbols i pictogrames ampliats A
@@ -217,7 +218,7 @@ Geometric shapes extended	UnicodeBlocks		Formes geomètriques ampliades
 Transport and map symbols	UnicodeBlocks		Símbols de transport i mapes
 Tamil supplement	UnicodeBlocks		Suplement de tamil
 Combining diacritical marks extended	UnicodeBlocks		Marques combinades diacrítiques ampliades
-Cyrillic extended C	UnicodeBlocks		Ciríŀlic ampliat - C
+Cyrillic extended C	UnicodeBlocks		Ciríl·lic ampliat - C
 Syriac	UnicodeBlocks		Siri
 Private use area	UnicodeBlocks		Àrea d'ús privat
 Vedic extensions	UnicodeBlocks		Extensions vèdiques
@@ -241,7 +242,7 @@ Phags-pa	UnicodeBlocks		Phags-pa
 Nabataean	UnicodeBlocks		Nabateu
 Meetei Mayek	UnicodeBlocks		Meetei Mayek
 CJK compatibility ideographs	UnicodeBlocks		Idiogrames de compatibilitat CJK
-Show private blocks	CharacterWindow		Mostra els bloqueigs privats
+Show private blocks	CharacterWindow		Mostra els blocatges privats
 Samaritan	UnicodeBlocks		Samarità
 Latin extended additional	UnicodeBlocks		Llatí ampliat addicional
 Tibetan	UnicodeBlocks		Tibetà

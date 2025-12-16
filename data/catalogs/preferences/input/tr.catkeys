@@ -1,19 +1,21 @@
-1	turkish	x-vnd.Haiku-Input	1950274171
-Defaults	InputMouse		Öntanımlılar
+1	turkish	x-vnd.Haiku-Input	993392905
+Defaults	InputMouse		Saptanmışlar
 Scrolling	TouchpadPrefView		Kaydırma
 Long	KeyboardView		Uzun
-Normal	SettingsView		Normal
-Cancel	TouchpadPrefView		İptal
+Cancel	TouchpadPrefView		Vazgeç
 Slow	TouchpadPrefView		Yavaş
-Warp	SettingsView		Büküm
 Device List	InputWindow		Aygıt Listesi
 Double-click speed	SettingsView		Çift tıklama hızı
 5-Button	SettingsView		5 düğmeli
 Typing test area	KeyboardView		Yazma sınama alanı
 Fast	KeyboardView		Hızlı
 Please confirm	TouchpadPrefView		Lütfen onaylayın
+Trackpad speed	TouchpadPrefView		İzleme dörtgeni hızı
 Mouse speed	SettingsView		Fare hızı
-Horizontal scrolling	TouchpadPrefView		Yatay kaydırma
+Trackpad acceleration	TouchpadPrefView		İzleme dörtgeni ivmelendirmesi
+Horizontal scrolling	TouchpadPrefView		Yatay sarma
+Reverse scroll direction	TouchpadPrefView		Sarma yönünü tersine çevir
+Keyboard lock delay	TouchpadPrefView		Klavye kilit gecikmesi
 Input	System name		Girdi Aygıtları
 Quick	TouchpadPrefView		Hızlı
 Short	KeyboardView		Kısa
@@ -22,13 +24,13 @@ Slow	KeyboardView		Yavaş
 2-Button	SettingsView		2 düğmeli
 Click to focus and raise	SettingsView		Odaklayıp öne getirmek için tıkla
 Vertical	TouchpadPrefView		Dikey
-Double-click test area	SettingsView		Çift tıklama sınama alanı
+Low	TouchpadPrefView		Düşük
 Focus follows mouse	SettingsView		Odak fareyi izler
+Double-click test area	SettingsView		Çift tıklama sınama alanı
 Focus mode:	SettingsView		Odak kipi:
 Revert	TouchpadPrefView		Eski haline döndür
 4-Button	SettingsView		4 düğmeli
 Tapping sensitivity	TouchpadPrefView		Hafifçe vurma duyarlılığı
-Instant warp	SettingsView		Anında büküm
 Revert	InputKeyboard		Eski haline döndür
 Mouse type:	SettingsView		Fare türü:
 Off	TouchpadPrefView		Kapalı
@@ -39,15 +41,14 @@ Click to focus	SettingsView		Odak için tıkla
 Acceleration	TouchpadPrefView		İvmelenme
 Accept first click	SettingsView		İlk tıklamayı kabul et
 OK	TouchpadPrefView		Tamam
-Keyboard Lock Delay	TouchpadPrefView		Klavye Kilit Gecikmesi
 Delay until key repeat	KeyboardView		Düğme yinelemesine kadar olan gecikme
-Two finger scrolling	TouchpadPrefView		İki parmak kaydırma
-The new scroll area is very large and may impede normal mouse operation. Do you really want to change it?	TouchpadPrefView		Yeni kaydırma alanı çok geniş ve normal fare işlemlerine engel olabilir. Değiştirmek istediğinizden emin misiniz?
+Two finger scrolling	TouchpadPrefView		İki parmak sarma
+The new scroll area is very large and may impede normal mouse operation. Do you really want to change it?	TouchpadPrefView		Yeni sarma alanı çok geniş ve normal fare işlemlerine engel olabilir. Değiştirmek istediğinizden emin misiniz?
 Mouse acceleration	SettingsView		Fare ivmelenmesi
-Defaults	TouchpadPrefView		Öntanımlılar
 High	TouchpadPrefView		Yüksek
+Defaults	TouchpadPrefView		Saptanmışlar
 1-Button	SettingsView		1 düğmeli
-Defaults	InputKeyboard		Öntanımlılar
-Key repeat rate	KeyboardView		Düğme yineleme oranı
+Defaults	InputKeyboard		Saptanmışlar
+Key repeat rate	KeyboardView		Düğme yineleme hızı
 Horizontal	TouchpadPrefView		Yatay
 3-Button	SettingsView		3 düğmeli

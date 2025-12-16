@@ -15,11 +15,10 @@
 #include <UrlRequest.h>
 
 
-#ifndef LIBNETAPI_DEPRECATED
 namespace BPrivate {
 
 namespace Network {
-#endif
+
 
 class BDataRequest: public BUrlRequest {
 public:
@@ -28,6 +27,7 @@ private:
 		friend class BUrlProtocolRoster;
 
 							BDataRequest(const BUrl& url,
+								BDataIO* output,
 								BUrlProtocolListener* listener = NULL,
 								BUrlContext* context = NULL);
 
@@ -36,10 +36,10 @@ private:
 		BUrlResult			fResult;
 };
 
-#ifndef LIBNETAPI_DEPRECATED
+
 } // namespace Network
 
 } // namespace BPrivate
-#endif
+
 
 #endif

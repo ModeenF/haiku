@@ -28,6 +28,7 @@
 #include <Point.h>
 #include <String.h>
 #include <StringList.h>
+#include <StackOrHeapArray.h>
 
 #include <assert.h>
 #include <ctype.h>
@@ -114,6 +115,7 @@ handle_reply(port_id replyPort, int32* _code, bigtime_t timeout,
 	BMessage* reply)
 {
 	DEBUG_FUNCTION_ENTER2;
+
 	ssize_t size;
 	do {
 		size = port_buffer_size_etc(replyPort, B_RELATIVE_TIMEOUT, timeout);
@@ -122,22 +124,19 @@ handle_reply(port_id replyPort, int32* _code, bigtime_t timeout,
 	if (size < 0)
 		return size;
 
-	status_t result;
-	char* buffer = (char*)malloc(size);
-	if (buffer == NULL)
+	BStackOrHeapArray<char, 4096> buffer(size);
+	if (!buffer.IsValid())
 		return B_NO_MEMORY;
 
+	status_t result;
 	do {
 		result = read_port(replyPort, _code, buffer, size);
 	} while (result == B_INTERRUPTED);
 
-	if (result < 0 || *_code != kPortMessageCode) {
-		free(buffer);
+	if (result < 0 || *_code != kPortMessageCode)
 		return result < 0 ? result : B_ERROR;
-	}
 
 	result = reply->Unflatten(buffer);
-	free(buffer);
 	return result;
 }
 
@@ -672,7 +671,7 @@ BMessage::_PrintToStream(const char* indent) const
 					break;
 
 				case B_UINT16_TYPE:
-					print_type<uint16>("uint16(0x%x or %u\n", pointer);
+					print_type<uint16>("uint16(0x%x or %u)\n", pointer);
 					break;
 
 				case B_INT32_TYPE:
@@ -680,15 +679,15 @@ BMessage::_PrintToStream(const char* indent) const
 					break;
 
 				case B_UINT32_TYPE:
-					print_type<uint32>("uint32(0x%lx or %lu\n", pointer);
+					print_type<uint32>("uint32(0x%lx or %lu)\n", pointer);
 					break;
 
 				case B_INT64_TYPE:
-					print_type<int64>("int64(0x%Lx or %Ld)\n", pointer);
+					print_type<int64>("int64(0x%Lx or %lld)\n", pointer);
 					break;
 
 				case B_UINT64_TYPE:
-					print_type<uint64>("uint64(0x%Lx or %Ld\n", pointer);
+					print_type<uint64>("uint64(0x%Lx or %lld)\n", pointer);
 					break;
 
 				case B_BOOL_TYPE:
@@ -1367,8 +1366,14 @@ BMessage::Unflatten(BDataIO* stream)
 			}
 
 			result = stream->Read(fData, fHeader->data_size);
-			if (result != (ssize_t)fHeader->data_size)
+			if (result != (ssize_t)fHeader->data_size) {
+				free(fData);
+				fData = NULL;
+				free(fFields);
+				fFields = NULL;
+				_InitHeader();
 				return result < 0 ? result : B_BAD_VALUE;
+			}
 		}
 	}
 
@@ -2127,7 +2132,9 @@ BMessage::_SendMessage(port_id port, team_id portOwner, int32 token,
 	bigtime_t timeout, bool replyRequired, BMessenger& replyTo) const
 {
 	DEBUG_FUNCTION_ENTER;
+
 	ssize_t size = 0;
+	char stackBuffer[4096];
 	char* buffer = NULL;
 	message_header* header = NULL;
 	status_t result = B_OK;
@@ -2193,13 +2200,17 @@ BMessage::_SendMessage(port_id port, team_id portOwner, int32 token,
 #endif
 	} else {
 		size = FlattenedSize();
-		buffer = (char*)malloc(size);
-		if (buffer == NULL)
-			return B_NO_MEMORY;
+		if (size > (ssize_t)sizeof(stackBuffer)) {
+			buffer = (char*)malloc(size);
+			if (buffer == NULL)
+				return B_NO_MEMORY;
+		} else
+			buffer = stackBuffer;
 
 		result = Flatten(buffer, size);
 		if (result != B_OK) {
-			free(buffer);
+			if (buffer != stackBuffer)
+				free(buffer);
 			return result;
 		}
 
@@ -2263,7 +2274,8 @@ BMessage::_SendMessage(port_id port, team_id portOwner, int32 token,
 		direct->Release();
 	}
 
-	free(buffer);
+	if (buffer != stackBuffer)
+		free(buffer);
 	return result;
 }
 
@@ -2462,7 +2474,7 @@ BMessage::Find##typeName(const char* name, int32 index, type* p) const		\
 	error = FindData(name, typeCode, index, (const void**)&ptr, &bytes);	\
 																			\
 	if (error == B_OK)														\
-		*p = *ptr;															\
+		memcpy((void *)p, ptr, sizeof(type));								\
 																			\
 	return error;															\
 }																			\
@@ -2648,6 +2660,7 @@ BMessage::Set##typeName(const char* name, const type& value)				\
 DEFINE_SET_GET_BY_REFERENCE_FUNCTIONS(BPoint, Point, B_POINT_TYPE);
 DEFINE_SET_GET_BY_REFERENCE_FUNCTIONS(BRect, Rect, B_RECT_TYPE);
 DEFINE_SET_GET_BY_REFERENCE_FUNCTIONS(BSize, Size, B_SIZE_TYPE);
+DEFINE_SET_GET_BY_REFERENCE_FUNCTIONS(BAlignment, Alignment, B_ALIGNMENT_TYPE);
 
 #undef DEFINE_SET_GET_BY_REFERENCE_FUNCTIONS
 
@@ -2744,24 +2757,15 @@ BMessage::AddMessage(const char* name, const BMessage* message)
 	// copying an extra buffer. Functions can be added that return a direct
 	// pointer into the message.
 
-	char stackBuffer[16384];
 	ssize_t size = message->FlattenedSize();
-
-	char* buffer;
-	if (size > (ssize_t)sizeof(stackBuffer)) {
-		buffer = (char*)malloc(size);
-		if (buffer == NULL)
-			return B_NO_MEMORY;
-	} else
-		buffer = stackBuffer;
+	BStackOrHeapArray<char, 4096> buffer(size);
+	if (!buffer.IsValid())
+		return B_NO_MEMORY;
 
 	status_t error = message->Flatten(buffer, size);
 
 	if (error >= B_OK)
 		error = AddData(name, B_MESSAGE_TYPE, buffer, size, false);
-
-	if (buffer != stackBuffer)
-		free(buffer);
 
 	return error;
 }
@@ -2780,24 +2784,15 @@ BMessage::AddFlat(const char* name, const BFlattenable* object, int32 count)
 	if (object == NULL)
 		return B_BAD_VALUE;
 
-	char stackBuffer[16384];
 	ssize_t size = object->FlattenedSize();
-
-	char* buffer;
-	if (size > (ssize_t)sizeof(stackBuffer)) {
-		buffer = (char*)malloc(size);
-		if (buffer == NULL)
-			return B_NO_MEMORY;
-	} else
-		buffer = stackBuffer;
+	BStackOrHeapArray<char, 4096> buffer(size);
+	if (!buffer.IsValid())
+		return B_NO_MEMORY;
 
 	status_t error = object->Flatten(buffer, size);
 
 	if (error >= B_OK)
 		error = AddData(name, object->TypeCode(), buffer, size, false);
-
-	if (buffer != stackBuffer)
-		free(buffer);
 
 	return error;
 }
@@ -3241,6 +3236,9 @@ BMessage::ReplaceMessage(const char* name, int32 index, const BMessage* message)
 		return B_BAD_VALUE;
 
 	ssize_t size = message->FlattenedSize();
+	if (size < 0)
+		return B_BAD_VALUE;
+
 	char buffer[size];
 
 	status_t error = message->Flatten(buffer, size);
@@ -3266,6 +3264,9 @@ BMessage::ReplaceFlat(const char* name, int32 index, BFlattenable* object)
 		return B_BAD_VALUE;
 
 	ssize_t size = object->FlattenedSize();
+	if (size < 0)
+		return B_BAD_VALUE;
+
 	char buffer[size];
 
 	status_t error = object->Flatten(buffer, size);

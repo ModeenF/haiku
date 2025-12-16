@@ -10,6 +10,7 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 		SubDirSysHdrs $(HAIKU_TOP) src system libroot posix glibc include arch
 			generic ;
 		SubDirSysHdrs $(HAIKU_TOP) src system libroot posix glibc include ;
+		SubDirSysHdrs $(HAIKU_TOP) src system libroot posix glibc ctype ;
 		SubDirSysHdrs $(HAIKU_TOP) src system libroot posix glibc libio ;
 		SubDirSysHdrs $(HAIKU_TOP) src system libroot posix glibc locale ;
 		SubDirSysHdrs $(HAIKU_TOP) src system libroot posix glibc ;
@@ -17,7 +18,6 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 		MergeObject <$(architecture)>posix_gnu_ext.o :
 			getopt.c
 			getopt1.c
-			getopt_init.c
 
 			obstack.c
 			;

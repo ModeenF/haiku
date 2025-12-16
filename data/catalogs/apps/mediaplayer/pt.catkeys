@@ -1,4 +1,4 @@
-1	portuguese	x-vnd.Haiku-MediaPlayer	1961774506
+1	portuguese	x-vnd.Haiku-MediaPlayer	1441754962
 Remove Entry into Trash	MediaPlayer-RemovePLItemsCmd		Eliminar elemento para o Lixo
 Close	MediaPlayer-PlaylistWindow		Fechar
 Volume of background clips	MediaPlayer-SettingsWindow		Volume dos clips em segundo plano
@@ -16,7 +16,6 @@ DrawBitmap	MediaPlayer-InfoWin		DrawBitmap
 File info	MediaPlayer-InfoWin		Informações do ficheiro
 raw audio	MediaPlayer-InfoWin		áudio raw
 Select all	MediaPlayer-PlaylistWindow		Selecionar tudo
-New player…	MediaPlayer-Main		Novo leitor…
 Move Entries	MediaPlayer-MovePLItemsCmd		Mover Entradas
 OK	MediaPlayer-Main		OK
 Remove	MediaPlayer-PlaylistWindow		Remover
@@ -25,7 +24,6 @@ Resume:	MediaPlayer-SettingsWindow		Retomar:
 Duration	MediaPlayer-InfoWin		Duração
 Import Entries	MediaPlayer-ImportPLItemsCmd		Importar Entradas
 Open network stream	MediaPlayer-Main		Abrir fluxo de rede
-Move file to Trash	MediaPlayer-PlaylistWindow		Mover ficheiro para o Lixo
 Open file…	MediaPlayer-Main		Abrir ficheiro…
 Scale controls in full screen mode	MediaPlayer-SettingsWindow		Redimensionar controlos no modo de ecrã completo
 View options	MediaPlayer-SettingsWindow		Opções de visualização

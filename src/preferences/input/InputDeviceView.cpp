@@ -4,22 +4,17 @@
  *
  * Author:
  *		Preetpal Kaur <preetpalok123@gmail.com>
-*/
+ */
 
 
 #include "InputDeviceView.h"
 
 
 #include <Catalog.h>
-#include <DateFormat.h>
-#include <Input.h>
-#include <LayoutBuilder.h>
-#include <ListView.h>
 #include <Locale.h>
-#include <ScrollView.h>
 #include <String.h>
-#include <StringItem.h>
 
+#include "InputIcons.h"
 
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "DeviceList"
@@ -86,13 +81,14 @@ struct DeviceListItemView::Renderer {
 		onto->SetDrawingMode(B_OP_COPY);
 
 		BFont font = be_plain_font;
-		font_height	fontInfo;
+		font_height fontInfo;
 		font.GetHeight(&fontInfo);
 
 		onto->SetFont(&font);
-		onto->MovePenTo(point.x + 8, frame.top
-			+ fontInfo.ascent + (frame.Height()
-			- ceilf(fontInfo.ascent + fontInfo.descent)) / 2.0f);
+		onto->MovePenTo(point.x + 8,
+			frame.top + fontInfo.ascent
+				+ (frame.Height() - ceilf(fontInfo.ascent + fontInfo.descent))
+					/ 2.0f);
 		onto->DrawString(fTitle);
 
 		onto->SetHighColor(highColor);
@@ -102,9 +98,11 @@ struct DeviceListItemView::Renderer {
 	float ItemWidth()
 	{
 		float width = 4.0f;
-		width += be_plain_font->StringWidth(fTitle) + 16.0f;
+		width += be_plain_font->StringWidth(fTitle) +
+			(fPrimaryIcon != NULL ? fPrimaryIcon->Bounds().Width() : 16.0f);
 		return width;
 	}
+
 private:
 
 	BString		fTitle;
@@ -119,16 +117,15 @@ DeviceListItemView::Update(BView* owner, const BFont* font)
 	BListItem::Update(owner, font);
 
 	float iconHeight = InputIcons::sBounds.Height() + 1;
-	if ((Height() < iconHeight + kITEM_MARGIN * 2)) {
+	if ((Height() < iconHeight + kITEM_MARGIN * 2))
 		SetHeight(iconHeight + kITEM_MARGIN * 2);
-	}
 
 	Renderer renderer;
 	renderer.SetTitle(Label());
 	renderer.SetTitle(fTitle);
 	SetRenderParameters(renderer);
 	SetWidth(renderer.ItemWidth());
-};
+}
 
 
 void
@@ -139,18 +136,18 @@ DeviceListItemView::DrawItem(BView* owner, BRect frame, bool complete)
 	renderer.SetTitle(Label());
 	SetRenderParameters(renderer);
 	renderer.Render(owner, frame, complete);
-};
+}
 
 
 void
 DeviceListItemView::SetRenderParameters(Renderer& renderer)
 {
-	if (fInputType == MOUSE_TYPE)
-		renderer.AddIcon(&Icons()->mouseIcon);
-
-	else if (fInputType == TOUCHPAD_TYPE)
-		renderer.AddIcon(&Icons()->touchpadIcon);
-
-	else if (fInputType == KEYBOARD_TYPE)
-		renderer.AddIcon(&Icons()->keyboardIcon);
+	if (Icons() != NULL) {
+		if (fInputType == MOUSE_TYPE)
+			renderer.AddIcon(&Icons()->mouseIcon);
+		else if (fInputType == TOUCHPAD_TYPE)
+			renderer.AddIcon(&Icons()->touchpadIcon);
+		else if (fInputType == KEYBOARD_TYPE)
+			renderer.AddIcon(&Icons()->keyboardIcon);
+	}
 }

@@ -113,6 +113,7 @@ iterative_io_finished_hook(void* cookie, io_request* request, status_t status,
 {
 	Inode* inode = (Inode*)cookie;
 	rw_lock_read_unlock(&inode->Lock());
+	put_vnode(inode->GetVolume()->FSVolume(), inode->ID());
 	return B_OK;
 }
 
@@ -283,7 +284,7 @@ static status_t
 bfs_get_vnode(fs_volume* _volume, ino_t id, fs_vnode* _node, int* _type,
 	uint32* _flags, bool reenter)
 {
-	//FUNCTION_START(("ino_t = %Ld\n", id));
+	//FUNCTION_START(("ino_t = %lld\n", id));
 	Volume* volume = (Volume*)_volume->private_volume;
 
 	// first inode may be after the log area, we don't go through
@@ -497,6 +498,11 @@ bfs_write_pages(fs_volume* _volume, fs_vnode* _node, void* _cookie,
 static status_t
 bfs_io(fs_volume* _volume, fs_vnode* _node, void* _cookie, io_request* request)
 {
+#if KDEBUG_RW_LOCK_DEBUG
+	// bfs_io depends on read-locks being implicitly transferrable across threads.
+	return B_UNSUPPORTED;
+#endif
+
 	Volume* volume = (Volume*)_volume->private_volume;
 	Inode* inode = (Inode*)_node->private_node;
 
@@ -517,6 +523,12 @@ bfs_io(fs_volume* _volume, fs_vnode* _node, void* _cookie, io_request* request)
 	// We lock the node here and will unlock it in the "finished" hook.
 	rw_lock_read_lock(&inode->Lock());
 
+	// Due to how I/O request notifications work, it is possible that
+	// some other thread could be notified that the request completed
+	// before we have a chance to release the read lock. We thus need
+	// our own reference to the vnode.
+	acquire_vnode(_volume, inode->ID());
+
 	return do_iterative_fd_io(volume->Device(), request,
 		iterative_io_get_vecs_hook, iterative_io_finished_hook, inode);
 }
@@ -534,7 +546,7 @@ bfs_get_file_map(fs_volume* _volume, fs_vnode* _node, off_t offset, size_t size,
 	block_run run;
 	off_t fileOffset;
 
-	//FUNCTION_START(("offset = %Ld, size = %lu\n", offset, size));
+	//FUNCTION_START(("offset = %lld, size = %lu\n", offset, size));
 
 	while (true) {
 		status_t status = inode->FindBlockRun(offset, run, fileOffset);
@@ -599,7 +611,7 @@ bfs_lookup(fs_volume* _volume, fs_vnode* _directory, const char* file,
 
 	status = tree->Find((uint8*)file, (uint16)strlen(file), _vnodeID);
 	if (status != B_OK) {
-		//PRINT(("bfs_walk() could not find %Ld:\"%s\": %s\n", directory->BlockNumber(), file, strerror(status)));
+		//PRINT(("bfs_walk() could not find %lld:\"%s\": %s\n", directory->BlockNumber(), file, strerror(status)));
 		if (status == B_ENTRY_NOT_FOUND)
 			entry_cache_add_missing(volume->ID(), directory->ID(), file);
 
@@ -837,7 +849,7 @@ bfs_set_flags(fs_volume* _volume, fs_vnode* _node, void* _cookie, int flags)
 
 
 static status_t
-bfs_fsync(fs_volume* _volume, fs_vnode* _node)
+bfs_fsync(fs_volume* _volume, fs_vnode* _node, bool dataOnly)
 {
 	FUNCTION();
 
@@ -874,13 +886,13 @@ bfs_write_stat(fs_volume* _volume, fs_vnode* _node, const struct stat* stat,
 
 	bfs_inode& node = inode->Node();
 	bool updateTime = false;
-	uid_t uid = geteuid();
-
-	bool isOwnerOrRoot = uid == 0 || uid == (uid_t)node.UserID();
-	bool hasWriteAccess = inode->CheckPermissions(W_OK) == B_OK;
 
 	Transaction transaction(volume, inode->BlockNumber());
 	inode->WriteLockInTransaction(transaction);
+
+	if (check_write_stat_permissions(node.GroupID(), node.UserID(), node.Mode(),
+			mask, stat) != B_OK)
+		RETURN_ERROR(B_NOT_ALLOWED);
 
 	if ((mask & B_STAT_SIZE) != 0 && inode->Size() != stat->st_size) {
 		// Since B_STAT_SIZE is the only thing that can fail directly, we
@@ -890,8 +902,6 @@ bfs_write_stat(fs_volume* _volume, fs_vnode* _node, const struct stat* stat,
 			return B_IS_A_DIRECTORY;
 		if (!inode->IsFile())
 			return B_BAD_VALUE;
-		if (!hasWriteAccess)
-			RETURN_ERROR(B_NOT_ALLOWED);
 
 		off_t oldSize = inode->Size();
 
@@ -917,25 +927,16 @@ bfs_write_stat(fs_volume* _volume, fs_vnode* _node, const struct stat* stat,
 	}
 
 	if ((mask & B_STAT_UID) != 0) {
-		// only root should be allowed
-		if (uid != 0)
-			RETURN_ERROR(B_NOT_ALLOWED);
 		node.uid = HOST_ENDIAN_TO_BFS_INT32(stat->st_uid);
 		updateTime = true;
 	}
 
 	if ((mask & B_STAT_GID) != 0) {
-		// only the user or root can do that
-		if (!isOwnerOrRoot)
-			RETURN_ERROR(B_NOT_ALLOWED);
 		node.gid = HOST_ENDIAN_TO_BFS_INT32(stat->st_gid);
 		updateTime = true;
 	}
 
 	if ((mask & B_STAT_MODE) != 0) {
-		// only the user or root can do that
-		if (!isOwnerOrRoot)
-			RETURN_ERROR(B_NOT_ALLOWED);
 		PRINT(("original mode = %u, stat->st_mode = %u\n",
 			(unsigned int)node.Mode(), (unsigned int)stat->st_mode));
 		node.mode = HOST_ENDIAN_TO_BFS_INT32((node.Mode() & ~S_IUMSK)
@@ -944,17 +945,11 @@ bfs_write_stat(fs_volume* _volume, fs_vnode* _node, const struct stat* stat,
 	}
 
 	if ((mask & B_STAT_CREATION_TIME) != 0) {
-		// the user or root can do that or any user with write access
-		if (!isOwnerOrRoot && !hasWriteAccess)
-			RETURN_ERROR(B_NOT_ALLOWED);
 		node.create_time
 			= HOST_ENDIAN_TO_BFS_INT64(bfs_inode::ToInode(stat->st_crtim));
 	}
 
 	if ((mask & B_STAT_MODIFICATION_TIME) != 0) {
-		// the user or root can do that or any user with write access
-		if (!isOwnerOrRoot && !hasWriteAccess)
-			RETURN_ERROR(B_NOT_ALLOWED);
 		if (!inode->InLastModifiedIndex()) {
 			// directory modification times are not part of the index
 			node.last_modified_time
@@ -968,9 +963,6 @@ bfs_write_stat(fs_volume* _volume, fs_vnode* _node, const struct stat* stat,
 	}
 
 	if ((mask & B_STAT_CHANGE_TIME) != 0 || updateTime) {
-		// the user or root can do that or any user with write access
-		if (!isOwnerOrRoot && !hasWriteAccess)
-			RETURN_ERROR(B_NOT_ALLOWED);
 		bigtime_t newTime;
 		if ((mask & B_STAT_CHANGE_TIME) == 0)
 			newTime = bfs_inode::ToInode(real_time_clock_usecs());
@@ -1287,7 +1279,8 @@ bfs_rename(fs_volume* _volume, fs_vnode* _oldDir, const char* oldName,
 		status = inode->SetName(transaction, newName);
 		if (status == B_OK) {
 			Index index(volume);
-			index.UpdateName(transaction, oldName, newName, inode);
+			index.UpdateName(transaction, oldName, newName, inode,
+				false /* we already updated live queries, above */);
 		}
 	}
 
@@ -1356,8 +1349,7 @@ bfs_open(fs_volume* _volume, fs_vnode* _node, int openMode, void** _cookie)
 	if ((openMode & O_DIRECTORY) != 0 && !inode->IsDirectory())
 		return B_NOT_A_DIRECTORY;
 
-	status_t status = inode->CheckPermissions(open_mode_to_access(openMode)
-		| ((openMode & O_TRUNC) != 0 ? W_OK : 0));
+	status_t status = inode->CheckPermissions(open_mode_to_access(openMode));
 	if (status != B_OK)
 		RETURN_ERROR(status);
 
@@ -1737,7 +1729,7 @@ bfs_read_dir(fs_volume* _volume, fs_vnode* _node, void* _cookie,
 	while (count < maxCount && bufferSize > sizeof(struct dirent)) {
 		ino_t id;
 		uint16 length;
-		size_t nameBufferSize = bufferSize - sizeof(struct dirent) + 1;
+		size_t nameBufferSize = bufferSize - offsetof(struct dirent, d_name);
 
 		status_t status = iterator->GetNextEntry(dirent->d_name, &length,
 			nameBufferSize, &id);
@@ -1755,14 +1747,10 @@ bfs_read_dir(fs_volume* _volume, fs_vnode* _node, void* _cookie,
 		if (status != B_OK)
 			RETURN_ERROR(status);
 
-		ASSERT(length < nameBufferSize);
-
 		dirent->d_dev = volume->ID();
 		dirent->d_ino = id;
-		dirent->d_reclen = sizeof(struct dirent) + length;
 
-		bufferSize -= dirent->d_reclen;
-		dirent = (struct dirent*)((uint8*)dirent + dirent->d_reclen);
+		dirent = next_dirent(dirent, length, bufferSize);
 		count++;
 	}
 
@@ -1867,7 +1855,7 @@ bfs_read_attr_dir(fs_volume* _volume, fs_vnode* node, void* _cookie,
 	Volume* volume = (Volume*)_volume->private_volume;
 
 	dirent->d_dev = volume->ID();
-	dirent->d_reclen = sizeof(struct dirent) + length;
+	dirent->d_reclen = offsetof(struct dirent, d_name) + length + 1;
 
 	*_num = 1;
 	return B_OK;
@@ -2267,26 +2255,10 @@ bfs_open_query(fs_volume* _volume, const char* queryString, uint32 flags,
 
 	Volume* volume = (Volume*)_volume->private_volume;
 
-	Expression* expression = new(std::nothrow) Expression((char*)queryString);
-	if (expression == NULL)
-		RETURN_ERROR(B_NO_MEMORY);
-
-	if (expression->InitCheck() < B_OK) {
-		INFORM(("Could not parse query \"%s\", stopped at: \"%s\"\n",
-			queryString, expression->Position()));
-
-		delete expression;
-		RETURN_ERROR(B_BAD_VALUE);
-	}
-
-	Query* query = new(std::nothrow) Query(volume, expression, flags);
-	if (query == NULL) {
-		delete expression;
-		RETURN_ERROR(B_NO_MEMORY);
-	}
-
-	if (flags & B_LIVE_QUERY)
-		query->SetLiveMode(port, token);
+	Query* query;
+	status_t error = Query::Create(volume, queryString, flags, port, token, query);
+	if (error != B_OK)
+		return error;
 
 	*_cookie = (void*)query;
 
@@ -2308,9 +2280,7 @@ bfs_free_query_cookie(fs_volume* _volume, void* cookie)
 	FUNCTION();
 
 	Query* query = (Query*)cookie;
-	Expression* expression = query->GetExpression();
 	delete query;
-	delete expression;
 
 	return B_OK;
 }

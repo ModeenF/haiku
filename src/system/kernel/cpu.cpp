@@ -23,10 +23,12 @@
 #include <kscheduler.h>
 #include <thread_types.h>
 #include <util/AutoLock.h>
+#include <util/ThreadAutoLock.h>
 
 
 /* global per-cpu structure */
 cpu_ent gCPU[SMP_MAX_CPUS];
+CPUSet gCPUEnabled;
 
 uint32 gCPUCacheLevelCount;
 static cpu_topology_node sCPUTopology;
@@ -148,6 +150,7 @@ cpu_preboot_init_percpu(kernel_args *args, int curr_cpu)
 	// we can use it for get_current_cpu
 	memset(&gCPU[curr_cpu], 0, sizeof(gCPU[curr_cpu]));
 	gCPU[curr_cpu].cpu_num = curr_cpu;
+	gCPUEnabled.SetBitAtomic(curr_cpu);
 
 	list_init(&gCPU[curr_cpu].irqs);
 	B_INITIALIZE_SPINLOCK(&gCPU[curr_cpu].irqs_lock);
@@ -188,7 +191,10 @@ cpu_frequency(int32 cpu)
 void
 clear_caches(void *address, size_t length, uint32 flags)
 {
-	// ToDo: implement me!
+	// TODO: data cache
+	if ((B_INVALIDATE_ICACHE & flags) != 0) {
+		arch_cpu_sync_icache(address, length);
+	}
 }
 
 

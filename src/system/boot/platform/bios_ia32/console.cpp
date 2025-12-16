@@ -10,8 +10,10 @@
 #include "video.h"
 
 #include <SupportDefs.h>
-#include <util/kernel_cpp.h>
+
 #include <boot/stage2.h>
+#include <utf8_functions.h>
+#include <util/kernel_cpp.h>
 
 #include <string.h>
 
@@ -22,6 +24,13 @@ class Console : public ConsoleNode {
 
 		virtual ssize_t ReadAt(void *cookie, off_t pos, void *buffer, size_t bufferSize);
 		virtual ssize_t WriteAt(void *cookie, off_t pos, const void *buffer, size_t bufferSize);
+
+		virtual void	ClearScreen();
+		virtual int32	Width();
+		virtual int32	Height();
+		virtual void	SetCursor(int32 x, int32 y);
+		virtual void	SetCursorVisible(bool visible);
+		virtual void	SetColors(int32 foreground, int32 background);
 };
 
 static uint16 *sScreenBase = (uint16 *)0xb8000;
@@ -30,7 +39,8 @@ static uint32 sScreenHeight = 25;
 static uint32 sScreenOffset = 0;
 static uint16 sColor = 0x0f00;
 
-static Console sInput, sOutput;
+extern ConsoleNode* gConsoleNode;
+static Console sConsole;
 FILE *stdin, *stdout, *stderr;
 
 
@@ -72,26 +82,58 @@ Console::WriteAt(void *cookie, off_t /*pos*/, const void *buffer, size_t bufferS
 	if (gKernelArgs.frame_buffer.enabled)
 		return bufferSize;
 
-	for (uint32 i = 0; i < bufferSize; i++) {
-		if (string[0] == '\n')
+	size_t length = bufferSize;
+	while (length > 0) {
+		if (string[0] == '\n') {
 			sScreenOffset += sScreenWidth - (sScreenOffset % sScreenWidth);
-		else
+			length--;
+			string++;
+		} else if ((string[0] & 0x80) == 0) {
 			sScreenBase[sScreenOffset++] = sColor | string[0];
+			length--;
+			string++;
+		} else {
+			// UTF8ToCharCode expects a NULL-terminated string, which we can't
+			// guarantee. UTF8NextCharLen checks the bounds and allows us to
+			// know whether we can safely read the next character.
+			uint32 codepoint;
+			uint32 charLen = UTF8NextCharLen(string, length);
+			if (charLen > 0) {
+				codepoint = UTF8ToCharCode(&string);
+				length -= charLen;
+			} else {
+				codepoint = 0xfffd;
+				string++;
+				length--;
+			}
+
+			switch (codepoint) {
+				case 0x25B2:	// BLACK UP-POINTING TRIANGLE
+					sScreenBase[sScreenOffset++] = sColor | 0x1e;
+					break;
+				case 0x25BC:	// BLACK DOWN-POINTING TRIANGLE
+					sScreenBase[sScreenOffset++] = sColor | 0x1f;
+					break;
+				case 0x2026:	// HORIZONTAL ELLIPSIS
+					WriteAt(cookie, -1, "...", 3);
+					break;
+				case 0x00A9:	// COPYRIGHT SIGN
+					WriteAt(cookie, -1, "(C)", 3);
+					break;
+				default:
+					sScreenBase[sScreenOffset++] = sColor | '?';
+			}
+		}
 
 		if (sScreenOffset >= sScreenWidth * sScreenHeight)
 			scroll_up();
-
-		string++;
 	}
 	return bufferSize;
 }
 
 
-//	#pragma mark -
-
-
 void
-console_clear_screen(void)
+Console::ClearScreen()
 {
 	if (gKernelArgs.frame_buffer.enabled)
 		return;
@@ -105,21 +147,21 @@ console_clear_screen(void)
 
 
 int32
-console_width(void)
+Console::Width()
 {
 	return sScreenWidth;
 }
 
 
 int32
-console_height(void)
+Console::Height()
 {
 	return sScreenHeight;
 }
 
 
 void
-console_set_cursor(int32 x, int32 y)
+Console::SetCursor(int32 x, int32 y)
 {
 	if (y >= (int32)sScreenHeight)
 		y = sScreenHeight - 1;
@@ -136,21 +178,17 @@ console_set_cursor(int32 x, int32 y)
 
 
 void
-console_show_cursor(void)
+Console::SetCursorVisible(bool visible)
 {
-	video_show_text_cursor();
+	if (visible)
+		video_show_text_cursor();
+	else
+		video_hide_text_cursor();
 }
 
 
 void
-console_hide_cursor(void)
-{
-	video_hide_text_cursor();
-}
-
-
-void
-console_set_color(int32 foreground, int32 background)
+Console::SetColors(int32 foreground, int32 background)
 {
 	sColor = (background & 0xf) << 12 | (foreground & 0xf) << 8;
 }
@@ -192,11 +230,13 @@ console_init(void)
 {
 	// ToDo: make screen size changeable via stage2_args
 
+	gConsoleNode = &sConsole;
+
 	console_clear_screen();
 
 	// enable stdio functionality
-	stdin = (FILE *)&sInput;
-	stdout = stderr = (FILE *)&sOutput;
+	stdin = (FILE *)&sConsole;
+	stdout = stderr = (FILE *)&sConsole;
 
 	return B_OK;
 }

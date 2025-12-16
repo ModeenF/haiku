@@ -85,7 +85,7 @@ static const rgb_color _kDefaultColors[kColorWhichCount] = {
 	{0, 0, 0, 255},			// B_PANEL_TEXT_COLOR
 	{255, 255, 255, 255},	// B_DOCUMENT_BACKGROUND_COLOR
 	{0, 0, 0, 255},			// B_DOCUMENT_TEXT_COLOR
-	{245, 245, 245, 255},	// B_CONTROL_BACKGROUND_COLOR
+	{222, 222, 222, 255},	// B_CONTROL_BACKGROUND_COLOR
 	{0, 0, 0, 255},			// B_CONTROL_TEXT_COLOR
 	{172, 172, 172, 255},	// B_CONTROL_BORDER_COLOR
 	{102, 152, 203, 255},	// B_CONTROL_HIGHLIGHT_COLOR
@@ -116,6 +116,51 @@ static const rgb_color _kDefaultColors[kColorWhichCount] = {
 	{}
 };
 const rgb_color* BPrivate::kDefaultColors = &_kDefaultColors[0];
+
+
+static const rgb_color _kDefaultColorsDark[kColorWhichCount] = {
+	{43, 43, 43, 255},		// B_PANEL_BACKGROUND_COLOR
+	{28, 28, 28, 255},		// B_MENU_BACKGROUND_COLOR
+	{227, 73, 17, 255},		// B_WINDOW_TAB_COLOR
+	{0, 0, 229, 255},		// B_KEYBOARD_NAVIGATION_COLOR
+	{51, 102, 152, 255},	// B_DESKTOP_COLOR
+	{90, 90, 90, 255},		// B_MENU_SELECTED_BACKGROUND_COLOR
+	{255, 255, 255, 255},	// B_MENU_ITEM_TEXT_COLOR
+	{255, 255, 255, 255},	// B_MENU_SELECTED_ITEM_TEXT_COLOR
+	{0, 0, 0, 255},			// B_MENU_SELECTED_BORDER_COLOR
+	{253, 253, 253, 255},	// B_PANEL_TEXT_COLOR
+	{0, 0, 0, 255},			// B_DOCUMENT_BACKGROUND_COLOR
+	{234, 234, 234, 255},	// B_DOCUMENT_TEXT_COLOR
+	{29, 29, 29, 255},		// B_CONTROL_BACKGROUND_COLOR
+	{230, 230, 230, 255},	// B_CONTROL_TEXT_COLOR
+	{195, 195, 195, 255},	// B_CONTROL_BORDER_COLOR
+	{75, 124, 168, 255},	// B_CONTROL_HIGHLIGHT_COLOR
+	{0, 0, 0, 255},			// B_NAVIGATION_PULSE_COLOR
+	{255, 255, 255, 255},	// B_SHINE_COLOR
+	{0, 0, 0, 255},			// B_SHADOW_COLOR
+	{76, 68, 79, 255},		// B_TOOLTIP_BACKGROUND_COLOR
+	{255, 255, 255, 255},	// B_TOOLTIP_TEXT_COLOR
+	{255, 255, 255, 255},	// B_WINDOW_TEXT_COLOR
+	{203, 32, 9, 255},		// B_WINDOW_INACTIVE_TAB_COLOR
+	{255, 255, 255, 255},	// B_WINDOW_INACTIVE_TEXT_COLOR
+	{227, 73, 17, 255},		// B_WINDOW_BORDER_COLOR
+	{203, 32, 9, 255},		// B_WINDOW_INACTIVE_BORDER_COLOR
+	{27, 82, 140, 255},     // B_CONTROL_MARK_COLOR
+	{0, 0, 0, 255},			// B_LIST_BACKGROUND_COLOR
+	{90, 90, 90, 255},		// B_LIST_SELECTED_BACKGROUND_COLOR
+	{255, 255, 255, 255},	// B_LIST_ITEM_TEXT_COLOR
+	{255, 255, 255, 255},	// B_LIST_SELECTED_ITEM_TEXT_COLOR
+	{39, 39, 39, 255},		// B_SCROLL_BAR_THUMB_COLOR
+	{106, 112, 212, 255},	// B_LINK_TEXT_COLOR
+	{102, 152, 203, 255},	// B_LINK_HOVER_COLOR
+	{145, 112, 155, 255},	// B_LINK_VISITED_COLOR
+	{121, 142, 203, 255},	// B_LINK_ACTIVE_COLOR
+	{50, 150, 255, 255},	// B_STATUS_BAR_COLOR
+	// 100...
+	{46, 204, 64, 255},		// B_SUCCESS_COLOR
+	{255, 40, 54, 255},		// B_FAILURE_COLOR
+	{}
+};
 
 
 static const char* kColorNames[kColorWhichCount] = {
@@ -505,12 +550,11 @@ set_mouse_type(int32 type)
 
 
 status_t
-get_mouse_type_by_name(BString mouse_name, int32 *type)
+get_mouse_type(const char* mouse_name, int32 *type)
 {
 	BMessage command(IS_GET_MOUSE_TYPE);
 	BMessage reply;
-	command.AddString("mouse_name", mouse_name.String());
-
+	command.AddString("mouse_name", mouse_name);
 
 	status_t err = _control_input_server_(&command, &reply);
 	if (err != B_OK)
@@ -521,13 +565,12 @@ get_mouse_type_by_name(BString mouse_name, int32 *type)
 
 
 status_t
-set_mouse_type_by_name(BString mouse_name, int32 type)
+set_mouse_type(const char* mouse_name, int32 type)
 {
 	BMessage command(IS_SET_MOUSE_TYPE);
 	BMessage reply;
 
-	status_t err_mouse_name = command.AddString("mouse_name",
-		mouse_name.String());
+	status_t err_mouse_name = command.AddString("mouse_name", mouse_name);
 	if (err_mouse_name != B_OK)
 		return err_mouse_name;
 
@@ -539,33 +582,48 @@ set_mouse_type_by_name(BString mouse_name, int32 type)
 
 
 status_t
-get_mouse_map(mouse_map *map)
+get_mouse_map(mouse_map* map)
+{
+	return get_mouse_map("", map);
+}
+
+
+status_t
+set_mouse_map(mouse_map* map)
+{
+	return set_mouse_map("", map);
+}
+
+
+status_t
+get_mouse_map(const char* mouse_name, mouse_map* map)
 {
 	BMessage command(IS_GET_MOUSE_MAP);
 	BMessage reply;
 	const void *data = 0;
 	ssize_t count;
 
-	status_t err = _control_input_server_(&command, &reply);
+	status_t err = command.AddString("mouse_name", mouse_name);
+	if (err == B_OK)
+		err = _control_input_server_(&command, &reply);
 	if (err == B_OK)
 		err = reply.FindData("mousemap", B_RAW_TYPE, &data, &count);
-	if (err != B_OK)
-		return err;
+	if (err == B_OK)
+		memcpy(map, data, count);
 
-	memcpy(map, data, count);
-
-	return B_OK;
+	return err;
 }
 
 
 status_t
-set_mouse_map(mouse_map *map)
+set_mouse_map(const char* mouse_name, mouse_map* map)
 {
 	BMessage command(IS_SET_MOUSE_MAP);
 	BMessage reply;
 
-	status_t err = command.AddData("mousemap", B_RAW_TYPE, map,
-		sizeof(mouse_map));
+	status_t err = command.AddString("mouse_name", mouse_name);
+	if (err == B_OK)
+		err = command.AddData("mousemap", B_RAW_TYPE, map, sizeof(mouse_map));
 	if (err != B_OK)
 		return err;
 	return _control_input_server_(&command, &reply);
@@ -573,12 +631,28 @@ set_mouse_map(mouse_map *map)
 
 
 status_t
-get_click_speed(bigtime_t *speed)
+get_click_speed(bigtime_t* speed)
+{
+	return get_click_speed("", speed);
+}
+
+
+status_t
+set_click_speed(bigtime_t speed)
+{
+	return set_click_speed("", speed);
+}
+
+
+status_t
+get_click_speed(const char* mouse_name, bigtime_t* speed)
 {
 	BMessage command(IS_GET_CLICK_SPEED);
 	BMessage reply;
 
-	status_t err = _control_input_server_(&command, &reply);
+	status_t err = command.AddString("mouse_name", mouse_name);
+	if (err == B_OK)
+		err = _control_input_server_(&command, &reply);
 	if (err != B_OK)
 		return err;
 
@@ -590,11 +664,16 @@ get_click_speed(bigtime_t *speed)
 
 
 status_t
-set_click_speed(bigtime_t speed)
+set_click_speed(const char* mouse_name, bigtime_t speed)
 {
 	BMessage command(IS_SET_CLICK_SPEED);
 	BMessage reply;
-	command.AddInt64("speed", speed);
+
+	status_t err = command.AddString("mouse_name", mouse_name);
+	if (err == B_OK)
+		err = command.AddInt64("speed", speed);
+	if (err != B_OK)
+		return err;
 	return _control_input_server_(&command, &reply);
 }
 
@@ -627,11 +706,11 @@ set_mouse_speed(int32 speed)
 
 
 status_t
-get_mouse_speed_by_name(BString mouse_name, int32 *speed)
+get_mouse_speed(const char* mouse_name, int32 *speed)
 {
 	BMessage command(IS_GET_MOUSE_SPEED);
 	BMessage reply;
-	command.AddString("mouse_name", mouse_name.String());
+	command.AddString("mouse_name", mouse_name);
 
 	status_t err = _control_input_server_(&command, &reply);
 	if (err != B_OK)
@@ -646,11 +725,11 @@ get_mouse_speed_by_name(BString mouse_name, int32 *speed)
 
 
 status_t
-set_mouse_speed_by_name(BString mouse_name, int32 speed)
+set_mouse_speed(const char* mouse_name, int32 speed)
 {
 	BMessage command(IS_SET_MOUSE_SPEED);
 	BMessage reply;
-	command.AddString("mouse_name", mouse_name.String());
+	command.AddString("mouse_name", mouse_name);
 
 	command.AddInt32("speed", speed);
 
@@ -684,15 +763,49 @@ set_mouse_acceleration(int32 speed)
 
 
 status_t
+get_mouse_acceleration(const char* mouse_name, int32 *speed)
+{
+	BMessage command(IS_GET_MOUSE_ACCELERATION);
+	BMessage reply;
+	command.AddString("mouse_name", mouse_name);
+
+	_control_input_server_(&command, &reply);
+
+	if (reply.FindInt32("speed", speed) != B_OK)
+		*speed = 65536;
+
+	return B_OK;
+}
+
+
+status_t
+set_mouse_acceleration(const char* mouse_name, int32 speed)
+{
+	BMessage command(IS_SET_MOUSE_ACCELERATION);
+	BMessage reply;
+	command.AddString("mouse_name", mouse_name);
+
+	command.AddInt32("speed", speed);
+
+	return _control_input_server_(&command, &reply);
+}
+
+
+status_t
 get_key_repeat_rate(int32 *rate)
 {
 	BMessage command(IS_GET_KEY_REPEAT_RATE);
 	BMessage reply;
 
-	_control_input_server_(&command, &reply);
+	status_t err = _control_input_server_(&command, &reply);
 
-	if (reply.FindInt32("rate", rate) != B_OK)
+	if (err == B_OK)
+		err = reply.FindInt32("rate", rate);
+
+	if (err != B_OK) {
 		*rate = 250000;
+		return err;
+	}
 
 	return B_OK;
 }
@@ -714,10 +827,15 @@ get_key_repeat_delay(bigtime_t *delay)
 	BMessage command(IS_GET_KEY_REPEAT_DELAY);
 	BMessage reply;
 
-	_control_input_server_(&command, &reply);
+	status_t err = _control_input_server_(&command, &reply);
 
-	if (reply.FindInt64("delay", delay) != B_OK)
+	if (err == B_OK)
+		err = reply.FindInt64("delay", delay);
+
+	if (err != B_OK) {
 		*delay = 200;
+		return err;
+	}
 
 	return B_OK;
 }
@@ -1205,13 +1323,23 @@ ui_color(color_which which)
 		if (shared != NULL) {
 			// check for unset colors
 			if (shared->colors[index] == B_TRANSPARENT_COLOR)
-				shared->colors[index] = kDefaultColors[index];
+				shared->colors[index] = _kDefaultColors[index];
 
 			return shared->colors[index];
 		}
 	}
 
-	return kDefaultColors[index];
+	return _kDefaultColors[index];
+}
+
+
+rgb_color
+BPrivate::GetSystemColor(color_which colorConstant, bool darkVariant) {
+	if (darkVariant) {
+		return _kDefaultColorsDark[color_which_to_index(colorConstant)];
+	} else {
+		return _kDefaultColors[color_which_to_index(colorConstant)];
+	}
 }
 
 
@@ -1459,10 +1587,10 @@ set_decorator(const BString& path)
 	link.StartMessage(AS_SET_DECORATOR);
 
 	link.AttachString(path.String());
-	link.Flush();
 
 	status_t error = B_OK;
-	link.Read<status_t>(&error);
+	if (link.FlushWithReply(error) != B_OK)
+		return B_ERROR;
 
 	return error;
 }

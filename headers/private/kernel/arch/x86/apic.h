@@ -111,8 +111,6 @@
 
 bool		apic_available();
 bool		x2apic_available();
-uint32		apic_read(uint32 offset);
-void		apic_write(uint32 offset, uint32 data);
 uint32		apic_local_id();
 uint32		apic_local_version();
 uint32		apic_task_priority();
@@ -133,6 +131,7 @@ uint32		apic_lvt_error();
 void		apic_set_lvt_error(uint32 config);
 uint32		apic_lvt_initial_timer_count();
 void		apic_set_lvt_initial_timer_count(uint32 config);
+uint32		apic_lvt_current_timer_count();
 uint32		apic_lvt_timer_divide_config();
 void		apic_set_lvt_timer_divide_config(uint32 config);
 

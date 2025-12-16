@@ -17,7 +17,6 @@
 
 struct generic_io_vec;
 struct kernel_args;
-struct ObjectCache;
 struct system_memory_info;
 struct VMAddressSpace;
 struct VMArea;
@@ -48,9 +47,6 @@ struct VMPageWiringInfo;
 #define VM_MEMORY_RESERVE_SYSTEM	(VM_PAGE_RESERVE_SYSTEM * B_PAGE_SIZE)
 
 
-extern struct ObjectCache* gPageMappingsObjectCache;
-
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -62,9 +58,9 @@ status_t vm_init_post_thread(struct kernel_args *args);
 status_t vm_init_post_modules(struct kernel_args *args);
 void vm_free_kernel_args(struct kernel_args *args);
 void vm_free_unused_boot_loader_range(addr_t start, addr_t end);
-page_num_t vm_allocate_early_physical_page(kernel_args *args);
+page_num_t vm_allocate_early_physical_page(kernel_args *args, phys_addr_t maxAddress = 0);
 addr_t vm_allocate_early(struct kernel_args *args, size_t virtualSize,
-			size_t physicalSize, uint32 attributes, addr_t alignment);
+	size_t physicalSize, uint32 attributes, addr_t alignment);
 
 void slab_init(struct kernel_args *args);
 void slab_init_post_area();
@@ -72,8 +68,8 @@ void slab_init_post_sem();
 void slab_init_post_thread();
 
 // to protect code regions with interrupts turned on
-void permit_page_faults(void);
-void forbid_page_faults(void);
+void permit_page_faults();
+void forbid_page_faults();
 
 // private kernel only extension (should be moved somewhere else):
 area_id create_area_etc(team_id team, const char *name, size_t size,
@@ -86,9 +82,7 @@ area_id transfer_area(area_id id, void** _address, uint32 addressSpec,
 
 const char* vm_cache_type_to_string(int32 type);
 
-status_t vm_prepare_kernel_area_debug_protection(area_id id, void** cookie);
-status_t vm_set_kernel_area_debug_protection(void* cookie, void* _address,
-			size_t size, uint32 protection);
+void vm_free_page_mapping(page_num_t page, vm_page_mapping* mapping, uint32 flags);
 
 status_t vm_block_address_range(const char* name, void* address, addr_t size);
 status_t vm_unreserve_address_range(team_id team, void *address, addr_t size);
@@ -145,6 +139,7 @@ status_t vm_put_physical_page_debug(addr_t vaddr, void* handle);
 void vm_get_info(system_info *info);
 uint32 vm_num_page_faults(void);
 off_t vm_available_memory(void);
+off_t vm_available_memory_debug(void);
 off_t vm_available_not_needed_memory(void);
 off_t vm_available_not_needed_memory_debug(void);
 size_t vm_kernel_address_space_left(void);

@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2013, Haiku, Inc.
+ * Copyright 2001-2023, Haiku, Inc. All rights reserved.
  * Copyright (c) 2003-4 Kian Duffy <myob@users.sourceforge.net>
  * Parts Copyright (C) 1998,99 Kazuho Okui and Takashi Murai.
  *
@@ -23,6 +23,7 @@
 #include <String.h>
 #include <View.h>
 
+#include "TerminalLine.h"
 #include "TermPos.h"
 #include "TermViewHighlight.h"
 
@@ -79,7 +80,7 @@ public:
 			void				GetTermFont(BFont* font) const;
 			void				SetTermFont(const BFont* font);
 
-			void				GetFontSize(float* width, float* height);
+			void				GetFontSize(float* width, float* height) const;
 			int					Rows() const;
 			int					Columns() const;
 			BRect				SetTermSize(int rows, int columns,
@@ -87,13 +88,14 @@ public:
 			void				SetTermSize(BRect rect,
 									bool notifyShell = false);
 			void				GetTermSizeFromRect(const BRect &rect,
-									int *rows, int *columns);
+									int *rows, int *columns) const;
 
 			void				SetTextColor(rgb_color fore, rgb_color back);
 			void				SetCursorColor(rgb_color fore, rgb_color back);
 			void				SetSelectColor(rgb_color fore, rgb_color back);
 			void				SetTermColor(uint index, rgb_color color,
 									bool dynamic = false);
+			status_t			GetTermColor(uint index, rgb_color* color) const;
 
 			int					Encoding() const;
 			void				SetEncoding(int encoding);
@@ -110,19 +112,21 @@ public:
 			void				MakeDebugSnapshots();
 			void				StartStopDebugCapture();
 
+			void				SwitchCursorBlinking();
 			void				SwitchCursorBlinking(bool blinkingOn);
 
 			// edit functions
 			void				Copy(BClipboard* clipboard);
 			void				Paste(BClipboard* clipboard);
+			void				SyncClipboard();
 			void				SelectAll();
 			void				Clear();
 
 			// Other
-			void				GetFrameSize(float* width, float* height);
+			void				GetFrameSize(float* width, float* height) const;
 			bool				Find(const BString& str, bool forwardSearch,
 									bool matchCase, bool matchWord);
-			void				GetSelection(BString& string);
+			void				GetSelection(BString& string) const;
 
 			bool				CheckShellGone() const;
 
@@ -184,10 +188,10 @@ private:
 
 private:
 			// point and text offset conversion
-	inline	int32				_LineAt(float y);
-	inline	float				_LineOffset(int32 index);
-			TermPos				_ConvertToTerminal(const BPoint& point);
-	inline	BPoint				_ConvertFromTerminal(const TermPos& pos);
+			int32				_LineAt(float y) const;
+	inline	float				_LineOffset(int32 index) const;
+			TermPos				_ConvertToTerminal(const BPoint& point) const;
+	inline	BPoint				_ConvertFromTerminal(const TermPos& pos) const;
 
 	inline	void				_InvalidateTextRect(int32 x1, int32 y1,
 									int32 x2, int32 y2);
@@ -195,13 +199,16 @@ private:
 			status_t			_InitObject(
 									const ShellParameters& shellParameters);
 
-			status_t			_AttachShell(Shell* shell);
-			void				_DetachShell();
+			void				_GetArgumentsFromMessage(const BMessage* message,
+									const char**& argv, int32& argc);
+
+			status_t			_AttachShell(Shell* shell, const ShellParameters& shellParameters);
+			Shell*				_DetachShell();
 
 			void				_Activate();
 			void				_Deactivate();
 
-			void				_DrawLinePart(float x1, float y1, uint32 attr,
+			void				_DrawLinePart(float x1, float y1, Attributes attr,
 									char* buffer, int32 width,
 									Highlight* highlight, bool cursor,
 									BView* inView);
@@ -253,7 +260,8 @@ private:
 			void				_ScrollToRange(TermPos start, TermPos end);
 
 			void				_SendMouseEvent(int32 button, int32 mode,
-									int32 x, int32 y, bool motion);
+									int32 x, int32 y, bool motion,
+									bool upEvent = false);
 
 			void				_DrawInlineMethodString();
 			void				_HandleInputMethodChanged(BMessage* message);
@@ -292,9 +300,6 @@ private:
 			// Cursor Blinking, draw flag.
 			bigtime_t			fLastActivityTime;
 			int32				fCursorState;
-			int					fCursorStyle;
-			bool				fCursorBlinking;
-			bool				fCursorHidden;
 
 			// Cursor position.
 			TermPos				fCursor;
@@ -313,7 +318,7 @@ private:
 			BScrollBar*			fScrollBar;
 			InlineInput*		fInline;
 
-			// Color and Attribute.
+			// Color and Attributes.
 			rgb_color			fTextForeColor;
 			rgb_color			fTextBackColor;
 			rgb_color			fCursorForeColor;
@@ -348,18 +353,11 @@ private:
 			HashMap<HashKey32<int32>, const int32(*)[128]>
 								fKeymapTableForModifiers;
 			bool				fUseOptionAsMetaKey;
-			bool				fInterpretMetaKey;
-			bool				fMetaKeySendsEscape;
 
 			// mouse
 			int32				fMouseButtons;
 			int32				fModifiers;
 			TermPos				fPrevPos;
-			bool				fReportX10MouseEvent;
-			bool				fReportNormalMouseEvent;
-			bool				fReportButtonMouseEvent;
-			bool				fReportAnyMouseEvent;
-			bool				fEnableExtendedMouseCoordinates;
 			BClipboard*			fMouseClipboard;
 
 			// states

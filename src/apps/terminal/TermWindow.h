@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2010, Haiku.
+ * Copyright 2001-2025 Haiku, Inc. All rights reserved
  * Copyright (c) 2003-4 Kian Duffy <myob@users.sourceforge.net>
  * Parts Copyright (C) 1998,99 Kazuho Okui and Takashi Murai.
  *
@@ -51,14 +51,14 @@ class BMenuBar;
 class FindWindow;
 class PrefWindow;
 class TermViewContainerView;
+class ThemeWindow;
 
 
 class TermWindow : public BWindow, private SmartTabView::Listener,
 	private TermView::Listener, private SetTitleDialog::Listener,
 	private TerminalRoster::Listener {
 public:
-								TermWindow(const BString& title,
-									Arguments* args);
+								TermWindow(const Arguments& args);
 	virtual						~TermWindow();
 
 			void				SessionChanged();
@@ -135,12 +135,11 @@ private:
 			struct Session;
 
 private:
-			void				_SetTermColors(
-									TermViewContainerView* containerView);
+			void				_SetTermColors();
+			void				_SetTermColors(TermViewContainerView* containerView);
 			void				_InitWindow();
 			void				_SetupMenu();
-	static	BMenu*				_MakeFontSizeMenu(uint32 command,
-									uint8 defaultSize);
+	static	BMenu*				_MakeFontSizeMenu(uint32 command, uint8 defaultSize);
 			void				_UpdateSwitchTerminalsMenuItem();
 
 			status_t			_GetWindowPositionFile(BFile* file,
@@ -154,7 +153,7 @@ private:
 			void				_DoPrint();
 
 			void				_NewTab();
-			void				_AddTab(Arguments* args,
+			void				_AddTab(const Arguments* args,
 									const BString& currentDirectory
 										= BString());
 			void				_RemoveTab(int32 index);
@@ -211,6 +210,7 @@ private:
 
 			BMessage*			fPrintSettings;
 			PrefWindow*			fPrefWindow;
+			ThemeWindow*		fThemeWindow;
 			FindWindow*			fFindPanel;
 			BRect				fSavedFrame;
 			window_look			fSavedLook;

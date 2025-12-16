@@ -12,7 +12,7 @@
 struct X86PagingStructures32Bit;
 
 
-struct X86VMTranslationMap32Bit : X86VMTranslationMap {
+struct X86VMTranslationMap32Bit final : X86VMTranslationMap {
 								X86VMTranslationMap32Bit();
 	virtual						~X86VMTranslationMap32Bit();
 
@@ -27,16 +27,12 @@ struct X86VMTranslationMap32Bit : X86VMTranslationMap {
 									vm_page_reservation* reservation);
 	virtual	status_t			Unmap(addr_t start, addr_t end);
 
-	virtual	status_t			DebugMarkRangePresent(addr_t start, addr_t end,
-									bool markPresent);
-
 	virtual	status_t			UnmapPage(VMArea* area, addr_t address,
-									bool updatePageQueue);
+									bool updatePageQueue,
+									bool deletingAddressSpace, uint32* _flags);
 	virtual	void				UnmapPages(VMArea* area, addr_t base,
-									size_t size, bool updatePageQueue);
-	virtual	void				UnmapArea(VMArea* area,
-									bool deletingAddressSpace,
-									bool ignoreTopCachePageFlags);
+									size_t size, bool updatePageQueue,
+									bool deletingAddressSpace);
 
 	virtual	status_t			Query(addr_t virtualAddress,
 									phys_addr_t* _physicalAddress,

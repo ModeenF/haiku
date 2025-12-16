@@ -1,4 +1,4 @@
-1	polish	x-vnd.Haiku-PowerStatus	3173765686
+1	polish	x-vnd.Haiku-PowerStatus	1876447050
 Run in window	PowerStatus		Uruchom w oknie
 Extended battery info	PowerStatus		Szczegółowe informacje o baterii
 Show status icon	PowerStatus		Pokaż ikonę statusu
@@ -11,12 +11,12 @@ Last full charge: 	PowerStatus		Ostatnie pełne ładowanie:
 Current rate: 	PowerStatus		Aktualne tempo: 
 Show text label	PowerStatus		Pokaż etykietę tekstu
 Quit	PowerStatus		Zakończ
+Battery not charging	PowerStatus		Bateria nie ładuje się
 Battery low	PowerStatus		Niski poziom naładowania baterii
 Model number: 	PowerStatus		Numer modelu: 
 Battery unused	PowerStatus		Bateria nieużywana
 Type: 	PowerStatus		Typ: 
-Damaged battery	PowerStatus		Uszkodzona bateria
-You can run PowerStatus in a window or install it in the Deskbar.	PowerStatus		Możesz uruchomić PowerStatus w oknie lub zainstalować go w Deskbarze.
+You can run PowerStatus in a window or install it in the Deskbar.	PowerStatus		Możesz uruchomić Status zasilania w oknie lub zainstalować go w Deskbarze.
  mAh	PowerStatus		 mAh
 Battery discharging	PowerStatus		Rozładowywanie baterii
 Design voltage: 	PowerStatus		Napięcie nominalne: 
@@ -30,14 +30,17 @@ Serial number: 	PowerStatus		Numer seryjny:
 Battery critical	PowerStatus		Krytycznie niski poziom naładowania akumulatora
 Capacity: 	PowerStatus		Pojemność: 
  mW	PowerStatus		 mW
+No supported battery detected. PowerStatus cannot be used on your system.	PowerStatus		Nie wykryto obsługiwanej baterii. PowerStatus nie będzie działać na tym komputerze.
 Show percent	PowerStatus		Pokaż procent
 Capacity granularity 1: 	PowerStatus		Jednostka pojemności 1: 
 The battery level is getting low, please plug in the device.	PowerStatus		Poziom naładowania baterii jest niski, podłącz urządzenie do prądu.
 Design capacity warning: 	PowerStatus		Ostrzeżenie o pojemności nominalnej: 
 Capacity granularity 2: 	PowerStatus		Jednostka pojemności 2: 
+Too bad!	PowerStatus		Klops!
 Technology: 	PowerStatus		Technologia: 
+not charging	PowerStatus		nie ładuje się
  mWh	PowerStatus		 mWh
-PowerStatus	System name		PowerStatus
+PowerStatus	System name		Status zasilania
 Design capacity: 	PowerStatus		Pojemność nominalna: 
 OEM info: 	PowerStatus		Informacje OEM: 
 no battery	PowerStatus		brak baterii

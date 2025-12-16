@@ -1,6 +1,5 @@
 /*
- * Copyright 2009, Colin Günther. All Rights Reserved.
- * Copyright 2007, Hugo Santos. All Rights Reserved.
+ * Copyright 2022, Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  */
 #ifndef _FBSD_COMPAT_MACHINE__BUS_H_
@@ -11,27 +10,19 @@
 
 
 typedef phys_addr_t bus_addr_t;
+typedef size_t bus_size_t;
+typedef addr_t bus_space_handle_t;
 
-
-#ifdef B_HAIKU_64_BIT
-
-typedef uint64_t bus_size_t;
-
-typedef uint64_t bus_space_tag_t;
-typedef uint64_t bus_space_handle_t;
-
-#else
-
-#if defined(__HAIKU_ARCH_PHYSICAL_64_BIT) && defined(__i386__)
-#define PAE 1
-#endif
-
-typedef uint32_t bus_size_t;
 
 typedef int bus_space_tag_t;
-typedef unsigned int bus_space_handle_t;
+enum {
+	BUS_SPACE_TAG_INVALID = 0,
 
-#endif
+	BUS_SPACE_TAG_IO,
+	BUS_SPACE_TAG_MEM,
+	BUS_SPACE_TAG_IRQ,
+	BUS_SPACE_TAG_MSI,
+};
 
 
 #endif /* _FBSD_COMPAT_MACHINE__BUS_H_ */

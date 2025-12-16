@@ -212,6 +212,16 @@ m_cljset(struct mbuf *m, void *cl, int type)
 	m->m_flags |= M_EXT;
 }
 
+/* These are for OpenBSD compatibility. */
+#define	MTAG_ABI_COMPAT		0		/* compatibility ABI */
+
+static __inline struct m_tag *
+m_tag_find(struct mbuf *m, uint16_t type, struct m_tag *start)
+{
+	return (SLIST_EMPTY(&m->m_pkthdr.tags) ? (struct m_tag *)NULL :
+		m_tag_locate(m, MTAG_ABI_COMPAT, type, start));
+}
+
 /* mbufq */
 
 struct mbufq {
@@ -263,6 +273,12 @@ mbufq_last(const struct mbufq *mq)
 	return (STAILQ_LAST(&mq->mq_head, mbuf, m_stailqpkt));
 }
 
+static inline bool
+mbufq_empty(const struct mbufq *mq)
+{
+	return (mq->mq_len == 0);
+}
+
 static inline int
 mbufq_full(const struct mbufq *mq)
 {
@@ -306,6 +322,19 @@ mbufq_prepend(struct mbufq *mq, struct mbuf *m)
 
 	STAILQ_INSERT_HEAD(&mq->mq_head, m, m_stailqpkt);
 	mq->mq_len++;
+}
+
+
+/*
+ * Note: this doesn't enforce the maximum list size for dst.
+ */
+static inline void
+mbufq_concat(struct mbufq *mq_dst, struct mbufq *mq_src)
+{
+
+	mq_dst->mq_len += mq_src->mq_len;
+	STAILQ_CONCAT(&mq_dst->mq_head, &mq_src->mq_head);
+	mq_src->mq_len = 0;
 }
 
 #endif

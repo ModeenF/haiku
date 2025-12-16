@@ -1,5 +1,5 @@
 /*
- * Copyright 2008, Haiku Inc. All rights reserved.
+ * Copyright 2008-2023, Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -9,8 +9,11 @@
 #define _USB_DISK_H_
 
 
+#include <util/DoublyLinkedList.h>
+
 #include <lock.h>
 #include <USB3.h>
+#include <device_manager.h>
 #include <usb/USB_massbulk.h>
 
 
@@ -21,16 +24,22 @@
 
 #define SYNC_SUPPORT_RELOAD			5
 
+struct IOScheduler;
 typedef struct device_lun_s device_lun;
 
 // holds common information about an attached device (pointed to by luns)
 typedef struct disk_device_s {
+	disk_device_s();
+	~disk_device_s();
+
+	int32		number;
+	device_node	*node;
+
 	usb_device	device;
-	uint32		device_number;
 	bool		removed;
 	uint32		open_count;
+	recursive_lock io_lock;
 	mutex		lock;
-	void *		link;
 
 	// device state
 	usb_pipe	bulk_in;
@@ -63,13 +72,16 @@ struct device_lun_s {
 	disk_device *device;
 	char		name[32];
 	uint8		logical_unit_number;
+
+	IOScheduler *io_scheduler;
 	bool		should_sync;
 
 	// device information through read capacity/inquiry
 	bool		media_present;
 	bool		media_changed;
-	uint32		block_count;
+	uint64		block_count;
 	uint32		block_size;
+	uint32		physical_block_size;
 	uint8		device_type;
 	bool		removable;
 	bool		write_protected;

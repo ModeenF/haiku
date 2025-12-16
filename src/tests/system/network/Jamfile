@@ -17,13 +17,20 @@ SimpleTest getpeername : getpeername.cpp : $(TARGET_NETWORK_LIBS) ;
 
 SimpleTest if_nameindex : if_nameindex.c : $(TARGET_NETWORK_LIBS) ;
 
+SimpleTest unix_dgram_test : unix_dgram_test.cpp : $(TARGET_NETWORK_LIBS) ;
+
+SimpleTest unix_recv_test : unix_recv_test.c : $(TARGET_NETWORK_LIBS) ;
+SimpleTest unix_send_test : unix_send_test.c : $(TARGET_NETWORK_LIBS) ;
+
 SimpleTest tcp_connection_test : tcp_connection_test.cpp
+	: $(TARGET_NETWORK_LIBS) ;
+
+SimpleTest test4 : test4.c
 	: $(TARGET_NETWORK_LIBS) ;
 
 SubInclude HAIKU_TOP src tests system network icmp ;
 SubInclude HAIKU_TOP src tests system network ipv6 ;
 SubInclude HAIKU_TOP src tests system network multicast ;
 SubInclude HAIKU_TOP src tests system network posixnet ;
-SubInclude HAIKU_TOP src tests system network sock ;
 SubInclude HAIKU_TOP src tests system network tcp_shell ;
 SubInclude HAIKU_TOP src tests system network tcptester ;

@@ -11,14 +11,19 @@ DataFileToSourceFile [ FGristFiles MBR.h ] : [ FGristFiles mbr.bin ]
 	: kMBR : kMBRSize ;
 
 if $(TARGET_ARCH) = "x86" || $(TARGET_ARCH) = "x86_64" {
-	Depends [ FGristFiles PartitionMapWriter.cpp ] : [ FGristFiles MBR.h ] ;
+	Includes [ FGristFiles PartitionMapWriter.cpp ] : [ FGristFiles MBR.h ] ;
 }
+
+KernelStaticLibrary intel_partitioning_common.a :
+	PartitionMap.cpp
+	PartitionMapWriter.cpp
+;
 
 KernelAddon intel :
 	intel.cpp
 	PartitionLocker.cpp
-	PartitionMap.cpp
 	PartitionMapParser.cpp
-	PartitionMapWriter.cpp
 	write_support.cpp
+	:
+	intel_partitioning_common.a
 ;

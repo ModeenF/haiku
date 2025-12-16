@@ -1,4 +1,4 @@
-1	ukrainian	x-vnd.Haiku-StyledEdit	2796309255
+1	ukrainian	x-vnd.Haiku-StyledEdit	1077895429
 Document statistics	Statistics		Статистика документу
 Cannot revert, file not found: \"%s\".	RevertToSavedAlert		Неможливо зробити відкат, файл не знайдено: \"%s\".
 Cut	Menus		Вирізати
@@ -34,6 +34,7 @@ Bold	Menus		Жирний
 File \"%file%\" was modified by another application, reload it?	NodeMonitorAlerts		Файл \"%file%\" був змінений іншою програмою, перезавантажити його?
 File \"%file%\" was removed by another application, recover it?	NodeMonitorAlerts		Файл \"%file%\" був вилучений іншою програмою, відновити його?
 Lines:	Statistics		Рядків:
+Strikeout	Menus		Закреслений
 Replace in all windows	FindandReplaceWindow		Замінити у всіх вікнах
 \"%s\" has unsaved changes.\nRevert it to the last saved version? 	RevertToSavedAlert		\"%s\" має незбережені зміни.\nЗробити відкат до його останньої збереженої версії? 
 Save	SaveAlert		Зберегти
@@ -46,11 +47,12 @@ Replace all	FindandReplaceWindow		Замінити все
 Close	Menus		Закрити
 Error loading \"%s\":\n\tUnsupported format	LoadAlert		Помилка завантаження \"%s\":\n\tФормат не підтримується
 Left	Menus		Вліво
-Default	Menus		За замовчуванням
+Default	Menus		Стандартний
 OK	SaveAlert		ОК
 Color	Menus		Колір
 Save changes to the document \"%s\"? 	QuitAlert		Зберегти зміни в документі \"%s\" ? 
 StyledEdit	System name		StyledEdit
+Underline	Menus		Підкреслений
 Find:	FindandReplaceWindow		Знайти:
 Undo typing	QuitAlert		Відмінити набір тексту
 Error loading \"%s\":\n\t%s	LoadAlert		Помилка завантаження \"%s\":\n\t%s
@@ -70,7 +72,7 @@ Case-sensitive	FindandReplaceWindow		Чутливий до регістра
 Find selection	Menus		Знайти вибране
 Find…	Menus		Знайти…
 Cancel	SaveAlert		Скасувати
-Revert	RevertToSavedAlert		Без змін
+Revert	RevertToSavedAlert		Відкат змін
 Size	Menus		Розмір
 Decrease size	Menus		Зменшити розмір
 Autodetect	Menus		Автовизначення
@@ -84,7 +86,7 @@ Replace	FindandReplaceWindow		Замінити
 Characters:	Statistics		Символів:
 Don't save	QuitAlert		Не зберігати
 This file is marked read-only. Save changes to the document \"%s\"? 	SaveAlert		Для цього файлу встановлений атрибут тільки читання. Зберегти зміни в документі \"%s\"?  
-Font	Menus		Шрифт
 Align	Menus		Вирівняти
+Font	Menus		Шрифт
 Select all	Menus		Вибрати все
 Right	Menus		Вправо

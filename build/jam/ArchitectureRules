@@ -21,17 +21,15 @@ rule ArchitectureSetup architecture
 		ccBaseFlags += -fno-strict-aliasing ;
 
 		# Without this flag, GCC deletes many null-pointer checks that are
-		# technically undefined behavior (e.g. passing NULL to strdup, among
-		# others), which breaks both the kernel and various applications. See:
-		#  - https://freelists.org/post/haiku-development/hrev45320-Yet-another-nonobvious-effect-of-ftreevrp-optimization
-		#  - https://dev.haiku-os.org/ticket/13285#comment:8 (& subsequent comments)
-		#  - https://dev.haiku-os.org/ticket/10803#comment:4 (& subsequent comments)
-		# Note that the Linux also does the same:
-		#  - https://github.com/torvalds/linux/commit/a3ca86aea507904
+		# technically undefined behavior (e.g. checking for NULL in strdup, or
+		# for `this` in member functions), which breaks the kernel and various
+		# applications. (Linux does the same.)
 		ccBaseFlags += -fno-delete-null-pointer-checks ;
 
-		# disable some builtins that are incompatible with our definitions
-		ccBaseFlags += -fno-builtin-fork -fno-builtin-vfork ;
+		if $(architecture) = x86 {
+			# disable some builtins that are incompatible with our definitions
+			ccBaseFlags += -fno-builtin-fork -fno-builtin-vfork ;
+		}
 	}
 
 	# default architecture tuning
@@ -40,13 +38,15 @@ rule ArchitectureSetup architecture
 	switch $(cpu) {
 		case ppc : archFlags += -mcpu=440fp ;
 		case arm : archFlags += -march=armv7-a -mfloat-abi=hard ;
+		case arm64 : archFlags += -march=armv8.2-a+fp16 ;
 		case x86 : archFlags += -march=pentium ;
 		case riscv64 : archFlags += -march=rv64gc ;
 	}
 	if $(HAIKU_CC_IS_CLANG_$(architecture)) = 1 {
-		# TODO: These should be included in Clang's compiler specs.
-		ccBaseFlags += -fPIC ;
-		HAIKU_LINKFLAGS_$(architecture) += -shared ;
+		# lld doesn't currently implement R_RISCV_ALIGN relaxation
+		if $(cpu) = riscv64 {
+			ccBaseFlags += -mno-relax ;
+		}
 	}
 	ccBaseFlags += $(archFlags) ;
 
@@ -108,12 +108,13 @@ rule ArchitectureSetup architecture
 
 	# disable some Clang warnings that are not very useful
 	if $(HAIKU_CC_IS_CLANG_$(architecture)) = 1 {
-		HAIKU_WARNING_CCFLAGS_$(architecture) += -Wno-address-of-packed-member
-			-Wno-unused-private-field -Wno-cast-align -Wno-gnu-designator
+		HAIKU_WARNING_CCFLAGS_$(architecture) +=
+			-Wno-unused-private-field -Wno-gnu-designator
 			-Wno-builtin-requires-header ;
-		HAIKU_WARNING_C++FLAGS_$(architecture) += -Wno-address-of-packed-member
-			-Wno-unused-private-field -Wno-cast-align -Wno-gnu-designator
-			-Wno-builtin-requires-header ;
+		HAIKU_WARNING_C++FLAGS_$(architecture) +=
+			-Wno-unused-private-field -Wno-gnu-designator
+			-Wno-builtin-requires-header
+			-Wno-non-c-typedef-for-linkage -Wno-non-power-of-two-alignment ;
 	}
 
 	HAIKU_WERROR_FLAGS_$(architecture) = ;
@@ -121,11 +122,15 @@ rule ArchitectureSetup architecture
 	if $(HAIKU_CC_IS_LEGACY_GCC_$(architecture)) != 1 {
 		# TODO: Remove all these.
 		HAIKU_WERROR_FLAGS_$(architecture) += -Wno-error=unused-but-set-variable
-			-Wno-error=deprecated -Wno-error=deprecated-declarations
-			-Wno-error=cpp -Wno-error=trigraphs ;
+			-Wno-error=cpp -Wno-error=register ;
+		# These currently generate too many "false positives."
+		HAIKU_WERROR_FLAGS_$(architecture) += -Wno-error=address-of-packed-member
+			-Wno-error=stringop-overread -Wno-error=array-bounds ;
 		# But these can stay.
 		HAIKU_WERROR_FLAGS_$(architecture) += -Wno-error=cast-align
 			-Wno-error=format-truncation ;
+	} else {
+		HAIKU_WERROR_FLAGS_$(architecture) += -Wno-unknown-pragmas ;
 	}
 
 	# debug flags
@@ -144,10 +149,6 @@ rule ArchitectureSetup architecture
 
 	# TODO: Temporary work-around. Should be defined in the compiler specs
 	HAIKU_LINKFLAGS_$(architecture) += -Xlinker --no-undefined ;
-
-	if $(HAIKU_CC_IS_LEGACY_GCC_$(architecture)) = 1 {
-		HAIKU_DEFINES_$(architecture) += _BEOS_R5_COMPATIBLE_ ;
-	}
 
 	# private shared kernel/libroot headers
 	HAIKU_PRIVATE_SYSTEM_HEADERS_$(architecture)
@@ -217,6 +218,7 @@ rule KernelArchitectureSetup architecture
 	# packaging architecture (supplied for convenience).
 
 	HAIKU_KERNEL_ARCH = $(HAIKU_ARCH) ;
+	HAIKU_KERNEL_ARCH_DIR = $(HAIKU_KERNEL_ARCH) ;
 
 	local cpu = $(HAIKU_CPU_$(architecture)) ;
 
@@ -262,12 +264,11 @@ rule KernelArchitectureSetup architecture
 
 		case x86 :
 			HAIKU_KERNEL_PLATFORM ?= bios_ia32 ;
-			HAIKU_BOOT_TARGETS += bios_ia32 pxe_ia32 ;
-			HAIKU_ANYBOOT_LEGACY = 1 ;
+			HAIKU_BOOT_TARGETS += bios_ia32 efi pxe_ia32 ;
 
 			HAIKU_BOOT_FLOPPY_IMAGE_SIZE = 2880 ; # in kB
 			# offset in floppy image (>= sizeof(haiku_loader))
-			HAIKU_BOOT_ARCHIVE_IMAGE_OFFSET = 320 ; # in kB
+			HAIKU_BOOT_ARCHIVE_IMAGE_OFFSET = 384 ; # in kB
 
 			# nasm is required for target arch x86
 			if ! $(HAIKU_NASM) {
@@ -276,7 +277,7 @@ rule KernelArchitectureSetup architecture
 
 		case riscv64 :
 			HAIKU_KERNEL_PLATFORM ?= efi ;
-			HAIKU_BOOT_TARGETS += efi ;
+			HAIKU_BOOT_TARGETS += efi riscv ;
 
 			HAIKU_BOOT_SDIMAGE_BEGIN = 2 ; # KiB
 
@@ -292,10 +293,10 @@ rule KernelArchitectureSetup architecture
 
 			HAIKU_BOOT_FLOPPY_IMAGE_SIZE = 2880 ; # in kB
 			# offset in floppy image (>= sizeof(haiku_loader))
-			HAIKU_BOOT_ARCHIVE_IMAGE_OFFSET = 320 ; # in kB
+			HAIKU_BOOT_ARCHIVE_IMAGE_OFFSET = 384 ; # in kB
 
 			# x86_64 kernel source is under arch/x86.
-			HAIKU_KERNEL_ARCH = x86 ;
+			HAIKU_KERNEL_ARCH_DIR = x86 ;
 
 			# nasm is required for target arch x86_64
 			if ! $(HAIKU_NASM) {
@@ -333,28 +334,23 @@ rule KernelArchitectureSetup architecture
 	HAIKU_PRIVATE_KERNEL_HEADERS =
 		[ PrivateHeaders $(DOT) kernel libroot shared
 			kernel/boot/platform/$(HAIKU_KERNEL_PLATFORM) ]
-		[ ArchHeaders $(HAIKU_KERNEL_ARCH) ]
+		[ ArchHeaders $(HAIKU_KERNEL_ARCH_DIR) ]
 		[ FDirName $(HAIKU_COMMON_DEBUG_OBJECT_DIR_$(architecture)) system
 			kernel ]
 		$(HAIKU_PRIVATE_SYSTEM_HEADERS_$(architecture))
 		;
 
 	# C/C++ flags
-	local ccBaseFlags = -finline -fno-builtin ;
+	local ccBaseFlags = -ffreestanding -finline -fno-semantic-interposition ;
 
-	if $(HAIKU_CC_IS_LEGACY_GCC_$(architecture)) != 1 {
-		if $(HAIKU_CC_IS_CLANG_$(architecture)) != 1 {
-			# Clang does not yet understand this flag.
-			ccBaseFlags += -fno-semantic-interposition ;
-		}
-
-		ccBaseFlags += -ffreestanding ;
-	}
+	# Since GCC 13, autovectorization generates code which causes problems
+	# in various virtual machines (bare metal is apparently unaffected.)
+	# Until this can be resolved, disable for the kernel. (See #18593.)
+	ccBaseFlags += -fno-tree-vectorize ;
 
 	local c++BaseFlags = $(ccBaseFlags) -fno-exceptions ;
 
-	if $(HAIKU_CC_IS_LEGACY_GCC_$(architecture)) != 1
-			&& $(HAIKU_CC_IS_CLANG_$(architecture)) != 1 {
+	if $(HAIKU_CC_IS_CLANG_$(architecture)) != 1 {
 		c++BaseFlags += -fno-use-cxa-atexit ;
 	}
 
@@ -364,30 +360,17 @@ rule KernelArchitectureSetup architecture
 	HAIKU_KERNEL_PIC_LINKFLAGS = ;
 	HAIKU_KERNEL_ADDON_LINKFLAGS = ;
 
-	# Common boot-related cflags which apply to all loaders
+	if $(HAIKU_CC_IS_CLANG_$(architecture)) = 1 {
+		HAIKU_KERNEL_PIC_LINKFLAGS += -z noseparate-code -z norelro --no-rosegment ;
+		HAIKU_KERNEL_ADDON_LINKFLAGS += -z noseparate-code -z norelro -Wl,--no-rosegment ;
+	}
+
+	# Common boot-related flags which apply to all loaders.
 	HAIKU_BOOT_CCFLAGS = $(HAIKU_CCFLAGS_$(architecture)) $(ccBaseFlags) ;
 	HAIKU_BOOT_C++FLAGS = $(HAIKU_C++FLAGS_$(architecture)) $(c++BaseFlags) ;
+	HAIKU_BOOT_OPTIM = -Os ;
 	HAIKU_BOOT_LINKFLAGS = ;
 	HAIKU_BOOT_LDFLAGS = -Bstatic ;
-
-	# Remove -fPIC and other unwanted options from the BOOT flags (they are sometimes
-	# added to force PIC in general.)
-	local fixedBootCCFlags ;
-	local fixedBootC++Flags ;
-	for flag in $(HAIKU_BOOT_CCFLAGS) {
-		if $(flag) = "-fpic" || $(flag) = "-fPIC" {
-			continue ;
-		}
-		fixedBootCCFlags += $(flag) ;
-	}
-	for flag in $(HAIKU_BOOT_C++FLAGS) {
-		if $(flag) = "-fpic" || $(flag) = "-fPIC" {
-			continue ;
-		}
-		fixedBootC++Flags += $(flag) ;
-	}
-	HAIKU_BOOT_CCFLAGS = $(fixedBootCCFlags) ;
-	HAIKU_BOOT_C++FLAGS = $(fixedBootC++Flags) ;
 
 	# Any special kernel base addresses
 	if $(HAIKU_BOOT_LOADER_BASE) {
@@ -399,12 +382,14 @@ rule KernelArchitectureSetup architecture
 		case arm :
 			HAIKU_KERNEL_PIC_LINKFLAGS += -z max-page-size=0x1000 ;
 			HAIKU_KERNEL_ADDON_LINKFLAGS += -z max-page-size=0x1000 ;
-			HAIKU_KERNEL_PIC_CCFLAGS = -fno-pic ;
+			HAIKU_KERNEL_PIC_CCFLAGS = -fpic ;
+			HAIKU_KERNEL_PIC_LINKFLAGS = -shared ;
 
 		case arm64 :
 			HAIKU_KERNEL_PIC_LINKFLAGS += -z max-page-size=0x1000 ;
 			HAIKU_KERNEL_ADDON_LINKFLAGS += -z max-page-size=0x1000 ;
-			HAIKU_KERNEL_PIC_CCFLAGS = -fno-pic ;
+			HAIKU_KERNEL_PIC_CCFLAGS = -fpic ;
+			HAIKU_KERNEL_PIC_LINKFLAGS = -shared ;
 
 		case m68k :
 			# We don't want to have to handle emulating missing FPU opcodes for
@@ -422,8 +407,9 @@ rule KernelArchitectureSetup architecture
 		case riscv64 :
 			# Kernel lives within any single 2 GiB address space.
 			# Default is medlow (-2GiB / +2GiB)
-			HAIKU_KERNEL_CCFLAGS += -mcmodel=medany ;
-			HAIKU_KERNEL_C++FLAGS += -mcmodel=medany ;
+			HAIKU_KERNEL_CCFLAGS += -mcmodel=medany -fpic ;
+			HAIKU_KERNEL_C++FLAGS += -mcmodel=medany -fpic ;
+			HAIKU_KERNEL_PIC_LINKFLAGS = -shared ;
 
 		case sparc :
 			# The medlow code model is enough (64-bit addresses, programs must
@@ -464,6 +450,11 @@ rule KernelArchitectureSetup architecture
 	}
 
 	# bootloader-centric flags
+	HAIKU_BOOT_CCFLAGS
+		+= -DBOOT_ARCHIVE_IMAGE_OFFSET=$(HAIKU_BOOT_ARCHIVE_IMAGE_OFFSET) ;
+	HAIKU_BOOT_C++FLAGS
+		+= -DBOOT_ARCHIVE_IMAGE_OFFSET=$(HAIKU_BOOT_ARCHIVE_IMAGE_OFFSET) ;
+
 	local bootTarget ;
 	for bootTarget in $(HAIKU_BOOT_TARGETS) {
 		switch $(bootTarget) {
@@ -486,6 +477,27 @@ rule KernelArchitectureSetup architecture
 							HAIKU_BOOT_$(bootTarget:U)_CCFLAGS += -maccumulate-outgoing-args ;
 							HAIKU_BOOT_$(bootTarget:U)_C++FLAGS += -maccumulate-outgoing-args ;
 						}
+					case arm :
+						HAIKU_BOOT_$(bootTarget:U)_CCFLAGS += -mfloat-abi=soft ;
+						HAIKU_BOOT_$(bootTarget:U)_C++FLAGS += -mfloat-abi=soft ;
+
+						# Remove any previous -mfloat-abi=hard setting from compiler flags
+						local fixedBootCCFlags ;
+						local fixedBootC++Flags ;
+						for flag in $(HAIKU_BOOT_CCFLAGS) {
+							if $(flag) = "-mfloat-abi=hard" {
+								continue ;
+							}
+							fixedBootCCFlags += $(flag) ;
+						}
+						for flag in $(HAIKU_BOOT_C++FLAGS) {
+							if $(flag) = "-mfloat-abi=hard" {
+								continue ;
+							}
+							fixedBootC++Flags += $(flag) ;
+						}
+						HAIKU_BOOT_CCFLAGS = $(fixedBootCCFlags) ;
+						HAIKU_BOOT_C++FLAGS = $(fixedBootC++Flags) ;
 				}
 				HAIKU_BOOT_$(bootTarget:U)_LDFLAGS = -Bstatic -Bsymbolic
 					-nostdlib -znocombreloc -no-undefined ;
@@ -526,6 +538,12 @@ rule KernelArchitectureSetup architecture
 						HAIKU_BOOT_$(bootTarget:U)_C++FLAGS += -m68020-60 ;
 					# TODO: coldfire (FireBee)
 				}
+			case riscv :
+				HAIKU_BOOT_$(bootTarget:U)_CCFLAGS += -mcmodel=medany -fno-omit-frame-pointer -fno-plt -fno-pic -fno-semantic-interposition ;
+				HAIKU_BOOT_$(bootTarget:U)_C++FLAGS += -mcmodel=medany -fno-omit-frame-pointer -fno-plt -fno-pic -fno-semantic-interposition ;
+			case openfirmware :
+				HAIKU_BOOT_$(bootTarget:U)_CCFLAGS += -fno-pic -fno-semantic-interposition -Wno-error=main -Wstack-usage=1023 ;
+				HAIKU_BOOT_$(bootTarget:U)_C++FLAGS += -fno-pic -fno-semantic-interposition -Wno-error=main -Wstack-usage=1023 ;
 			case * :
 				# all other bootloaders are non-PIC
 				HAIKU_BOOT_$(bootTarget:U)_CCFLAGS += -fno-pic -Wno-error=main ;
@@ -549,11 +567,7 @@ rule KernelArchitectureSetup architecture
 
 	# defines
 	HAIKU_KERNEL_DEFINES += _KERNEL_MODE ;
-
-	HAIKU_DEFINES_$(architecture)
-		+= BOOT_ARCHIVE_IMAGE_OFFSET=$(HAIKU_BOOT_ARCHIVE_IMAGE_OFFSET) ;
-		# TODO: That doesn't need to be a general define. It's just needed for
-		# compiling (part of) the boot loader.
+	HAIKU_BOOT_DEFINES += _BOOT_MODE ;
 
 	# kernel add-on glue code
 	HAIKU_KERNEL_ADDON_BEGIN_GLUE_CODE = <$(architecture)>crtbeginS.o
@@ -600,6 +614,16 @@ rule ArchitectureSetupWarnings architecture
 		}
 	}
 
+	rule EnableStackProtector dirTokens : scope {
+		# enable stack protector, if requested
+		if $(HAIKU_USE_STACK_PROTECTOR) = 1 {
+			AppendToConfigVar CCFLAGS : HAIKU_TOP $(dirTokens) :
+				-fstack-protector-strong -fstack-clash-protection : $(scope) ;
+			AppendToConfigVar C++FLAGS : HAIKU_TOP $(dirTokens) :
+				-fstack-protector-strong -fstack-clash-protection : $(scope) ;
+		}
+	}
+
 	# Work-around for GCC 2 problem -- despite -Wno-multichar it reports
 	# multichar warnings in headers/private/kernel/debugger_keymaps.h included
 	# by src/system/kernel/arch/x86/arch_debug_console.cpp.
@@ -608,110 +632,131 @@ rule ArchitectureSetupWarnings architecture
 		WARNINGS on $(file) = $(WARNINGS) ;
 	}
 
+	# Enable -Werror for as much of Haiku as possible. Ideally, all of the code would compile
+	# without errors, but that is difficult to achieve due to using multiple compiler versions,
+	# compiling for multiple platforms, and keeping 3rd party code in sync with its upstream
+	# provenance.
+	# This list allows to track where -Werror is enabled. The idea is to enable it as globally
+	# as possible (for example: all of the accelerants), and otherwise list all subdirectories,
+	# commenting out the ones that can't currently be enabled. This allows to easily identify
+	# if a directory has all its subdirectories already compiled with -Werror, and the rule can
+	# be "collapsed" to declare just the parent directory.
+	# Notable places where 3rd party code is used, and fixing problems should be done in
+	# collaboration with upstream:
+	# - The NTFS filesystem driver (upstream: ntfs-3g)
+	# - All network drivers imported from FreeBSD or OpenBSD
+
 	EnableWerror src add-ons accelerants ;
 	EnableWerror src add-ons bluetooth ;
 	EnableWerror src add-ons decorators ;
 	EnableWerror src add-ons disk_systems ;
-	EnableWerror src add-ons input_server devices ;
-	EnableWerror src add-ons input_server filters ;
-#	EnableWerror src add-ons input_server methods pen ;
-	EnableWerror src add-ons input_server methods t9 ;
+	EnableWerror src add-ons input_server ;
 	EnableWerror src add-ons kernel bluetooth ;
-	EnableWerror src add-ons kernel bus_managers acpi ;
-	EnableWerror src add-ons kernel bus_managers agp_gart ;
-	EnableWerror src add-ons kernel bus_managers ata ;
-	EnableWerror src add-ons kernel bus_managers config_manager ;
-#	EnableWerror src add-ons kernel bus_managers firewire ;
-	EnableWerror src add-ons kernel bus_managers ide ;
-	EnableWerror src add-ons kernel bus_managers isa ;
-	EnableWerror src add-ons kernel bus_managers pci ;
-	EnableWerror src add-ons kernel bus_managers ps2 ;
-	EnableWerror src add-ons kernel bus_managers random ;
-	EnableWerror src add-ons kernel bus_managers scsi ;
-	EnableWerror src add-ons kernel bus_managers tty ;
-	EnableWerror src add-ons kernel bus_managers usb ;
-	EnableWerror src add-ons kernel bus_managers virtio ;
-	EnableWerror src add-ons kernel busses agp_gart ;
-	EnableWerror src add-ons kernel busses ata ;
-	EnableWerror src add-ons kernel busses scsi ;
-	EnableWerror src add-ons kernel busses usb ;
+	EnableWerror src add-ons kernel bus_managers ;
+	EnableWerror src add-ons kernel busses ;
 	EnableWerror src add-ons kernel console ;
 	EnableWerror src add-ons kernel cpu ;
-#	EnableWerror src add-ons kernel debugger ; # gcc2
-#	EnableWerror src add-ons kernel drivers audio ;
+	EnableWerror src add-ons kernel debugger ;
+	EnableWerror src add-ons kernel drivers audio ;
 	EnableWerror src add-ons kernel drivers bluetooth ;
-#	EnableWerror src add-ons kernel drivers bus ;
+	EnableWerror src add-ons kernel drivers bus ;
 	EnableWerror src add-ons kernel drivers common ;
-#	EnableWerror src add-ons kernel drivers disk ;
+	EnableWerror src add-ons kernel drivers disk ;
+#	EnableWerror src add-ons kernel drivers display ;
 	EnableWerror src add-ons kernel drivers dvb ;
 #	EnableWerror src add-ons kernel drivers graphics ;
+	EnableWerror src add-ons kernel drivers graphics 3dfx ;
+	EnableWerror src add-ons kernel drivers graphics ati ;
+	EnableWerror src add-ons kernel drivers graphics et6x00 ;
+	EnableWerror src add-ons kernel drivers graphics framebuffer ;
+	EnableWerror src add-ons kernel drivers graphics intel_i810 ;
 	EnableWerror src add-ons kernel drivers graphics intel_extreme ;
-#	EnableWerror src add-ons kernel drivers input ;
+	EnableWerror src add-ons kernel drivers graphics matrox ;
+	EnableWerror src add-ons kernel drivers graphics neomagic ;
+#	EnableWerror src add-ons kernel drivers graphics nvidia ;
+#	EnableWerror src add-ons kernel drivers graphics radeon ;
+	EnableWerror src add-ons kernel drivers graphics radeon_hd ;
+#	EnableWerror src add-ons kernel drivers graphics s3 ;
+	EnableWerror src add-ons kernel drivers graphics skeleton ;
+	EnableWerror src add-ons kernel drivers graphics vesa ;
+	EnableWerror src add-ons kernel drivers graphics via ;
+	EnableWerror src add-ons kernel drivers graphics virtio ;
+	EnableWerror src add-ons kernel drivers input ;
 	EnableWerror src add-ons kernel drivers joystick ;
 	EnableWerror src add-ons kernel drivers midi ;
 	EnableWerror src add-ons kernel drivers misc ;
-#	EnableWerror src add-ons kernel drivers network ;
+	EnableWerror src add-ons kernel drivers network ether 3com ;
+#	EnableWerror src add-ons kernel drivers network ether atheros813x ;
+#	EnableWerror src add-ons kernel drivers network ether atheros81xx ;
+#	EnableWerror src add-ons kernel drivers network ether attansic_l1 ;
+#	EnableWerror src add-ons kernel drivers network ether attansic_l2 ;
+#	EnableWerror src add-ons kernel drivers network ether broadcom440x ;
+#	EnableWerror src add-ons kernel drivers network ether broadcom570x ;
+#	EnableWerror src add-ons kernel drivers network ether dec21xxx ;
+	EnableWerror src add-ons kernel drivers network ether etherpci ;
+#	EnableWerror src add-ons kernel drivers network ether intel22x ;
+#	EnableWerror src add-ons kernel drivers network ether ipro100 ;
+#	EnableWerror src add-ons kernel drivers network ether ipro1000 ;
+#	EnableWerror src add-ons kernel drivers network ether jmicron2x0 ;
+#	EnableWerror src add-ons kernel drivers network ether marvell_yukon ;
+#	EnableWerror src add-ons kernel drivers network ether nforce ;
+#	EnableWerror src add-ons kernel drivers network ether pcnet ;
+	EnableWerror src add-ons kernel drivers network ether pegasus ;
+	EnableWerror src add-ons kernel drivers network ether rdc ;
+#	EnableWerror src add-ons kernel drivers network ether rtl8139 ;
+#	EnableWerror src add-ons kernel drivers network ether rtl81xx ;
+	EnableWerror src add-ons kernel drivers network ether sis19x ;
+#	EnableWerror src add-ons kernel drivers network ether sis900 ;
+#	EnableWerror src add-ons kernel drivers network ether syskonnect ;
+	EnableWerror src add-ons kernel drivers network ether usb_asix ;
+	EnableWerror src add-ons kernel drivers network ether usb_davicom ;
+	EnableWerror src add-ons kernel drivers network ether usb_ecm ;
+	EnableWerror src add-ons kernel drivers network ether usb_rndis ;
+	EnableWerror src add-ons kernel drivers network ether via_rhine ;
+	EnableWerror src add-ons kernel drivers network ether virtio ;
+#	EnableWerror src add-ons kernel drivers network ether vt612x ;
+	EnableWerror src add-ons kernel drivers network ether wb840 ;
+#	EnableWerror src add-ons kernel drivers network wlan ;
+	EnableWerror src add-ons kernel drivers network wwan ;
 	EnableWerror src add-ons kernel drivers ports ;
-#	EnableWerror src add-ons kernel drivers power ;
-	EnableWerror src add-ons kernel drivers printer ;
-	EnableWerror src add-ons kernel drivers random ;
-	EnableWerror src add-ons kernel drivers tty ;
+	EnableWerror src add-ons kernel drivers power ;
+#	EnableWerror src add-ons kernel drivers pty ;
+#	EnableWerror src add-ons kernel drivers sensor ;
+#	EnableWerror src add-ons kernel drivers timer ;
 	EnableWerror src add-ons kernel drivers video ;
+#	EnableWerror src add-ons kernel drivers wmi ;
 	EnableWerror src add-ons kernel file_systems bfs ;
 	EnableWerror src add-ons kernel file_systems cdda ;
-#	EnableWerror src add-ons kernel file_systems ext2 ;
-#	EnableWerror src add-ons kernel file_systems fat ;
-#	EnableWerror src add-ons kernel file_systems googlefs ;
+	EnableWerror src add-ons kernel file_systems ext2 ;
+	EnableWerror src add-ons kernel file_systems fat ;
+	EnableWerror src add-ons kernel file_systems googlefs ;
 	EnableWerror src add-ons kernel file_systems iso9660 ;
 	EnableWerror src add-ons kernel file_systems layers ;
 #	EnableWerror src add-ons kernel file_systems netfs ;
-#	EnableWerror src add-ons kernel file_systems nfs ;
+	EnableWerror src add-ons kernel file_systems nfs ;
 	EnableWerror src add-ons kernel file_systems nfs4 ;
 #	EnableWerror src add-ons kernel file_systems ntfs ;
 	EnableWerror src add-ons kernel file_systems packagefs ;
-#	EnableWerror src add-ons kernel file_systems ramfs ;
-#	EnableWerror src add-ons kernel file_systems reiserfs ;
+	EnableWerror src add-ons kernel file_systems ramfs ;
+	EnableWerror src add-ons kernel file_systems reiserfs ;
 	EnableWerror src add-ons kernel file_systems udf ;
 	EnableWerror src add-ons kernel file_systems userlandfs ;
+	EnableWerror src add-ons kernel file_systems xfs ;
 	EnableWerror src add-ons kernel generic ;
-#	EnableWerror src add-ons kernel network datalink_protocols ;
-	EnableWerror src add-ons kernel network devices ;
-	EnableWerror src add-ons kernel network dns_resolver ;
-	EnableWerror src add-ons kernel network notifications ;
-	EnableWerror src add-ons kernel network ppp ;
-	EnableWerror src add-ons kernel network protocols ;
-#	EnableWerror src add-ons kernel network stack ;
+	EnableWerror src add-ons kernel network ;
 	EnableWerror src add-ons kernel partitioning_systems ;
 	EnableWerror src add-ons kernel power ;
 	EnableWerror src add-ons locale ;
 	EnableWerror src add-ons mail_daemon ;
-	EnableWerror src add-ons media media-add-ons demultiplexer ;
-	EnableWerror src add-ons media media-add-ons dvb ;
-	EnableWerror src add-ons media media-add-ons esound_sink ;
-	EnableWerror src add-ons media media-add-ons finepix_webcam ;
-	EnableWerror src add-ons media media-add-ons firewire_dv ;
-	EnableWerror src add-ons media media-add-ons legacy ;
-	EnableWerror src add-ons media media-add-ons mixer ;
-	EnableWerror src add-ons media media-add-ons multi_audio ;
-	EnableWerror src add-ons media media-add-ons opensound ;
-	EnableWerror src add-ons media media-add-ons radeon ;
-	EnableWerror src add-ons media media-add-ons reader ;
-	EnableWerror src add-ons media media-add-ons tone_producer_demo ;
-	EnableWerror src add-ons media media-add-ons usb_vision ;
-#	EnableWerror src add-ons media media-add-ons usb_webcam ;
-	EnableWerror src add-ons media media-add-ons video_mixer ;
-#	EnableWerror src add-ons media media-add-ons video_producer_demo ;
-	EnableWerror src add-ons media media-add-ons videowindow ;
-	EnableWerror src add-ons media media-add-ons writer ;
+	EnableWerror src add-ons media media-add-ons ;
 	EnableWerror src add-ons media plugins ape_reader ;
 	EnableWerror src add-ons media plugins au_reader ;
-#	EnableWerror src add-ons media plugins ffmpeg ;
-#	EnableWerror src add-ons media plugins raw_decoder ;
+	EnableWerror src add-ons media plugins ffmpeg ;
+	EnableWerror src add-ons media plugins raw_decoder ;
 	EnableWerror src add-ons print ;
 	EnableWerror src add-ons screen_savers ;
 	EnableWerror src add-ons tracker ;
 	EnableWerror src add-ons translators bmp ;
-	EnableWerror src add-ons translators exr ;
 	EnableWerror src add-ons translators gif ;
 	EnableWerror src add-ons translators hvif ;
 	EnableWerror src add-ons translators ico ;
@@ -729,11 +774,14 @@ rule ArchitectureSetupWarnings architecture
 	EnableWerror src add-ons translators tiff ;
 	EnableWerror src add-ons translators wonderbrush ;
 	EnableWerror src add-ons print ;
+	EnableWerror src bin debug strace ;
 	EnableWerror src bin desklink ;
+	EnableWerror src bin listusb ;
 	EnableWerror src bin multiuser ;
 	EnableWerror src bin package ;
 	EnableWerror src bin package_repo ;
 	EnableWerror src bin pkgman ;
+	EnableWerror src bin writembr ;
 	EnableWerror src libs bsd ;
 	EnableWerror src apps ;
 	EnableWerror src kits ;
@@ -746,6 +794,18 @@ rule ArchitectureSetupWarnings architecture
 	EnableWerror src system libroot posix locale ;
 	EnableWerror src system libroot posix wchar ;
 	EnableWerror src system runtime_loader ;
+
+	EnableStackProtector src add-ons input_server ;
+	EnableStackProtector src add-ons media ;
+	EnableStackProtector src add-ons print ;
+	EnableStackProtector src add-ons screen_savers ;
+	EnableStackProtector src add-ons translators ;
+	EnableStackProtector src bin ;
+	EnableStackProtector src apps ;
+	EnableStackProtector src kits ;
+	EnableStackProtector src preferences ;
+	EnableStackProtector src servers ;
+	EnableStackProtector src system kernel ;
 }
 
 

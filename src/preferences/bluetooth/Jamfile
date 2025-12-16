@@ -5,7 +5,7 @@ UsePrivateHeaders shared ;
 
 AddResources Bluetooth : Bluetooth.rdef ;
 
-Preference Bluetooth :
+Application Bluetooth :
 	BluetoothDeviceView.cpp
 	BluetoothMain.cpp
 	BluetoothSettings.cpp
@@ -15,7 +15,7 @@ Preference Bluetooth :
 	ExtendedLocalDeviceView.cpp
 	InquiryPanel.cpp
 	RemoteDevicesView.cpp
-	: be libbluetooth.so [ TargetLibsupc++ ] localestub
+	: be shared libbluetooth.so [ TargetLibsupc++ ] localestub
 	;
 
 DoCatalogs Bluetooth :

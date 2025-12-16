@@ -1,11 +1,13 @@
 /*
- * Copyright 2017-2020, Andrew Lindesay <apl@lindesay.co.nz>.
+ * Copyright 2017-2023, Andrew Lindesay <apl@lindesay.co.nz>.
  * All rights reserved. Distributed under the terms of the MIT License.
  */
 #ifndef PATH_UTILS_H
 #define PATH_UTILS_H
 
 #include <Path.h>
+
+#include "Language.h"
 
 class StorageUtils {
 
@@ -22,8 +24,15 @@ public:
 
 	static status_t			CheckCanWriteTo(const BPath& path);
 
+	static status_t			AppendToString(const BPath& path, BString& result);
+	static status_t			AppendToFile(const BString& input,
+								const BPath& path);
+
+	static status_t			RemoveWorkingDirectoryContents();
 	static status_t			RemoveDirectoryContents(BPath& path);
-	static status_t			AppendToString(BPath& path, BString& result);
+	static status_t			RemoveDirectoryContentsRetainingLatestFiles(BPath& path,
+								uint32 countLatestRetained);
+
 	static status_t			ExistsObject(const BPath& path,
 								bool* exists,
 								bool* isDirectory,
@@ -34,6 +43,13 @@ public:
 	static	BString			SwapExtensionOnPathComponent(
 								const char* pathComponent,
 								const char* extension);
+
+	static	status_t		IconTarPath(BPath& path);
+    static	status_t		DumpExportReferenceDataPath(BPath& path, const LanguageRef language);
+    static	status_t		DumpExportRepositoryDataPath(BPath& path, const LanguageRef language);
+    static	status_t		DumpExportPkgDataPath(BPath& path, const BString& repositorySourceCode,
+    							const LanguageRef language);
+
 };
 
 #endif // PATH_UTILS_H

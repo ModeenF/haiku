@@ -33,17 +33,17 @@
 #include <InterfaceDefs.h>
 #include <LayoutBuilder.h>
 #include <MenuBar.h>
-#include <MenuItem.h>
 #include <MenuField.h>
+#include <MenuItem.h>
 #include <Messenger.h>
 #include <Path.h>
 #include <PopUpMenu.h>
+#include <Roster.h>
 #include <Screen.h>
 #include <SpaceLayoutItem.h>
 #include <Spinner.h>
 #include <String.h>
 #include <StringView.h>
-#include <Roster.h>
 #include <Window.h>
 
 #include <InterfacePrivate.h>
@@ -85,13 +85,11 @@ static const struct {
 	{ B_RGB24, 24, B_TRANSLATE("24 bits/pixel, 16 Million colors") },
 	{ B_RGB32, 32, B_TRANSLATE("32 bits/pixel, 16 Million colors") }
 };
-static const int32 kColorSpaceCount
-	= sizeof(kColorSpaces) / sizeof(kColorSpaces[0]);
+static const int32 kColorSpaceCount = B_COUNT_OF(kColorSpaces);
 
 // list of standard refresh rates
 static const int32 kRefreshRates[] = { 60, 70, 72, 75, 80, 85, 95, 100 };
-static const int32 kRefreshRateCount
-	= sizeof(kRefreshRates) / sizeof(kRefreshRates[0]);
+static const int32 kRefreshRateCount = B_COUNT_OF(kRefreshRates);
 
 // list of combine modes
 static const struct {
@@ -102,8 +100,7 @@ static const struct {
 	{ kCombineHorizontally, B_TRANSLATE("horizontally") },
 	{ kCombineVertically, B_TRANSLATE("vertically") }
 };
-static const int32 kCombineModeCount
-	= sizeof(kCombineModes) / sizeof(kCombineModes[0]);
+static const int32 kCombineModeCount = B_COUNT_OF(kCombineModes);
 
 
 static BString
@@ -134,7 +131,9 @@ tv_standard_to_string(uint32 mode)
 static void
 resolution_to_string(screen_mode& mode, BString &string)
 {
-	string << mode.width << " x " << mode.height;
+	string.SetToFormat(B_TRANSLATE_COMMENT("%" B_PRId32" × %" B_PRId32,
+			"The '×' is the Unicode multiplication sign U+00D7"),
+			mode.width, mode.height);
 }
 
 
@@ -175,6 +174,7 @@ ScreenWindow::ScreenWindow(ScreenSettings* settings)
 			| B_AUTO_UPDATE_SIZE_LIMITS, B_ALL_WORKSPACES),
 	fIsVesa(false),
 	fBootWorkspaceApplied(false),
+	fUserSelectedColorSpace(NULL),
 	fOtherRefresh(NULL),
 	fScreenMode(this),
 	fUndoScreenMode(this),
@@ -307,13 +307,53 @@ ScreenWindow::ScreenWindow(ScreenSettings* settings)
 		B_USE_DEFAULT_SPACING, B_USE_DEFAULT_SPACING, B_USE_DEFAULT_SPACING);
 	controlsBox->AddChild(outerControlsView);
 
-	fResolutionMenu = new BPopUpMenu("resolution", true, true);
+	menu_layout layout = B_ITEMS_IN_COLUMN;
 
+	// There are modes in the list with the same resolution but different bpp or refresh rates.
+	// We don't want to take these into account when computing the menu layout, so we need to
+	// count how many entries we will really have in the menu.
+	int fullModeCount = fScreenMode.CountModes();
+	int modeCount = 0;
+	int index = 0;
 	uint16 maxWidth = 0;
 	uint16 maxHeight = 0;
 	uint16 previousWidth = 0;
 	uint16 previousHeight = 0;
-	for (int32 i = 0; i < fScreenMode.CountModes(); i++) {
+	for (int32 i = 0; i < fullModeCount; i++) {
+		screen_mode mode = fScreenMode.ModeAt(i);
+
+		if (mode.width == previousWidth && mode.height == previousHeight)
+			continue;
+		modeCount++;
+		previousWidth = mode.width;
+		previousHeight = mode.height;
+		if (maxWidth < mode.width)
+			maxWidth = mode.width;
+		if (maxHeight < mode.height)
+			maxHeight = mode.height;
+	}
+
+	if (modeCount > 16)
+		layout = B_ITEMS_IN_MATRIX;
+
+	fResolutionMenu = new BPopUpMenu("resolution", true, true, layout);
+
+	// Compute the size we should allocate to each item in the menu
+	BRect itemRect;
+	if (layout == B_ITEMS_IN_MATRIX) {
+		BFont menuFont;
+		font_height fontHeight;
+
+		fResolutionMenu->GetFont(&menuFont);
+		menuFont.GetHeight(&fontHeight);
+		itemRect.left = itemRect.top = 0;
+		itemRect.bottom = fontHeight.ascent + fontHeight.descent + 4;
+		itemRect.right = menuFont.StringWidth("99999x99999") + 16;
+		rows = modeCount / 3 + 1;
+	}
+
+	index = 0;
+	for (int32 i = 0; i < fullModeCount; i++) {
 		screen_mode mode = fScreenMode.ModeAt(i);
 
 		if (mode.width == previousWidth && mode.height == previousHeight)
@@ -321,19 +361,26 @@ ScreenWindow::ScreenWindow(ScreenSettings* settings)
 
 		previousWidth = mode.width;
 		previousHeight = mode.height;
-		if (maxWidth < mode.width)
-			maxWidth = mode.width;
-		if (maxHeight < mode.height)
-			maxHeight = mode.height;
 
 		BMessage* message = new BMessage(POP_RESOLUTION_MSG);
 		message->AddInt32("width", mode.width);
 		message->AddInt32("height", mode.height);
 
 		BString name;
-		name << mode.width << " x " << mode.height;
+		name.SetToFormat(B_TRANSLATE_COMMENT("%" B_PRId32" × %" B_PRId32,
+			"The '×' is the Unicode multiplication sign U+00D7"),
+			mode.width, mode.height);
 
-		fResolutionMenu->AddItem(new BMenuItem(name.String(), message));
+		if (layout == B_ITEMS_IN_COLUMN)
+			fResolutionMenu->AddItem(new BMenuItem(name.String(), message));
+		else {
+			int y = index % rows;
+			int x = index / rows;
+			itemRect.OffsetTo(x * itemRect.Width(), y * itemRect.Height());
+			fResolutionMenu->AddItem(new BMenuItem(name.String(), message), itemRect);
+		}
+
+		index++;
 	}
 
 	fMonitorView->SetMaxResolution(maxWidth, maxHeight);
@@ -622,7 +669,9 @@ ScreenWindow::_CheckResolutionMenu()
 			continue;
 
 		BString name;
-		name << mode.width << " x " << mode.height;
+		name.SetToFormat(B_TRANSLATE_COMMENT("%" B_PRId32" × %" B_PRId32,
+			"The '×' is the Unicode multiplication sign U+00D7"),
+			mode.width, mode.height);
 
 		BMenuItem *item = fResolutionMenu->FindItem(name.String());
 		if (item != NULL)
@@ -744,6 +793,15 @@ ScreenWindow::_CheckRefreshMenu()
 void
 ScreenWindow::_UpdateRefreshControl()
 {
+	if (isnan(fSelected.refresh)) {
+		fRefreshMenu->SetEnabled(false);
+		fOtherRefresh->SetLabel(B_TRANSLATE("Unknown"));
+		fOtherRefresh->SetMarked(true);
+		return;
+	} else {
+		fRefreshMenu->SetEnabled(true);
+	}
+
 	for (int32 i = 0; i < fRefreshMenu->CountItems(); i++) {
 		BMenuItem* item = fRefreshMenu->ItemAt(i);
 		if (item->Message()->FindFloat("refresh") == fSelected.refresh) {
@@ -754,7 +812,7 @@ ScreenWindow::_UpdateRefreshControl()
 			return;
 		}
 	}
-
+	
 	// this is a non-standard refresh rate
 	if (fOtherRefresh != NULL) {
 		fOtherRefresh->Message()->ReplaceFloat("refresh", fSelected.refresh);
@@ -1325,16 +1383,22 @@ ScreenWindow::_UpdateMonitor()
 			&& info.max_pixel_clock != 0) {
 			length = snprintf(text, sizeof(text),
 				B_TRANSLATE("Horizonal frequency:\t%lu - %lu kHz\n"
-				"Vertical frequency:\t%lu - %lu Hz\n\n"
-				"Maximum pixel clock:\t%g MHz"),
-				info.min_horizontal_frequency, info.max_horizontal_frequency,
-				info.min_vertical_frequency, info.max_vertical_frequency,
+					"Vertical frequency:\t%lu - %lu Hz\n\n"
+					"Maximum pixel clock:\t%g MHz"),
+				(long unsigned)info.min_horizontal_frequency,
+				(long unsigned)info.max_horizontal_frequency,
+				(long unsigned)info.min_vertical_frequency,
+				(long unsigned)info.max_vertical_frequency,
 				info.max_pixel_clock / 1000.0);
 		}
 		if (info.serial_number[0] && length < sizeof(text)) {
+			if (length > 0) {
+				text[length++] = '\n';
+				text[length++] = '\n';
+				text[length] = '\0';
+			}
 			length += snprintf(text + length, sizeof(text) - length,
-				B_TRANSLATE("%sSerial no.: %s"), length ? "\n\n" : "",
-				info.serial_number);
+				B_TRANSLATE("Serial no.: %s"), info.serial_number);
 			if (info.produced.week != 0 && info.produced.year != 0
 				&& length < sizeof(text)) {
 				length += snprintf(text + length, sizeof(text) - length,

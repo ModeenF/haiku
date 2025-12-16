@@ -18,6 +18,7 @@
 #include <Bitmap.h>
 #include <ControlLook.h>
 #include <LayoutUtils.h>
+#include <InputServerDevice.h>
 #include <MenuItem.h>
 #include <PopUpMenu.h>
 #include <Region.h>
@@ -31,10 +32,9 @@
 #define B_TRANSLATION_CONTEXT "Keyboard Layout View"
 
 
-static const rgb_color kBrightColor = {230, 230, 230, 255};
 static const rgb_color kDarkColor = {200, 200, 200, 255};
-static const rgb_color kSecondDeadKeyColor = {240, 240, 150, 255};
-static const rgb_color kDeadKeyColor = {152, 203, 255, 255};
+static const rgb_color kIdealSecondDeadKeyColor = {190, 190, 100, 255};
+static const rgb_color kIdealDeadKeyColor = {102, 153, 205, 255};
 static const rgb_color kLitIndicatorColor = {116, 212, 83, 255};
 
 
@@ -80,22 +80,25 @@ is_mappable_to_modifier(uint32 keyCode)
 //	#pragma mark - KeyboardLayoutView
 
 
-KeyboardLayoutView::KeyboardLayoutView(const char* name)
+KeyboardLayoutView::KeyboardLayoutView(const char* name, BInputServerDevice* dev)
 	:
-	BView(name, B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE | B_FRAME_EVENTS),
+	BView(name, B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE | B_FRAME_EVENTS | B_TRANSPARENT_BACKGROUND),
 	fKeymap(NULL),
-	fEditable(true),
+	fEditable(dev == NULL),
 	fModifiers(0),
 	fDeadKey(0),
 	fButtons(0),
 	fDragKey(NULL),
 	fDropTarget(NULL),
-	fOldSize(0, 0)
+	fOldSize(0, 0),
+	fDevice(dev)
 {
 	fLayout = new KeyboardLayout;
 	memset(fKeyState, 0, sizeof(fKeyState));
 
 	SetEventMask(B_KEYBOARD_EVENTS);
+
+	SetViewColor(B_TRANSPARENT_COLOR);
 }
 
 
@@ -145,8 +148,6 @@ KeyboardLayoutView::SetBaseFont(const BFont& font)
 void
 KeyboardLayoutView::AttachedToWindow()
 {
-	SetViewColor(B_TRANSPARENT_COLOR);
-
 	SetBaseFont(*be_plain_font);
 	fSpecialFont = *be_fixed_font;
 	fModifiers = modifiers();
@@ -210,7 +211,7 @@ KeyboardLayoutView::MouseDown(BPoint point)
 			|| ((buttons & B_PRIMARY_MOUSE_BUTTON) != 0
 		&& (modifiers() & B_CONTROL_KEY) != 0)) {
 		// secondary mouse button, pop up a swap context menu
-		if (!is_mappable_to_modifier(key->code)) {
+		if (fEditable && !is_mappable_to_modifier(key->code)) {
 			// ToDo: Pop up a list of alternative characters to map
 			// the key to. Currently we only add an option to remove the
 			// current key mapping.
@@ -224,7 +225,7 @@ KeyboardLayoutView::MouseDown(BPoint point)
 			alternativesPopUp->SetAsyncAutoDestruct(true);
 			if (alternativesPopUp->SetTargetForItems(Window()) == B_OK)
 				alternativesPopUp->Go(ConvertToScreen(point), true);
-		} else {
+		} else if (fEditable) {
 			// pop up the modifier keys menu
 			BPopUpMenu* modifiersPopUp = new BPopUpMenu("Modifiers pop up",
 				true, true, B_ITEMS_IN_COLUMN);
@@ -403,7 +404,7 @@ KeyboardLayoutView::MouseUp(BPoint point)
 		_InvalidateKey(key);
 
 		if (fDragKey == NULL)
-			_SendFakeKeyDown(key);
+			_SendKeyDown(key);
 	}
 
 	fDragKey = NULL;
@@ -415,6 +416,10 @@ KeyboardLayoutView::MouseMoved(BPoint point, uint32 transit,
 	const BMessage* dragMessage)
 {
 	if (fKeymap == NULL)
+		return;
+
+	// Ignore mouse-moved events if we are acting as a real input device.
+	if (fDevice != NULL)
 		return;
 
 	// prevent dragging for tertiary mouse button
@@ -500,15 +505,6 @@ KeyboardLayoutView::Draw(BRect updateRect)
 	if (fOldSize != BSize(Bounds().Width(), Bounds().Height())) {
 		_LayoutKeyboard();
 	}
-
-	// Draw background
-
-	if (Parent())
-		SetLowColor(Parent()->ViewColor());
-	else
-		SetLowColor(ui_color(B_PANEL_BACKGROUND_COLOR));
-
-	FillRect(updateRect, B_SOLID_LOW);
 
 	// Draw keys
 
@@ -607,7 +603,7 @@ KeyboardLayoutView::MessageReceived(BMessage* message)
 				}
 			} else {
 				// Send the old key to the target, so it's not lost entirely
-				_SendFakeKeyDown(fDropTarget);
+				_SendKeyDown(fDropTarget);
 
 				fKeymap->SetKey(fDropTarget->code, fModifiers, fDeadKey,
 					(const char*)data, dataSize);
@@ -700,12 +696,11 @@ KeyboardLayoutView::_DrawKeyButton(BView* view, BRect& rect, BRect updateRect,
 	rgb_color base, rgb_color background, bool pressed)
 {
 	uint32 flags = pressed ? BControlLook::B_ACTIVATED : 0;
-	flags |= BControlLook::B_FLAT;
 
 	be_control_look->DrawButtonFrame(view, rect, updateRect, 4.0f, base,
-		background, pressed ? BControlLook::B_ACTIVATED : 0);
+		background, flags);
 	be_control_look->DrawButtonBackground(view, rect, updateRect, 4.0f,
-		base, pressed ? BControlLook::B_ACTIVATED : 0);
+		base, flags);
 }
 
 
@@ -713,9 +708,16 @@ void
 KeyboardLayoutView::_DrawKey(BView* view, BRect updateRect, const Key* key,
 	BRect rect, bool pressed)
 {
-	rgb_color base = key->dark ? kDarkColor : kBrightColor;
+	rgb_color base;
+	if (ui_color(B_CONTROL_BACKGROUND_COLOR).IsLight()) {
+		base = key->dark ? tint_color(ui_color(B_CONTROL_BACKGROUND_COLOR), B_DARKEN_1_TINT)
+			: ui_color(B_CONTROL_BACKGROUND_COLOR);
+	} else {
+		base = key->dark ? tint_color(ui_color(B_CONTROL_BACKGROUND_COLOR), 0.8)
+			: ui_color(B_CONTROL_BACKGROUND_COLOR);
+	}
 	rgb_color background = ui_color(B_PANEL_BACKGROUND_COLOR);
-	rgb_color keyLabelColor = make_color(0, 0, 0, 255);
+	rgb_color keyLabelColor = ui_color(B_CONTROL_TEXT_COLOR);
 	key_kind keyKind = kNormalKey;
 	int32 deadKey = 0;
 	bool secondDeadKey = false;
@@ -737,9 +739,9 @@ KeyboardLayoutView::_DrawKey(BView* view, BRect updateRect, const Key* key,
 	uint32 flags = pressed ? BControlLook::B_ACTIVATED : 0;
 
 	if (secondDeadKey)
-		base = kSecondDeadKeyColor;
+		base = mix_color(ui_color(B_CONTROL_BACKGROUND_COLOR), kIdealSecondDeadKeyColor, 100);
 	else if (deadKey > 0 && isDeadKeyEnabled)
-		base = kDeadKeyColor;
+		base = mix_color(ui_color(B_CONTROL_BACKGROUND_COLOR), kIdealDeadKeyColor, 100);
 
 	if (key->shape == kRectangleKeyShape) {
 		_DrawKeyButton(view, rect, updateRect, base, background, pressed);
@@ -848,7 +850,7 @@ KeyboardLayoutView::_DrawIndicator(BView* view, BRect updateRect,
 		GetFontHeight(&fontHeight);
 		if (ceilf(rect.top - fontHeight.ascent + fontHeight.descent - 2)
 				>= rectTop) {
-			view->SetHighColor(0, 0, 0);
+			view->SetHighUIColor(B_PANEL_TEXT_COLOR);
 			view->SetLowColor(ViewColor());
 
 			BString text(label);
@@ -1291,7 +1293,7 @@ KeyboardLayoutView::_EvaluateDropTarget(BPoint point)
 
 
 void
-KeyboardLayoutView::_SendFakeKeyDown(const Key* key)
+KeyboardLayoutView::_SendKeyDown(const Key* key)
 {
 	BMessage message(B_KEY_DOWN);
 	message.AddInt64("when", system_time());
@@ -1299,7 +1301,10 @@ KeyboardLayoutView::_SendFakeKeyDown(const Key* key)
 		sizeof(fKeyState));
 	message.AddInt32("key", key->code);
 	message.AddInt32("modifiers", fModifiers);
-	message.AddPointer("keymap", fKeymap);
+	message.AddInt32("be:key_repeat", 1);
+
+	if (fDevice == NULL)
+		message.AddPointer("keymap", fKeymap);
 
 	char* string;
 	int32 numBytes;
@@ -1317,7 +1322,15 @@ KeyboardLayoutView::_SendFakeKeyDown(const Key* key)
 		delete[] string;
 	}
 
-	fTarget.SendMessage(&message);
+	if (fDevice == NULL) {
+		fTarget.SendMessage(&message);
+	} else {
+#if defined(VIRTUAL_KEYBOARD_DEVICE)
+		BMessage* deviceMessage = new BMessage(message);
+		if (fDevice->EnqueueMessage(deviceMessage) != B_OK)
+			delete deviceMessage;
+#endif
+	}
 }
 
 
@@ -1349,39 +1362,39 @@ const char*
 KeyboardLayoutView::_NameForModifier(uint32 modifier, bool pretty)
 {
 	if (modifier == B_CAPS_LOCK)
-		return pretty ? B_TRANSLATE("Caps lock") : "caps_key";
+		return pretty ? B_TRANSLATE("Caps Lock") : "caps_key";
 	else if (modifier == B_NUM_LOCK)
-		return pretty ? B_TRANSLATE("Num lock") : "num_key";
+		return pretty ? B_TRANSLATE("Num Lock") : "num_key";
 	else if (modifier == B_SCROLL_LOCK)
-		return pretty ? B_TRANSLATE("Scroll lock") : "scroll_key";
+		return pretty ? B_TRANSLATE("Scroll Lock") : "scroll_key";
 	else if (modifier == B_SHIFT_KEY) {
 		return pretty ? B_TRANSLATE_COMMENT("Shift", "Shift key")
 			: "shift_key";
 	} else if (modifier == B_LEFT_SHIFT_KEY)
-		return pretty ? B_TRANSLATE("Left shift") : "left_shift_key";
+		return pretty ? B_TRANSLATE("Left Shift") : "left_shift_key";
 	else if (modifier == B_RIGHT_SHIFT_KEY)
-		return pretty ? B_TRANSLATE("Right shift") : "right_shift_key";
+		return pretty ? B_TRANSLATE("Right Shift") : "right_shift_key";
 	else if (modifier == B_COMMAND_KEY) {
 		return pretty ? B_TRANSLATE_COMMENT("Command", "Command key")
 			: "command_key";
 	} else if (modifier == B_LEFT_COMMAND_KEY)
-		return pretty ? B_TRANSLATE("Left command") : "left_command_key";
+		return pretty ? B_TRANSLATE("Left Command") : "left_command_key";
 	else if (modifier == B_RIGHT_COMMAND_KEY)
-		return pretty ? B_TRANSLATE("Right command") : "right_command_key";
+		return pretty ? B_TRANSLATE("Right Command") : "right_command_key";
 	else if (modifier == B_CONTROL_KEY) {
 		return pretty ? B_TRANSLATE_COMMENT("Control", "Control key")
 			: "control_key";
 	} else if (modifier == B_LEFT_CONTROL_KEY)
-		return pretty ? B_TRANSLATE("Left control") : "left_control_key";
+		return pretty ? B_TRANSLATE("Left Control") : "left_control_key";
 	else if (modifier == B_RIGHT_CONTROL_KEY)
-		return pretty ? B_TRANSLATE("Right control") : "right_control_key";
+		return pretty ? B_TRANSLATE("Right Control") : "right_control_key";
 	else if (modifier == B_OPTION_KEY) {
 		return pretty ? B_TRANSLATE_COMMENT("Option", "Option key")
 			: "option_key";
 	} else if (modifier == B_LEFT_OPTION_KEY)
-		return pretty ? B_TRANSLATE("Left option") : "left_option_key";
+		return pretty ? B_TRANSLATE("Left Option") : "left_option_key";
 	else if (modifier == B_RIGHT_OPTION_KEY)
-		return pretty ? B_TRANSLATE("Right option") : "right_option_key";
+		return pretty ? B_TRANSLATE("Right Option") : "right_option_key";
 	else if (modifier == B_MENU_KEY)
 		return pretty ? B_TRANSLATE_COMMENT("Menu", "Menu key") : "menu_key";
 

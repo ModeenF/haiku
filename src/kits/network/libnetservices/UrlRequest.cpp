@@ -11,20 +11,20 @@
 #include <Debug.h>
 #include <stdio.h>
 
-
-#ifndef LIBNETAPI_DEPRECATED
 using namespace BPrivate::Network;
-#endif
+
 
 static BReference<BUrlContext> gDefaultContext = new(std::nothrow) BUrlContext();
 
 
-BUrlRequest::BUrlRequest(const BUrl& url, BUrlProtocolListener* listener,
-	BUrlContext* context, const char* threadName, const char* protocolName)
+BUrlRequest::BUrlRequest(const BUrl& url, BDataIO* output,
+	BUrlProtocolListener* listener, BUrlContext* context,
+	const char* threadName, const char* protocolName)
 	:
 	fUrl(url),
 	fContext(context),
 	fListener(listener),
+	fOutput(output),
 	fQuit(false),
 	fRunning(false),
 	fThreadStatus(B_NO_INIT),
@@ -76,22 +76,6 @@ BUrlRequest::Run()
 
 
 status_t
-BUrlRequest::Pause()
-{
-	// TODO
-	return B_ERROR;
-}
-
-
-status_t
-BUrlRequest::Resume()
-{
-	// TODO
-	return B_ERROR;
-}
-
-
-status_t
 BUrlRequest::Stop()
 {
 	if (!fRunning)
@@ -123,7 +107,11 @@ BUrlRequest::SetContext(BUrlContext* context)
 	if (IsRunning())
 		return B_ERROR;
 
-	fContext = context;
+	if (context == NULL)
+		fContext = gDefaultContext;
+	else
+		fContext = context;
+
 	return B_OK;
 }
 
@@ -135,6 +123,17 @@ BUrlRequest::SetListener(BUrlProtocolListener* listener)
 		return B_ERROR;
 
 	fListener = listener;
+	return B_OK;
+}
+
+
+status_t
+BUrlRequest::SetOutput(BDataIO* output)
+{
+	if (IsRunning())
+		return B_ERROR;
+
+	fOutput = output;
 	return B_OK;
 }
 
@@ -169,6 +168,14 @@ BUrlRequest::Protocol() const
 	return fProtocol;
 }
 
+
+#ifndef LIBNETAPI_DEPRECATED
+BDataIO*
+BUrlRequest::Output() const
+{
+	return fOutput;
+}
+#endif
 
 // #pragma mark URL protocol informations
 

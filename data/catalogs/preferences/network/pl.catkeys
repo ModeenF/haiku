@@ -1,7 +1,6 @@
-1	polish	x-vnd.Haiku-Network	3062143965
+1	polish	x-vnd.Haiku-Network	3807978621
 Ethernet device	InterfaceListItem		Urządzenie ethernetowe
 Link speed:	IntefaceView		Prędkość połączenia:
-disconnected	IntefaceView		rozłączone
 WPA	WPA protected network		WPA
 Network:	IntefaceView		Sieć:
 Received:	IntefaceView		Otrzymane:
@@ -13,10 +12,11 @@ Gateway:	IntefaceAddressView		Brama:
 The netmask defines your local network	IntefaceAddressView		Maska sieci definiuje twoją sieć lokalną
 Your IP address	IntefaceAddressView		Twój adres IP
 DHCP	IntefaceAddressView		DHCP
+IP address:	IntefaceAddressView		Adres IP:
 Netmask:	IntefaceAddressView		Maska sieci:
 EAP	EAP protected network		EAP
 Services	NetworkWindow		Usługi
-Installing NetworkStatus in Deskbar failed: %s	NetworkWindow		Instalacja NetworkStatus w Deskbarze nie powiodła się: %s
+Installing NetworkStatus in Deskbar failed: %s	NetworkWindow		Instalacja Statusu sieci w Deskbarze nie powiodła się: %s
 Revert	NetworkWindow		Cofnij
 off	ServiceListItem		wyłączony
 WEP	WEP protected network		WEP

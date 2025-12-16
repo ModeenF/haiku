@@ -6,29 +6,25 @@
 #define _B_HTTP_RESULT_H_
 
 
-#include <iostream>
-
 #include <HttpHeaders.h>
 #include <String.h>
 #include <Url.h>
 #include <UrlResult.h>
 
 
-#ifndef LIBNETAPI_DEPRECATED
 namespace BPrivate {
 
 namespace Network {
-#endif
+
 
 class BUrlRequest;
 
 
 class BHttpResult: public BUrlResult {
 			friend class 				BHttpRequest;
-			
+
 public:
 										BHttpResult(const BUrl& url);
-										BHttpResult(BMessage*);
 										BHttpResult(const BHttpResult& other);
 										~BHttpResult();
 
@@ -38,7 +34,7 @@ public:
 	// Result parameters access
 			const BUrl&					Url() const;
 			BString						ContentType() const;
-			size_t						Length() const;
+			off_t						Length() const;
 
 	// HTTP-Specific stuff
 			const BHttpHeaders&			Headers() const;
@@ -51,20 +47,17 @@ public:
 	// Overloaded members
 			BHttpResult&				operator=(const BHttpResult& other);
 
-	virtual	status_t					Archive(BMessage*, bool) const;
-	static	BArchivable*				Instantiate(BMessage*);
 private:
 			BUrl						fUrl;
-			
+
 			BHttpHeaders 				fHeaders;
 			int32						fStatusCode;
 			BString						fStatusString;
 };
 
-#ifndef LIBNETAPI_DEPRECATED
+
 } // namespace Network
 
 } // namespace BPrivate
-#endif
 
 #endif // _B_URL_RESULT_H_

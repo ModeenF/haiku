@@ -1561,7 +1561,7 @@ BMediaRoster::PrerollNode(const media_node& node)
 	if (IS_INVALID_NODE(node))
 		return B_MEDIA_BAD_NODE;
 
-	char dummy;
+	char dummy = 0;
 	return write_port(node.port, NODE_PREROLL, &dummy, sizeof(dummy));
 }
 
@@ -2912,7 +2912,7 @@ BMediaRoster::GetLatencyFor(const media_node& producer, bigtime_t* _latency)
 
 	*_latency = reply.latency;
 
-//	printf("BMediaRoster::GetLatencyFor producer %ld has maximum latency %Ld\n", producer.node, *out_latency);
+//	printf("BMediaRoster::GetLatencyFor producer %ld has maximum latency %lld\n", producer.node, *out_latency);
 	return B_OK;
 }
 

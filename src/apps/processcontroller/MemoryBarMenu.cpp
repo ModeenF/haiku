@@ -86,7 +86,7 @@ MemoryBarMenu::Pulse()
 	MemoryBarMenuItem* item;
 	int	total = 0;
 	for (k = 1; (item = (MemoryBarMenuItem*)ItemAt(k)) != NULL; k++) {
-		int m = item->UpdateSituation(committedMemory);
+		int64 m = item->UpdateSituation(committedMemory);
 		if (m < 0) {
 			if (lastRecycle == fRecycleCount) {
 				fRecycleCount += EXTRA;
@@ -134,7 +134,6 @@ MemoryBarMenu::Pulse()
 			fTeamList[j] = infos.team_info.team;
 			if (!get_team_name_and_icon(infos, true)) {
 				// the team is already gone!
-				delete infos.team_icon;
 				fTeamList[j] = -1;
 			} else {
 				if (!item && firstRecycle < lastRecycle)

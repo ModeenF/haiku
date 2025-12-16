@@ -38,7 +38,7 @@
 // debugging
 //#define DBG(x) x
 #define DBG(x)	;
-#define PRINT(x)	DBG({ printf("[%6ld] ", find_thread(NULL)); printf x; })
+#define PRINT(x)	DBG({ printf("[%6" B_PRId32 "] ", find_thread(NULL)); printf x; })
 
 /*
 #include <Autolock.h>
@@ -881,7 +881,7 @@ void BLooper::_ReservedLooper5() {}
 void BLooper::_ReservedLooper6() {}
 
 
-#ifdef _BEOS_R5_COMPATIBLE_
+#ifdef __HAIKU_BEOS_COMPATIBLE
 BLooper::BLooper(const BLooper& other)
 {
 	// Copy construction not allowed
@@ -958,7 +958,7 @@ BLooper::_Lock(BLooper* looper, port_id port, bigtime_t timeout)
 		// Check for nested lock attempt
 		if (currentThread == looper->fOwner) {
 			++looper->fOwnerCount;
-			PRINT(("BLooper::_Lock() done 5: fOwnerCount: %ld\n", loop->fOwnerCount));
+			PRINT(("BLooper::_Lock() done 5: fOwnerCount: %ld\n", looper->fOwnerCount));
 			return B_OK;
 		}
 

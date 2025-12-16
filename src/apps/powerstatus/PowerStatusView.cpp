@@ -21,6 +21,7 @@
 #include <AboutWindow.h>
 #include <Application.h>
 #include <Bitmap.h>
+#include <Beep.h>
 #include <Catalog.h>
 #include <DataIO.h>
 #include <Deskbar.h>
@@ -32,6 +33,7 @@
 #include <MenuItem.h>
 #include <MessageRunner.h>
 #include <Notification.h>
+#include <NumberFormat.h>
 #include <Path.h>
 #include <PopUpMenu.h>
 #include <Resources.h>
@@ -58,8 +60,11 @@ const uint32 kMsgToggleTime = 'tgtm';
 const uint32 kMsgToggleStatusIcon = 'tgsi';
 const uint32 kMsgToggleExtInfo = 'texi';
 
-const int32 kLowBatteryPercentage = 15;
-const int32 kNoteBatteryPercentage = 30;
+const double kLowBatteryPercentage = 0.15;
+const double kNoteBatteryPercentage = 0.3;
+const double kFullBatteryPercentage = 1.0;
+
+const time_t kLowBatteryTimeLeft = 30 * 60;
 
 
 PowerStatusView::PowerStatusView(PowerStatusDriverInterface* interface,
@@ -112,9 +117,14 @@ PowerStatusView::_Init()
 	fShowTime = false;
 	fShowStatusIcon = true;
 
-	fPercent = 100;
-	fOnline = true;
+	fPercent = 1.0;
 	fTimeLeft = 0;
+
+	fHasNotifiedLowBattery = false;
+
+	add_system_beep_event("Battery critical");
+	add_system_beep_event("Battery low");
+	add_system_beep_event("Battery charged");
 }
 
 
@@ -159,25 +169,28 @@ void
 PowerStatusView::_DrawBattery(BView* view, BRect rect)
 {
 	BRect lightningRect = rect;
-	float quarter = floorf((rect.Height() + 1) / 4);
-	rect.top += quarter;
-	rect.bottom -= quarter;
+	BRect pauseRect = rect;
+	float margin = floorf((rect.Height() + 1) / 4.5f);
+	rect.top += margin;
+	rect.bottom -= margin;
 
 	rect.InsetBy(2, 0);
 
 	float left = rect.left;
 	rect.left += rect.Width() / 11;
 	lightningRect.left = rect.left;
-	lightningRect.InsetBy(0.0f, 5.0f * rect.Height() / 16);
+	lightningRect.InsetBy(0.0f, rect.Height() * 0.25f);
+	pauseRect.left = rect.left;
+	pauseRect.InsetBy(rect.Width() * 0.1f, rect.Height() * 0.4f);
 
-	if (view->LowColor().Brightness() > 100)
+	if (view->LowColor().IsLight())
 		view->SetHighColor(0, 0, 0);
 	else
 		view->SetHighColor(128, 128, 128);
 
 	float gap = 1;
 	if (rect.Height() > 8) {
-		gap = ceilf((rect.left - left) / 2);
+		gap = max_c(1.0f, floorf((rect.left - left) / 2));
 
 		// left
 		view->FillRect(BRect(rect.left, rect.top, rect.left + gap - 1,
@@ -197,42 +210,41 @@ PowerStatusView::_DrawBattery(BView* view, BRect rect)
 	view->FillRect(BRect(left, floorf(rect.top + rect.Height() / 4) + 1,
 		rect.left - 1, floorf(rect.bottom - rect.Height() / 4)));
 
-	int32 percent = fPercent;
-	if (percent > 100)
-		percent = 100;
-	else if (percent < 0 || !fHasBattery)
-		percent = 0;
+	double percent = fPercent;
+	if (percent > 1.0)
+		percent = 1.0;
+	else if (percent < 0.0 || !fHasBattery)
+		percent = 0.0;
 
 	rect.InsetBy(gap, gap);
 
 	if (fHasBattery) {
 		// draw unfilled area
 		rgb_color unfilledColor = make_color(0x4c, 0x4c, 0x4c);
-		if (view->LowColor().Brightness() < 128) {
-			unfilledColor.red = 256 - unfilledColor.red;
-			unfilledColor.green = 256 - unfilledColor.green;
-			unfilledColor.blue = 256 - unfilledColor.blue;
-		}
+		if (view->LowColor().IsDark())
+			unfilledColor = make_color(0xb4, 0xb4, 0xb4);
 
 		BRect unfilled = rect;
-		if (percent > 0)
-			unfilled.left += unfilled.Width() * percent / 100.0;
+		if (percent > 0.0)
+			unfilled.right = unfilled.left + unfilled.Width() * (1 - percent);
 
 		view->SetHighColor(unfilledColor);
 		view->FillRect(unfilled);
 
-		if (percent > 0) {
+		if (percent > 0.0) {
 			// draw filled area
-			rgb_color fillColor;
-			if (percent <= kLowBatteryPercentage)
+			rgb_color fillColor = make_color(20, 180, 0);
+			if (percent <= kLowBatteryPercentage) {
 				fillColor.set_to(180, 0, 0);
-			else if (percent <= kNoteBatteryPercentage)
+			} else if (percent <= kNoteBatteryPercentage) {
 				fillColor.set_to(200, 140, 0);
-			else
-				fillColor.set_to(20, 180, 0);
+			} else if ((fBatteryInfo.state & ~BATTERY_NOT_CHARGING) == 0) {
+				// When a battery is not in use at all, draw it in blue.
+				fillColor.set_to(50, 150, 255, 255);
+			}
 
 			BRect fill = rect;
-			fill.right = fill.left + fill.Width() * percent / 100.0;
+			fill.left += fill.Width() * (1 - percent);
 
 			// draw bevel
 			rgb_color bevelLightColor  = tint_color(fillColor, 0.2);
@@ -269,7 +281,7 @@ PowerStatusView::_DrawBattery(BView* view, BRect rect)
 		}
 	}
 
-	if (fOnline) {
+	if ((fBatteryInfo.state & BATTERY_CHARGING) != 0) {
 		// When charging, draw a lightning symbol over the battery.
 		view->SetHighColor(255, 255, 0, 180);
 		view->SetDrawingMode(B_OP_ALPHA);
@@ -285,6 +297,29 @@ PowerStatusView::_DrawBattery(BView* view, BRect rect)
 		view->FillPolygon(points, 6, lightningRect);
 
 		view->SetDrawingMode(B_OP_OVER);
+	} else if ((fBatteryInfo.state & BATTERY_CRITICAL_STATE) != 0) {
+		// When a battery is damaged or missing, draw an X over it
+		view->SetHighColor(200, 0, 0, 96);
+		view->SetDrawingMode(B_OP_ALPHA);
+
+		static const BPoint points[] = {
+			BPoint(1, 1),
+			BPoint(1, 2),
+			BPoint(20, 6),
+			BPoint(22, 6),
+			BPoint(22, 5),
+			BPoint(3, 1),
+
+			BPoint(20, 1),
+			BPoint(1, 5),
+			BPoint(1, 6),
+			BPoint(3, 6),
+			BPoint(22, 2),
+			BPoint(22, 1)
+		};
+		view->FillPolygon(points, 12, lightningRect);
+
+		view->SetDrawingMode(B_OP_OVER);
 	}
 
 	view->SetHighColor(0, 0, 0);
@@ -296,6 +331,7 @@ PowerStatusView::Draw(BRect updateRect)
 {
 	DrawTo(this, Bounds());
 }
+
 
 void
 PowerStatusView::DrawTo(BView* view, BRect rect)
@@ -365,14 +401,21 @@ PowerStatusView::_SetLabel(char* buffer, size_t bufferLength)
 
 	const char* open = "";
 	const char* close = "";
-	if (fOnline) {
+	if ((fBatteryInfo.state & BATTERY_DISCHARGING) == 0) {
+		// surround the percentage with () if the battery is not discharging
 		open = "(";
 		close = ")";
 	}
 
 	if (!fShowTime && fPercent >= 0) {
-		snprintf(buffer, bufferLength, "%s%" B_PRId32 "%%%s", open, fPercent,
-			close);
+		BNumberFormat numberFormat;
+		BString data;
+
+		if (numberFormat.FormatPercent(data, fPercent) != B_OK) {
+			data.SetToFormat("%" B_PRId32 "%%", int32(fPercent * 100));
+		}
+
+		snprintf(buffer, bufferLength, "%s%s%s", open, data.String(), close);
 	} else if (fShowTime && fTimeLeft >= 0) {
 		snprintf(buffer, bufferLength, "%s%" B_PRIdTIME ":%02" B_PRIdTIME "%s",
 			open, fTimeLeft / 3600, (fTimeLeft / 60) % 60, close);
@@ -380,39 +423,35 @@ PowerStatusView::_SetLabel(char* buffer, size_t bufferLength)
 }
 
 
-
 void
 PowerStatusView::Update(bool force, bool notify)
 {
-	int32 previousPercent = fPercent;
+	double previousPercent = fPercent;
 	time_t previousTimeLeft = fTimeLeft;
-	bool wasOnline = fOnline;
+	bool wasCharging = (fBatteryInfo.state & BATTERY_CHARGING);
 	bool hadBattery = fHasBattery;
 	_GetBatteryInfo(fBatteryID, &fBatteryInfo);
-	fHasBattery = fBatteryInfo.full_capacity > 0;
+	fHasBattery = fBatteryInfo.full_capacity > 0 && fBatteryInfo.state != BATTERY_CRITICAL_STATE;
 
 	if (fBatteryInfo.full_capacity > 0 && fHasBattery) {
-		fPercent = (100 * fBatteryInfo.capacity) / fBatteryInfo.full_capacity;
-		fOnline = (fBatteryInfo.state & BATTERY_DISCHARGING) == 0;
+		fPercent = (double)fBatteryInfo.capacity / fBatteryInfo.full_capacity;
 		fTimeLeft = fBatteryInfo.time_left;
 	} else {
-		fPercent = 0;
-		fOnline = false;
+		fPercent = 0.0;
 		fTimeLeft = -1;
 	}
 
-	if (fHasBattery && (fPercent <= 0 || fPercent > 100)) {
+	if (fHasBattery && (fPercent <= 0 || fPercent > 1.0)) {
 		// Just ignore this probe -- it obviously returned invalid values
 		fPercent = previousPercent;
 		fTimeLeft = previousTimeLeft;
-		fOnline = wasOnline;
 		fHasBattery = hadBattery;
 		return;
 	}
 
 	if (fInDeskbar) {
 		// make sure the tray icon is (just) large enough
-		float width = fShowStatusIcon ? Bounds().Height() : 0;
+		float width = fShowStatusIcon ? floorf(Bounds().Height() * 1.15f) : 0;
 
 		if (fShowLabel) {
 			char text[64];
@@ -424,17 +463,25 @@ PowerStatusView::Update(bool force, bool notify)
 			char text[256];
 			const char* open = "";
 			const char* close = "";
-			if (fOnline) {
+			if ((fBatteryInfo.state & BATTERY_DISCHARGING) == 0) {
+				// surround the percentage with () if the battery is not discharging
 				open = "(";
 				close = ")";
 			}
 			if (fHasBattery) {
-				size_t length = snprintf(text, sizeof(text), "%s%" B_PRId32
-					"%%%s", open, fPercent, close);
+				BNumberFormat numberFormat;
+				BString data;
+				size_t length;
+
+				if (numberFormat.FormatPercent(data, fPercent) != B_OK) {
+					data.SetToFormat("%" B_PRId32 "%%", int32(fPercent * 100));
+				}
+
+				length = snprintf(text, sizeof(text), "%s%s%s", open, data.String(), close);
+
 				if (fTimeLeft >= 0) {
-					length += snprintf(text + length, sizeof(text) - length,
-						"\n%" B_PRIdTIME ":%02" B_PRIdTIME, fTimeLeft / 3600,
-						(fTimeLeft / 60) % 60);
+					length += snprintf(text + length, sizeof(text) - length, "\n%" B_PRIdTIME
+						":%02" B_PRIdTIME, fTimeLeft / 3600, (fTimeLeft / 60) % 60);
 				}
 
 				const char* state = NULL;
@@ -442,6 +489,8 @@ PowerStatusView::Update(bool force, bool notify)
 					state = B_TRANSLATE("charging");
 				else if ((fBatteryInfo.state & BATTERY_DISCHARGING) != 0)
 					state = B_TRANSLATE("discharging");
+				else if ((fBatteryInfo.state & BATTERY_NOT_CHARGING) != 0)
+					state = B_TRANSLATE("not charging");
 
 				if (state != NULL) {
 					snprintf(text + length, sizeof(text) - length, "\n%s",
@@ -472,15 +521,33 @@ PowerStatusView::Update(bool force, bool notify)
 		}
 	}
 
-	if (force || wasOnline != fOnline
+	if (force || wasCharging != (fBatteryInfo.state & BATTERY_CHARGING)
 		|| (fShowTime && fTimeLeft != previousTimeLeft)
 		|| (!fShowTime && fPercent != previousPercent)) {
 		Invalidate();
 	}
 
-	if (!fOnline && fHasBattery && previousPercent > kLowBatteryPercentage
-			&& fPercent <= kLowBatteryPercentage && notify) {
+	// only do low battery notices based on the aggregate virtual battery, not single batteries
+	if (fBatteryID >= 0)
+		return;
+
+	if (fPercent > kLowBatteryPercentage && fTimeLeft > kLowBatteryTimeLeft)
+		fHasNotifiedLowBattery = false;
+
+	bool justTurnedLowBattery = (previousPercent > kLowBatteryPercentage
+			&& fPercent <= kLowBatteryPercentage)
+		|| (fTimeLeft <= kLowBatteryTimeLeft
+			&& previousTimeLeft > kLowBatteryTimeLeft);
+
+	if ((fBatteryInfo.state & BATTERY_DISCHARGING) != 0 && notify && fHasBattery
+		&& !fHasNotifiedLowBattery && justTurnedLowBattery) {
 		_NotifyLowBattery();
+		fHasNotifiedLowBattery = true;
+	}
+
+	if ((fBatteryInfo.state & BATTERY_CHARGING) != 0 && fPercent >= kFullBatteryPercentage
+		&& previousPercent < kFullBatteryPercentage) {
+		system_beep("Battery charged");
 	}
 }
 
@@ -533,7 +600,6 @@ PowerStatusView::_GetBatteryInfo(int batteryID, battery_info* batteryInfo)
 		for (int i = 0; i < fDriverInterface->GetBatteryCount(); i++) {
 			battery_info info;
 			fDriverInterface->GetBatteryInfo(i, &info);
-
 			if (info.full_capacity <= 0)
 				continue;
 
@@ -541,11 +607,32 @@ PowerStatusView::_GetBatteryInfo(int batteryID, battery_info* batteryInfo)
 				*batteryInfo = info;
 				first = false;
 			} else {
-				batteryInfo->state |= info.state;
+				if ((batteryInfo->state & BATTERY_CRITICAL_STATE) == 0) {
+					// don't propagate CRITICAL_STATE to the aggregate battery.
+					// one battery charging means "the system is charging" but one battery having
+					// been removed does not mean "the system has no battery"
+					batteryInfo->state |= info.state;
+				}
 				batteryInfo->capacity += info.capacity;
 				batteryInfo->full_capacity += info.full_capacity;
-				batteryInfo->time_left += info.time_left;
+				batteryInfo->current_rate += info.current_rate;
 			}
+		}
+
+		// we can't rely on just adding the individual batteries' time_lefts together:
+		// not-in-use batteries show -1 time_left as they will last infinitely long with their
+		// current (zero) level of draw, despite them being in the queue to use after the current
+		// battery is out of energy. therefore to calculate an accurate time, we have to use the
+		// current total rate of (dis)charge compared to the total remaining capacity of all
+		// batteries.
+		if (batteryInfo->current_rate == 0) {
+			// some systems briefly return current_rate of 0 as the charger is plugged/unplugged
+			batteryInfo->time_left = 0;
+		} else if ((batteryInfo->state & BATTERY_CHARGING) != 0) {
+			batteryInfo->time_left = 3600 * (batteryInfo->full_capacity - batteryInfo->capacity)
+				/ batteryInfo->current_rate;
+		} else {
+			batteryInfo->time_left = 3600 * batteryInfo->capacity / batteryInfo->current_rate;
 		}
 	}
 }
@@ -573,10 +660,12 @@ PowerStatusView::_NotifyLowBattery()
 		fHasBattery ? B_INFORMATION_NOTIFICATION : B_ERROR_NOTIFICATION);
 
 	if (fHasBattery) {
+		system_beep("Battery low");
 		notification.SetTitle(B_TRANSLATE("Battery low"));
 		notification.SetContent(B_TRANSLATE(
 			"The battery level is getting low, please plug in the device."));
 	} else {
+		system_beep("Battery critical");
 		notification.SetTitle(B_TRANSLATE("Battery critical"));
 		notification.SetContent(B_TRANSLATE(
 			"The battery level is critical, please plug in the device "
@@ -610,7 +699,7 @@ PowerStatusReplicant::PowerStatusReplicant(BRect frame, int32 resizingMode,
 			B_FOLLOW_RIGHT | B_FOLLOW_BOTTOM);
 		AddChild(dragger);
 	} else
-		Update(false,false);
+		Update(false, false);
 }
 
 
@@ -888,6 +977,6 @@ PowerStatusReplicant::_OpenExtendedWindow()
 extern "C" _EXPORT BView*
 instantiate_deskbar_item(float maxWidth, float maxHeight)
 {
-	return new PowerStatusReplicant(BRect(0, 0, maxHeight - 1, maxHeight - 1),
-		B_FOLLOW_NONE, true);
+	return new PowerStatusReplicant(BRect(0, 0, maxWidth - 1, maxHeight - 1),
+		B_FOLLOW_TOP, true);
 }
